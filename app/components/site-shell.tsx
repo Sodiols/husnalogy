@@ -16,41 +16,15 @@ const SidePanel = dynamic(() => import("./side-panel"), { ssr: false });
 const AuthModal = dynamic(() => import("./auth-modal"), { ssr: false });
 const AskLogy = dynamic(() => import("./logy"), { ssr: false });
 
-const SETTINGS_CACHE_KEY = "husnalogy_site_settings";
-const SETTINGS_CACHE_TTL = 5 * 60 * 1000;
-
-function readCachedSettings() {
-  if (typeof window === "undefined") return null;
-
-  try {
-    const cached = window.sessionStorage.getItem(SETTINGS_CACHE_KEY);
-    if (!cached) return null;
-    const parsed = JSON.parse(cached);
-    if (!parsed?.settings || Date.now() - Number(parsed.cachedAt || 0) > SETTINGS_CACHE_TTL) return null;
-    return parsed.settings;
-  } catch {
-    return null;
-  }
-}
-
-function writeCachedSettings(settings) {
-  if (typeof window === "undefined" || !settings) return;
-
-  try {
-    window.sessionStorage.setItem(
-      SETTINGS_CACHE_KEY,
-      JSON.stringify({ settings, cachedAt: Date.now() })
-    );
-  } catch {
-    // Ignore quota/private-mode failures; settings still load from the API.
-  }
-}
-
-export default function SiteShell({ children, initialUser }) {
+export default function SiteShell({ children, initialUser, initialSettings = null }) {
   const pathname = usePathname();
   const isAdminRoute = pathname?.startsWith("/admin");
 
-  const [siteSettings, setSiteSettings] = useState(() => readCachedSettings());
+  // Seed with the settings the server resolved for this request so SSR and the
+  // first client render are identical (no hydration mismatch), and maintenance
+  // mode is honored server-side with no flash. The effect below refreshes from
+  // the API to pick up changes without a reload.
+  const [siteSettings, setSiteSettings] = useState(initialSettings);
   const [menuOpen, setMenuOpen] = useState(false);
   const [sidePanel, setSidePanel] = useState(null);
   const [askOpen, setAskOpen] = useState(false);
@@ -74,7 +48,6 @@ export default function SiteShell({ children, initialUser }) {
 
         if (!cancelled && response.ok && data?.settings) {
           setSiteSettings(data.settings);
-          writeCachedSettings(data.settings);
         }
       } catch (error) {
         console.error("Could not load site settings:", error);

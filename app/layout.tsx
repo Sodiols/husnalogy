@@ -4,6 +4,7 @@ import "./globals.css";
 import SiteShell from "./components/site-shell";
 import { createClient } from "@/lib/supabase/server";
 import { formatSupabaseUser } from "./lib/format-user";
+import { getSettings, toPublicSettings } from "@/lib/settings";
 
 const fontDisplay = Cormorant_Garamond({
   subsets: ["latin"],
@@ -101,8 +102,18 @@ async function getInitialUser() {
   }
 }
 
+async function getInitialSettings() {
+  try {
+    return toPublicSettings(await getSettings());
+  } catch (error) {
+    if (error?.digest === "DYNAMIC_SERVER_USAGE") throw error;
+    console.error("Could not resolve server-side site settings:", error);
+    return null;
+  }
+}
+
 export default async function RootLayout({ children }) {
-  const initialUser = await getInitialUser();
+  const [initialUser, initialSettings] = await Promise.all([getInitialUser(), getInitialSettings()]);
   const organizationJsonLd = {
     "@context": "https://schema.org",
     "@type": "Organization",
@@ -150,7 +161,7 @@ export default async function RootLayout({ children }) {
         suppressHydrationWarning
         className="bg-white font-body text-charcoal antialiased selection:bg-[#E6E6E6] selection:text-black"
       >
-        <SiteShell initialUser={initialUser}>{children}</SiteShell>
+        <SiteShell initialUser={initialUser} initialSettings={initialSettings}>{children}</SiteShell>
       </body>
     </html>
   );

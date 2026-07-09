@@ -131,27 +131,30 @@ export default function Hero({ spotlight = null }: { spotlight?: any }) {
           {/* Floating "shop this" card — the ecommerce moment. */}
           <a
             href={cardHref}
-            className="group absolute -bottom-5 -left-4 flex w-[264px] items-center gap-3.5 rounded-[12px] border border-[#303839]/10 bg-white/95 p-2.5 backdrop-blur-sm transition-colors duration-300 hover:border-[#303839]/25 sm:-left-8"
+            className="group absolute -bottom-6 -left-4 flex w-[288px] items-center gap-4 rounded-[14px] border border-[#303839]/10 bg-white/95 p-3 backdrop-blur-md transition-all duration-300 hover:-translate-y-0.5 hover:border-[#303839]/20 sm:-left-8"
           >
-            <div className="relative h-[54px] w-[54px] shrink-0 overflow-hidden rounded-[9px] bg-[#f8f6f1]">
+            <div className="relative h-[62px] w-[62px] shrink-0 overflow-hidden rounded-[10px] bg-[#f8f6f1]">
               <Image
                 src={cardImage}
                 alt=""
                 fill
-                sizes="54px"
-                className="object-cover"
+                sizes="62px"
+                className="object-cover transition-transform duration-500 ease-out group-hover:scale-105"
               />
             </div>
             <div className="min-w-0 flex-1">
-              <p className="text-[9px] font-semibold uppercase tracking-[0.22em] text-[#303839]/45">Featured</p>
-              <p className="mt-1 truncate text-[14px] font-semibold leading-tight text-[#303839]">{cardTitle}</p>
-              <p className="mt-0.5 text-[11px] font-medium text-[#303839]/55">{cardMeta}</p>
+              <p className="flex items-center gap-1.5 text-[9px] font-semibold uppercase tracking-[0.2em] text-[#303839]/45">
+                <span aria-hidden="true" className="h-px w-3 bg-[#303839]/30" />
+                Featured collection
+              </p>
+              <p className="mt-1.5 truncate text-[15px] font-semibold leading-tight text-[#303839]">{cardTitle}</p>
+              <p className="mt-1 text-[11px] font-medium tracking-[0.02em] text-[#303839]/55">{cardMeta}</p>
             </div>
             <span
               aria-hidden="true"
-              className="grid h-8 w-8 shrink-0 place-items-center rounded-full border border-[#303839]/15 text-[#303839] transition-colors duration-300 group-hover:border-[#303839] group-hover:bg-[#303839] group-hover:text-white"
+              className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-[#303839] text-white transition-colors duration-300 group-hover:bg-[#1f2627]"
             >
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" width="12" height="12">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" width="13" height="13" className="transition-transform duration-300 ease-out group-hover:translate-x-0.5">
                 <path d="M5 12h13" />
                 <path d="m12 5 7 7-7 7" />
               </svg>
