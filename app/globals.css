@@ -1,0 +1,174 @@
+@import "tailwindcss";
+
+/* ---------------------------------------------------------------------------
+   Husnalogy design tokens — monochrome luxury system.
+
+   Backgrounds:  white (primary) · #F8F6F1 cream (secondary, ~30% of surfaces)
+                 #ECE9E1 (single deeper neutral: hovers, chips, pressed states)
+   Ink:          #303839 for text, headings, borders, icons, buttons
+   Black:        reserved for hover/contrast peaks only
+   #303839 is never a full-section background.
+--------------------------------------------------------------------------- */
+@theme {
+  --color-charcoal: #303839;
+  --color-ink: #303839;
+  --color-cream: #f8f6f1;
+  --color-cream-deep: #ece9e1;
+  --color-beige: #E6E6E6;
+  --color-purewhite: #ffffff;
+  --color-pureblack: #000000;
+  --font-display: var(--font-cormorant), "Cormorant Garamond", serif;
+  --font-body: var(--font-inter), "Inter", sans-serif;
+  --shadow-soft: 0 18px 50px rgba(48, 56, 57, 0.08);
+  --shadow-premium: 0 30px 90px rgba(48, 56, 57, 0.14);
+  --shadow-card: 0 10px 30px rgba(48, 56, 57, 0.06);
+
+  /* Soft radius system — one subtle value shared by buttons, inputs, cards,
+     images, panels and dropdowns so the whole site feels visually connected. */
+  --radius: 10px;
+  --radius-sm: 8px;
+
+  /* Primary buttons rest on ink and lift to this soft, faded dark on hover —
+     never pure black — for a smoother, more premium interaction. */
+  --color-ink-hover: #434c4d;
+}
+
+html,
+body {
+  max-width: 100%;
+  /* `clip` prevents horizontal scroll without creating a scroll container,
+     which (unlike `hidden`) keeps `position: sticky` working against the viewport. */
+  overflow-x: clip;
+  margin: 0;
+  font-family: var(--font-body);
+  scroll-behavior: smooth;
+  color: var(--color-charcoal);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* Display serif carries the brand voice: tight, calm, slightly condensed. */
+.font-display {
+  letter-spacing: -0.01em;
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body.menu-open {
+  overflow: hidden;
+}
+
+img {
+  max-width: 100%;
+  display: block;
+}
+
+button {
+  cursor: pointer;
+}
+
+/* Site-wide: buttons carry a small, consistent radius for a smooth premium feel. */
+button {
+  border-radius: var(--radius-sm) !important;
+}
+
+/* Site-wide: form fields stay squared; focus stays quiet. */
+input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+textarea,
+select {
+  border-radius: 0 !important;
+}
+
+/* Comfortable default padding for form fields. Low specificity on purpose so
+   any explicit Tailwind px-/py- utility still overrides it — this only gives
+   breathing room to fields that don't set their own. */
+input,
+textarea,
+select {
+  padding: 0.6rem 0.85rem;
+}
+
+input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):focus,
+textarea:focus,
+select:focus {
+  border-color: rgba(48, 56, 57, 0.15) !important;
+  box-shadow: none !important;
+  outline: none !important;
+  --tw-ring-color: transparent !important;
+  --tw-ring-shadow: 0 0 #0000 !important;
+  --tw-ring-offset-shadow: 0 0 #0000 !important;
+}
+
+/* Exception: icon-only circular buttons (wishlist toggle, carousel arrows, close
+   buttons, quantity steppers, nav icons) opt back into a full circle via this marker. */
+button[data-shape="round"] {
+  border-radius: 9999px !important;
+}
+
+/* Soften every previously-squared surface — cards, product cards, image
+   containers, panels, dropdowns and chips that used `rounded-none` — into the
+   same subtle radius so nothing reads as sharp or default. Full-height shells
+   that sit flush against the viewport edge opt out with `.rounded-flush`. */
+.rounded-none:not(.rounded-flush) {
+  border-radius: var(--radius) !important;
+}
+
+.rounded-flush {
+  border-radius: 0 !important;
+}
+
+input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+textarea,
+select {
+  border-radius: 0 !important;
+}
+
+/* Quiet, consistent keyboard focus across the whole site. */
+:focus-visible {
+  outline: 1.5px solid rgba(48, 56, 57, 0.55);
+  outline-offset: 3px;
+}
+
+.cursor-image-expand,
+.cursor-image-expand * {
+  cursor: url("/icons/expand-cursor.svg") 24 24, zoom-in;
+}
+
+
+header nav div button {
+  font-size: 15px;
+}
+
+/* Home hero: a quiet staggered rise on load. Defined only under
+   no-preference so reduced-motion visitors see everything immediately with
+   no residual hidden state. */
+@media (prefers-reduced-motion: no-preference) {
+  @keyframes hero-rise {
+    from {
+      opacity: 0;
+      transform: translateY(18px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+  .hero-rise {
+    animation: hero-rise 0.9s cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+}
+
+header nav a {
+  font-size: 15px;
+}
