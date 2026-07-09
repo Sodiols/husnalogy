@@ -971,7 +971,8 @@ function OrderDetailModal({ order, onClose }) {
 function designFiles(request) {
   const uploaded = request.uploadedFiles && typeof request.uploadedFiles === "object" ? request.uploadedFiles : {};
   return Object.entries(uploaded)
-    .map(([key, val]) => {
+    .map(([key, value]) => {
+      const val: any = value;
       const url = val && typeof val === "object" ? val.signedUrl || val.url || "" : typeof val === "string" ? val : "";
       return url ? { url, name: (val && val.name) || key } : null;
     })
