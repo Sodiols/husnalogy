@@ -1,8 +1,25 @@
 "use client";
 
 import { useRef } from "react";
-import RightArrowIcon from "../components/RightArrowIcon";
 import ProductCard from "./ProductCard";
+
+function Chevron({ direction = "right" }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width="18"
+      height="18"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d={direction === "left" ? "m15 18-6-6 6-6" : "m9 6 6 6-6 6"} />
+    </svg>
+  );
+}
 
 function CarouselButton({ children, onClick, ariaLabel, className = "" }) {
   return (
@@ -11,7 +28,7 @@ function CarouselButton({ children, onClick, ariaLabel, className = "" }) {
       onClick={onClick}
       aria-label={ariaLabel}
       data-shape="round"
-      className={`grid h-[42px] w-[42px] place-items-center rounded-full bg-white text-[24px] text-[#303839] shadow-[0_8px_24px_rgba(0,0,0,0.08)] ring-1 ring-black/[0.03] transition-all duration-300 ease-out hover:scale-[1.04] active:scale-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#303839]/20 ${className}`}
+      className={`grid h-[42px] w-[42px] place-items-center rounded-full bg-white text-[#303839] shadow-[0_8px_24px_rgba(0,0,0,0.08)] ring-1 ring-black/[0.03] transition-all duration-300 ease-out hover:scale-[1.04] active:scale-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#303839]/20 ${className}`}
     >
       {children}
     </button>
@@ -54,14 +71,14 @@ export default function ProductCarousel({
             onClick={() => scrollCarousel("prev")}
             ariaLabel="Previous products"
           >
-            <span className="block -translate-y-[2px]">‹</span>
+            <Chevron direction="left" />
           </CarouselButton>
 
           <CarouselButton
             onClick={() => scrollCarousel("next")}
             ariaLabel="Next products"
           >
-            <RightArrowIcon />
+            <Chevron direction="right" />
           </CarouselButton>
         </div>
       </div>

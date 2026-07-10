@@ -6,9 +6,10 @@ export const runtime = "nodejs";
 const SODIOL_FACEBOOK_LINK = process.env.SODIOL_FACEBOOK_LINK || "";
 const SODIOL_INSTAGRAM_LINK = process.env.SODIOL_INSTAGRAM_LINK || "";
 
-// Logy answers locally by default (no OpenAI key needed). Set LOGY_USE_OPENAI=true with a
-// funded OPENAI_API_KEY to also use the live AI for free-form questions.
-const USE_OPENAI = process.env.LOGY_USE_OPENAI === "true";
+// Logy uses the live AI whenever a funded OPENAI_API_KEY is configured, and
+// falls back to its local brain otherwise. Set LOGY_USE_OPENAI=false to force
+// the local-only mode even when a key is present.
+const USE_OPENAI = Boolean(process.env.OPENAI_API_KEY) && process.env.LOGY_USE_OPENAI !== "false";
 const OPENAI_COOLDOWN_MS = 5 * 60 * 1000;
 let openaiCooldownUntil = 0;
 
@@ -354,7 +355,7 @@ export async function POST(request) {
       input.push({ role: "user", content: message });
     }
 
-    const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY, maxRetries: 0, timeout: 4000 });
+    const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY, maxRetries: 1, timeout: 9000 });
 
     const response = await client.responses.create({
       model: process.env.OPENAI_MODEL || "gpt-4.1-mini",
@@ -368,7 +369,11 @@ export async function POST(request) {
     return Response.json({ reply });
   } catch (error) {
     console.error("LOGY ERROR:", error?.status, error?.code, error?.message);
-    openaiCooldownUntil = Date.now() + OPENAI_COOLDOWN_MS;
+    // Only back off for quota/auth failures, where retrying soon is pointless.
+    // Transient timeouts should not disable the AI for everyone.
+    if (error?.status === 429 || error?.status === 401) {
+      openaiCooldownUntil = Date.now() + OPENAI_COOLDOWN_MS;
+    }
     return Response.json({ reply: cleanReply(answerLocally(message)) });
   }
 }

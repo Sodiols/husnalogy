@@ -19,7 +19,7 @@ const sections = [
 
 const navGroups = [
   {
-    title: "",
+    title: "overview",
     items: [{ section: "Overview", label: "Dashboard", icon: "home" }],
   },
   {

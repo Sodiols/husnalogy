@@ -173,7 +173,7 @@ export default function SiteShell({ children, initialUser, initialSettings = nul
 
       {menuOpen && (
         <div
-          className="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm"
+          className="fixed inset-0 z-40 bg-black/50"
           onClick={() => setMenuOpen(false)}
         />
       )}

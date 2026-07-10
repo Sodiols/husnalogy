@@ -104,7 +104,7 @@ export default function SidePanel({ type, setType, user, openAuth }) {
   return (
     <>
       <div
-        className="fixed inset-0 z-[3200] bg-[#303839]/40 backdrop-blur-[2px]"
+        className="fixed inset-0 z-[3200] bg-black/50"
         onClick={closePanel}
       />
 

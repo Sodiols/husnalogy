@@ -858,7 +858,7 @@ export default function ProductInfo({ product }) {
               type="button"
               onClick={() => addToCart()}
               disabled={cartLoading || Boolean(product.isStockOut)}
-              className="h-12 w-full rounded-full bg-[#E6E6E6] px-5 text-sm font-extrabold text-[#303839] transition hover:bg-[#ddd3cc] active:scale-[0.98] disabled:opacity-70"
+              className="h-12 w-full rounded-full bg-[#E6E6E6] px-5 text-sm font-extrabold text-[#303839] transition-colors duration-300 ease-out hover:bg-[#dcdcdc] active:scale-[0.98] disabled:opacity-70"
             >
               {product.isStockOut ? "Stock Out" : cartLoading ? "Adding..." : "Add to Cart"}
             </button>
@@ -877,7 +877,7 @@ export default function ProductInfo({ product }) {
             <button
               type="button"
               onClick={() => router.push(`/products/${product.slug}/personalize`)}
-              className="h-11 w-full rounded-full border border-[#303839]/18 bg-white px-5 text-sm font-extrabold text-[#303839] transition hover:border-[#303839]/35 hover:bg-[#E6E6E6] active:scale-[0.98]"
+              className="h-11 w-full rounded-full border border-[#303839]/18 bg-white px-5 text-sm font-extrabold text-[#303839] transition-colors duration-300 ease-out hover:bg-[#F4F4F4] active:scale-[0.98]"
             >
               <i className="fa-solid fa-wand-magic-sparkles mr-2 text-xs" />
               Personalize This Product
@@ -1002,7 +1002,7 @@ export default function ProductInfo({ product }) {
           className={`mt-3 flex w-full items-center justify-between gap-3 rounded-none border p-3 text-left text-sm transition ${
             logo
               ? "border-[#303839] bg-[#303839] text-white"
-              : "border-[#303839]/10 bg-white text-[#303839] hover:border-[#303839]/25 hover:bg-[#E6E6E6]"
+              : "border-[#303839]/10 bg-white text-[#303839] hover:bg-[#E6E6E6]"
           }`}
         >
           <span className="flex min-w-0 items-center gap-3">
@@ -1322,7 +1322,7 @@ function AnimatedSelect({
         className={`group flex min-h-[58px] w-full items-center justify-between gap-3 rounded-none border px-3 py-3 text-left outline-none transition ${
           open
             ? "border-[#303839] bg-white ring-2 ring-[#303839]/10"
-            : "border-[#303839]/10 bg-white hover:border-[#303839]/25 hover:bg-[#E6E6E6]"
+            : "border-[#303839]/10 bg-white hover:bg-[#E6E6E6]"
         }`}
       >
         <span className="flex min-w-0 items-center gap-3">
@@ -1528,7 +1528,7 @@ function LargeOptionButton({ option, active, onClick, compact = false, showIcon 
       } ${
         active
           ? "border-[#303839] bg-[#303839] text-white"
-          : "border-[#303839]/10 bg-white text-[#303839] hover:border-[#303839]/25 hover:bg-[#E6E6E6]"
+          : "border-[#303839]/10 bg-white text-[#303839] hover:bg-[#E6E6E6]"
       }`}
     >
       <span className="flex min-w-0 items-center gap-3">
@@ -1589,7 +1589,7 @@ function CornerOptionButton({ option, active, onClick }) {
         className={`relative grid min-h-[72px] place-items-center rounded-none border px-2 py-3 transition active:scale-95 ${
           active
             ? "border-[#303839] bg-[#303839] text-white"
-            : "border-[#303839]/10 bg-white text-[#303839] hover:border-[#303839]/25 hover:bg-[#E6E6E6]"
+            : "border-[#303839]/10 bg-white text-[#303839] hover:bg-[#E6E6E6]"
         }`}
       >
         <CornerIcon type={option.icon} active={active} />
@@ -1718,7 +1718,7 @@ function PaperOption({ option, active, onClick }) {
         className={`relative flex min-h-[86px] flex-col justify-between rounded-none border p-3 transition active:scale-[0.98] ${
           active
             ? "border-[#303839] bg-[#303839] text-white"
-            : "border-[#303839]/10 bg-white text-[#303839] hover:border-[#303839]/25 hover:bg-[#E6E6E6]"
+            : "border-[#303839]/10 bg-white text-[#303839] hover:bg-[#E6E6E6]"
         }`}
       >
         <span className="flex items-center justify-between">

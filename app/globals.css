@@ -172,3 +172,105 @@ header nav div button {
 header nav a {
   font-size: 15px;
 }
+
+/* Checkout: rounded fields and quiet focus states. Scoped to .checkout-scope
+   so the rest of the site keeps its squared house style. */
+.checkout-scope {
+  --checkout-mist: #E6E6E6;
+}
+
+.checkout-scope button {
+  border-radius: 14px !important;
+}
+
+.checkout-scope input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+.checkout-scope textarea,
+.checkout-scope select {
+  border-radius: 14px !important;
+}
+
+.checkout-scope .checkout-field {
+  border: 1px solid rgba(48, 56, 57, 0.12);
+  background: #E6E6E6;
+  transition:
+    border-color 180ms ease,
+    background-color 180ms ease;
+}
+
+.checkout-scope .checkout-field:hover {
+  border-color: rgba(48, 56, 57, 0.18);
+}
+
+.checkout-scope input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):focus,
+.checkout-scope textarea:focus,
+.checkout-scope select:focus {
+  border-color: rgba(48, 56, 57, 0.22) !important;
+  outline: none !important;
+  box-shadow: none !important;
+}
+
+.checkout-scope input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):focus-visible,
+.checkout-scope textarea:focus-visible,
+.checkout-scope select:focus-visible {
+  outline: none !important;
+}
+
+.checkout-scope button:focus-visible {
+  outline: 1px solid rgba(48, 56, 57, 0.24);
+  outline-offset: 2px;
+}
+
+.checkout-scope .checkout-checkbox {
+  appearance: none;
+  display: grid;
+  place-content: center;
+  border: 1px solid rgba(48, 56, 57, 0.26);
+  border-radius: 6px !important;
+  background: #ffffff;
+  transition:
+    background-color 160ms ease,
+    border-color 160ms ease;
+}
+
+.checkout-scope .checkout-checkbox::before {
+  content: "";
+  width: 0.58rem;
+  height: 0.58rem;
+  transform: scale(0);
+  transform-origin: center;
+  clip-path: polygon(14% 44%, 0 58%, 38% 96%, 100% 18%, 86% 6%, 36% 68%);
+  background: #ffffff;
+  transition: transform 160ms ease;
+}
+
+.checkout-scope .checkout-checkbox:checked {
+  border-color: #303839;
+  background: #303839;
+}
+
+.checkout-scope .checkout-checkbox:checked::before {
+  transform: scale(1);
+}
+
+.checkout-scope .checkout-checkbox:focus {
+  box-shadow: none !important;
+}
+
+.checkout-scope .checkout-checkbox:focus-visible {
+  outline: 1px solid rgba(48, 56, 57, 0.24);
+  outline-offset: 2px;
+}
+
+.checkout-scope .checkout-primary-button {
+  background: #303839;
+  box-shadow: none !important;
+  transition:
+    background-color 200ms ease,
+    opacity 200ms ease;
+}
+
+.checkout-scope .checkout-primary-button:hover:not(:disabled) {
+  background: #303839;
+  opacity: 0.82;
+  box-shadow: none !important;
+}

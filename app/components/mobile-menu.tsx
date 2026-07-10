@@ -22,7 +22,7 @@ export default function MobileMenu({
     <>
       {open && (
         <div
-          className="fixed inset-0 z-[2998] bg-black/40 backdrop-blur-sm lg:hidden"
+          className="fixed inset-0 z-[2998] bg-black/50 lg:hidden"
           onClick={() => setOpen(false)}
         />
       )}
