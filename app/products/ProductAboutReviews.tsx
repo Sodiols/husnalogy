@@ -32,8 +32,9 @@ export default function ProductAboutReviews({
   product,
   className = "",
   insideProductColumn = false,
+  initialUser = undefined,
 }) {
-  const { user, authLoading } = useAuth();
+  const { user, authLoading } = useAuth(initialUser);
   const [reviews, setReviews] = useState(product.reviews || []);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({

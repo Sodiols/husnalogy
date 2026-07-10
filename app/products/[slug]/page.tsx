@@ -5,6 +5,8 @@ import {
   getRelatedProducts,
 } from "@/lib/products";
 import { getProductCollections } from "@/lib/collections/store";
+import { createClient } from "@/lib/supabase/server";
+import { formatSupabaseUser } from "@/app/lib/format-user";
 
 import ProductGallery from "../ProductGallery";
 import ProductInfo from "../ProductInfo";
@@ -72,6 +74,29 @@ function getParentCollectionSection(product, products = [], collections = []) {
 
 export const dynamic = "force-dynamic";
 
+async function getInitialUser() {
+  try {
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) return null;
+
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("full_name,email,role,avatar_url")
+      .eq("id", user.id)
+      .maybeSingle();
+
+    return formatSupabaseUser(user, profile);
+  } catch (error: any) {
+    if (error?.digest === "DYNAMIC_SERVER_USAGE") throw error;
+    console.error("Could not resolve product auth state:", error);
+    return null;
+  }
+}
+
 export async function generateMetadata({ params }) {
   const { slug } = await params;
   const product = await getProductBySlug(slug);
@@ -125,6 +150,7 @@ export default async function ProductDetailsPage({ params }) {
   const collections = await getProductCollections().catch(() => []);
   const otherStyles = await getOtherStyles(product, 12);
   const relatedProducts = await getRelatedProducts(product, 12);
+  const initialUser = await getInitialUser();
 
   const suggestedProducts = relatedProducts.length
     ? relatedProducts
@@ -191,6 +217,7 @@ export default async function ProductDetailsPage({ params }) {
         <div className="w-full min-w-0 max-w-full self-start overflow-hidden">
           <ProductGallery
             product={product}
+            initialUser={initialUser}
             belowMainContent={
               <ProductCarousel
                 title="Other styles for this product"
@@ -202,7 +229,7 @@ export default async function ProductDetailsPage({ params }) {
           />
 
           <div className="mt-8 block lg:hidden">
-            <ProductInfo product={product} />
+            <ProductInfo product={product} initialUser={initialUser} />
             <ProductTrustStrip className="mt-4" />
           </div>
 
@@ -230,13 +257,14 @@ export default async function ProductDetailsPage({ params }) {
 
           <ProductAboutReviews
             product={product}
+            initialUser={initialUser}
             insideProductColumn
             className="mt-16"
           />
         </div>
 
         <div className="mt-0 hidden w-full min-w-0 max-w-none self-start pt-0 lg:block">
-          <ProductInfo product={product} />
+          <ProductInfo product={product} initialUser={initialUser} />
           <ProductTrustStrip className="mt-4" />
         </div>
       </section>

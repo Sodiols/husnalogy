@@ -28,7 +28,6 @@ export default function CheckoutClient({ initialUser = undefined }: any) {
   const [items, setItems] = useState([]);
   const [customer, setCustomer] = useState(initialCustomer);
   const [deliveryMethod, setDeliveryMethod] = useState("delivery");
-  const [deliveryDate, setDeliveryDate] = useState("");
   const [saveAddress, setSaveAddress] = useState(true);
   const [acceptTerms, setAcceptTerms] = useState(true);
   const [status, setStatus] = useState({ loading: false, error: "", success: "" });
@@ -83,7 +82,6 @@ export default function CheckoutClient({ initialUser = undefined }: any) {
     const methodLabel = deliveryMethod === "store" ? "Store pickup" : "Home delivery";
     const message = [
       `Delivery: ${methodLabel}`,
-      deliveryDate ? `Preferred date: ${deliveryDate}` : "",
       customer.deliveryNote ? `Note: ${customer.deliveryNote}` : "",
     ]
       .filter(Boolean)
@@ -106,7 +104,6 @@ export default function CheckoutClient({ initialUser = undefined }: any) {
           postalCode: customer.postalCode,
           deliveryNote: customer.deliveryNote,
           deliveryMethod,
-          deliveryDate,
           customerId: user?.uid || "",
           items,
           subtotal: totals.subtotal,
@@ -159,7 +156,6 @@ export default function CheckoutClient({ initialUser = undefined }: any) {
 
       await clearCart(user);
       setCustomer(initialCustomer);
-      setDeliveryDate("");
       setStatus({ loading: false, error: "", success: `Order request placed. Order ID: ${data.order?.id || "created"}` });
     } catch (error) {
       setStatus({ loading: false, error: error.message || "Something went wrong.", success: "" });
@@ -238,10 +234,6 @@ export default function CheckoutClient({ initialUser = undefined }: any) {
                     <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M3 7h11v9H3z" /><path d="M14 10h4l3 3v3h-7z" /><circle cx="7" cy="18" r="1.7" /><circle cx="17.5" cy="18" r="1.7" /></svg>
                   }
                 />
-              </div>
-
-              <div className="mt-4 max-w-[380px]">
-                <Field label="Delivery date" type="date" value={deliveryDate} onChange={setDeliveryDate} />
               </div>
 
               <div className="mt-4 grid gap-x-4 gap-y-4 sm:grid-cols-3">

@@ -95,7 +95,7 @@ function ThumbCarouselButton({
   );
 }
 
-export default function ProductGallery({ product, belowMainContent = null }) {
+export default function ProductGallery({ product, belowMainContent = null, initialUser = undefined }) {
   const [activeIndex, setActiveIndex] = useState(0);
   const [thumbStart, setThumbStart] = useState(0);
   const [visibleThumbs, setVisibleThumbs] = useState(4);
@@ -106,7 +106,7 @@ export default function ProductGallery({ product, belowMainContent = null }) {
 
   const thumbRailRef = useRef(null);
   const mountedRef = useRef(false);
-  const { user } = useAuth();
+  const { user } = useAuth(initialUser);
 
   const productIdentity = product?.id || product?.slug || product?.title;
   const productKey = product?.id || product?.slug;

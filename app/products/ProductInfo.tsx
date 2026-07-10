@@ -308,9 +308,9 @@ function fallbackOption(label = "") {
   return { value: "", label, cartLabel: label, description: "", icon: "fa-regular fa-circle" };
 }
 
-export default function ProductInfo({ product }) {
+export default function ProductInfo({ product, initialUser = undefined }) {
   const router = useRouter();
-  const { user } = useAuth();
+  const { user } = useAuth(initialUser);
 
   const fields = useMemo(
     () =>
