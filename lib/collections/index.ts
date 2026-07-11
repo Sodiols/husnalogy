@@ -641,6 +641,30 @@ export async function getCollectionSuite(slug) {
   };
 }
 
+export async function getAllCollectionSuites() {
+  const [collections, allProducts] = await Promise.all([
+    getProductCollections(),
+    getActiveProducts(),
+  ]);
+
+  return collections
+    .filter((collection) => !collection.parentCollectionId)
+    .map((collection) => {
+      const subCollections = buildCollectionChildren(collection, collections, allProducts);
+      const directProducts = sortTrendingProducts(getProductsForCollection(collection, allProducts));
+      const products = subCollections.length
+        ? sortTrendingProducts(subCollections.flatMap((child) => child.products))
+        : directProducts;
+
+      return {
+        ...collection,
+        subCollections,
+        products,
+      };
+    })
+    .filter((collection) => collection.products.length > 0);
+}
+
 function applyCollectionSort(products, definition) {
   if (definition.preferBestSeller) {
     const bestSellers = products.filter((product) => product.isBestSeller);

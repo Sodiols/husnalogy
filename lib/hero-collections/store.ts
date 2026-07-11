@@ -15,11 +15,6 @@ function slugify(value: string) {
     .replace(/^-+|-+$/g, "");
 }
 
-function toInteger(value: any, fallback = 0) {
-  const num = Math.trunc(Number(value));
-  return Number.isFinite(num) && num >= 0 ? num : fallback;
-}
-
 // Map a raw database row into the camelCase shape the app/admin use.
 export function heroCollectionFromRow(row: any = {}) {
   return {
@@ -40,10 +35,8 @@ export function heroCollectionFromRow(row: any = {}) {
     thumbnailTwo: row.thumbnail_two || "",
     thumbnailThree: row.thumbnail_three || "",
     sourceCollectionId: row.source_collection_id || "",
-    itemCount: toInteger(row.item_count, 0),
     isActive: Boolean(row.is_active),
     isFeatured: Boolean(row.is_featured),
-    displayOrder: toInteger(row.display_order, 0),
     createdAt: row.created_at || "",
     updatedAt: row.updated_at || "",
   };
@@ -72,10 +65,8 @@ function normalizeHeroCollection(input: any = {}, existing: any = {}) {
     thumbnailTwo: cleanOptionalString(input.thumbnailTwo ?? existing.thumbnailTwo),
     thumbnailThree: cleanOptionalString(input.thumbnailThree ?? existing.thumbnailThree),
     sourceCollectionId: cleanOptionalString(input.sourceCollectionId ?? existing.sourceCollectionId),
-    itemCount: toInteger(input.itemCount ?? existing.itemCount, 0),
     isActive: normalizeBoolean(input.isActive ?? existing.isActive),
     isFeatured: normalizeBoolean(input.isFeatured ?? existing.isFeatured),
-    displayOrder: toInteger(input.displayOrder ?? existing.displayOrder, 0),
     createdAt: existing.createdAt || input.createdAt || now,
     updatedAt: now,
   };
@@ -122,10 +113,8 @@ function toRow(collection: any) {
     thumbnail_two: collection.thumbnailTwo,
     thumbnail_three: collection.thumbnailThree,
     source_collection_id: collection.sourceCollectionId,
-    item_count: collection.itemCount,
     is_active: collection.isActive,
     is_featured: collection.isFeatured,
-    display_order: collection.displayOrder,
     created_at: collection.createdAt,
     updated_at: collection.updatedAt,
   };
@@ -136,7 +125,6 @@ export async function getHeroCollections() {
   const { data, error } = await supabase
     .from("hero_collections")
     .select("*")
-    .order("display_order", { ascending: true })
     .order("created_at", { ascending: true });
 
   if (error) throw error;
@@ -149,6 +137,13 @@ export async function createHeroCollection(input: any) {
   if (Object.keys(errors).length) return { ok: false, errors };
 
   const supabase = createServiceRoleClient();
+  if (collection.isFeatured) {
+    const { error: unfeatureError } = await supabase
+      .from("hero_collections")
+      .update({ is_featured: false, updated_at: nowIso() })
+      .neq("id", collection.id);
+    if (unfeatureError) throw unfeatureError;
+  }
   const { data, error } = await supabase
     .from("hero_collections")
     .insert(toRow(collection))
@@ -174,6 +169,14 @@ export async function updateHeroCollection(id: string, input: any) {
   const collection = normalizeHeroCollection(input, existing);
   const errors = validateHeroCollection(collection);
   if (Object.keys(errors).length) return { ok: false, errors };
+
+  if (collection.isFeatured) {
+    const { error: unfeatureError } = await supabase
+      .from("hero_collections")
+      .update({ is_featured: false, updated_at: nowIso() })
+      .neq("id", id);
+    if (unfeatureError) throw unfeatureError;
+  }
 
   const { created_at, id: _ignoredId, ...updates } = toRow(collection);
   const { data, error } = await supabase
@@ -209,6 +212,11 @@ function firstProductImage(product: any = {}) {
   );
 }
 
+function productHref(product: any = {}) {
+  const slug = cleanString(product.slug);
+  return slug ? `/products/${slug}` : "";
+}
+
 // Resolve the images for a hero record from a real product collection: the
 // first child collection supplies the main image, and the next three children
 // supply the thumbnails. When a collection has fewer than four children we fall
@@ -224,27 +232,33 @@ export async function resolveHeroImages(sourceCollectionId: string) {
   if (!suite) return null;
 
   const children = Array.isArray(suite.subCollections) ? suite.subCollections : [];
-  const childImages = children.map((child: any) => firstProductImage((child.products || [])[0] || {}));
-  const productImages = (Array.isArray(suite.products) ? suite.products : []).map(firstProductImage);
+  const products = Array.isArray(suite.products) ? suite.products : [];
+  const childProducts = children.map((child: any) => (child.products || [])[0]).filter(Boolean);
 
-  // Child images first (in order), then product images, de-duplicated.
-  const images: string[] = [];
-  for (const image of [...childImages, ...productImages]) {
-    if (image && !images.includes(image)) images.push(image);
+  // Each image keeps the URL of the exact product it represents. Child design
+  // products remain first, followed by direct/fallback collection products.
+  const items: Array<{ image: string; href: string }> = [];
+  for (const product of [...childProducts, ...products]) {
+    const image = firstProductImage(product);
+    const href = productHref(product);
+    if (image && href && !items.some((item) => item.image === image && item.href === href)) {
+      items.push({ image, href });
+    }
   }
 
   return {
     collectionId: collection.id,
     collectionName: collection.name,
     collectionSlug: collection.slug,
-    images,
+    items,
     childCount: children.length,
-    productCount: Array.isArray(suite.products) ? suite.products.length : 0,
+    productCount: products.length,
+    itemCount: children.length || products.length,
   };
 }
 
-// The homepage renders the active, featured record with the lowest display
-// order, with its images resolved from the linked product collection. Returns
+// The homepage renders the single active, featured record, with its images
+// resolved from the linked product collection. Returns
 // null when nothing qualifies (or the collection yields no images) so the
 // section hides gracefully.
 export async function getFeaturedHeroCollection() {
@@ -254,8 +268,7 @@ export async function getFeaturedHeroCollection() {
     .select("*")
     .eq("is_active", true)
     .eq("is_featured", true)
-    .order("display_order", { ascending: true })
-    .order("created_at", { ascending: true })
+    .order("updated_at", { ascending: false })
     .limit(1)
     .maybeSingle();
 
@@ -264,20 +277,34 @@ export async function getFeaturedHeroCollection() {
 
   const collection = heroCollectionFromRow(data);
   const resolved = await resolveHeroImages(collection.sourceCollectionId);
-  if (!resolved || !resolved.images.length) return null;
+  if (!resolved || !resolved.items.length) return null;
 
   // Never emit an empty image src (next/image would throw): pad the four slots
   // by cycling through whatever images the collection provides.
-  const pool = resolved.images;
+  const pool = resolved.items;
   const pick = (index: number) => pool[index] || pool[index % pool.length] || pool[0];
+  const main = pick(0);
+  const one = pick(1);
+  const two = pick(2);
+  const three = pick(3);
 
   return {
     ...collection,
     sourceCollectionName: resolved.collectionName,
     sourceCollectionSlug: resolved.collectionSlug,
-    mainImage: pool[0],
-    thumbnailOne: pick(1),
-    thumbnailTwo: pick(2),
-    thumbnailThree: pick(3),
+    itemCount: resolved.itemCount,
+    collectionUrl: `/collections/${resolved.collectionSlug}`,
+    primaryButtonText: "Browse all collections",
+    primaryButtonUrl: "/collections",
+    secondaryLinkText: "Buy this collection",
+    secondaryLinkUrl: `/collections/${resolved.collectionSlug}`,
+    mainImage: main.image,
+    mainImageHref: main.href,
+    thumbnailOne: one.image,
+    thumbnailOneHref: one.href,
+    thumbnailTwo: two.image,
+    thumbnailTwoHref: two.href,
+    thumbnailThree: three.image,
+    thumbnailThreeHref: three.href,
   };
 }

@@ -21,15 +21,9 @@ const EMPTY_FORM = {
   headingLineTwo: "Suite",
   description:
     "Invitations, RSVP cards, menus and keepsakes, designed as one considered set and personalized with your names. Order the pieces you love, or take the whole suite.",
-  primaryButtonText: "Personalize a sample",
-  primaryButtonUrl: "/weddings",
-  secondaryLinkText: "Browse all collections",
-  secondaryLinkUrl: "/weddings",
   sourceCollectionId: "",
-  itemCount: 12,
   isActive: false,
   isFeatured: false,
-  displayOrder: 0,
 };
 
 export default function HeroCollectionSection({ onAction }: { onAction?: (message: string) => void }) {
@@ -224,9 +218,18 @@ export default function HeroCollectionSection({ onAction }: { onAction?: (messag
     ? {
         ...form,
         mainImage: resolved.mainImage,
+        mainImageHref: resolved.mainImageHref,
         thumbnailOne: resolved.thumbnailOne,
+        thumbnailOneHref: resolved.thumbnailOneHref,
         thumbnailTwo: resolved.thumbnailTwo,
+        thumbnailTwoHref: resolved.thumbnailTwoHref,
         thumbnailThree: resolved.thumbnailThree,
+        thumbnailThreeHref: resolved.thumbnailThreeHref,
+        itemCount: resolved.itemCount,
+        primaryButtonText: "Browse all collections",
+        primaryButtonUrl: "/collections",
+        secondaryLinkText: "Buy this collection",
+        secondaryLinkUrl: resolved.collectionUrl,
       }
     : null;
 
@@ -240,9 +243,9 @@ export default function HeroCollectionSection({ onAction }: { onAction?: (messag
         <div>
           <h2 className="font-body text-[1.5rem] font-semibold leading-none text-[#111111]">Home Hero Collection</h2>
           <p className="mt-2 max-w-2xl text-sm text-[#1F1F1F]/60">
-            The homepage shows the collection that is both <strong>Active</strong> and <strong>Featured</strong> with
-            the lowest display order. Images come from the linked collection&apos;s child collections. If none qualifies,
-            the section is hidden.
+            The homepage shows the collection that is both <strong>Active</strong> and <strong>Featured</strong>. Featuring
+            a collection automatically unfeatures the previous one. Images, product links, item count and buttons are
+            generated from the linked collection.
           </p>
         </div>
         {!formOpen && (
@@ -303,7 +306,7 @@ export default function HeroCollectionSection({ onAction }: { onAction?: (messag
                 )}
                 <p className="mt-1.5 text-xs text-[#1F1F1F]/55">
                   The main image comes from this collection&apos;s 1st child collection, and the three thumbnails from
-                  the 2nd, 3rd and 4th. Manage collections in Catalog → Collections.
+                  the 2nd, 3rd and 4th. Each image opens the exact product shown.
                 </p>
 
                 {form.sourceCollectionId && (
@@ -323,6 +326,7 @@ export default function HeroCollectionSection({ onAction }: { onAction?: (messag
                         <p className="mt-2 text-xs text-[#1F1F1F]/55">
                           {resolved.childCount} child collection{resolved.childCount === 1 ? "" : "s"} ·{" "}
                           {resolved.productCount} product{resolved.productCount === 1 ? "" : "s"}
+                          {" · "}{resolved.itemCount} item{resolved.itemCount === 1 ? "" : "s"} in the badge
                           {resolved.childCount < 4 && " · fewer than 4 children, so product images fill the rest"}
                         </p>
                       </>
@@ -347,20 +351,10 @@ export default function HeroCollectionSection({ onAction }: { onAction?: (messag
 
               <TextAreaField label="Description" value={form.description} onChange={(v) => setField("description", v)} />
 
-              <FieldGroup label="Primary button">
-                <Field label="Button text" value={form.primaryButtonText} onChange={(v) => setField("primaryButtonText", v)} placeholder="Personalize a sample" />
-                <Field label="Button URL" value={form.primaryButtonUrl} onChange={(v) => setField("primaryButtonUrl", v)} placeholder="/weddings" />
-              </FieldGroup>
-
-              <FieldGroup label="Secondary link">
-                <Field label="Link text" value={form.secondaryLinkText} onChange={(v) => setField("secondaryLinkText", v)} placeholder="Browse all collections" />
-                <Field label="Link URL" value={form.secondaryLinkUrl} onChange={(v) => setField("secondaryLinkUrl", v)} placeholder="/weddings" />
-              </FieldGroup>
-
-              <FieldGroup label="Settings">
-                <Field label="Item count" type="number" value={form.itemCount} onChange={(v) => setField("itemCount", v)} helper="Shown as the “N items” label on the last thumbnail." />
-                <Field label="Display order" type="number" value={form.displayOrder} onChange={(v) => setField("displayOrder", v)} helper="Lowest number wins when several are featured." />
-              </FieldGroup>
+              <div className="border border-[#1F1F1F]/10 bg-[#F8F8F8] px-4 py-3 text-xs leading-5 text-[#1F1F1F]/60">
+                Buttons are automatic: <strong className="text-[#1F1F1F]">Browse all collections</strong> opens the
+                collections index, and <strong className="text-[#1F1F1F]">Buy this collection</strong> opens the selected collection.
+              </div>
 
               <div className="grid gap-3 sm:grid-cols-2">
                 <Toggle label="Active (published)" checked={form.isActive} onChange={(v) => setField("isActive", v)} />
@@ -439,7 +433,6 @@ export default function HeroCollectionSection({ onAction }: { onAction?: (messag
                   </div>
                   <p className="mt-1 text-xs text-[#1F1F1F]/55">
                     {collectionName(collection.sourceCollectionId) ? `From: ${collectionName(collection.sourceCollectionId)}` : "No source collection"}
-                    {" · "}Order {collection.displayOrder} · {collection.itemCount} {Number(collection.itemCount) === 1 ? "item" : "items"}
                   </p>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">

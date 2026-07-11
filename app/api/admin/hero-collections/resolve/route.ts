@@ -17,12 +17,16 @@ export async function GET(request) {
   }
 
   const resolved = await resolveHeroImages(collectionId);
-  if (!resolved || !resolved.images.length) {
+  if (!resolved || !resolved.items.length) {
     return Response.json({ ok: true, resolved: null });
   }
 
-  const pool = resolved.images;
+  const pool = resolved.items;
   const pick = (index) => pool[index] || pool[index % pool.length] || pool[0];
+  const main = pick(0);
+  const one = pick(1);
+  const two = pick(2);
+  const three = pick(3);
 
   return Response.json({
     ok: true,
@@ -32,11 +36,17 @@ export async function GET(request) {
       collectionSlug: resolved.collectionSlug,
       childCount: resolved.childCount,
       productCount: resolved.productCount,
+      itemCount: resolved.itemCount,
       imageCount: pool.length,
-      mainImage: pool[0],
-      thumbnailOne: pick(1),
-      thumbnailTwo: pick(2),
-      thumbnailThree: pick(3),
+      collectionUrl: `/collections/${resolved.collectionSlug}`,
+      mainImage: main.image,
+      mainImageHref: main.href,
+      thumbnailOne: one.image,
+      thumbnailOneHref: one.href,
+      thumbnailTwo: two.image,
+      thumbnailTwoHref: two.href,
+      thumbnailThree: three.image,
+      thumbnailThreeHref: three.href,
     },
   });
 }

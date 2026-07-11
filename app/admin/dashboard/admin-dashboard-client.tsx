@@ -117,8 +117,8 @@ const sectionTips = {
   ],
   "Home Hero": [
     "This controls the big collection section at the top of your homepage.",
-    "The homepage shows the collection that is both Active and Featured — mark exactly one that way.",
-    "Publishing needs a main image and all three thumbnails, plus at least one heading line.",
+    "The homepage shows the collection that is both Active and Featured. Featuring a new one automatically unfeatures the previous one.",
+    "Images, product links and the item count come from the selected source collection automatically.",
   ],
   "Order Requests": [
     "Click an order in the list to open its full details on the right.",

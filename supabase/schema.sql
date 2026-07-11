@@ -877,10 +877,8 @@ create table if not exists public.hero_collections (
   thumbnail_two text not null default '',
   thumbnail_three text not null default '',
   source_collection_id text not null default '',
-  item_count integer not null default 0 check (item_count >= 0),
   is_active boolean not null default false,
   is_featured boolean not null default false,
-  display_order integer not null default 0,
   created_at timestamp with time zone not null default now(),
   updated_at timestamp with time zone not null default now()
 );
@@ -906,9 +904,28 @@ create trigger set_hero_collections_updated_at
 before update on public.hero_collections
 for each row execute function public.set_updated_at();
 
--- Fast lookup of the single homepage collection: active + featured, lowest order.
+-- Keep homepage hero selection deterministic and enforce one featured record.
 create index if not exists idx_hero_collections_featured
-  on public.hero_collections(is_active, is_featured, display_order);
+  on public.hero_collections(is_active, is_featured);
+
+create or replace function public.enforce_single_featured_hero_collection()
+returns trigger
+language plpgsql
+as $$
+begin
+  if new.is_featured then
+    update public.hero_collections
+    set is_featured = false, updated_at = now()
+    where id <> new.id and is_featured;
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists enforce_single_featured_hero_collection on public.hero_collections;
+create trigger enforce_single_featured_hero_collection
+before insert or update of is_featured on public.hero_collections
+for each row execute function public.enforce_single_featured_hero_collection();
 
 grant all on public.hero_collections to service_role;
 grant select on public.hero_collections to anon;

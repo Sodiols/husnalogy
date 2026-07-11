@@ -10,7 +10,7 @@ import Link from "next/link";
  * active/featured collection is available, so this component assumes a valid
  * record with a heading, a main image, and three thumbnails.
  *
- * Layout mirrors the approved design: ~52% left content / ~48% right gallery,
+ * Layout mirrors the approved design: ~60% left content / ~40% right gallery,
  * and the gallery is a fixed 78/22 grid (main image + a three-thumbnail column)
  * that keeps the same internal structure at every breakpoint.
  */
@@ -31,34 +31,54 @@ export default function Hero({ collection }: { collection?: any }) {
     thumbnailOne,
     thumbnailTwo,
     thumbnailThree,
+    mainImageHref,
+    thumbnailOneHref,
+    thumbnailTwoHref,
+    thumbnailThreeHref,
     itemCount,
     title,
   } = collection;
 
-  const galleryHref = primaryButtonUrl || "/weddings";
-  const thumbnails = [thumbnailOne, thumbnailTwo, thumbnailThree];
+  const galleryHref = mainImageHref || secondaryLinkUrl || "/products";
+  const thumbnails = [
+    { image: thumbnailOne, href: thumbnailOneHref },
+    { image: thumbnailTwo, href: thumbnailTwoHref },
+    { image: thumbnailThree, href: thumbnailThreeHref },
+  ];
   const countLabel = `${itemCount} ${Number(itemCount) === 1 ? "item" : "items"}`;
+  const headingWords = [headingLineOne, headingLineTwo]
+    .filter(Boolean)
+    .join(" ")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+  const firstHeadingLine = headingWords.slice(0, 3).join(" ");
+  const secondHeadingLine = headingWords.slice(3).join(" ");
   const focusRing =
     "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-[#F8F6F1]";
 
   return (
     <section className="bg-[#F8F6F1]">
-      <div className="mx-auto grid max-w-[1480px] items-center gap-10 px-4 py-16 sm:px-6 sm:py-20 lg:grid-cols-[minmax(0,52fr)_minmax(0,48fr)] lg:gap-14 lg:px-10 lg:py-24">
+      <div className="mx-auto grid max-w-[1480px] items-center gap-10 px-4 py-16 sm:px-6 sm:py-20 lg:grid-cols-[minmax(0,60fr)_minmax(0,40fr)] lg:gap-14 lg:px-10 lg:py-24">
         {/* LEFT — content */}
-        <div className="max-w-[560px]">
+        <div className="order-2 max-w-[680px] lg:order-1">
           <p className="flex flex-wrap items-center gap-x-2.5 text-[12px] font-semibold tracking-[0.01em]">
             <span className="text-[#303839]">{seasonLabel}</span>
             <span className="uppercase tracking-[0.14em] text-[#303839]/45">{collectionLabel}</span>
           </p>
 
-          <h1 className="mt-5 font-body text-[44px] font-bold leading-[0.98] tracking-[-0.03em] text-[#303839] sm:text-[56px] lg:text-[64px] xl:text-[70px]">
-            {headingLineOne}
-            <br />
-            {headingLineTwo}
+          <h1 className="mt-5 font-body text-[2rem] font-medium leading-[1.05] tracking-[-0.03em] text-[#303839] sm:text-[2.5rem] lg:text-[2.75rem]">
+            {firstHeadingLine}
+            {secondHeadingLine && (
+              <>
+                <br />
+                {secondHeadingLine}
+              </>
+            )}
           </h1>
 
           {description && (
-            <p className="mt-6 max-w-[440px] text-[15px] leading-[1.75] text-[#303839]/75">
+            <p className="mt-6 max-w-[520px] text-[15px] leading-[1.75] text-[#303839]/75">
               {description}
             </p>
           )}
@@ -92,7 +112,7 @@ export default function Hero({ collection }: { collection?: any }) {
 
         {/* RIGHT — collection gallery: main image (78%) + thumbnail column (22%).
             Same grid at every breakpoint; only the section stacks on mobile. */}
-        <div className="grid grid-cols-[minmax(0,78fr)_minmax(0,22fr)] items-stretch gap-2.5 sm:gap-3">
+        <div className="order-1 grid grid-cols-[minmax(0,78fr)_minmax(0,22fr)] items-stretch gap-2.5 sm:gap-3 lg:order-2">
           <Link
             href={galleryHref}
             aria-label={`View the ${title || "featured"} collection`}
@@ -114,7 +134,7 @@ export default function Hero({ collection }: { collection?: any }) {
               return (
                 <Link
                   key={index}
-                  href={galleryHref}
+                  href={thumb.href || galleryHref}
                   aria-label={
                     isLast
                       ? `View the ${title || "featured"} collection — ${countLabel}`
@@ -123,7 +143,7 @@ export default function Hero({ collection }: { collection?: any }) {
                   className={`group relative block overflow-hidden rounded-[10px] bg-[#ece9e1] ${focusRing}`}
                 >
                   <Image
-                    src={thumb}
+                    src={thumb.image}
                     alt=""
                     fill
                     sizes="(min-width: 1024px) 130px, 22vw"

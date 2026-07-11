@@ -37,10 +37,8 @@ create table if not exists public.hero_collections (
   thumbnail_two text not null default '',
   thumbnail_three text not null default '',
   source_collection_id text not null default '',
-  item_count integer not null default 0 check (item_count >= 0),
   is_active boolean not null default false,
   is_featured boolean not null default false,
-  display_order integer not null default 0,
   created_at timestamp with time zone not null default now(),
   updated_at timestamp with time zone not null default now()
 );
@@ -64,7 +62,7 @@ before update on public.hero_collections
 for each row execute function public.set_updated_at();
 
 create index if not exists idx_hero_collections_featured
-  on public.hero_collections(is_active, is_featured, display_order);
+  on public.hero_collections(is_active, is_featured);
 
 grant all on public.hero_collections to service_role;
 grant select on public.hero_collections to anon;
@@ -77,7 +75,7 @@ insert into public.hero_collections (
   heading_line_one, heading_line_two, description,
   primary_button_text, primary_button_url,
   secondary_link_text, secondary_link_url,
-  item_count, is_active, is_featured, display_order
+  is_active, is_featured
 )
 select
   'The Wedding Suite', 'wedding-suite', 'Wedding Season 2026', 'NEW COLLECTION',
@@ -85,5 +83,5 @@ select
   'Invitations, RSVP cards, menus and keepsakes, designed as one considered set and personalized with your names. Order the pieces you love, or take the whole suite.',
   'Personalize a sample', '/weddings',
   'Browse all collections', '/weddings',
-  12, false, false, 0
+  false, false
 where not exists (select 1 from public.hero_collections);
