@@ -25,6 +25,8 @@ const FOLDERS = {
   "settings-favicon": "settings-favicon",
   profile: "admin-profile",
   "admin-profile": "admin-profile",
+  "hero-collection": "hero-collection",
+  hero: "hero-collection",
 };
 
 const IMAGE_MIME_TYPES = new Set([

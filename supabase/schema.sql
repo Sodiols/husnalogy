@@ -851,3 +851,65 @@ grant all on public.product_customizations to service_role;
 grant select on public.product_customizer_templates to anon;
 grant select, insert, update, delete on public.product_customizer_templates to authenticated;
 grant select, insert, update, delete on public.product_customizations to authenticated;
+
+-- ============================================================================
+-- Homepage hero collection ("The Wedding Suite" section)
+-- Additive only. Powers the featured collection block on the homepage and is
+-- fully managed from Admin → Home Hero. Images live in the public site-assets
+-- storage bucket (folder: hero-collection).
+-- ============================================================================
+
+create table if not exists public.hero_collections (
+  id text primary key default gen_random_uuid()::text,
+  title text not null,
+  slug text not null default '',
+  season_label text not null default '',
+  collection_label text not null default '',
+  heading_line_one text not null default '',
+  heading_line_two text not null default '',
+  description text not null default '',
+  primary_button_text text not null default '',
+  primary_button_url text not null default '',
+  secondary_link_text text not null default '',
+  secondary_link_url text not null default '',
+  main_image text not null default '',
+  thumbnail_one text not null default '',
+  thumbnail_two text not null default '',
+  thumbnail_three text not null default '',
+  source_collection_id text not null default '',
+  item_count integer not null default 0 check (item_count >= 0),
+  is_active boolean not null default false,
+  is_featured boolean not null default false,
+  display_order integer not null default 0,
+  created_at timestamp with time zone not null default now(),
+  updated_at timestamp with time zone not null default now()
+);
+
+-- Hero images are pulled from this product collection's child collections
+-- (first child -> main image, next three -> thumbnails).
+alter table public.hero_collections add column if not exists source_collection_id text not null default '';
+
+alter table public.hero_collections enable row level security;
+
+-- Anyone may read published (active) records so the homepage can render them;
+-- admins see and manage everything.
+drop policy if exists "hero_collections_public_read_active" on public.hero_collections;
+create policy "hero_collections_public_read_active" on public.hero_collections
+for select using (is_active or public.is_admin());
+
+drop policy if exists "hero_collections_admin_manage" on public.hero_collections;
+create policy "hero_collections_admin_manage" on public.hero_collections
+for all using (public.is_admin()) with check (public.is_admin());
+
+drop trigger if exists set_hero_collections_updated_at on public.hero_collections;
+create trigger set_hero_collections_updated_at
+before update on public.hero_collections
+for each row execute function public.set_updated_at();
+
+-- Fast lookup of the single homepage collection: active + featured, lowest order.
+create index if not exists idx_hero_collections_featured
+  on public.hero_collections(is_active, is_featured, display_order);
+
+grant all on public.hero_collections to service_role;
+grant select on public.hero_collections to anon;
+grant select, insert, update, delete on public.hero_collections to authenticated;

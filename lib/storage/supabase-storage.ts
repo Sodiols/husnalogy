@@ -6,6 +6,7 @@ const PUBLIC_BUCKET_BY_FOLDER = {
   "product-videos": "product-videos",
   "settings-logo": "site-assets",
   "settings-favicon": "site-assets",
+  "hero-collection": "site-assets",
 };
 
 export function canUseSupabaseStorage() {

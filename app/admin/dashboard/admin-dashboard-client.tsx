@@ -4,12 +4,14 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useRouter, useSearchParams } from "next/navigation";
 import ProductUploadForm from "./product-upload-form";
+import HeroCollectionSection from "./hero-collection-section";
 
 const sections = [
   "Overview",
   "Products",
   "Product Reviews",
   "Collections",
+  "Home Hero",
   "Order Requests",
   "Contact Messages",
   "Newsletter Subscribers",
@@ -32,6 +34,7 @@ const navGroups = [
       { section: "Products", label: "Products", icon: "box" },
       { section: "Product Reviews", label: "Product Reviews", icon: "star" },
       { section: "Collections", label: "Collections", icon: "grid" },
+      { section: "Home Hero", label: "Home Hero", icon: "image" },
     ],
   },
   {
@@ -66,6 +69,10 @@ const sectionDetails = {
   Collections: {
     description: "Create, edit, and curate storefront product collections.",
     searchPlaceholder: "Search collections...",
+  },
+  "Home Hero": {
+    description: "Manage the featured collection shown in the homepage hero section.",
+    searchPlaceholder: "",
   },
   "Order Requests": {
     description: "Track customer order requests from submission to delivery.",
@@ -107,6 +114,11 @@ const sectionTips = {
     "Collections group products together on your website — for example, one wedding suite.",
     "Use \"Add sub\" to place child collections (like RSVP cards) inside a main collection.",
     "The Suite and Wedding checkboxes control where a collection is featured on the website.",
+  ],
+  "Home Hero": [
+    "This controls the big collection section at the top of your homepage.",
+    "The homepage shows the collection that is both Active and Featured — mark exactly one that way.",
+    "Publishing needs a main image and all three thumbnails, plus at least one heading line.",
   ],
   "Order Requests": [
     "Click an order in the list to open its full details on the right.",
@@ -1172,6 +1184,8 @@ export default function AdminDashboardClient() {
                     onToggleSuiteCollection={updateCollectionSuite}
                   />
                 )}
+
+                {activeSection === "Home Hero" && <HeroCollectionSection onAction={showNotice} />}
 
                 {activeSection === "Order Requests" && (
                   <OrdersSection
@@ -4673,7 +4687,6 @@ function deepMerge(base, override) {
 function SettingsSection({ onAction }) {
   const settingGroups = [
     { id: "general", title: "General Settings", subtitle: "Store, branding, profile and preferences" },
-    { id: "hero", title: "Hero Section", subtitle: "Featured collection on the homepage" },
     { id: "payment", title: "Payment Settings", subtitle: "Payment methods and gateway mode" },
     { id: "shipping", title: "Shipping Settings", subtitle: "Delivery methods, areas and fees" },
     { id: "email", title: "Email Settings", subtitle: "Sender identity and email provider" },
@@ -4687,25 +4700,6 @@ function SettingsSection({ onAction }) {
   const [adminSession, setAdminSession] = useState(null);
   const [status, setStatus] = useState({ loading: true, saving: false, error: "", notice: "" });
   const [testRecipient, setTestRecipient] = useState("");
-  const [heroCollections, setHeroCollections] = useState([]);
-
-  useEffect(() => {
-    let active = true;
-    (async () => {
-      try {
-        const response = await fetch("/api/admin/collections", { cache: "no-store" });
-        const data = await response.json().catch(() => ({}));
-        if (active && response.ok && Array.isArray(data.collections)) {
-          setHeroCollections(data.collections);
-        }
-      } catch {
-        /* Non-fatal: the hero collection picker simply shows no options. */
-      }
-    })();
-    return () => {
-      active = false;
-    };
-  }, []);
 
   useEffect(() => {
     let active = true;
@@ -4986,39 +4980,6 @@ function SettingsSection({ onAction }) {
               </Panel>
             </div>
           </>
-        )}
-
-        {activeGroup === "hero" && (
-          <Panel title="Hero Section Collection">
-            <p className="text-sm text-[#1F1F1F]/65">
-              Choose which collection is featured in the homepage hero. Its name and first product
-              appear in the hero spotlight. Leave it on &ldquo;None&rdquo; to show the default hero.
-            </p>
-            <div className="mt-5 max-w-md">
-              <AdminSelect
-                label="Featured Collection"
-                value={draft.hero?.collectionId || ""}
-                onChange={(value) => setDraftValue("hero", "collectionId", value)}
-                options={[
-                  { value: "", label: "None (default hero)" },
-                  ...heroCollections.map((collection) => ({ value: collection.id, label: collection.name })),
-                ]}
-              />
-            </div>
-            {draft.hero?.collectionId && !heroCollections.some((collection) => collection.id === draft.hero.collectionId) && (
-              <p className="mt-3 text-xs font-semibold text-amber-700">
-                The selected collection no longer exists. Pick another, or set it to None.
-              </p>
-            )}
-            {!heroCollections.length && (
-              <p className="mt-3 text-xs font-semibold text-[#1F1F1F]/55">
-                No collections yet. Create one in Catalog → Collections first.
-              </p>
-            )}
-            <SaveButton saving={status.saving} onClick={() => saveSettings({ hero: draft.hero }, "Hero section updated.")}>
-              Save Hero Section
-            </SaveButton>
-          </Panel>
         )}
 
         {activeGroup === "payment" && (

@@ -1,165 +1,143 @@
-"use client";
-
 import Image from "next/image";
+import Link from "next/link";
 
-const PROMISES = [
-  ["Personalized", "Made to your details"],
-  ["Handcrafted", "Premium paper & finish"],
-  ["Worldwide", "Shipped with care"],
-];
+/**
+ * Homepage hero — "The Wedding Suite" collection section.
+ *
+ * Presentational only. Every value comes from the admin-managed
+ * `hero_collections` record passed in as `collection` (see
+ * lib/hero-collections/store.ts). The page hides the section entirely when no
+ * active/featured collection is available, so this component assumes a valid
+ * record with a heading, a main image, and three thumbnails.
+ *
+ * Layout mirrors the approved design: ~52% left content / ~48% right gallery,
+ * and the gallery is a fixed 78/22 grid (main image + a three-thumbnail column)
+ * that keeps the same internal structure at every breakpoint.
+ */
+export default function Hero({ collection }: { collection?: any }) {
+  if (!collection) return null;
 
-export default function Hero({ spotlight = null }: { spotlight?: any }) {
-  const product = spotlight?.product || null;
+  const {
+    seasonLabel,
+    collectionLabel,
+    headingLineOne,
+    headingLineTwo,
+    description,
+    primaryButtonText,
+    primaryButtonUrl,
+    secondaryLinkText,
+    secondaryLinkUrl,
+    mainImage,
+    thumbnailOne,
+    thumbnailTwo,
+    thumbnailThree,
+    itemCount,
+    title,
+  } = collection;
 
-  const chipLabel = spotlight?.name || "Signature collection";
-  const frameImage = spotlight?.image || "/images/heroIMG.png";
-  const frameAlt = spotlight?.name
-    ? `${spotlight.name} — featured collection`
-    : "Husnalogy signature wedding invitation suite";
-
-  const primaryHref = spotlight?.href || "/weddings";
-  const primaryLabel = spotlight ? "Shop the collection" : "Shop invitations";
-
-  const cardTitle = product?.title || spotlight?.name || "The Classic Suite";
-  const cardImage = product?.image || spotlight?.image || "/images/weddings/classic.png";
-  const cardHref = product?.href || spotlight?.href || "/weddings";
-  const cardMeta =
-    product?.price != null
-      ? `From $${Number(product.price).toLocaleString()}`
-      : spotlight
-        ? "View collection"
-        : "From $48";
+  const galleryHref = primaryButtonUrl || "/weddings";
+  const thumbnails = [thumbnailOne, thumbnailTwo, thumbnailThree];
+  const countLabel = `${itemCount} ${Number(itemCount) === 1 ? "item" : "items"}`;
+  const focusRing =
+    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-[#F8F6F1]";
 
   return (
-    <section className="relative isolate overflow-hidden bg-[#f8f6f1]">
-      <div aria-hidden="true" className="absolute inset-x-0 bottom-0 h-px bg-[#303839]/10" />
-
-      {/* Signature: a quiet vertical brand rail on the far edge. */}
-      <span
-        aria-hidden="true"
-        className="pointer-events-none absolute right-5 top-1/2 hidden -translate-y-1/2 rotate-180 text-[10px] font-semibold uppercase tracking-[0.42em] text-[#303839]/35 [writing-mode:vertical-rl] xl:inline-block"
-      >
-        Husnalogy — Timeless by design
-      </span>
-
-      <div className="relative mx-auto flex h-[120vh] max-w-[1480px] flex-col justify-center gap-8 px-4 pb-20 pt-4 sm:px-6 lg:grid lg:h-[85vh] lg:items-center lg:gap-16 lg:px-10 lg:py-0 lg:grid-cols-[1.02fr_0.98fr]">
-        {/* Thesis */}
-        <div className="order-2 max-w-[560px] lg:order-none">
-          <p className="hero-rise flex items-center gap-3 text-[11px] font-semibold uppercase tracking-[0.32em] text-[#303839]/55">
-            Wedding invitations &middot; curated gifts
+    <section className="bg-[#F8F6F1]">
+      <div className="mx-auto grid max-w-[1480px] items-center gap-10 px-4 py-16 sm:px-6 sm:py-20 lg:grid-cols-[minmax(0,52fr)_minmax(0,48fr)] lg:gap-14 lg:px-10 lg:py-24">
+        {/* LEFT — content */}
+        <div className="max-w-[560px]">
+          <p className="flex flex-wrap items-center gap-x-2.5 text-[12px] font-semibold tracking-[0.01em]">
+            <span className="text-[#303839]">{seasonLabel}</span>
+            <span className="uppercase tracking-[0.14em] text-[#303839]/45">{collectionLabel}</span>
           </p>
 
-          <h1
-            className="hero-rise mt-4 font-body text-[28px] font-semibold leading-[1.1] tracking-[-0.02em] text-[#303839] sm:text-[34px] md:text-[40px] lg:mt-6 lg:text-[40px] lg:leading-[1.08] xl:text-[44px] 2xl:text-[50px]"
-            style={{ animationDelay: "80ms" }}
-          >
-            Made for the moments
+          <h1 className="mt-5 font-body text-[44px] font-bold leading-[0.98] tracking-[-0.03em] text-[#303839] sm:text-[56px] lg:text-[64px] xl:text-[70px]">
+            {headingLineOne}
             <br />
-            <span className="font-normal">worth keeping.</span>
+            {headingLineTwo}
           </h1>
 
-          <p
-            className="hero-rise mt-4 max-w-[440px] text-[14px] leading-[1.7] text-[#303839]/70 sm:text-[15px] sm:leading-[1.85] lg:mt-6"
-            style={{ animationDelay: "150ms" }}
-          >
-            Thoughtfully designed invitations and gifts, personalized to
-            celebrate the people and milestones that matter most.
-          </p>
+          {description && (
+            <p className="mt-6 max-w-[440px] text-[15px] leading-[1.75] text-[#303839]/75">
+              {description}
+            </p>
+          )}
 
-          <div
-            className="hero-rise mt-6 flex flex-col items-stretch gap-3 sm:flex-row sm:items-center sm:gap-4 lg:mt-9"
-            style={{ animationDelay: "230ms" }}
-          >
-            <a
-              href={primaryHref}
-              className="group inline-flex h-[50px] items-center justify-center gap- rounded-[6px] bg-[#303839] px-8 text-[10.5px] font-semibold uppercase tracking-[0.24em] text-white transition-colors duration-300 hover:bg-[#1f2627]"
-            >
-              {primaryLabel}
-              <span
-                aria-hidden="true"
-                className="inline-flex transition-transform duration-300 ease-out group-hover:translate-x-1"
+          <div className="mt-8 flex flex-wrap items-center gap-x-8 gap-y-4">
+            {primaryButtonText && (
+              <Link
+                href={primaryButtonUrl || "/weddings"}
+                className={`inline-flex h-[52px] items-center justify-center rounded-[6px] border border-[#303839] bg-[#F8F6F1] px-8 text-[13px] font-semibold text-[#303839] transition-colors duration-300 hover:bg-[#303839] hover:text-[#F8F6F1] ${focusRing}`}
               >
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" width="13" height="13">
-                  <path d="M4 12h15" />
-                  <path d="m13 6 6 6-6 6" />
-                </svg>
-              </span>
-            </a>
-            <a
-              href="/gifts"
-              className="inline-flex h-[50px] items-center justify-center rounded-[6px] border border-[#303839]/20 px-8 text-[10.5px] font-semibold uppercase tracking-[0.24em] text-[#303839] transition-colors duration-300 hover:border-[#303839] hover:bg-[#303839] hover:text-white"
-            >
-              Explore gifts
-            </a>
-          </div>
+                {primaryButtonText}
+              </Link>
+            )}
 
-          {/* Serif micro trust-row — brand promises, not invented stats. */}
-          <dl
-            className="hero-rise mt-11 hidden flex-wrap items-center gap-x-9 gap-y-5 border-t border-[#303839]/10 pt-7 lg:flex"
-            style={{ animationDelay: "300ms" }}
-          >
-            {PROMISES.map(([term, desc]) => (
-              <div key={term} className="min-w-[112px]">
-                <dt className="font-body text-[19px] leading-none text-[#303839]">{term}</dt>
-                <dd className="mt-1.5 text-[11px] uppercase tracking-[0.14em] text-[#303839]/50">{desc}</dd>
-              </div>
-            ))}
-          </dl>
+            {secondaryLinkText && (
+              <Link
+                href={secondaryLinkUrl || "/weddings"}
+                className={`group inline-flex items-center gap-2 rounded-[4px] text-[13px] font-semibold text-[#303839] transition-colors duration-300 hover:text-[#303839]/60 ${focusRing}`}
+              >
+                {secondaryLinkText}
+                <span aria-hidden="true" className="inline-flex transition-transform duration-300 ease-out group-hover:translate-x-1">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" width="15" height="15">
+                    <path d="M4 12h15" />
+                    <path d="m13 6 6 6-6 6" />
+                  </svg>
+                </span>
+              </Link>
+            )}
+          </div>
         </div>
 
-        {/* Signature: framed, shoppable product image. */}
-        <div
-          className="hero-rise relative order-1 mx-auto w-full max-w-[380px] lg:order-none lg:max-w-[520px]"
-          style={{ animationDelay: "180ms" }}
-        >
-          <div className="relative rounded-[10px] bg-[#ece9e1] p-3 shadow-[0_30px_90px_rgba(48,56,57,0.14)]">
-            <div className="relative h-[34vh] w-full overflow-hidden rounded-[6px] sm:h-[40vh] lg:h-[64vh]">
-              <Image
-                src={frameImage}
-                alt={frameAlt}
-                fill
-                priority
-                sizes="(min-width: 1024px) 520px, 90vw"
-                className="object-cover object-center transition-transform duration-[1400ms] ease-out hover:scale-[1.04]"
-              />
-            </div>
-            <span className="absolute left-6 top-6 max-w-[70%] truncate rounded-[6px] bg-[#303839] px-3 py-1.5 text-[9.5px] font-semibold uppercase tracking-[0.2em] text-white">
-              {chipLabel}
-            </span>
-          </div>
-
-          {/* Floating "shop this" card — the ecommerce moment. */}
-          <a
-            href={cardHref}
-            className="group absolute -bottom-6 -left-4 flex w-[288px] items-center gap-4 rounded-[14px] border border-[#303839]/10 bg-white/95 p-3 backdrop-blur-md transition-all duration-300 hover:-translate-y-0.5 hover:border-[#303839]/20 sm:-left-8"
+        {/* RIGHT — collection gallery: main image (78%) + thumbnail column (22%).
+            Same grid at every breakpoint; only the section stacks on mobile. */}
+        <div className="grid grid-cols-[minmax(0,78fr)_minmax(0,22fr)] items-stretch gap-2.5 sm:gap-3">
+          <Link
+            href={galleryHref}
+            aria-label={`View the ${title || "featured"} collection`}
+            className={`group relative block aspect-square overflow-hidden rounded-[10px] bg-[#ece9e1] shadow-[0_22px_60px_-42px_rgba(48,56,57,0.45)] ${focusRing}`}
           >
-            <div className="relative h-[62px] w-[62px] shrink-0 overflow-hidden rounded-[10px] bg-[#f8f6f1]">
-              <Image
-                src={cardImage}
-                alt=""
-                fill
-                sizes="62px"
-                className="object-cover transition-transform duration-500 ease-out group-hover:scale-105"
-              />
-            </div>
-            <div className="min-w-0 flex-1">
-              <p className="flex items-center gap-1.5 text-[9px] font-semibold uppercase tracking-[0.2em] text-[#303839]/45">
-                <span aria-hidden="true" className="h-px w-3 bg-[#303839]/30" />
-                Featured collection
-              </p>
-              <p className="mt-1.5 truncate text-[15px] font-semibold leading-tight text-[#303839]">{cardTitle}</p>
-              <p className="mt-1 text-[11px] font-medium tracking-[0.02em] text-[#303839]/55">{cardMeta}</p>
-            </div>
-            <span
-              aria-hidden="true"
-              className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-[#303839] text-white transition-colors duration-300 group-hover:bg-[#1f2627]"
-            >
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" width="13" height="13" className="transition-transform duration-300 ease-out group-hover:translate-x-0.5">
-                <path d="M5 12h13" />
-                <path d="m12 5 7 7-7 7" />
-              </svg>
-            </span>
-          </a>
+            <Image
+              src={mainImage}
+              alt={title ? `${title} collection` : "Featured collection"}
+              fill
+              priority
+              sizes="(min-width: 1024px) 460px, 78vw"
+              className="object-cover object-center transition-transform duration-[1200ms] ease-out group-hover:scale-[1.03]"
+            />
+          </Link>
+
+          <div className="grid grid-rows-3 gap-2.5 sm:gap-3">
+            {thumbnails.map((thumb, index) => {
+              const isLast = index === thumbnails.length - 1;
+              return (
+                <Link
+                  key={index}
+                  href={galleryHref}
+                  aria-label={
+                    isLast
+                      ? `View the ${title || "featured"} collection — ${countLabel}`
+                      : `View the ${title || "featured"} collection`
+                  }
+                  className={`group relative block overflow-hidden rounded-[10px] bg-[#ece9e1] ${focusRing}`}
+                >
+                  <Image
+                    src={thumb}
+                    alt=""
+                    fill
+                    sizes="(min-width: 1024px) 130px, 22vw"
+                    className="object-cover object-center transition-transform duration-700 ease-out group-hover:scale-[1.05]"
+                  />
+                  {isLast && itemCount > 0 && (
+                    <span className="absolute bottom-2 left-2 rounded-[6px] bg-[#F8F6F1] px-2.5 py-1 text-[11px] font-semibold text-[#303839]">
+                      {countLabel}
+                    </span>
+                  )}
+                </Link>
+              );
+            })}
+          </div>
         </div>
       </div>
     </section>
