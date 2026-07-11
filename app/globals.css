@@ -274,3 +274,17 @@ header nav a {
   opacity: 0.82;
   box-shadow: none !important;
 }
+
+/* Site-wide image behavior: artwork stays at its natural size on hover.
+   This overrides both Tailwind v4's `scale` property and the scale variables
+   used by earlier transform-based utilities without disabling other motion. */
+@media (hover: hover) {
+  img:hover,
+  a:hover img,
+  button:hover img,
+  .group:hover img {
+    --tw-scale-x: 1 !important;
+    --tw-scale-y: 1 !important;
+    scale: 1 !important;
+  }
+}

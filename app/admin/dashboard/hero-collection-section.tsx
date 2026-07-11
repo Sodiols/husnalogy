@@ -217,6 +217,7 @@ export default function HeroCollectionSection({ onAction }: { onAction?: (messag
   const previewCollection = previewReady
     ? {
         ...form,
+        sourceCollectionName: resolved.collectionName,
         mainImage: resolved.mainImage,
         mainImageHref: resolved.mainImageHref,
         thumbnailOne: resolved.thumbnailOne,

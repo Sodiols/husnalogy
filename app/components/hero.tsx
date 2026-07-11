@@ -37,6 +37,7 @@ export default function Hero({ collection }: { collection?: any }) {
     thumbnailThreeHref,
     itemCount,
     title,
+    sourceCollectionName,
   } = collection;
 
   const galleryHref = mainImageHref || secondaryLinkUrl || "/products";
@@ -126,6 +127,11 @@ export default function Hero({ collection }: { collection?: any }) {
               sizes="(min-width: 1024px) 460px, 78vw"
               className="object-cover object-center transition-transform duration-[1200ms] ease-out group-hover:scale-[1.03]"
             />
+            {sourceCollectionName && (
+              <span className="absolute bottom-3 left-3 z-10 max-w-[calc(100%-1.5rem)] rounded-[6px] bg-[#F8F6F1] px-3 py-1.5 text-[11px] font-semibold leading-tight text-[#303839] shadow-[0_8px_24px_rgba(48,56,57,0.12)] sm:bottom-4 sm:left-4 sm:text-xs">
+                {sourceCollectionName}
+              </span>
+            )}
           </Link>
 
           <div className="grid grid-rows-3 gap-2.5 sm:gap-3">
