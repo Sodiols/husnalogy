@@ -789,7 +789,7 @@ function CollectionsModal({ collections, selectedIds, onToggle, onTrendingChange
               <label className="flex cursor-pointer items-start justify-between gap-3 border border-[#111111]/10 bg-white px-4 py-3">
                 <span className="min-w-0">
                   <span className="block text-xs font-extrabold text-[#111111]">Suite</span>
-                  <span className="mt-0.5 block text-[11px] leading-4 text-[#111111]/55">Product pages will say "Shop the {activeParent.name} suite".</span>
+                  <span className="mt-0.5 block text-[11px] leading-4 text-[#111111]/55">Product pages will say &ldquo;Shop the {activeParent.name} suite&rdquo;.</span>
                 </span>
                 <input
                   type="checkbox"
@@ -1560,6 +1560,59 @@ export default function ProductUploadForm({ product = null, onSaved, onClose }) 
                 onChange={(value) => update("mockups", value)}
                 onPromoteToMain={promoteMockupToMain}
               />
+
+              {form.customizeEnabled && (
+                <div className="border-t border-[#303839]/10 pt-6" data-field-error={errors.customizerTemplate ? "" : undefined}>
+                  <div className="mb-4 max-w-3xl">
+                    <p className="text-[11px] font-extrabold uppercase tracking-[0.16em] text-[#D4AF37]">Personalization workspace</p>
+                    <h3 className="mt-1 font-display text-2xl text-[#303839]">Design Studio</h3>
+                    <p className="mt-1 text-sm leading-6 text-[#303839]/60">
+                      Build the editable product after preparing its customer-facing images and mockups. Configure pages,
+                      artwork, customer-editable content, and product options in one workspace.
+                    </p>
+                  </div>
+                  <AdminDesignBuilder
+                    template={form.customizerTemplate}
+                    onChange={(next) => update("customizerTemplate", next)}
+                    productName={form.title || "Product"}
+                    product={{
+                      id: editingId,
+                      title: form.title || "Product",
+                      thumbnail: form.mainImage || form.mockups[0] || "",
+                      mockups: form.mockups,
+                      productType: form.departmentPath?.join("/") || form.eventCategory || "flat-card",
+                      price: form.regularPrice === "" ? 0 : Number(form.regularPrice),
+                      salePrice: form.salePrice === "" ? null : Number(form.salePrice),
+                      currency: form.currency,
+                      formatOptions: form.formatOptions,
+                      sizeOptions: form.sizeOptions,
+                      envelopeOptions: form.envelopeOptions,
+                      cornerOptions: form.cornerOptions,
+                      paperStyleOptions: form.paperStyleOptions,
+                      paperOptions: form.paperOptions,
+                      printingOptions: form.printingOptions,
+                      quantityOptions: form.quantityOptions,
+                    }}
+                    productOptions={{
+                      formatOptions: form.formatOptions,
+                      sizeOptions: form.sizeOptions,
+                      envelopeOptions: form.envelopeOptions,
+                      cornerOptions: form.cornerOptions,
+                      paperStyleOptions: form.paperStyleOptions,
+                      paperOptions: form.paperOptions,
+                      printingOptions: form.printingOptions,
+                    }}
+                    quantityOptions={form.quantityOptions}
+                    onProductOptionsChange={(key, entries) => update(key, entries)}
+                    onQuantityOptionsChange={(values) => update("quantityOptions", values)}
+                    onSave={save}
+                    productStatus={form.status}
+                    saving={Boolean(saving)}
+                    errorMessage={saveError}
+                  />
+                  <FieldError message={errors.customizerTemplate} />
+                </div>
+              )}
             </div>
           </FormSection>
 
@@ -1697,52 +1750,6 @@ export default function ProductUploadForm({ product = null, onSaved, onClose }) 
 
             </div>
           </FormSection>
-
-          {form.customizeEnabled && (
-            <FormSection
-              title="Design Studio"
-              description="Create the actual editable product design here. Add pages, text, photo areas and shapes, mark what customers may personalize, and configure product options. Mockups above are what customers browse; this design is what they personalize."
-            >
-              <div data-field-error={errors.customizerTemplate ? "" : undefined}>
-                <AdminDesignBuilder
-                  template={form.customizerTemplate}
-                  onChange={(next) => update("customizerTemplate", next)}
-                  productName={form.title || "Product"}
-                  product={{
-                    title: form.title || "Product",
-                    price: form.regularPrice === "" ? 0 : Number(form.regularPrice),
-                    salePrice: form.salePrice === "" ? null : Number(form.salePrice),
-                    currency: form.currency,
-                    formatOptions: form.formatOptions,
-                    sizeOptions: form.sizeOptions,
-                    envelopeOptions: form.envelopeOptions,
-                    cornerOptions: form.cornerOptions,
-                    paperStyleOptions: form.paperStyleOptions,
-                    paperOptions: form.paperOptions,
-                    printingOptions: form.printingOptions,
-                    quantityOptions: form.quantityOptions,
-                  }}
-                  productOptions={{
-                    formatOptions: form.formatOptions,
-                    sizeOptions: form.sizeOptions,
-                    envelopeOptions: form.envelopeOptions,
-                    cornerOptions: form.cornerOptions,
-                    paperStyleOptions: form.paperStyleOptions,
-                    paperOptions: form.paperOptions,
-                    printingOptions: form.printingOptions,
-                  }}
-                  quantityOptions={form.quantityOptions}
-                  onProductOptionsChange={(key, entries) => update(key, entries)}
-                  onQuantityOptionsChange={(values) => update("quantityOptions", values)}
-                  onSave={save}
-                  productStatus={form.status}
-                  saving={Boolean(saving)}
-                  errorMessage={saveError}
-                />
-                <FieldError message={errors.customizerTemplate} />
-              </div>
-            </FormSection>
-          )}
 
           <FormSection title="Pricing">
             <div className="grid gap-4 sm:grid-cols-3">

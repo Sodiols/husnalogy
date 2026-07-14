@@ -70,7 +70,7 @@ function OptionButton({ option, active, onClick, currency, showImage = false, co
       className={`flex w-full items-center gap-3 rounded-lg border px-3 text-left transition ${compact ? "py-2" : "py-2.5"} ${
         active
           ? "border-[#303839] bg-[#303839] text-white"
-          : "border-[#303839]/12 bg-white text-[#303839] hover:bg-[#F4ECEC]"
+          : "border-[#303839]/12 bg-white text-[#303839] hover:bg-[#F8F6F1]"
       }`}
     >
       {showImage && option.image && (
@@ -126,7 +126,7 @@ function OptionGroup({ title, options, value, onChange, currency, showImage = fa
               className={`flex flex-col items-center gap-1.5 rounded-lg border px-2 py-2.5 transition ${
                 isActive(option)
                   ? "border-[#303839] bg-[#303839] text-white"
-                  : "border-[#303839]/12 bg-white text-[#303839] hover:bg-[#F4ECEC]"
+                  : "border-[#303839]/12 bg-white text-[#303839] hover:bg-[#F8F6F1]"
               }`}
             >
               <CornerPreview option={option} />
@@ -223,7 +223,7 @@ export default function CustomerOptionsPanel({
                 className={`min-w-[56px] rounded-lg border px-3 py-2 text-sm font-bold transition ${
                   active
                     ? "border-[#303839] bg-[#303839] text-white"
-                    : "border-[#303839]/12 bg-white text-[#303839] hover:bg-[#F4ECEC]"
+                    : "border-[#303839]/12 bg-white text-[#303839] hover:bg-[#F8F6F1]"
                 }`}
               >
                 {q}
@@ -241,7 +241,7 @@ export default function CustomerOptionsPanel({
           aria-checked={Boolean(options.logo)}
           onClick={() => onOptionChange("logo", !options.logo)}
           className={`flex w-full items-center justify-between rounded-lg border px-3 py-3 text-sm transition ${
-            options.logo ? "border-[#303839] bg-[#303839] text-white" : "border-[#303839]/12 bg-white text-[#303839] hover:bg-[#F4ECEC]"
+            options.logo ? "border-[#303839] bg-[#303839] text-white" : "border-[#303839]/12 bg-white text-[#303839] hover:bg-[#F8F6F1]"
           }`}
         >
           <span className="font-bold">Add subtle logo to back of card</span>

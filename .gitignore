@@ -9,3 +9,6 @@ yarn-error.log*
 pnpm-debug.log*
 *.tsbuildinfo
 codex-dev-server*.log
+test-results/
+playwright-report/
+.customizer-e2e.json

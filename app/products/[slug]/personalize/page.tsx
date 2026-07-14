@@ -2,6 +2,9 @@ import { redirect } from "next/navigation";
 import { getProductBySlug } from "@/lib/products";
 import { buildFallbackTemplateFromFields } from "@/lib/customizer";
 import PersonalizeClient from "./personalize-client";
+import { createClient } from "@/lib/supabase/server";
+import { resolveFlagsIntoTemplate } from "@/lib/customizer/v2/feature-flags.server";
+import { loadNormalizedMockupTemplate } from "@/lib/customizer/mockup-store";
 
 export const dynamic = "force-dynamic";
 
@@ -39,8 +42,17 @@ export default async function PersonalizePage({ params }: any) {
     );
   }
 
-  const template = resolveTemplate(product);
-  if (!template) redirect(`/products/${slug}`);
+  const baseTemplate = resolveTemplate(product);
+  if (!baseTemplate) redirect(`/products/${slug}`);
+
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  const productType = product.productType || product.departmentPath?.join("/") || product.category || "flat-card";
+  const [flaggedTemplate, normalizedMockup] = await Promise.all([
+    resolveFlagsIntoTemplate(baseTemplate, { productId: product.id, productType, actorId: user?.id || "" }),
+    loadNormalizedMockupTemplate(product.id),
+  ]);
+  const template = normalizedMockup ? { ...flaggedTemplate, mockupTemplates: [normalizedMockup] } : flaggedTemplate;
 
   return <PersonalizeClient product={product} template={template} />;
 }

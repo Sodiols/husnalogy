@@ -4,6 +4,8 @@ import {
   customizationInsertRow,
   customizationUpdateRow,
 } from "@/lib/customizer/customizations";
+import { validateCustomizationSave } from "@/lib/customizer/save-validation";
+import { resolvePrivateAssetsForDelivery } from "@/lib/customizer/server/private-assets";
 
 // GET /api/customizations — list customizations visible to the caller.
 // RLS restricts this to the caller's own rows (or all rows for admins).
@@ -30,7 +32,10 @@ export async function GET(request: Request) {
   const { data, error } = await query;
   if (error) return Response.json({ ok: false, error: error.message }, { status: 500 });
 
-  return Response.json({ ok: true, customizations: (data || []).map(customizationFromRow) });
+  const customizations = await Promise.all(
+    (data || []).map((row) => resolvePrivateAssetsForDelivery(customizationFromRow(row), { userId: user.id }, "editor", supabase)),
+  );
+  return Response.json({ ok: true, customizations });
 }
 
 // POST /api/customizations — create (or save a draft of) a customization.
@@ -42,8 +47,19 @@ export async function POST(request: Request) {
 
   if (!user) return Response.json({ ok: false, error: "Sign in required." }, { status: 401 });
 
-  const body = await request.json().catch(() => ({}));
-  const requestedId = String(body.customizationId || body.id || "").trim();
+  const rawBody = await request.json().catch(() => ({}));
+  const requestedId = String(rawBody.customizationId || rawBody.id || "").trim();
+
+  // Server-side permission validation against the trusted template (spec §21).
+  // Unauthorized changes are rejected; permitted changes are sanitized.
+  const validation = await validateCustomizationSave(user.id, rawBody);
+  if (validation.ok === false) {
+    return Response.json(
+      { ok: false, error: validation.error, violations: validation.violations },
+      { status: validation.status },
+    );
+  }
+  const body = validation.body;
 
   if (requestedId && !requestedId.startsWith("local_")) {
     const { data, error } = await supabase
@@ -53,7 +69,10 @@ export async function POST(request: Request) {
       .select("*")
       .maybeSingle();
     if (error) return Response.json({ ok: false, error: error.message }, { status: 500 });
-    if (data) return Response.json({ ok: true, customization: customizationFromRow(data) });
+    if (data) {
+      const customization = await resolvePrivateAssetsForDelivery(customizationFromRow(data), { userId: user.id }, "editor", supabase);
+      return Response.json({ ok: true, customization });
+    }
   }
 
   const row = customizationInsertRow(user.id, body);
@@ -61,5 +80,6 @@ export async function POST(request: Request) {
   const { data, error } = await supabase.from("product_customizations").insert(row).select("*").single();
   if (error) return Response.json({ ok: false, error: error.message }, { status: 500 });
 
-  return Response.json({ ok: true, customization: customizationFromRow(data) });
+  const customization = await resolvePrivateAssetsForDelivery(customizationFromRow(data), { userId: user.id }, "editor", supabase);
+  return Response.json({ ok: true, customization });
 }

@@ -1,5 +1,14 @@
 "use client";
 
+import { customerEditablePermissionBundle } from "@/lib/customizer";
+import { createGridSlots } from "@/lib/customizer/v2/grids";
+import {
+  getDescendantIds,
+  groupLayers as createPersistentGroup,
+  transformGroupChildren,
+  ungroupLayers as removePersistentGroup,
+} from "@/lib/customizer/v2/groups";
+
 // Shared helpers for the admin visual Design Builder. Pure functions that take a
 // template and return a new template — the builder owns undo/redo on top.
 
@@ -109,11 +118,11 @@ export function newShapeLayer(template: any, pageId: string, shape = "rectangle"
   const cy = Math.round((template?.canvasHeightPx || 2100) / 2);
   return {
     id: genId("shape"),
-    name: "Shape",
+    name: shape === "line" ? "Line" : "Shape",
     page: pageId,
     type: "shape",
     shape,
-    fill: shape === "line" ? "none" : "#F4ECEC",
+    fill: shape === "line" ? "none" : "#F8F6F1",
     stroke: shape === "line" ? "#303839" : "",
     strokeWidth: shape === "line" ? 4 : 0,
     borderRadius: 0,
@@ -129,6 +138,101 @@ export function newShapeLayer(template: any, pageId: string, shape = "rectangle"
     locked: false,
     adminEditable: true,
     customerEditable: false,
+    lineStyle: "solid",
+    lineCap: "round",
+    points: shape === "polygon" ? [{ x: 0.5, y: 0 }, { x: 1, y: 0.38 }, { x: 0.82, y: 1 }, { x: 0.18, y: 1 }, { x: 0, y: 0.38 }] : [],
+  };
+}
+
+export function newGridLayer(template: any, pageId: string, columns = 2, rows = 2) {
+  const cx = Math.round((template?.canvasWidthPx || 1500) / 2);
+  const cy = Math.round((template?.canvasHeightPx || 2100) / 2);
+  return {
+    id: genId("grid"),
+    name: "Photo grid",
+    page: pageId,
+    type: "grid",
+    columns,
+    rows,
+    slots: createGridSlots(columns, rows),
+    x: cx,
+    y: cy,
+    width: Math.round((template?.canvasWidthPx || 1500) * 0.72),
+    height: Math.round((template?.canvasHeightPx || 2100) * 0.48),
+    rotation: 0,
+    zIndex: nextZIndex(template, pageId),
+    opacity: 1,
+    gap: 18,
+    padding: 0,
+    cornerRadius: 0,
+    borderColor: "",
+    borderWidth: 0,
+    backgroundColor: "#F8F6F1",
+    hidden: false,
+    locked: false,
+    adminEditable: true,
+    customerEditable: true,
+    customerPermissions: customerEditablePermissionBundle(true),
+    groupId: "",
+    fieldId: "",
+  };
+}
+
+export function newElementLayer(template: any, pageId: string, element: any) {
+  const canvasW = Number(template?.canvasWidthPx) || 1500;
+  const canvasH = Number(template?.canvasHeightPx) || 2100;
+  const width = Math.round(canvasW * 0.25);
+  const ratio = Number(element?.width) > 0 && Number(element?.height) > 0 ? Number(element.height) / Number(element.width) : 1;
+  return {
+    id: genId("element"),
+    name: element?.name || "Element",
+    page: pageId,
+    type: "element",
+    assetId: element?.id || "",
+    src: element?.url || element?.src || "",
+    tintColor: element?.tintable ? element?.defaultColor || "" : "",
+    x: Math.round(canvasW / 2),
+    y: Math.round(canvasH / 2),
+    width,
+    height: Math.max(24, Math.round(width * ratio)),
+    rotation: 0,
+    zIndex: nextZIndex(template, pageId),
+    opacity: 1,
+    flipX: false,
+    flipY: false,
+    hidden: false,
+    locked: false,
+    adminEditable: true,
+    customerEditable: false,
+    groupId: "",
+    fieldId: "",
+  };
+}
+
+export function newBackgroundLayer(template: any, pageId: string, src = "") {
+  const width = Number(template?.canvasWidthPx) || 1500;
+  const height = Number(template?.canvasHeightPx) || 2100;
+  return {
+    id: genId("background"),
+    name: "Background",
+    page: pageId,
+    type: "background",
+    color: "#ffffff",
+    src,
+    fitMode: "cover",
+    x: width / 2,
+    y: height / 2,
+    width,
+    height,
+    rotation: 0,
+    zIndex: Math.min(0, ...layersForPage(template, pageId).map((layer: any) => Number(layer.zIndex) || 0)) - 1,
+    opacity: 1,
+    hidden: false,
+    locked: true,
+    adminEditable: true,
+    customerEditable: false,
+    groupId: "",
+    fieldId: "",
   };
 }
 
@@ -139,6 +243,10 @@ export function addLayer(template: any, layer: any) {
 }
 
 export function updateLayer(template: any, layerId: string, patch: any) {
+  const layer = getLayer(template, layerId);
+  if (layer?.type === "group" && ["x", "y", "width", "height", "rotation"].some((key) => patch[key] !== undefined)) {
+    return { ...template, layers: transformGroupChildren(template.layers || [], layerId, patch) };
+  }
   return { ...template, layers: (template.layers || []).map((l: any) => (l.id === layerId ? { ...l, ...patch } : l)) };
 }
 
@@ -155,12 +263,34 @@ export function removeLayer(template: any, layerId: string) {
   const layer = getLayer(template, layerId);
   let fields = template.fields || [];
   if (layer?.fieldId) fields = fields.filter((f: any) => f.id !== layer.fieldId);
-  return { ...template, fields, layers: (template.layers || []).filter((l: any) => l.id !== layerId) };
+  const removeIds = new Set([layerId, ...(layer?.type === "group" ? getDescendantIds(template.layers || [], layerId) : [])]);
+  const removedFieldIds = new Set((template.layers || []).filter((item: any) => removeIds.has(item.id)).map((item: any) => item.fieldId).filter(Boolean));
+  fields = fields.filter((field: any) => !removedFieldIds.has(field.id));
+  return { ...template, fields, layers: (template.layers || []).filter((l: any) => !removeIds.has(l.id)) };
 }
 
 export function duplicateLayer(template: any, layerId: string) {
   const layer = getLayer(template, layerId);
   if (!layer) return { template, newId: null };
+  if (layer.type === "group") {
+    const sourceIds = [layerId, ...getDescendantIds(template.layers || [], layerId)];
+    const idMap = new Map(sourceIds.map((id) => [id, genId(getLayer(template, id)?.type || "layer")]));
+    const copies = (template.layers || [])
+      .filter((item: any) => idMap.has(item.id))
+      .map((item: any) => ({
+        ...item,
+        id: idMap.get(item.id),
+        name: item.id === layerId ? `${item.name} copy` : item.name,
+        x: Number(item.x || 0) + 40,
+        y: Number(item.y || 0) + 40,
+        groupId: item.groupId && idMap.has(item.groupId) ? idMap.get(item.groupId) : item.groupId,
+        childIds: Array.isArray(item.childIds) ? item.childIds.map((id: string) => idMap.get(id) || id) : item.childIds,
+        fieldId: "",
+        customerEditable: false,
+      }));
+    const newId = idMap.get(layerId) || null;
+    return { template: { ...template, layers: [...(template.layers || []), ...copies] }, newId };
+  }
   const copy = {
     ...layer,
     id: genId(layer.type),
@@ -173,6 +303,15 @@ export function duplicateLayer(template: any, layerId: string) {
     customerEditable: false,
   };
   return { template: { ...template, layers: [...(template.layers || []), copy] }, newId: copy.id };
+}
+
+export function groupSelectedLayers(template: any, layerIds: string[]) {
+  const groupId = genId("group");
+  return { template: { ...template, layers: createPersistentGroup(template.layers || [], layerIds, groupId) }, groupId };
+}
+
+export function ungroupLayer(template: any, groupId: string) {
+  return { ...template, layers: removePersistentGroup(template.layers || [], groupId) };
 }
 
 // Move a layer up/down in stacking order within its page.
@@ -208,10 +347,19 @@ function defaultFieldType(layer: any) {
 export function setCustomerEditable(template: any, layerId: string, editable: boolean) {
   const layer = getLayer(template, layerId);
   if (!layer) return template;
+  const customerPermissions = customerEditablePermissionBundle(editable);
 
   if (!editable) {
     const fields = (template.fields || []).filter((f: any) => f.id !== layer.fieldId);
-    return { ...template, fields, layers: updateLayer(template, layerId, { customerEditable: false, fieldId: "" }).layers };
+    return {
+      ...template,
+      fields,
+      layers: updateLayer(template, layerId, {
+        customerEditable: false,
+        customerPermissions,
+        fieldId: "",
+      }).layers,
+    };
   }
 
   // Create a field if one is not already linked.
@@ -239,7 +387,11 @@ export function setCustomerEditable(template: any, layerId: string, editable: bo
   return {
     ...template,
     fields,
-    layers: (template.layers || []).map((l: any) => (l.id === layerId ? { ...l, customerEditable: true, fieldId } : l)),
+    layers: (template.layers || []).map((l: any) =>
+      l.id === layerId
+        ? { ...l, customerEditable: true, customerPermissions, fieldId }
+        : l,
+    ),
   };
 }
 
@@ -331,17 +483,109 @@ export function sendLayerToBack(template: any, layerId: string) {
   return normalizeZIndexes(updateLayer(template, layerId, { zIndex: minZ - 1 }), layer.page);
 }
 
-/* ---------- customer permissions ---------- */
+/* ---------- alignment & distribution (spec §8) ---------- */
 
-// Patch a layer's customer permission flags (Section 31). Turning on any
-// content-ish permission implies customerEditable so the legacy flag and the
-// customer UI stay in sync.
-export function updateCustomerPermissions(template: any, layerId: string, patch: Record<string, boolean>) {
-  const layer = getLayer(template, layerId);
-  if (!layer) return template;
-  const current = layer.customerPermissions || {};
-  const next = { ...current, ...patch };
-  return updateLayer(template, layerId, { customerPermissions: next });
+export type AlignMode = "left" | "center" | "right" | "top" | "middle" | "bottom";
+
+// Align layers. One layer aligns to the canvas; several align to their
+// combined bounding box.
+export function alignLayers(template: any, layerIds: string[], mode: AlignMode) {
+  const layers = layerIds.map((id) => getLayer(template, id)).filter(Boolean);
+  if (!layers.length) return template;
+
+  const canvasW = Number(template.canvasWidthPx) || 1500;
+  const canvasH = Number(template.canvasHeightPx) || 2100;
+  let left: number, right: number, top: number, bottom: number;
+  if (layers.length === 1) {
+    left = 0;
+    right = canvasW;
+    top = 0;
+    bottom = canvasH;
+  } else {
+    left = Math.min(...layers.map((l: any) => l.x - l.width / 2));
+    right = Math.max(...layers.map((l: any) => l.x + l.width / 2));
+    top = Math.min(...layers.map((l: any) => l.y - l.height / 2));
+    bottom = Math.max(...layers.map((l: any) => l.y + l.height / 2));
+  }
+
+  const patchFor = (layer: any) => {
+    switch (mode) {
+      case "left":
+        return { x: Math.round(left + layer.width / 2) };
+      case "center":
+        return { x: Math.round((left + right) / 2) };
+      case "right":
+        return { x: Math.round(right - layer.width / 2) };
+      case "top":
+        return { y: Math.round(top + layer.height / 2) };
+      case "middle":
+        return { y: Math.round((top + bottom) / 2) };
+      case "bottom":
+        return { y: Math.round(bottom - layer.height / 2) };
+      default:
+        return {};
+    }
+  };
+
+  const idSet = new Set(layerIds);
+  return {
+    ...template,
+    layers: (template.layers || []).map((l: any) => (idSet.has(l.id) ? { ...l, ...patchFor(l) } : l)),
+  };
+}
+
+// Distribute 3+ layers with equal spacing between their centres.
+export function distributeLayers(template: any, layerIds: string[], axis: "horizontal" | "vertical") {
+  const layers = layerIds.map((id) => getLayer(template, id)).filter(Boolean);
+  if (layers.length < 3) return template;
+
+  const key = axis === "horizontal" ? "x" : "y";
+  const sorted = [...layers].sort((a: any, b: any) => a[key] - b[key]);
+  const first = sorted[0][key];
+  const last = sorted[sorted.length - 1][key];
+  const step = (last - first) / (sorted.length - 1);
+
+  const positions = new Map(sorted.map((l: any, i: number) => [l.id, Math.round(first + step * i)]));
+  return {
+    ...template,
+    layers: (template.layers || []).map((l: any) =>
+      positions.has(l.id) ? { ...l, [key]: positions.get(l.id) } : l,
+    ),
+  };
+}
+
+// Match dimensions to the first-selected (reference) layer.
+export function matchLayerSize(template: any, layerIds: string[], dimension: "width" | "height" | "both") {
+  const layers = layerIds.map((id) => getLayer(template, id)).filter(Boolean);
+  if (layers.length < 2) return template;
+  const reference = layers[0];
+  const idSet = new Set(layerIds.slice(1));
+  return {
+    ...template,
+    layers: (template.layers || []).map((l: any) => {
+      if (!idSet.has(l.id)) return l;
+      const patch: any = {};
+      if (dimension === "width" || dimension === "both") patch.width = reference.width;
+      if (dimension === "height" || dimension === "both") patch.height = reference.height;
+      return { ...l, ...patch };
+    }),
+  };
+}
+
+// Move several layers by the same delta (multiselect drag).
+export function moveLayers(template: any, layerIds: string[], dx: number, dy: number) {
+  let layers = template.layers || [];
+  const groupIds = new Set(layerIds.filter((id) => getLayer(template, id)?.type === "group"));
+  const descendants = new Set([...groupIds].flatMap((id) => getDescendantIds(layers, id)));
+  for (const id of groupIds) {
+    const group = layers.find((layer: any) => layer.id === id);
+    if (group) layers = transformGroupChildren(layers, id, { x: Math.round(group.x + dx), y: Math.round(group.y + dy) });
+  }
+  const idSet = new Set(layerIds.filter((id) => !groupIds.has(id) && !descendants.has(id)));
+  layers = layers.map((layer: any) =>
+    idSet.has(layer.id) ? { ...layer, x: Math.round(layer.x + dx), y: Math.round(layer.y + dy) } : layer,
+  );
+  return { ...template, layers };
 }
 
 /* ---------- page management (Section 27) ---------- */

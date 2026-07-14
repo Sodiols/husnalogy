@@ -9,6 +9,7 @@ import useAuth from "../lib/useAuth";
 import { logoutUser } from "../lib/auth";
 import { createClient } from "@/lib/supabase/client";
 import { formatCurrency } from "@/lib/currency";
+import ServerCustomizationImage from "@/app/components/customizer/ServerCustomizationImage";
 import {
   subscribeToUserWishlist,
   removeFromWishlist,
@@ -908,7 +909,7 @@ function OrderDetailModal({ order, onClose }) {
           <div className="space-y-2">
             {items.map((item, i) => (
               <div key={item.id || i} className="flex items-center gap-3">
-                <img src={item.image || orderImage(order)} alt="" className="h-12 w-12 rounded-[10px] object-cover" />
+                <ServerCustomizationImage customizationId={item.customizationId} outputPageId={item.mockupOutputRef?.pageId} fallbackSrc={item.image || orderImage(order)} alt={item.title || item.productTitle || "Personalized product"} containerClassName="relative h-12 w-12 shrink-0 overflow-hidden rounded-[10px] bg-[#F8F6F1]" />
                 <div className="min-w-0 flex-1">
                   <p className="truncate font-semibold text-[#111111]">{item.title || item.productTitle}</p>
                   <p className="text-xs text-[#111111]/55">Qty {item.quantity || 1}</p>

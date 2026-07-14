@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import { useRouter, useSearchParams } from "next/navigation";
 import ProductUploadForm from "./product-upload-form";
 import HeroCollectionSection from "./hero-collection-section";
+import ElementsLibrarySection from "./elements-library-section";
 import { formatCurrency as formatMoneyValue } from "@/lib/currency";
 
 const sections = [
@@ -13,6 +14,7 @@ const sections = [
   "Product Reviews",
   "Collections",
   "Home Hero",
+  "Elements Library",
   "Order Requests",
   "Contact Messages",
   "Newsletter Subscribers",
@@ -36,6 +38,7 @@ const navGroups = [
       { section: "Product Reviews", label: "Product Reviews", icon: "star" },
       { section: "Collections", label: "Collections", icon: "grid" },
       { section: "Home Hero", label: "Home Hero", icon: "image" },
+      { section: "Elements Library", label: "Elements Library", icon: "star" },
     ],
   },
   {
@@ -73,6 +76,10 @@ const sectionDetails = {
   },
   "Home Hero": {
     description: "Manage the featured collection shown in the homepage hero section.",
+    searchPlaceholder: "",
+  },
+  "Elements Library": {
+    description: "Upload and manage decorative elements customers can add to their designs.",
     searchPlaceholder: "",
   },
   "Order Requests": {
@@ -1187,6 +1194,7 @@ export default function AdminDashboardClient() {
                 )}
 
                 {activeSection === "Home Hero" && <HeroCollectionSection onAction={showNotice} />}
+                {activeSection === "Elements Library" && <ElementsLibrarySection onAction={showNotice} />}
 
                 {activeSection === "Order Requests" && (
                   <OrdersSection
@@ -3387,7 +3395,7 @@ function CollectionsSection({ collections = [], products, query, form, setForm, 
                   />
                   <span>
                     <span className="block text-sm font-bold text-[#1F1F1F]">Suite collection</span>
-                    <span className="mt-1 block text-xs leading-5 text-[#1F1F1F]/55">Use "Shop the {form.name || "collection"} suite" on product pages.</span>
+                    <span className="mt-1 block text-xs leading-5 text-[#1F1F1F]/55">Use &ldquo;Shop the {form.name || "collection"} suite&rdquo; on product pages.</span>
                   </span>
                 </label>
                 <label className="flex items-start gap-3 rounded-[10px] border border-[#1F1F1F]/10 bg-[#F8F8F8] px-4 py-3">

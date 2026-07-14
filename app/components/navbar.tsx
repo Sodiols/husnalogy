@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 
 import { mainMenu } from "./data";
@@ -72,13 +73,13 @@ export default function Header({
     <header className="sticky top-0 z-[2400] border-b border-[#303839]/10 bg-[#ffffff] backdrop-blur-xl">
       <div className="mx-auto max-w-[1480px] px-4 sm:px-6 lg:px-10">
         <div className="flex h-[64px] items-center justify-between gap-4 lg:h-[72px]">
-          <a href="/" className="flex shrink-0 items-center" aria-label="Husnalogy Home">
+          <Link href="/" className="flex shrink-0 items-center" aria-label="Husnalogy Home">
             <img
               src={logoUrl}
               alt="Husnalogy"
               className="h-9 w-auto object-contain lg:h-11"
             />
-          </a>
+          </Link>
 
           <form
             onSubmit={submitMobileSearch}
@@ -283,13 +284,13 @@ export default function Header({
           <NavIcon name="menu" size={22} />
         </button>
 
-        <a
+        <Link
           href="/"
           className="flex h-[60px] flex-1 items-center justify-center text-[#303839] transition-opacity duration-200 hover:opacity-75"
           aria-label="Home"
         >
           <NavIcon name="home" size={22} />
-        </a>
+        </Link>
 
         <button
           type="button"

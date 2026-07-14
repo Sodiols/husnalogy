@@ -30,6 +30,7 @@ export function customizationFromRow(row: any = {}): any {
     previewImages: asObject(row.preview_images),
     renderData: asObject(row.render_data),
     printFiles: asObject(row.print_files),
+    assetReferences: Array.isArray(row.asset_references) ? row.asset_references : [],
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -53,6 +54,7 @@ export function customizationInsertRow(userId: string, input: any = {}): any {
     preview_images: asObject(input.previewImages),
     render_data: withActivePage(input.renderData, input),
     print_files: asObject(input.printFiles),
+    asset_references: Array.isArray(input.assetReferences) ? input.assetReferences : [],
   };
 }
 
@@ -72,5 +74,6 @@ export function customizationUpdateRow(input: any = {}): any {
   if (input.previewImages !== undefined) row.preview_images = asObject(input.previewImages);
   if (input.renderData !== undefined || input.activePage !== undefined) row.render_data = withActivePage(input.renderData, input);
   if (input.printFiles !== undefined) row.print_files = asObject(input.printFiles);
+  if (input.assetReferences !== undefined && Array.isArray(input.assetReferences)) row.asset_references = input.assetReferences;
   return row;
 }

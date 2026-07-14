@@ -1,5 +1,3 @@
-import { Caveat, Montserrat } from "next/font/google";
-
 import AboutHero from "./components/aboutHero";
 import AboutStory from "./components/aboutStory";
 import AboutValues from "./components/aboutValues";
@@ -10,20 +8,7 @@ import AboutClosing from "./components/aboutClosing";
 import AboutScrollSeal from "./components/aboutScrollSeal";
 import Newslatter from "../components/newsletter";
 import AboutFAQ from "./components/aboutFAQ";
-
-const fontScript = Caveat({
-  subsets: ["latin"],
-  weight: ["500", "600"],
-  variable: "--font-caveat",
-  display: "swap",
-});
-
-const fontAlt = Montserrat({
-  subsets: ["latin"],
-  weight: ["300", "400", "500", "600"],
-  variable: "--font-montserrat",
-  display: "swap",
-});
+import type { CSSProperties } from "react";
 
 export const metadata = {
   title: "About",
@@ -33,7 +18,13 @@ export const metadata = {
 
 export default function AboutPage() {
   return (
-    <main className={`${fontScript.variable} ${fontAlt.variable} bg-[#f8f6f1] text-[#303839]`}>
+    <main
+      className="bg-[#f8f6f1] text-[#303839]"
+      style={{
+        "--font-caveat": "var(--font-cormorant)",
+        "--font-montserrat": "var(--font-inter)",
+      } as CSSProperties}
+    >
       <AboutHero />
       {/* Sits above the pinned hero and scrolls up over it (opaque backstop hides the hero). */}
       <div className="relative z-10 bg-[#f8f6f1]">

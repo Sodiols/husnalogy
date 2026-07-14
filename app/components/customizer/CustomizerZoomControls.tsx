@@ -25,7 +25,7 @@ export default function CustomizerZoomControls({ zoom, onZoomChange, onFit, clas
         type="button"
         aria-label="Zoom out"
         onClick={() => onZoomChange(clamp(zoom - ZOOM_STEP))}
-        className="grid h-7 w-7 place-items-center rounded-full text-base text-[#303839] hover:bg-[#F4ECEC]"
+        className="grid h-7 w-7 place-items-center rounded-full text-base text-[#303839] hover:bg-[#F8F6F1]"
       >
         −
       </button>
@@ -36,7 +36,7 @@ export default function CustomizerZoomControls({ zoom, onZoomChange, onFit, clas
         type="button"
         aria-label="Zoom in"
         onClick={() => onZoomChange(clamp(zoom + ZOOM_STEP))}
-        className="grid h-7 w-7 place-items-center rounded-full text-base text-[#303839] hover:bg-[#F4ECEC]"
+        className="grid h-7 w-7 place-items-center rounded-full text-base text-[#303839] hover:bg-[#F8F6F1]"
       >
         +
       </button>
@@ -44,7 +44,7 @@ export default function CustomizerZoomControls({ zoom, onZoomChange, onFit, clas
       <button
         type="button"
         onClick={() => (onFit ? onFit() : onZoomChange(1))}
-        className="rounded-full px-2.5 py-1 text-[11px] font-bold text-[#303839]/70 hover:bg-[#F4ECEC] hover:text-[#303839]"
+        className="rounded-full px-2.5 py-1 text-[11px] font-bold text-[#303839]/70 hover:bg-[#F8F6F1] hover:text-[#303839]"
       >
         Fit
       </button>

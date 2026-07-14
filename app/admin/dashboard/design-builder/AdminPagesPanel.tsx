@@ -83,7 +83,7 @@ export default function AdminPagesPanel({
                 type="button"
                 aria-label={`Page actions for ${page.label}`}
                 onClick={() => setMenuFor(menuFor === page.id ? null : page.id)}
-                className="grid h-6 w-6 shrink-0 place-items-center rounded text-[#303839]/50 hover:bg-[#F4ECEC] hover:text-[#303839]"
+                className="grid h-6 w-6 shrink-0 place-items-center rounded text-[#303839]/50 hover:bg-[#F8F6F1] hover:text-[#303839]"
               >
                 ⋯
               </button>
@@ -165,7 +165,7 @@ export default function AdminPagesPanel({
       <button
         type="button"
         onClick={onAddPage}
-        className="flex items-center justify-center gap-1.5 rounded-md border border-dashed border-[#303839]/25 px-2 py-3 text-xs font-bold text-[#303839]/60 transition hover:bg-[#F4ECEC] hover:text-[#303839]"
+        className="flex items-center justify-center gap-1.5 rounded-md border border-dashed border-[#303839]/25 px-2 py-3 text-xs font-bold text-[#303839]/60 transition hover:bg-[#F8F6F1] hover:text-[#303839]"
       >
         + Add page
       </button>

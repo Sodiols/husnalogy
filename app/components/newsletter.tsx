@@ -35,7 +35,7 @@ export default function Newsletter() {
   return (
     <section className="bg-white px-4 py-16 sm:px-6 sm:py-20 lg:px-10 lg:py-24">
       <Reveal className="mx-auto max-w-[1480px]">
-        <div className="rounded-none border border-[#303839]/5 bg-[#f8f6f1] px-5 py-12 sm:px-12 sm:py-14 lg:px-16 lg:py-16">
+        <div className="rounded-none border border-[#303839]/20 px-5 py-12 sm:px-12 sm:py-14 lg:px-16 lg:py-16">
           <div className="grid gap-8 lg:grid-cols-2 lg:items-center lg:gap-16">
             {/* Left */}
             <div className="text-center lg:text-left">

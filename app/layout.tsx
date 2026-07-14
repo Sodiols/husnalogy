@@ -1,4 +1,4 @@
-import { Cormorant_Garamond, Inter } from "next/font/google";
+import localFont from "next/font/local";
 
 import "./globals.css";
 import SiteShell from "./components/site-shell";
@@ -6,17 +6,29 @@ import { createClient } from "@/lib/supabase/server";
 import { formatSupabaseUser } from "./lib/format-user";
 import { getSettings, toPublicSettings } from "@/lib/settings";
 
-const fontDisplay = Cormorant_Garamond({
-  subsets: ["latin"],
-  weight: ["400", "500", "600", "700"],
+const fontDisplay = localFont({
+  src: [
+    { path: "../public/fonts/CormorantGaramond-400.ttf", weight: "400", style: "normal" },
+    { path: "../public/fonts/CormorantGaramond-400-italic.ttf", weight: "400", style: "italic" },
+    { path: "../public/fonts/CormorantGaramond-500.ttf", weight: "500", style: "normal" },
+    { path: "../public/fonts/CormorantGaramond-600.ttf", weight: "600", style: "normal" },
+    { path: "../public/fonts/CormorantGaramond-700.ttf", weight: "700", style: "normal" },
+  ],
   variable: "--font-cormorant",
   display: "swap",
+  fallback: ["Georgia", "serif"],
 });
-const fontBody = Inter({
-  subsets: ["latin"],
-  weight: ["300", "400", "500", "600", "700", "800"],
+const fontBody = localFont({
+  src: [
+    { path: "../public/fonts/Inter-400.ttf", weight: "400", style: "normal" },
+    { path: "../public/fonts/Inter-400-italic.ttf", weight: "400", style: "italic" },
+    { path: "../public/fonts/Inter-500.ttf", weight: "500", style: "normal" },
+    { path: "../public/fonts/Inter-600.ttf", weight: "600", style: "normal" },
+    { path: "../public/fonts/Inter-700.ttf", weight: "700", style: "normal" },
+  ],
   variable: "--font-inter",
   display: "swap",
+  fallback: ["Arial", "sans-serif"],
 });
 const fontVariables = `${fontDisplay.variable} ${fontBody.variable}`;
 

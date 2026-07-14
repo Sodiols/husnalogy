@@ -61,11 +61,11 @@ function OptionRow({ entry, index, count, onEdit, onMove, onDelete, onDuplicate,
       <span className="flex shrink-0 items-center gap-0.5">
         <button type="button" aria-label="Move up" disabled={index === 0} onClick={() => onMove(index, -1)} className="grid h-6 w-5 place-items-center text-[10px] text-[#303839]/50 hover:text-[#303839] disabled:opacity-25">▲</button>
         <button type="button" aria-label="Move down" disabled={index === count - 1} onClick={() => onMove(index, 1)} className="grid h-6 w-5 place-items-center text-[10px] text-[#303839]/50 hover:text-[#303839] disabled:opacity-25">▼</button>
-        <button type="button" onClick={() => onSetDefault(index)} className="rounded px-1.5 py-1 text-[10px] font-bold text-[#303839]/50 hover:bg-[#F4ECEC] hover:text-[#303839]" title="Make default">
+        <button type="button" onClick={() => onSetDefault(index)} className="rounded px-1.5 py-1 text-[10px] font-bold text-[#303839]/50 hover:bg-[#F8F6F1] hover:text-[#303839]" title="Make default">
           Default
         </button>
         <button type="button" onClick={() => onDuplicate(index)} className="grid h-6 w-6 place-items-center text-[11px] text-[#303839]/50 hover:text-[#303839]" aria-label="Duplicate option">⧉</button>
-        <button type="button" onClick={() => onEdit(index)} className="rounded px-1.5 py-1 text-[10px] font-bold text-[#303839] hover:bg-[#F4ECEC]">
+        <button type="button" onClick={() => onEdit(index)} className="rounded px-1.5 py-1 text-[10px] font-bold text-[#303839] hover:bg-[#F8F6F1]">
           Edit
         </button>
         <button type="button" onClick={() => onDelete(index)} className="grid h-6 w-6 place-items-center text-[11px] text-red-600 hover:text-red-700" aria-label="Delete option">✕</button>
@@ -78,7 +78,7 @@ function OptionEditor({ initial, supportsImage, onSave, onCancel }: any) {
   const [draft, setDraft] = useState<RichProductOption>(initial);
   const [busy, setBusy] = useState(false);
   const imageInput = useRef<HTMLInputElement>(null);
-  const input = "h-9 w-full rounded-md border border-[#303839]/15 bg-white px-2 text-sm outline-none focus:border-[#303839]/45";
+  const input = "h-10 w-full rounded-lg border border-[#303839]/15 bg-white px-3 text-sm text-[#303839] shadow-sm outline-none transition focus:border-[#D4AF37] focus:ring-2 focus:ring-[#D4AF37]/20";
   const patch = (updates: Partial<RichProductOption>) => setDraft((current) => ({ ...current, ...updates }));
 
   const uploadImage = async (file?: File) => {
@@ -116,12 +116,17 @@ function OptionEditor({ initial, supportsImage, onSave, onCancel }: any) {
         </label>
         <label className="block">
           <span className="mb-1 block text-[10px] font-bold uppercase tracking-wide text-[#303839]/55">Badge</span>
-          <select className={input} value={draft.badge || ""} onChange={(e) => patch({ badge: e.target.value })}>
-            <option value="">None</option>
-            <option value="Best Seller">Best Seller</option>
-            <option value="Recommended">Recommended</option>
-            <option value="New">New</option>
-          </select>
+          <span className="relative block min-w-0">
+            <select className={`${input} appearance-none pr-10`} value={draft.badge || ""} onChange={(e) => patch({ badge: e.target.value })}>
+              <option value="">None</option>
+              <option value="Best Seller">Best Seller</option>
+              <option value="Recommended">Recommended</option>
+              <option value="New">New</option>
+            </select>
+            <svg className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[#303839]/50" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <path d="m6 9 6 6 6-6" />
+            </svg>
+          </span>
         </label>
         <label className="block">
           <span className="mb-1 block text-[10px] font-bold uppercase tracking-wide text-[#303839]/55">Internal value</span>
@@ -217,7 +222,7 @@ function OptionGroupEditor({ group, entries, onChange }: any) {
             setAddingNew(true);
             setEditingIndex(null);
           }}
-          className="rounded-full border border-[#303839]/15 px-3 py-1 text-xs font-bold text-[#303839] hover:bg-[#F4ECEC]"
+          className="rounded-full border border-[#303839]/15 px-3 py-1 text-xs font-bold text-[#303839] hover:bg-[#F8F6F1]"
         >
           + Add option
         </button>
@@ -284,8 +289,8 @@ export default function AdminProductOptionsPanel({
   onQuantityOptionsChange,
 }: Props) {
   return (
-    <div className="mx-auto grid w-full max-w-3xl gap-4 p-6">
-      <div>
+    <div className="mx-auto grid w-full max-w-7xl gap-5 p-4 md:p-6 xl:grid-cols-2 2xl:p-8">
+      <div className="xl:col-span-2">
         <h3 className="font-display text-2xl text-[#303839]">Product options</h3>
         <p className="mt-1 text-sm text-[#303839]/55">
           These options power the product page, the customizer Options step, pricing, the cart, and
@@ -302,11 +307,11 @@ export default function AdminProductOptionsPanel({
         />
       ))}
 
-      <section className="rounded-lg border border-[#303839]/12 bg-white p-4">
+      <section className="rounded-lg border border-[#303839]/12 bg-white p-4 xl:col-span-2">
         <h4 className="font-display text-xl text-[#303839]">Quantity</h4>
         <p className="mb-2 text-xs text-[#303839]/50">Quantities customers can order, comma separated (e.g. 1, 10, 20, 50, 100).</p>
         <input
-          className="h-9 w-full rounded-md border border-[#303839]/15 bg-white px-2 text-sm outline-none focus:border-[#303839]/45"
+          className="h-10 w-full rounded-lg border border-[#303839]/15 bg-white px-3 text-sm text-[#303839] shadow-sm outline-none transition focus:border-[#D4AF37] focus:ring-2 focus:ring-[#D4AF37]/20"
           value={(quantityOptions || []).map((entry: any) => (typeof entry === "object" ? entry?.label : entry)).join(", ")}
           onChange={(e) =>
             onQuantityOptionsChange(

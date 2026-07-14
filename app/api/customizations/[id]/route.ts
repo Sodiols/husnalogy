@@ -3,6 +3,8 @@ import {
   customizationFromRow,
   customizationUpdateRow,
 } from "@/lib/customizer/customizations";
+import { validateCustomizationSave } from "@/lib/customizer/save-validation";
+import { resolvePrivateAssetsForDelivery } from "@/lib/customizer/server/private-assets";
 
 async function getUser() {
   const supabase = await createClient();
@@ -22,7 +24,8 @@ export async function GET(_request: Request, { params }: any) {
   if (error) return Response.json({ ok: false, error: error.message }, { status: 500 });
   if (!data) return Response.json({ ok: false, error: "Not found." }, { status: 404 });
 
-  return Response.json({ ok: true, customization: customizationFromRow(data) });
+  const customization = await resolvePrivateAssetsForDelivery(customizationFromRow(data), { userId: user.id }, "editor", supabase);
+  return Response.json({ ok: true, customization });
 }
 
 // PATCH /api/customizations/[id] — update your own customization. RLS blocks
@@ -32,8 +35,32 @@ export async function PATCH(request: Request, { params }: any) {
   const { supabase, user } = await getUser();
   if (!user) return Response.json({ ok: false, error: "Sign in required." }, { status: 401 });
 
-  const body = await request.json().catch(() => ({}));
-  const row = customizationUpdateRow(body);
+  const rawBody = await request.json().catch(() => ({}));
+
+  // Load the existing row first (RLS scopes to the owner) so validation knows
+  // the product/template even when the patch omits them.
+  const { data: existingRow, error: readError } = await supabase
+    .from("product_customizations")
+    .select("id, product_id, template_id, template_version")
+    .eq("id", id)
+    .maybeSingle();
+  if (readError) return Response.json({ ok: false, error: readError.message }, { status: 500 });
+  if (!existingRow) return Response.json({ ok: false, error: "Not found." }, { status: 404 });
+
+  // Server-side permission validation against the trusted template (spec §21).
+  const validation = await validateCustomizationSave(user.id, rawBody, {
+    productId: existingRow.product_id || "",
+    templateId: existingRow.template_id || "",
+    templateVersion: Number(existingRow.template_version) || 0,
+  });
+  if (validation.ok === false) {
+    return Response.json(
+      { ok: false, error: validation.error, violations: validation.violations },
+      { status: validation.status },
+    );
+  }
+
+  const row = customizationUpdateRow(validation.body);
 
   const { data, error } = await supabase
     .from("product_customizations")
@@ -44,7 +71,8 @@ export async function PATCH(request: Request, { params }: any) {
   if (error) return Response.json({ ok: false, error: error.message }, { status: 500 });
   if (!data) return Response.json({ ok: false, error: "Not found." }, { status: 404 });
 
-  return Response.json({ ok: true, customization: customizationFromRow(data) });
+  const customization = await resolvePrivateAssetsForDelivery(customizationFromRow(data), { userId: user.id }, "editor", supabase);
+  return Response.json({ ok: true, customization });
 }
 
 export async function DELETE(_request: Request, { params }: any) {

@@ -12,6 +12,7 @@ import {
   saveLocalOrder,
   subscribeToUserCart,
 } from "../lib/customer-lists";
+import ServerCustomizationImage from "@/app/components/customizer/ServerCustomizationImage";
 
 const initialCustomer = {
   firstName: "",
@@ -306,9 +307,7 @@ export default function CheckoutClient({ initialUser = undefined }: any) {
                   const meta = [options.size ? `Size: ${options.size}` : "", options.color ? `Color: ${options.color}` : ""].filter(Boolean).join("   ");
                   return (
                     <div key={item.id} className="flex items-center gap-3">
-                      <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-[14px] bg-[#E6E6E6] shadow-[inset_0_1px_0_rgba(255,255,255,0.65)]">
-                        {item.image ? <img src={item.image} alt={item.title} className="h-full w-full object-cover" /> : null}
-                      </div>
+                      <ServerCustomizationImage customizationId={item.customizationId} outputPageId={item.mockupOutputRef?.pageId} fallbackSrc={item.image} alt={item.title} containerClassName="relative h-16 w-16 shrink-0 overflow-hidden rounded-[14px] bg-[#F8F6F1] shadow-[inset_0_1px_0_rgba(255,255,255,0.65)]" />
                       <div className="min-w-0 flex-1">
                         <p className="line-clamp-2 text-[13px] font-bold leading-snug text-[#303839]">{item.title}</p>
                         {meta && <p className="mt-0.5 text-[11px] text-[#303839]/55">{meta}</p>}

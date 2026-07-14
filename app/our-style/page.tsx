@@ -17,7 +17,7 @@ export default function OurStylePage() {
         <p className="text-[11px] font-semibold uppercase tracking-[0.3em] text-[#303839]/50">Brand direction</p>
         <h1 className="mt-3 font-display text-4xl font-semibold md:text-5xl">Our Style</h1>
         <p className="mt-4 max-w-2xl text-sm leading-7 text-[#303839]/72">
-          Husnalogy's style is minimal, refined, and emotionally clear. The goal is not to teach customers how to design, but to help them find products that already feel thoughtful and beautifully made.
+          Husnalogy&apos;s style is minimal, refined, and emotionally clear. The goal is not to teach customers how to design, but to help them find products that already feel thoughtful and beautifully made.
         </p>
 
         <div className="mt-10 grid gap-5 md:grid-cols-2">

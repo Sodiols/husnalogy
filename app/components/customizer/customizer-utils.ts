@@ -2,12 +2,19 @@
 // customizer. No React, no network — just template + value math.
 
 import {
-  defaultCustomerPermissions,
+  customerEditablePermissionBundle,
   normalizeEditorState,
   normalizeUserLayer,
 } from "@/lib/customizer";
+import { mergeGridSlotOverrides } from "@/lib/customizer/v2/grids";
+import { getRenderableLayers } from "@/lib/customizer/v2/groups";
 
 export type ImageValue = {
+  assetId?: string;
+  ownerId?: string;
+  bucket?: string;
+  originalPath?: string;
+  assetReference?: Record<string, unknown>;
   url?: string;
   signedUrl?: string;
   path?: string;
@@ -15,23 +22,50 @@ export type ImageValue = {
   zoom?: number;
   offsetX?: number;
   offsetY?: number;
+  flipX?: boolean;
+  flipY?: boolean;
+  imageRotation?: number;
+};
+
+// V2 in-frame crop state (spec §11) — kept separate from frame geometry.
+export type ImageTransformOverride = {
+  zoom?: number;
+  offsetX?: number;
+  offsetY?: number;
+  rotation?: number;
+  flipX?: boolean;
+  flipY?: boolean;
+  fitMode?: "cover" | "contain";
 };
 
 export type EditorState = {
-  layerOverrides: Record<string, { textStyle?: any; transform?: any }>;
+  layerOverrides: Record<
+    string,
+    {
+      textStyle?: any;
+      transform?: any;
+      imageTransform?: ImageTransformOverride;
+      gridSlots?: Record<string, { assetId?: string; ownerId?: string; src?: string; bucket?: string; path?: string; originalPath?: string; assetReference?: Record<string, unknown>; metadata?: Record<string, unknown>; transform?: ImageTransformOverride }>;
+    }
+  >;
   userLayers: any[];
 };
 
 export { normalizeEditorState, normalizeUserLayer };
 
 /* ---- Customer permissions --------------------------------------------------
-   Resolve a layer's effective customer permissions, falling back to defaults
-   derived from the legacy flags for templates saved before permissions existed. */
+   Customer editable is the single admin control: checked unlocks the complete
+   permission bundle, unchecked locks every customer action. */
 export function getLayerPermissions(layer: any): Record<string, boolean> {
-  const defaults = defaultCustomerPermissions(layer || {});
-  const stored = layer?.customerPermissions;
-  if (!stored || typeof stored !== "object") return defaults;
-  return { ...defaults, ...stored };
+  const permissions = customerEditablePermissionBundle(Boolean(layer?.customerEditable));
+  // The primary customer-editable checkbox intentionally unlocks the complete
+  // bundle. Grids are the one advanced exception: their container may remain
+  // fixed while independently editable slots inherit/override photo controls.
+  if (layer?.type !== "grid" || !layer?.customerEditable || !layer?.customerPermissions || typeof layer.customerPermissions !== "object") return permissions;
+  for (const [key, value] of Object.entries(layer.customerPermissions)) {
+    if (typeof value === "boolean") permissions[key] = value;
+  }
+  return permissions;
 }
 
 // Whether the customer may interact with this template layer on the canvas.
@@ -55,11 +89,17 @@ export function isLayerCustomerInteractive(layer: any): boolean {
       "delete",
     ].some((key) => permissions[key]);
   }
-  if (layer.type === "image") {
+  if (layer.type === "image" || layer.type === "frame") {
     return ["replaceImage", "zoomImage", "repositionImage", "move", "resize", "rotate"].some(
       (key) => permissions[key],
     );
   }
+  if (layer.type === "grid") {
+    return ["replaceImage", "cropImage", "zoomImage", "repositionImage", "move", "resize", "rotate"].some(
+      (key) => permissions[key],
+    );
+  }
+  if (layer.type === "group") return Boolean(permissions.select || permissions.move || permissions.resize || permissions.rotate);
   return false;
 }
 
@@ -84,9 +124,18 @@ export function applyLayerOverride(layer: any, override: any): any {
     if (t.width !== undefined) next.width = Number(t.width);
     if (t.height !== undefined) next.height = Number(t.height);
     if (t.rotation !== undefined) next.rotation = Number(t.rotation);
+    if (t.opacity !== undefined) next.opacity = Number(t.opacity);
   }
   if (override.textStyle && typeof override.textStyle === "object" && layer.type === "text") {
     next.textStyle = { ...(layer.textStyle || {}), ...override.textStyle };
+  }
+  // Crop-mode state for photo frames. Carried on the layer so every renderer
+  // (editor, thumbnails, review, server) applies the same crop.
+  if (override.imageTransform && typeof override.imageTransform === "object" && (layer.type === "image" || layer.type === "frame")) {
+    next.imageTransform = { ...(layer.imageTransform || {}), ...override.imageTransform };
+  }
+  if (override.gridSlots && typeof override.gridSlots === "object" && layer.type === "grid") {
+    next.slots = mergeGridSlotOverrides(Array.isArray(layer.slots) ? layer.slots : [], override.gridSlots);
   }
   return next;
 }
@@ -102,7 +151,7 @@ export function getEffectiveLayersForPage(template: any, pageId: string, editorS
   const userLayers = (editorState?.userLayers || [])
     .filter((layer: any) => layer && layer.page === pageId)
     .map((layer: any) => ({ ...layer, isUserLayer: true }));
-  return [...templateLayers, ...userLayers].sort((a: any, b: any) => Number(a.zIndex || 0) - Number(b.zIndex || 0));
+  return getRenderableLayers([...templateLayers, ...userLayers]);
 }
 
 export function getEnabledPages(template: any): any[] {
@@ -115,7 +164,7 @@ export function getPageById(template: any, pageId: string): any {
 
 export function getLayersForPage(template: any, pageId: string): any[] {
   return (template?.layers || [])
-    .filter((layer: any) => layer.page === pageId)
+    .filter((layer: any) => (layer.page ?? layer.pageId) === pageId)
     .slice()
     .sort((a: any, b: any) => Number(a.zIndex || 0) - Number(b.zIndex || 0));
 }
@@ -192,20 +241,51 @@ export function resolveLayerImage(layer: any, field: any, values: Record<string,
   const editable = Boolean(layer?.customerEditable && field);
   const raw = editable ? values[field.id] : undefined;
   const url = getImageUrl(raw);
+  // Crop-mode override (editorState) wins over legacy per-value zoom/offset.
+  const crop: ImageTransformOverride = layer?.imageTransform || {};
   if (url) {
     const meta = isImageValue(raw) ? raw : {};
     return {
       url,
       signedUrl: isImageValue(raw) ? raw.signedUrl : undefined,
-      zoom: Number(meta.zoom) > 0 ? Number(meta.zoom) : 1,
-      offsetX: Number(meta.offsetX) || 0,
-      offsetY: Number(meta.offsetY) || 0,
+      zoom: Number(crop.zoom) > 0 ? Number(crop.zoom) : Number(meta.zoom) > 0 ? Number(meta.zoom) : 1,
+      offsetX: crop.offsetX !== undefined ? Number(crop.offsetX) : Number(meta.offsetX) || 0,
+      offsetY: crop.offsetY !== undefined ? Number(crop.offsetY) : Number(meta.offsetY) || 0,
+      flipX: crop.flipX !== undefined ? Boolean(crop.flipX) : Boolean(meta.flipX),
+      flipY: crop.flipY !== undefined ? Boolean(crop.flipY) : Boolean(meta.flipY),
+      imageRotation: crop.rotation !== undefined ? Number(crop.rotation) : Number(meta.imageRotation) || 0,
     };
   }
   // Admin-provided image content for the layer, else a placeholder frame.
-  if (layer?.src) return { url: layer.src, zoom: 1, offsetX: 0, offsetY: 0 };
-  if (layer?.placeholderImage) return { url: layer.placeholderImage, zoom: 1, offsetX: 0, offsetY: 0 };
+  const base = { zoom: 1, offsetX: 0, offsetY: 0, flipX: false, flipY: false, imageRotation: 0 };
+  const withCrop = {
+    ...base,
+    zoom: Number(crop.zoom) > 0 ? Number(crop.zoom) : 1,
+    offsetX: Number(crop.offsetX) || 0,
+    offsetY: Number(crop.offsetY) || 0,
+    flipX: Boolean(crop.flipX),
+    flipY: Boolean(crop.flipY),
+    imageRotation: Number(crop.rotation) || 0,
+  };
+  if (layer?.src) return { url: layer.src, ...withCrop };
+  if (layer?.placeholderImage) return { url: layer.placeholderImage, ...base };
   return null;
+}
+
+export function resolveGridSlotImage(slot: any): ImageValue | null {
+  if (!slot) return null;
+  const transform = slot.transform || {};
+  const url = String(slot.src || "");
+  if (!url) return null;
+  return {
+    url,
+    zoom: Number(transform.zoom) > 0 ? Number(transform.zoom) : 1,
+    offsetX: Number(transform.offsetX) || 0,
+    offsetY: Number(transform.offsetY) || 0,
+    flipX: Boolean(transform.flipX),
+    flipY: Boolean(transform.flipY),
+    imageRotation: Number(transform.rotation) || 0,
+  };
 }
 
 // Part 15 customer validation.
@@ -221,7 +301,7 @@ export function validateCustomerValues(
       .filter((layer: any) => {
         if (!layer?.fieldId || layer.hidden || !enabledPageIds.has(layer.page)) return false;
         const permissions = getLayerPermissions(layer);
-        return layer.type === "image" ? permissions.replaceImage : permissions.editContent;
+         return layer.type === "image" || layer.type === "frame" ? permissions.replaceImage : permissions.editContent;
       })
       .map((layer: any) => layer.fieldId),
   );
@@ -270,8 +350,10 @@ export function buildRenderData(
       const layer = applyLayerOverride(raw, overrides[raw.id]);
       const field = layer.fieldId ? getFieldById(template, layer.fieldId) : null;
       const resolved =
-        layer.type === "image"
+        layer.type === "image" || layer.type === "frame"
           ? { resolvedImage: resolveLayerImage(layer, field, values) }
+          : layer.type === "grid"
+            ? { resolvedSlots: layer.slots || [] }
           : { resolvedText: resolveLayerText(layer, field, values) };
       return { ...layer, ...resolved };
     }),
@@ -284,49 +366,4 @@ export function buildRenderData(
     selectedOptions,
     generatedAt: new Date().toISOString(),
   };
-}
-
-// Part 11: export an SVG string to a PNG data URL on the client (for cart
-// thumbnails and preview images). Returns "" if rendering fails.
-export function svgToPngDataUrl(svgString: string, width: number, height: number): Promise<string> {
-  return new Promise((resolve) => {
-    if (typeof window === "undefined" || !svgString) {
-      resolve("");
-      return;
-    }
-    try {
-      const svgBlob = new Blob([svgString], { type: "image/svg+xml;charset=utf-8" });
-      const url = URL.createObjectURL(svgBlob);
-      const image = new Image();
-      image.crossOrigin = "anonymous";
-      image.onload = () => {
-        try {
-          const scale = Math.min(1, 1000 / Math.max(width, height, 1));
-          const canvas = document.createElement("canvas");
-          canvas.width = Math.max(1, Math.round(width * scale));
-          canvas.height = Math.max(1, Math.round(height * scale));
-          const ctx = canvas.getContext("2d");
-          if (!ctx) {
-            resolve("");
-            return;
-          }
-          ctx.fillStyle = "#ffffff";
-          ctx.fillRect(0, 0, canvas.width, canvas.height);
-          ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
-          resolve(canvas.toDataURL("image/png"));
-        } catch {
-          resolve("");
-        } finally {
-          URL.revokeObjectURL(url);
-        }
-      };
-      image.onerror = () => {
-        URL.revokeObjectURL(url);
-        resolve("");
-      };
-      image.src = url;
-    } catch {
-      resolve("");
-    }
-  });
 }

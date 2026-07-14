@@ -1,4 +1,5 @@
 import Image from "next/image";
+import Link from "next/link";
 
 import Reveal from "../../components/reveal";
 
@@ -41,14 +42,14 @@ export default function WeddingHero() {
           </p>
 
           <div className="mt-8 flex flex-wrap items-center gap-x-8 gap-y-4">
-            <a
+            <Link
               href="/collections/wedding-invitations"
               className={`inline-flex h-[52px] items-center justify-center rounded-[6px] border border-[#303839] bg-[#F8F6F1] px-8 text-[13px] font-semibold text-[#303839] transition-colors duration-300 hover:bg-[#303839] hover:text-[#F8F6F1] ${focusRing}`}
             >
               Shop Wedding Invitations
-            </a>
+            </Link>
 
-            <a
+            <Link
               href="/collections/wedding-suites"
               className={`group inline-flex items-center gap-2 rounded-[4px] text-[13px] font-semibold text-[#303839] transition-colors duration-300 hover:text-[#303839]/60 ${focusRing}`}
             >
@@ -71,7 +72,7 @@ export default function WeddingHero() {
                   <path d="m13 6 6 6-6 6" />
                 </svg>
               </span>
-            </a>
+            </Link>
           </div>
         </Reveal>
       </div>

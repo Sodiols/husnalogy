@@ -19,7 +19,7 @@ function IconButton({ label, onClick, disabled, children }: any) {
       title={label}
       onClick={onClick}
       disabled={disabled}
-      className="grid h-9 w-9 place-items-center rounded-full text-[#303839] transition hover:bg-[#F4ECEC] disabled:opacity-35 disabled:hover:bg-transparent"
+      className="grid h-9 w-9 place-items-center rounded-full text-[#303839] transition hover:bg-[#F8F6F1] disabled:opacity-35 disabled:hover:bg-transparent"
     >
       {children}
     </button>
@@ -108,7 +108,7 @@ export default function CustomerCustomizerHeader({
           type="button"
           onClick={onSaveExit}
           disabled={savingDraft || !restoreReady}
-          className="hidden whitespace-nowrap rounded-full border border-[#303839]/15 px-3.5 py-1.5 text-xs font-bold text-[#303839] transition hover:bg-[#F4ECEC] disabled:opacity-50 md:block"
+          className="hidden whitespace-nowrap rounded-full border border-[#303839]/15 px-3.5 py-1.5 text-xs font-bold text-[#303839] transition hover:bg-[#F8F6F1] disabled:opacity-50 md:block"
         >
           {savingDraft ? "Saving…" : "Save & Exit"}
         </button>
@@ -171,7 +171,7 @@ export default function CustomerCustomizerHeader({
           className={`hidden items-center gap-1.5 rounded-full px-3.5 py-1.5 text-xs font-bold transition sm:flex ${
             previewMode
               ? "bg-[#303839] text-white"
-              : "border border-[#303839]/15 text-[#303839] hover:bg-[#F4ECEC]"
+              : "border border-[#303839]/15 text-[#303839] hover:bg-[#F8F6F1]"
           }`}
         >
           {EyeIcon}
@@ -193,7 +193,7 @@ export default function CustomerCustomizerHeader({
         type="button"
         onClick={onSaveExit}
         disabled={savingDraft || !restoreReady}
-        className="rounded-full border border-[#303839]/15 px-3 py-1.5 text-xs font-bold text-[#303839] transition hover:bg-[#F4ECEC] disabled:opacity-50"
+        className="rounded-full border border-[#303839]/15 px-3 py-1.5 text-xs font-bold text-[#303839] transition hover:bg-[#F8F6F1] disabled:opacity-50"
       >
         {savingDraft ? "Saving…" : "Save & Exit"}
       </button>

@@ -11,6 +11,7 @@ import {
   updateCartQuantity,
 } from "../lib/customer-lists";
 import { formatCurrency } from "@/lib/currency";
+import ServerCustomizationImage from "@/app/components/customizer/ServerCustomizationImage";
 
 export default function CartClient() {
   const { user, authLoading } = useAuth();
@@ -43,7 +44,7 @@ export default function CartClient() {
             {items.map((item) => (
               <article key={item.id} className="grid gap-4 rounded-none border border-[#303839]/10 p-4 sm:grid-cols-[120px_1fr_auto]">
                 <Link href={item.slug ? `/products/${item.slug}` : "/products"}>
-                  <img src={item.image} alt={item.title} className="h-28 w-28 rounded-none object-cover" />
+                  <ServerCustomizationImage customizationId={item.customizationId} outputPageId={item.mockupOutputRef?.pageId} fallbackSrc={item.image} alt={item.title} containerClassName="relative h-28 w-28 overflow-hidden bg-[#F8F6F1]" />
                 </Link>
 
                 <div>

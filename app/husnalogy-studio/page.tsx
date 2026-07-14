@@ -16,7 +16,7 @@ export default function HusnalogyStudioPage() {
         <div className="mt-10 grid gap-6 md:grid-cols-3">
           <div className="rounded-none border border-[#303839]/10 bg-[#f8f6f1] p-6">
             <h2 className="text-lg font-bold">Designed with care</h2>
-            <p className="mt-3 text-sm leading-6 text-[#303839]/70">Each product keeps the focus on the customer's names, story, event details, and memory.</p>
+            <p className="mt-3 text-sm leading-6 text-[#303839]/70">Each product keeps the focus on the customer&apos;s names, story, event details, and memory.</p>
           </div>
           <div className="rounded-none border border-[#303839]/10 bg-[#f8f6f1] p-6">
             <h2 className="text-lg font-bold">Refined visual style</h2>

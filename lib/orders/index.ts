@@ -1,8 +1,15 @@
 import { createId, nowIso } from "@/lib/core/id";
 import { clampNumber, clampString, cleanOptionalString, cleanString, isValidEmail } from "@/lib/validation";
-import { getProductBySlug } from "@/lib/products";
+import { getProductBySlug, getProducts } from "@/lib/products";
 import { createServiceRoleClient } from "@/lib/supabase/server";
 import { normalizeCurrency } from "@/lib/currency";
+import { calculateCustomizationPrice } from "@/lib/customizer/v2/pricing";
+import { createOrderDesignSnapshots } from "@/lib/customizer/order-snapshots";
+import { customizationFromRow } from "@/lib/customizer/customizations";
+import { getTrustedTemplateForCustomization } from "@/lib/customizer/versions";
+import { resolveCustomerDocument, templateToDocument } from "@/lib/customizer/v2/document";
+import { runPreflight } from "@/lib/customizer/v2/preflight";
+import { createServerMeasure } from "@/lib/customizer/v2/server/server-fonts";
 
 const ORDER_STATUSES = new Set([
   "pending",
@@ -144,6 +151,14 @@ async function insertSupabaseOrder(order) {
         .in("id", customizationIds);
     } catch (updateError) {
       console.error("Could not mark customizations as ordered:", updateError);
+    }
+
+    // Permanent order design snapshots (spec §22): freeze the complete
+    // resolved design so later template/product edits never affect the order.
+    try {
+      await createOrderDesignSnapshots(order);
+    } catch (snapshotError) {
+      console.error("Could not create order design snapshots:", snapshotError);
     }
   }
 
@@ -299,6 +314,79 @@ function validateOrderRequest(order: any) {
   return errors;
 }
 
+// Trusted server pricing (spec §31): recalculate every line item's price from
+// the product row + selected options. The client's submitted price is only an
+// estimate and is never persisted when the product can be resolved.
+async function applyTrustedPricing(order: any) {
+  const items = Array.isArray(order.items) ? order.items : [];
+  if (!items.length) return order;
+
+  let products: any[] = [];
+  try {
+    products = await getProducts();
+  } catch (error) {
+    console.error("Trusted pricing: could not load products; keeping submitted prices.", error);
+    return order;
+  }
+
+  const repricedItems = items.map((item: any) => {
+    const product =
+      products.find((p: any) => p.id === item.productId) ||
+      products.find((p: any) => p.slug === item.productSlug);
+    if (!product) return item;
+    const pricing = calculateCustomizationPrice(product, item.selectedOptions || {}, item.quantity);
+    return {
+      ...item,
+      price: pricing.unitPrice,
+      finalPrice: pricing.subtotal,
+      pricingBreakdown: pricing,
+    };
+  });
+
+  const subtotal = repricedItems.reduce((sum: number, item: any) => sum + item.price * item.quantity, 0);
+  return {
+    ...order,
+    items: repricedItems,
+    subtotal: Number(subtotal.toFixed(2)),
+    total: Number((subtotal + Number(order.deliveryCharge || 0)).toFixed(2)),
+  };
+}
+
+async function validateOrderCustomizations(order: any): Promise<Record<string, string>> {
+  const customizedItems = (order.items || []).filter((item: any) => item.customizationId);
+  if (!customizedItems.length) return {};
+  const supabase = createServiceRoleClient();
+  for (const item of customizedItems) {
+    const { data: row, error } = await supabase
+      .from("product_customizations")
+      .select("*")
+      .eq("id", item.customizationId)
+      .maybeSingle();
+    if (error || !row) return { customization: "A personalized design could not be found. Reopen it from your cart and save again." };
+    if (row.user_id && (!order.customerId || String(row.user_id) !== String(order.customerId))) {
+      return { customization: "A personalized design does not belong to this account." };
+    }
+    const customization = customizationFromRow(row);
+    const trusted = await getTrustedTemplateForCustomization(customization);
+    if (!trusted) return { customization: "A personalized design uses a template version that is no longer available." };
+    const { document } = templateToDocument(trusted.template);
+    const resolved = resolveCustomerDocument(document, customization.values || {}, customization.renderData?.editorState || null);
+    const preflight = runPreflight(resolved, { measure: createServerMeasure(), blockOnLowResolution: true });
+    if (preflight.blocking) {
+      const first = preflight.issues.find((issue) => issue.severity === "error");
+      return { customization: first?.message || "A personalized design has a problem that must be fixed before checkout." };
+    }
+    await supabase.from("customizer_preflight_results").insert({
+      customization_id: customization.id,
+      context: "checkout",
+      ok: preflight.ok,
+      blocking: preflight.blocking,
+      issues: preflight.issues,
+    });
+  }
+  return {};
+}
+
 export async function createOrderRequest(input) {
   const product = input.productSlug ? await getProductBySlug(input.productSlug) : null;
 
@@ -320,8 +408,13 @@ export async function createOrderRequest(input) {
 
   if (Object.keys(errors).length) return { ok: false, errors };
 
-  await insertSupabaseOrder(order);
-  return { ok: true, order };
+  const customizationErrors = await validateOrderCustomizations(order);
+  if (Object.keys(customizationErrors).length) return { ok: false, errors: customizationErrors };
+
+  const pricedOrder = await applyTrustedPricing(order);
+
+  await insertSupabaseOrder(pricedOrder);
+  return { ok: true, order: pricedOrder };
 }
 
 export async function getOrderRequests(filters: any = {}) {

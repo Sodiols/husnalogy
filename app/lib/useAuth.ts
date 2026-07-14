@@ -106,17 +106,19 @@ export default function useAuth(initialUser: any = undefined) {
   // user into a completely different request's rendered HTML. On the
   // server we must always derive state fresh from this request's own
   // `initialUser` prop and never touch the shared singleton.
-  if (typeof window === "undefined") {
-    return initialUser
-      ? { user: initialUser, authLoading: false }
-      : { user: null, authLoading: false };
-  }
+  const isServer = typeof window === "undefined";
+  if (!isServer && initialUser !== undefined) seedAuthState(initialUser);
 
-  if (initialUser !== undefined) seedAuthState(initialUser);
-
-  const [state, setState] = useState(authState);
+  const [state, setState] = useState(() =>
+    isServer
+      ? initialUser
+        ? { user: initialUser, authLoading: false }
+        : { user: null, authLoading: false }
+      : authState,
+  );
 
   useEffect(() => {
+    if (isServer) return undefined;
     listeners.add(setState);
     initAuth();
     setState(authState);
@@ -128,7 +130,7 @@ export default function useAuth(initialUser: any = undefined) {
         // would force another auth bootstrap on the next page.
       }
     };
-  }, []);
+  }, [isServer]);
 
   return state;
 }

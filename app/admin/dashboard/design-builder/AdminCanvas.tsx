@@ -25,18 +25,25 @@ export default function AdminCanvas({
   pageId,
   values = {},
   selectedLayerId,
+  selectedLayerIds = [],
   onSelect,
   onLayerChange,
+  onLayersChange,
   onBeginChange,
   zoom = 1,
   showSafeArea,
   showBleed,
   snapEnabled = true,
+  activeTool = "select",
+  guides: savedGuides = [],
+  onGuideChange,
 }: any) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const [containerWidth, setContainerWidth] = useState(0);
   const dragRef = useRef<any>(null);
   const [guides, setGuides] = useState<Guide[]>([]);
+  const [selectedGuideId, setSelectedGuideId] = useState<string | null>(null);
+  const panRef = useRef<any>(null);
 
   const canvasW = template?.canvasWidthPx || 1500;
   const canvasH = template?.canvasHeightPx || 2100;
@@ -51,7 +58,8 @@ export default function AdminCanvas({
     return () => ro.disconnect();
   }, []);
 
-  const baseWidth = Math.min(Math.max((containerWidth || 520) - 64, 260), 640);
+  const maxCanvasWidth = containerWidth >= 1200 ? 900 : containerWidth >= 900 ? 760 : 640;
+  const baseWidth = Math.min(Math.max((containerWidth || 520) - 64, 260), maxCanvasWidth);
   const displayW = baseWidth * zoom;
   const displayH = displayW * (canvasH / canvasW);
   const scale = displayW / canvasW;
@@ -99,18 +107,37 @@ export default function AdminCanvas({
     return { x: Math.round(outX), y: Math.round(outY), guides: activeGuides };
   };
 
+  const selectionIds: string[] = selectedLayerIds.length
+    ? selectedLayerIds
+    : selectedLayerId
+      ? [selectedLayerId]
+      : [];
+
   const onLayerPointerDown = (e: React.PointerEvent, layer: any) => {
     e.stopPropagation();
-    onSelect(layer.id);
+    onSelect(layer.id, e.shiftKey);
     if (layer.locked || layer.adminEditable === false) return;
     (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
+
+    // Dragging a layer that is part of a multi-selection moves the whole
+    // selection together (spec §7).
+    const groupIds = selectionIds.includes(layer.id) && selectionIds.length > 1 && !e.shiftKey ? selectionIds : [layer.id];
+    const startPositions: Record<string, { x: number; y: number }> = {};
+    for (const id of groupIds) {
+      const target = layers.find((l: any) => l.id === id);
+      if (target && !target.locked && target.adminEditable !== false) {
+        startPositions[id] = { x: target.x, y: target.y };
+      }
+    }
+
     dragRef.current = {
-      mode: "move",
+      mode: Object.keys(startPositions).length > 1 ? "move-multi" : "move",
       layerId: layer.id,
       startClientX: e.clientX,
       startClientY: e.clientY,
       startX: layer.x,
       startY: layer.y,
+      startPositions,
     };
   };
 
@@ -146,6 +173,12 @@ export default function AdminCanvas({
   const onPointerMove = (e: React.PointerEvent) => {
     const drag = dragRef.current;
     if (!drag) return;
+    if (drag.mode === "guide") {
+      const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+      const position = drag.axis === "vertical" ? (e.clientX - rect.left) / scale : (e.clientY - rect.top) / scale;
+      onGuideChange?.(drag.guideId, { position: Math.round(Math.max(0, drag.axis === "vertical" ? Math.min(canvasW, position) : Math.min(canvasH, position))) });
+      return;
+    }
     if (!drag.began) {
       drag.began = true;
       onBeginChange?.();
@@ -170,6 +203,20 @@ export default function AdminCanvas({
 
     const dx = (e.clientX - drag.startClientX) / scale;
     const dy = (e.clientY - drag.startClientY) / scale;
+
+    if (drag.mode === "move-multi") {
+      // Snap the grabbed layer; the rest follow with the same delta.
+      const snapped = applySnap(drag.startX + dx, drag.startY + dy, drag.layerId);
+      setGuides(snapped.guides);
+      const effectiveDx = snapped.x - drag.startX;
+      const effectiveDy = snapped.y - drag.startY;
+      const patches: Record<string, { x: number; y: number }> = {};
+      for (const [id, start] of Object.entries(drag.startPositions as Record<string, { x: number; y: number }>)) {
+        patches[id] = { x: Math.round(start.x + effectiveDx), y: Math.round(start.y + effectiveDy) };
+      }
+      onLayersChange?.(patches);
+      return;
+    }
 
     if (drag.mode === "move") {
       const snapped = applySnap(drag.startX + dx, drag.startY + dy, drag.layerId);
@@ -208,8 +255,37 @@ export default function AdminCanvas({
     setGuides([]);
   };
 
+  const onGuidePointerDown = (event: React.PointerEvent, guide: any) => {
+    event.stopPropagation();
+    setSelectedGuideId(guide.id);
+    if (guide.locked) return;
+    onBeginChange?.();
+    (event.currentTarget as HTMLElement).setPointerCapture?.(event.pointerId);
+    dragRef.current = { mode: "guide", guideId: guide.id, axis: guide.axis };
+  };
+
+  const beginPan = (event: React.PointerEvent) => {
+    if (activeTool !== "pan" || !wrapRef.current) return;
+    const target = wrapRef.current;
+    panRef.current = { x: event.clientX, y: event.clientY, left: target.scrollLeft, top: target.scrollTop };
+    (event.currentTarget as HTMLElement).setPointerCapture?.(event.pointerId);
+  };
+
+  const movePan = (event: React.PointerEvent) => {
+    if (!panRef.current || !wrapRef.current) return;
+    wrapRef.current.scrollLeft = panRef.current.left - (event.clientX - panRef.current.x);
+    wrapRef.current.scrollTop = panRef.current.top - (event.clientY - panRef.current.y);
+  };
+
   return (
-    <div ref={wrapRef} className="flex h-full w-full items-start justify-center overflow-auto bg-[#F8F6F1] p-8">
+    <div
+      ref={wrapRef}
+      className={`flex h-full w-full items-start justify-center overflow-auto bg-transparent p-6 xl:p-8 2xl:p-12 ${activeTool === "pan" ? "cursor-grab active:cursor-grabbing" : ""}`}
+      onPointerDown={beginPan}
+      onPointerMove={movePan}
+      onPointerUp={() => { panRef.current = null; }}
+      onPointerLeave={() => { panRef.current = null; }}
+    >
       <div
         data-canvas-surface
         className="relative shrink-0 bg-white shadow-[0_10px_40px_rgba(48,56,57,0.12)]"
@@ -243,14 +319,41 @@ export default function AdminCanvas({
           ),
         )}
 
+        {/* Saved template guides. They are editor-only and never enter the SVG renderer. */}
+        {savedGuides.filter((guide: any) => !guide.hidden).map((guide: any) => {
+          const vertical = guide.axis === "vertical";
+          const selected = selectedGuideId === guide.id;
+          return (
+            <div key={guide.id}>
+              <button
+                type="button"
+                aria-label={`${vertical ? "Vertical" : "Horizontal"} guide at ${Math.round(guide.position)} pixels`}
+                onPointerDown={(event) => onGuidePointerDown(event, guide)}
+                className={`absolute z-30 cursor-col-resize border-0 bg-transparent p-0 focus-visible:outline-none ${vertical ? "inset-y-0 w-3 -translate-x-1/2" : "inset-x-0 h-3 -translate-y-1/2 cursor-row-resize"}`}
+                style={vertical ? { left: guide.position * scale } : { top: guide.position * scale }}
+              >
+                <span className={`absolute bg-[#D4AF37] ${vertical ? "inset-y-0 left-1/2 w-px" : "inset-x-0 top-1/2 h-px"}`} />
+              </button>
+              {selected && (
+                <div className="absolute z-40 flex items-center gap-1 rounded-lg border border-[#303839]/12 bg-white p-1 shadow-lg" style={vertical ? { left: guide.position * scale + 8, top: 8 } : { left: 8, top: guide.position * scale + 8 }}>
+                  <input aria-label="Guide position" type="number" value={Math.round(guide.position)} onChange={(event) => onGuideChange?.(guide.id, { position: Number(event.target.value) || 0 })} className="h-8 w-20 rounded-md border border-[#303839]/12 px-2 text-xs font-bold outline-none focus:border-[#D4AF37]" />
+                  <button type="button" onClick={() => onGuideChange?.(guide.id, { locked: !guide.locked })} className="h-8 rounded-md px-2 text-[10px] font-bold hover:bg-[#F8F6F1]">{guide.locked ? "Unlock" : "Lock"}</button>
+                  <button type="button" onClick={() => onGuideChange?.(guide.id, { deleted: true })} className="h-8 rounded-md px-2 text-[10px] font-bold text-red-700 hover:bg-red-50">Delete</button>
+                </div>
+              )}
+            </div>
+          );
+        })}
+
         {/* Interactive overlay */}
-        {layers.map((layer: any) => {
+        {activeTool !== "pan" && layers.map((layer: any) => {
           if (layer.hidden) return null;
           const boxLeft = (layer.x - layer.width / 2) * scale;
           const boxTop = (layer.y - layer.height / 2) * scale;
           const boxW = layer.width * scale;
           const boxH = layer.height * scale;
-          const selected = layer.id === selectedLayerId;
+          const inSelection = selectionIds.includes(layer.id);
+          const selected = layer.id === selectedLayerId; // primary: shows handles
 
           return (
             <div
@@ -265,7 +368,11 @@ export default function AdminCanvas({
                 height: boxH,
                 transform: layer.rotation ? `rotate(${layer.rotation}deg)` : undefined,
                 cursor: layer.locked ? "default" : "move",
-                outline: selected ? "2px solid #303839" : "1px dashed rgba(48,56,57,0.22)",
+                outline: selected
+                  ? "2px solid #303839"
+                  : inSelection
+                    ? "2px solid #D4AF37"
+                    : "1px dashed rgba(48,56,57,0.22)",
                 background: "transparent",
                 touchAction: "none",
               }}

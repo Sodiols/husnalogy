@@ -19,7 +19,6 @@ import {
   updateCartItem,
 } from "@/app/lib/customer-lists";
 import { getDefaultOptionCartValue } from "@/lib/products/options";
-import CustomizerPreview from "@/app/components/customizer/CustomizerPreview";
 import CustomizerWorkspace from "@/app/components/customizer/CustomizerWorkspace";
 import CustomizerPageThumbnails from "@/app/components/customizer/CustomizerPageThumbnails";
 import CustomizerZoomControls, { ZOOM_MAX, ZOOM_MIN } from "@/app/components/customizer/CustomizerZoomControls";
@@ -27,13 +26,20 @@ import CustomizerReviewStep from "@/app/components/customizer/CustomizerReviewSt
 import CustomerCustomizerHeader from "@/app/components/customizer/CustomerCustomizerHeader";
 import CustomerToolRail, { getCustomerTools, type CustomerTool } from "@/app/components/customizer/CustomerToolRail";
 import CustomerContextToolbar from "@/app/components/customizer/CustomerContextToolbar";
+import CustomerImageToolbar from "@/app/components/customizer/CustomerImageToolbar";
+import CustomerGridToolbar from "@/app/components/customizer/CustomerGridToolbar";
+import CustomerMockupPreview from "@/app/components/customizer/CustomerMockupPreview";
 import CustomerEditPanel, { mapCustomerFields } from "@/app/components/customizer/CustomerEditPanel";
 import CustomerAddTextPanel from "@/app/components/customizer/CustomerAddTextPanel";
 import CustomerUploadsPanel from "@/app/components/customizer/CustomerUploadsPanel";
+import CustomerElementsPanel, { type LibraryElement } from "@/app/components/customizer/CustomerElementsPanel";
+import CustomerElementToolbar from "@/app/components/customizer/CustomerElementToolbar";
 import CustomerOptionsPanel, { CUSTOMIZER_FORMAT_OPTIONS } from "@/app/components/customizer/CustomerOptionsPanel";
 import CustomizerProtectionOverlay from "@/app/components/customizer/CustomizerProtectionOverlay";
 import useCustomizerProtection from "@/app/components/customizer/useCustomizerProtection";
 import useCustomizerHistory from "@/app/components/customizer/useCustomizerHistory";
+import { isCustomizerFeatureEnabled } from "@/lib/customizer/v2/feature-flags";
+import { stripEphemeralAssetUrls } from "@/lib/customizer/v2/asset-references";
 import {
   buildInitialValues,
   buildRenderData,
@@ -46,7 +52,6 @@ import {
   normalizeUserLayer,
   pageAllowsCustomerText,
   resolveLayerText,
-  svgToPngDataUrl,
   validateCustomerValues,
   type EditorState,
 } from "@/app/components/customizer/customizer-utils";
@@ -125,6 +130,7 @@ export default function PersonalizeClient({ product, template }: { product: any;
   const router = useRouter();
   const searchParams = useSearchParams();
   const { user, authLoading } = useAuth();
+  const gridsEnabled = isCustomizerFeatureEnabled(template, "customizer_v2_grids");
 
   const enabledPages = useMemo(() => getEnabledPages(template), [template]);
   const requireApproval = template?.settings?.requireApprovalCheckbox !== false;
@@ -158,6 +164,7 @@ export default function PersonalizeClient({ product, template }: { product: any;
   const [saveStatus, setSaveStatus] = useState<"idle" | "unsaved" | "saving" | "saved" | "error">("idle");
 
   const [selectedLayerId, setSelectedLayerId] = useState<string | null>(null);
+  const [selectedGridSlotId, setSelectedGridSlotId] = useState<string | null>(null);
   const [activeTool, setActiveTool] = useState<CustomerTool>("edit");
   const [previewMode, setPreviewMode] = useState(false);
   const [mobilePanelOpen, setMobilePanelOpen] = useState(false);
@@ -188,7 +195,6 @@ export default function PersonalizeClient({ product, template }: { product: any;
 
   const history = useCustomizerHistory<HistorySnapshot>(50);
 
-  const pageSvgRefs = useRef<Record<string, SVGSVGElement | null>>({});
   const valuesRef = useRef(values);
   const editorStateRef = useRef(editorState);
   const optionsRef = useRef(options);
@@ -223,9 +229,10 @@ export default function PersonalizeClient({ product, template }: { product: any;
     () => enabledPages.some((page: any) => pageAllowsCustomerText(template, page.id)),
     [template, enabledPages],
   );
+  const allowElements = Boolean(template?.settings?.allowCustomerElements);
   const tools = useMemo(
-    () => getCustomerTools({ allowAddText: anyPageAllowsText, hasUploads: hasUploadFields }),
-    [anyPageAllowsText, hasUploadFields],
+    () => getCustomerTools({ allowAddText: anyPageAllowsText, hasUploads: hasUploadFields, allowElements }),
+    [anyPageAllowsText, hasUploadFields, allowElements],
   );
 
   const { covered } = useCustomizerProtection(protectionEnabled);
@@ -288,6 +295,8 @@ export default function PersonalizeClient({ product, template }: { product: any;
   const onActivePageChange = (pageId: string) => {
     setActivePage(pageId);
     setSelectedLayerId(null);
+    setCropLayerId(null);
+    cropBackupRef.current = null;
   };
 
   const patchEditorState = (patch: (current: EditorState) => EditorState) => {
@@ -295,7 +304,12 @@ export default function PersonalizeClient({ product, template }: { product: any;
     setEditorState((current) => patch(current));
   };
 
-  const updateLayerOverride = (layerId: string, kind: "textStyle" | "transform", updates: any, group?: string) => {
+  const updateLayerOverride = (
+    layerId: string,
+    kind: "textStyle" | "transform" | "imageTransform",
+    updates: any,
+    group?: string,
+  ) => {
     recordHistory(group);
     patchEditorState((current) => {
       const existing = current.layerOverrides[layerId] || {};
@@ -303,7 +317,7 @@ export default function PersonalizeClient({ product, template }: { product: any;
         ...current,
         layerOverrides: {
           ...current.layerOverrides,
-          [layerId]: { ...existing, [kind]: { ...(existing[kind] || {}), ...updates } },
+          [layerId]: { ...existing, [kind]: { ...((existing as any)[kind] || {}), ...updates } },
         },
       };
     });
@@ -354,6 +368,49 @@ export default function PersonalizeClient({ product, template }: { product: any;
     setActiveTool("addText");
   };
 
+  const addElementLayer = (element: LibraryElement) => {
+    if (!allowElements || !element?.url) return;
+    const canvasW = template?.canvasWidthPx || 1500;
+    const canvasH = template?.canvasHeightPx || 2100;
+    // Size the element to about a quarter of the canvas width, keeping its
+    // aspect ratio when known.
+    const width = Math.round(canvasW * 0.25);
+    const ratio = element.width > 0 && element.height > 0 ? element.height / element.width : 1;
+    const layer = normalizeUserLayer({
+      type: "element",
+      page: activePage,
+      assetId: element.id,
+      src: element.url,
+      tintColor: element.tintable ? element.defaultColor || "" : "",
+      x: Math.round(canvasW / 2),
+      y: Math.round(canvasH / 2),
+      width,
+      height: Math.max(24, Math.round(width * ratio)),
+    });
+    if (!layer) return;
+    recordHistory();
+    patchEditorState((current) => ({ ...current, userLayers: [...current.userLayers, layer] }));
+    setSelectedLayerId(layer.id);
+  };
+
+  const updateElementLayer = (layerId: string, patch: any, group?: string) => {
+    recordHistory(group);
+    patchEditorState((current) => ({
+      ...current,
+      userLayers: current.userLayers.map((layer) => (layer.id === layerId ? { ...layer, ...patch } : layer)),
+    }));
+  };
+
+  const duplicateElementLayer = (layerId: string) => {
+    const source = editorStateRef.current.userLayers.find((layer) => layer.id === layerId);
+    if (!source) return;
+    const copy = normalizeUserLayer({ ...source, id: "", x: (source.x || 0) + 40, y: (source.y || 0) + 40 });
+    if (!copy) return;
+    recordHistory();
+    patchEditorState((current) => ({ ...current, userLayers: [...current.userLayers, copy] }));
+    setSelectedLayerId(copy.id);
+  };
+
   const deleteUserLayer = (layerId: string) => {
     recordHistory();
     patchEditorState((current) => ({
@@ -401,11 +458,271 @@ export default function PersonalizeClient({ product, template }: { product: any;
     [selectedLayer, selectedIsUser],
   );
 
+  /* ----- photo crop mode (spec §11) ----- */
+  const [cropLayerId, setCropLayerId] = useState<string | null>(null);
+  const [cropGridSlotId, setCropGridSlotId] = useState<string | null>(null);
+  const cropBackupRef = useRef<any>(null);
+
+  const onImageTransformChange = (layerId: string, patch: any, phase: "start" | "move") => {
+    const layer = effectiveLayers.find((item: any) => item.id === layerId);
+    if (!layer || layer.type !== "image" || layer.isUserLayer) return;
+    const permissions = getLayerPermissions(layer);
+    const cropAllowed = permissions.cropImage || permissions.zoomImage || permissions.repositionImage;
+    if (phase === "start") {
+      recordHistory(`crop-${layerId}`);
+      return;
+    }
+    const allowed: any = {};
+    if (patch.zoom !== undefined && (permissions.zoomImage || cropAllowed)) allowed.zoom = patch.zoom;
+    if ((patch.offsetX !== undefined || patch.offsetY !== undefined) && (permissions.repositionImage || cropAllowed)) {
+      if (patch.offsetX !== undefined) allowed.offsetX = patch.offsetX;
+      if (patch.offsetY !== undefined) allowed.offsetY = patch.offsetY;
+    }
+    if (patch.rotation !== undefined && cropAllowed) allowed.rotation = patch.rotation;
+    if ((patch.flipX !== undefined || patch.flipY !== undefined) && (permissions.flipImage || cropAllowed)) {
+      if (patch.flipX !== undefined) allowed.flipX = patch.flipX;
+      if (patch.flipY !== undefined) allowed.flipY = patch.flipY;
+    }
+    if (!Object.keys(allowed).length) return;
+    markDirty();
+    setEditorState((current) => {
+      const existing = current.layerOverrides[layerId] || {};
+      return {
+        ...current,
+        layerOverrides: {
+          ...current.layerOverrides,
+          [layerId]: { ...existing, imageTransform: { ...((existing as any).imageTransform || {}), ...allowed } },
+        },
+      };
+    });
+  };
+
+  const enterCropMode = (layerId: string) => {
+    const layer = effectiveLayers.find((item: any) => item.id === layerId);
+    if (!layer || layer.type !== "image" || layer.isUserLayer) return;
+    const permissions = getLayerPermissions(layer);
+    if (!(permissions.cropImage || permissions.zoomImage || permissions.repositionImage)) return;
+    cropBackupRef.current = {
+      layerId,
+      imageTransform: { ...(editorStateRef.current.layerOverrides[layerId]?.imageTransform || {}) },
+    };
+    recordHistory();
+    setSelectedLayerId(layerId);
+    setCropLayerId(layerId);
+  };
+
+  const confirmCrop = () => {
+    cropBackupRef.current = null;
+    setCropLayerId(null);
+  };
+
+  const cancelCrop = () => {
+    const backup = cropBackupRef.current;
+    if (backup?.layerId) {
+      setEditorState((current) => {
+        const existing = current.layerOverrides[backup.layerId] || {};
+        return {
+          ...current,
+          layerOverrides: {
+            ...current.layerOverrides,
+            [backup.layerId]: { ...existing, imageTransform: backup.imageTransform },
+          },
+        };
+      });
+    }
+    cropBackupRef.current = null;
+    setCropLayerId(null);
+  };
+
+  const onGridSlotTransformChange = (layerId: string, slotId: string, patch: any, phase: "start" | "move") => {
+    if (!gridsEnabled) return;
+    const layer = effectiveLayers.find((item: any) => item.id === layerId);
+    const slot = layer?.type === "grid" ? (layer.slots || []).find((item: any) => item.id === slotId) : null;
+    if (!layer || !slot || !layer.customerEditable) return;
+    const permissions = { ...getLayerPermissions(layer), ...(slot.permissions || {}) };
+    if (phase === "start") {
+      recordHistory(`grid-crop-${layerId}-${slotId}`);
+      return;
+    }
+    const cropAllowed = permissions.cropImage || permissions.zoomImage || permissions.repositionImage;
+    if (!cropAllowed) return;
+    markDirty();
+    setEditorState((current) => {
+      const existing = current.layerOverrides[layerId] || {};
+      const currentSlot = existing.gridSlots?.[slotId] || {};
+      return {
+        ...current,
+        layerOverrides: {
+          ...current.layerOverrides,
+          [layerId]: {
+            ...existing,
+            gridSlots: {
+              ...(existing.gridSlots || {}),
+              [slotId]: { ...currentSlot, transform: { ...(currentSlot.transform || slot.transform || {}), ...patch } },
+            },
+          },
+        },
+      };
+    });
+  };
+
+  const applyGridSlotAsset = (layerId: string, slotId: string, uploaded: any) => {
+    if (!gridsEnabled || !uploaded) return;
+    const layer = effectiveLayers.find((item: any) => item.id === layerId);
+    const slot = layer?.type === "grid" ? (layer.slots || []).find((item: any) => item.id === slotId) : null;
+    if (!layer || !slot || !({ ...getLayerPermissions(layer), ...(slot.permissions || {}) }).replaceImage) return;
+    recordHistory(`grid-replace-${layerId}-${slotId}`);
+    markDirty();
+    setEditorState((current) => {
+      const existing = current.layerOverrides[layerId] || {};
+      return {
+        ...current,
+        layerOverrides: {
+          ...current.layerOverrides,
+          [layerId]: {
+            ...existing,
+            gridSlots: {
+              ...(existing.gridSlots || {}),
+              [slotId]: {
+                assetId: uploaded.id || uploaded.assetId || uploaded.path || "",
+                ownerId: uploaded.ownerId || uploaded.assetReference?.ownerId || "",
+                src: uploaded.signedUrl || uploaded.url || "",
+                bucket: uploaded.bucket || "customer-uploads",
+                path: uploaded.path || "",
+                originalPath: uploaded.originalPath || uploaded.assetReference?.storagePath || "",
+                assetReference: uploaded.assetReference,
+                metadata: { width: Number(uploaded.width) || 0, height: Number(uploaded.height) || 0, originalPath: uploaded.originalPath || "" },
+                transform: { zoom: 1, offsetX: 0, offsetY: 0, rotation: 0, flipX: false, flipY: false, fitMode: "cover" },
+              },
+            },
+          },
+        },
+      };
+    });
+  };
+
+  const replaceGridSlot = async (layerId: string, slotId: string, file: File) => {
+    const uploaded = await onUploadPhoto(file);
+    applyGridSlotAsset(layerId, slotId, uploaded);
+  };
+
+  const clearGridSlot = (layerId: string, slotId: string) => {
+    if (!gridsEnabled) return;
+    recordHistory(`grid-clear-${layerId}-${slotId}`);
+    markDirty();
+    setEditorState((current) => {
+      const existing = current.layerOverrides[layerId] || {};
+      return {
+        ...current,
+        layerOverrides: {
+          ...current.layerOverrides,
+          [layerId]: {
+            ...existing,
+            gridSlots: {
+              ...(existing.gridSlots || {}),
+              [slotId]: { assetId: "", src: "", bucket: "", path: "", metadata: {}, transform: { zoom: 1, offsetX: 0, offsetY: 0, rotation: 0, flipX: false, flipY: false, fitMode: "cover" } },
+            },
+          },
+        },
+      };
+    });
+  };
+
+  const moveGridSlotPhoto = (layerId: string, slotId: string, direction: number) => {
+    if (!gridsEnabled) return;
+    const layer = effectiveLayers.find((item: any) => item.id === layerId);
+    const slots = layer?.type === "grid" ? layer.slots || [] : [];
+    const index = slots.findIndex((item: any) => item.id === slotId);
+    if (index < 0 || slots.length < 2) return;
+    const targetIndex = (index + direction + slots.length) % slots.length;
+    const source = slots[index];
+    const target = slots[targetIndex];
+    const targetPermissions = { ...getLayerPermissions(layer), ...(target.permissions || {}) };
+    if (!targetPermissions.replaceImage) return;
+    const photoPatch = (slot: any) => ({
+      assetId: slot.assetId || "", ownerId: slot.ownerId || slot.assetReference?.ownerId || "", src: slot.src || "", bucket: slot.bucket || "", path: slot.path || "",
+      originalPath: slot.originalPath || slot.assetReference?.storagePath || "", assetReference: slot.assetReference,
+      metadata: slot.metadata || {}, transform: slot.transform || { zoom: 1, offsetX: 0, offsetY: 0, rotation: 0, flipX: false, flipY: false, fitMode: "cover" },
+    });
+    recordHistory(`grid-move-${layerId}-${slotId}`);
+    markDirty();
+    setEditorState((current) => {
+      const existing = current.layerOverrides[layerId] || {};
+      return { ...current, layerOverrides: { ...current.layerOverrides, [layerId]: { ...existing, gridSlots: { ...(existing.gridSlots || {}), [source.id]: photoPatch(target), [target.id]: photoPatch(source) } } } };
+    });
+    setSelectedGridSlotId(target.id);
+  };
+
+  const enterGridCropMode = (layerId: string, slotId: string) => {
+    if (!gridsEnabled) return;
+    const currentSlot = editorStateRef.current.layerOverrides[layerId]?.gridSlots?.[slotId];
+    cropBackupRef.current = { type: "grid", layerId, slotId, value: currentSlot ? structuredClone(currentSlot) : null };
+    recordHistory();
+    setSelectedLayerId(layerId);
+    setSelectedGridSlotId(slotId);
+    setCropLayerId(null);
+    setCropGridSlotId(slotId);
+  };
+
+  const confirmGridCrop = () => {
+    cropBackupRef.current = null;
+    setCropGridSlotId(null);
+  };
+
+  const cancelGridCrop = () => {
+    const backup = cropBackupRef.current;
+    if (backup?.type === "grid") {
+      setEditorState((current) => {
+        const existing = current.layerOverrides[backup.layerId] || {};
+        const slots = { ...(existing.gridSlots || {}) };
+        if (backup.value) slots[backup.slotId] = backup.value;
+        else delete slots[backup.slotId];
+        return { ...current, layerOverrides: { ...current.layerOverrides, [backup.layerId]: { ...existing, gridSlots: slots } } };
+      });
+    }
+    cropBackupRef.current = null;
+    setCropGridSlotId(null);
+  };
+
+  const showImageToolbar =
+    !previewMode &&
+    step === "design" &&
+    activeTool !== "options" &&
+    Boolean(selectedLayer) &&
+    !selectedIsUser &&
+    selectedLayer?.type === "image" &&
+    selectedLayer?.customerEditable &&
+    !selectedLayer?.hidden &&
+    ["replaceImage", "cropImage", "zoomImage", "repositionImage", "flipImage", "rotate"].some(
+      (permission) => (selectedPermissions as any)[permission],
+    );
+
+  const showGridToolbar =
+    gridsEnabled &&
+    !previewMode &&
+    step === "design" &&
+    activeTool !== "options" &&
+    Boolean(selectedLayer) &&
+    !selectedIsUser &&
+    selectedLayer?.type === "grid" &&
+    selectedLayer?.customerEditable &&
+    !selectedLayer?.hidden;
+
+  const showElementToolbar =
+    !previewMode &&
+    step === "design" &&
+    activeTool !== "options" &&
+    Boolean(selectedLayer) &&
+    selectedIsUser &&
+    selectedLayer?.type === "element";
+
   const showTextToolbar =
     !previewMode &&
     step === "design" &&
     activeTool !== "options" &&
     Boolean(selectedLayer) &&
+    !showImageToolbar &&
+    !showElementToolbar &&
     (selectedIsUser ||
       (selectedLayer?.type === "text" &&
         selectedLayer?.customerEditable &&
@@ -424,13 +741,20 @@ export default function PersonalizeClient({ product, template }: { product: any;
 
   const onSelectLayer = (layerId: string | null) => {
     setSelectedLayerId(layerId);
-    if (!layerId) return;
+    if (!layerId) {
+      setSelectedGridSlotId(null);
+      return;
+    }
     const layer = effectiveLayers.find((item: any) => item.id === layerId);
     if (!layer) return;
     if (layer.isUserLayer) {
-      setActiveTool("addText");
+      setActiveTool(layer.type === "element" ? "elements" : "addText");
       setMobilePanelOpen(true);
-    } else if (layer.type === "image") {
+    } else if (layer.type === "image" || layer.type === "frame") {
+      setActiveTool("uploads");
+      setMobilePanelOpen(true);
+    } else if (layer.type === "grid") {
+      setSelectedGridSlotId((current) => (layer.slots || []).some((slot: any) => slot.id === current) ? current : layer.slots?.[0]?.id || null);
       setActiveTool("uploads");
       setMobilePanelOpen(true);
     } else if (layer.type === "text") {
@@ -548,25 +872,6 @@ export default function PersonalizeClient({ product, template }: { product: any;
   };
 
   /* ----- persistence (same pipeline as before, plus editorState) ----- */
-  const buildPreviewImages = async () => {
-    const width = template?.canvasWidthPx || 1500;
-    const height = template?.canvasHeightPx || 2100;
-    const out: Record<string, string> = {};
-    for (const page of enabledPages) {
-      const svg = pageSvgRefs.current[page.id];
-      if (!svg) continue;
-      try {
-        const str = new XMLSerializer().serializeToString(svg);
-        const png = await svgToPngDataUrl(str, width, height);
-        if (png) out[page.id] = png;
-      } catch {
-        // A tainted canvas (cross-origin photo) just means no data-URL preview;
-        // the render data still captures everything to recreate the design.
-      }
-    }
-    return out;
-  };
-
   const collectUploadedFiles = (currentValues: Record<string, any>) => {
     const files: Record<string, any> = {};
     (template?.fields || []).forEach((field: any) => {
@@ -584,16 +889,18 @@ export default function PersonalizeClient({ product, template }: { product: any;
     const currentQuantity = quantityRef.current;
     const currentActivePage = activePageRef.current;
     const selectedOptions = { ...currentOptions, quantity: currentQuantity };
-    const uploadedFiles = collectUploadedFiles(currentValues);
-    const previewImages = await buildPreviewImages();
-    const renderData = {
-      ...buildRenderData(template, currentValues, selectedOptions, currentEditorState),
+    const ownerId = user?.id || user?.uid || "";
+    const permanentValues = stripEphemeralAssetUrls(currentValues, ownerId);
+    const permanentEditorState = stripEphemeralAssetUrls(currentEditorState, ownerId);
+    const uploadedFiles = stripEphemeralAssetUrls(collectUploadedFiles(currentValues), ownerId);
+    const previewImages = {};
+    const renderData = stripEphemeralAssetUrls({
+      ...buildRenderData(template, permanentValues, selectedOptions, permanentEditorState),
       activePage: currentActivePage,
-      previewImages,
       productTitle: product.title || "",
       productSlug: product.slug || "",
       productThumbnail: product.thumbnail || product.mockups?.[0] || product.images?.[0] || "",
-    };
+    }, ownerId);
 
     return {
       customizationId: customizationIdRef.current && !String(customizationIdRef.current).startsWith("local_")
@@ -604,7 +911,7 @@ export default function PersonalizeClient({ product, template }: { product: any;
       templateVersion: template?.version || 1,
       cartItemId: cartItemIdRef.current || "",
       status,
-      values: currentValues,
+      values: permanentValues,
       uploadedFiles,
       selectedOptions,
       previewImages,
@@ -807,8 +1114,20 @@ export default function PersonalizeClient({ product, template }: { product: any;
       }
       if (typing) return;
       if (event.key === "Escape") {
-        if (previewMode) setPreviewMode(false);
+        if (cropLayerId) cancelCrop();
+        else if (cropGridSlotId) cancelGridCrop();
+        else if (previewMode) setPreviewMode(false);
         else setSelectedLayerId(null);
+        return;
+      }
+      if (event.key === "Enter" && cropLayerId) {
+        event.preventDefault();
+        confirmCrop();
+        return;
+      }
+      if (event.key === "Enter" && cropGridSlotId) {
+        event.preventDefault();
+        confirmGridCrop();
         return;
       }
       if ((event.key === "Delete" || event.key === "Backspace") && selectedLayer?.isUserLayer) {
@@ -912,24 +1231,74 @@ export default function PersonalizeClient({ product, template }: { product: any;
     try {
       const saved = await saveCustomizationDraft("in_cart", { silent: true });
       const savedCustomization = saved.customization || {};
+
+      // Server preflight (spec §30): blocking print problems stop the add.
+      if (savedCustomization.id && !String(savedCustomization.id).startsWith("local_")) {
+        try {
+          const preflightRes = await fetch("/api/customizer/preflight", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ customizationId: savedCustomization.id, context: "cart" }),
+          });
+          const preflightData = await preflightRes.json().catch(() => ({}));
+          if (preflightRes.ok && preflightData.ok && preflightData.preflight?.blocking) {
+            const firstIssue = (preflightData.preflight.issues || []).find((issue: any) => issue.severity === "error");
+            setMessage(firstIssue?.message || "Please fix the highlighted problems before adding to cart.");
+            setAdding(false);
+            return;
+          }
+        } catch {
+          // Preflight service unavailable — the order snapshot re-runs it.
+        }
+      }
       const latestValues = valuesRef.current;
       const latestEditorState = editorStateRef.current;
       const latestOptions = optionsRef.current;
       const latestQuantity = quantityRef.current;
       const selectedOptions = { ...latestOptions, quantity: latestQuantity };
-      const uploadedFiles = collectUploadedFiles(latestValues);
-      const previewImages = savedCustomization.previewImages || (await buildPreviewImages());
-      const renderData = savedCustomization.renderData || {
+      const ownerId = user?.id || user?.uid || "";
+      const permanentValues = stripEphemeralAssetUrls(latestValues, ownerId);
+      const uploadedFiles = stripEphemeralAssetUrls(collectUploadedFiles(latestValues), ownerId);
+      const previewImages = {};
+      let mockupOutputRef: Record<string, any> | null = null;
+      if (savedCustomization.id && !String(savedCustomization.id).startsWith("local_")) {
+        try {
+          const mockupResponse = await fetch("/api/customizer/render", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ customizationId: savedCustomization.id, jobType: "mockup" }),
+          });
+          const mockupPayload = await mockupResponse.json().catch(() => ({}));
+          const firstMockup = mockupResponse.ok ? (mockupPayload.outputs || []).find((output: any) => String(output.pageId || "").startsWith("mockup:")) : null;
+          if (firstMockup) {
+            mockupOutputRef = {
+              id: firstMockup.id,
+              pageId: firstMockup.pageId,
+              bucket: firstMockup.bucket,
+              path: firstMockup.path,
+              format: firstMockup.format,
+              mimeType: firstMockup.mimeType,
+              checksum: firstMockup.checksum,
+              inputHash: firstMockup.inputHash,
+            };
+          }
+        } catch {
+          // The cart keeps a product-image fallback; reopening it retries the
+          // cached server mockup without persisting a temporary signed URL.
+        }
+      }
+      const renderData = stripEphemeralAssetUrls(savedCustomization.renderData || {
         ...buildRenderData(template, latestValues, selectedOptions, latestEditorState),
         activePage: activePageRef.current,
         previewImages,
-      };
+        mockupOutputRef,
+      }, ownerId);
       const savedCustomizationId = savedCustomization.id || customizationIdRef.current || "";
       const cartPayload = {
         selectedOptions,
-        customizationValues: latestValues,
+        customizationValues: permanentValues,
         uploadedFiles,
-        previewData: latestValues,
+        previewData: permanentValues,
         previewImages,
         renderData,
         customizationId: savedCustomizationId,
@@ -945,7 +1314,7 @@ export default function PersonalizeClient({ product, template }: { product: any;
           ...cartPayload,
           quantity: latestQuantity,
           price: unitPrice,
-          image: previewImages.front || product.thumbnail || product.mockups?.[0] || product.images?.[0],
+          image: product.thumbnail || product.mockups?.[0] || product.images?.[0],
         });
         cartItem = { id: existingCartItemId };
       } else {
@@ -993,7 +1362,6 @@ export default function PersonalizeClient({ product, template }: { product: any;
   };
 
   /* ----- render ----- */
-  const width = template?.canvasWidthPx || 1500;
   const saveStatusLabel =
     savingDraft || saveStatus === "saving"
       ? "Saving"
@@ -1017,7 +1385,9 @@ export default function PersonalizeClient({ product, template }: { product: any;
         ? "Add text"
         : activeTool === "uploads"
           ? "Your photos"
-          : "Product options";
+          : activeTool === "elements"
+            ? "Elements"
+            : "Product options";
 
   const panelContent =
     activeTool === "edit" ? (
@@ -1053,7 +1423,12 @@ export default function PersonalizeClient({ product, template }: { product: any;
         selectedLayerId={selectedLayerId}
         onSelectLayer={setSelectedLayerId}
         onFocusPage={onActivePageChange}
+        selectedGridLayer={gridsEnabled && selectedLayer?.type === "grid" ? selectedLayer : null}
+        selectedGridSlotId={selectedGridSlotId}
+        onPickGridAsset={(asset: any) => gridsEnabled && selectedLayer?.type === "grid" && selectedGridSlotId && applyGridSlotAsset(selectedLayer.id, selectedGridSlotId, { ...asset, assetId: asset.id, signedUrl: asset.signedUrl || asset.url })}
       />
+    ) : activeTool === "elements" ? (
+      <CustomerElementsPanel onInsertElement={addElementLayer} />
     ) : (
       <CustomerOptionsPanel
         product={product}
@@ -1092,25 +1467,6 @@ export default function PersonalizeClient({ product, template }: { product: any;
         onPrimary={goNext}
       />
 
-      {/* Hidden full-size previews for PNG export — never watermarked. */}
-      <div aria-hidden style={{ position: "absolute", width: 1, height: 1, overflow: "hidden", opacity: 0, pointerEvents: "none" }}>
-        {enabledPages.map((page: any) => (
-          <div key={page.id} style={{ width }}>
-            <CustomizerPreview
-              template={template}
-              values={values}
-              editorState={editorState}
-              page={page.id}
-              showSafeArea={false}
-              showBleed={false}
-              svgRef={(el: SVGSVGElement | null) => {
-                pageSvgRefs.current[page.id] = el;
-              }}
-            />
-          </div>
-        ))}
-      </div>
-
       <div className="flex min-h-0 flex-1">
         {step === "review" ? (
           <div className="min-h-0 flex-1 overflow-y-auto" data-customizer-protected>
@@ -1130,6 +1486,7 @@ export default function PersonalizeClient({ product, template }: { product: any;
               uploading={uploading}
               saveStatus={saveStatus}
               currency={product.currency}
+              customizationId={customizationId}
             />
           </div>
         ) : (
@@ -1175,6 +1532,74 @@ export default function PersonalizeClient({ product, template }: { product: any;
                 </div>
               )}
 
+              {showElementToolbar && selectedLayer && (
+                <div className="pointer-events-none absolute inset-x-2 top-2 z-40 flex justify-center">
+                  <CustomerElementToolbar
+                    layer={selectedLayer}
+                    onPatch={(patch, group) => updateElementLayer(selectedLayer.id, patch, group)}
+                    onDuplicate={() => duplicateElementLayer(selectedLayer.id)}
+                    onDelete={() => deleteUserLayer(selectedLayer.id)}
+                  />
+                </div>
+              )}
+
+              {showImageToolbar && selectedLayer && (
+                <div className="pointer-events-none absolute inset-x-2 top-2 z-40 flex justify-center">
+                  <CustomerImageToolbar
+                    layer={selectedLayer}
+                    permissions={selectedPermissions as Record<string, boolean>}
+                    cropping={cropLayerId === selectedLayer.id}
+                    hasImage={Boolean(
+                      (selectedLayer.fieldId && values[selectedLayer.fieldId]) || selectedLayer.src,
+                    )}
+                    onReplace={() => {
+                      setActiveTool("uploads");
+                      setMobilePanelOpen(true);
+                    }}
+                    onEnterCrop={() => enterCropMode(selectedLayer.id)}
+                    onConfirmCrop={confirmCrop}
+                    onCancelCrop={cancelCrop}
+                    onImagePatch={(patch, group) => {
+                      onImageTransformChange(selectedLayer.id, {}, "start");
+                      onImageTransformChange(selectedLayer.id, patch, "move");
+                    }}
+                    onLayerRotate={
+                      (selectedPermissions as any).rotate
+                        ? (rotation) => {
+                            onLayerTransform(selectedLayer.id, {}, "start");
+                            onLayerTransform(selectedLayer.id, { rotation }, "move");
+                          }
+                        : undefined
+                    }
+                  />
+                </div>
+              )}
+
+              {showGridToolbar && selectedLayer && selectedGridSlotId && (
+                <div className="pointer-events-none absolute inset-x-2 top-2 z-40 flex justify-center">
+                  <CustomerGridToolbar
+                    layer={selectedLayer}
+                    selectedSlotId={selectedGridSlotId}
+                    onSelectSlot={setSelectedGridSlotId}
+                    onUpload={(file: File) => replaceGridSlot(selectedLayer.id, selectedGridSlotId, file)}
+                    onClear={() => clearGridSlot(selectedLayer.id, selectedGridSlotId)}
+                    onReset={() => {
+                      onGridSlotTransformChange(selectedLayer.id, selectedGridSlotId, {}, "start");
+                      onGridSlotTransformChange(selectedLayer.id, selectedGridSlotId, { zoom: 1, offsetX: 0, offsetY: 0, rotation: 0, flipX: false, flipY: false, fitMode: "cover" }, "move");
+                    }}
+                    onMove={(direction: number) => moveGridSlotPhoto(selectedLayer.id, selectedGridSlotId, direction)}
+                    cropping={cropGridSlotId === selectedGridSlotId}
+                    onEnterCrop={() => enterGridCropMode(selectedLayer.id, selectedGridSlotId)}
+                    onConfirmCrop={confirmGridCrop}
+                    onCancelCrop={cancelGridCrop}
+                    onTransform={(patch: any) => {
+                      onGridSlotTransformChange(selectedLayer.id, selectedGridSlotId, {}, "start");
+                      onGridSlotTransformChange(selectedLayer.id, selectedGridSlotId, patch, "move");
+                    }}
+                  />
+                </div>
+              )}
+
               <div className="min-h-0 flex-1">
                 <CustomizerWorkspace
                   template={template}
@@ -1185,7 +1610,14 @@ export default function PersonalizeClient({ product, template }: { product: any;
                   selectedLayerId={previewMode ? null : selectedLayerId}
                   onSelectLayer={previewMode ? undefined : onSelectLayer}
                   onLayerTransform={onLayerTransform}
+                  cropLayerId={previewMode ? null : cropLayerId}
+                  onImageTransform={onImageTransformChange}
+                  cropGridSlotId={previewMode || !gridsEnabled ? null : cropGridSlotId}
+                  onGridSlotTransform={gridsEnabled ? onGridSlotTransformChange : undefined}
+                  onGridSlotSelect={gridsEnabled ? (_layerId, slotId) => setSelectedGridSlotId(slotId) : undefined}
+                  onGridSlotAssetDrop={gridsEnabled ? (layerId, slotId, asset) => applyGridSlotAsset(layerId, slotId, { ...asset, assetId: asset.id, signedUrl: asset.signedUrl || asset.url }) : undefined}
                   onTextLayerActivate={() => onEditTextAction()}
+                  onImageLayerActivate={(layerId) => enterCropMode(layerId)}
                   previewMode={previewMode}
                   showWatermark={protectionEnabled}
                   showSafeArea={showSafeArea}
@@ -1206,11 +1638,20 @@ export default function PersonalizeClient({ product, template }: { product: any;
                     target="_blank"
                     rel="noreferrer"
                     aria-label="Help"
-                    className="grid h-9 w-9 place-items-center rounded-full border border-[#303839]/12 bg-white text-sm font-bold text-[#303839]/70 shadow-[0_4px_18px_rgba(48,56,57,0.10)] hover:bg-[#F4ECEC]"
+                    className="grid h-9 w-9 place-items-center rounded-full border border-[#303839]/12 bg-white text-sm font-bold text-[#303839]/70 shadow-[0_4px_18px_rgba(48,56,57,0.10)] hover:bg-[#F8F6F1]"
                   >
                     ?
                   </a>
                 </div>
+              </div>
+              <div className="pointer-events-none absolute bottom-3 right-3 z-30 hidden xl:block">
+                <CustomerMockupPreview
+                  template={template}
+                  values={values}
+                  editorState={editorState}
+                  customizationId={customizationId}
+                  saveStatus={saveStatus}
+                />
               </div>
 
               {protectionEnabled && (
@@ -1272,7 +1713,7 @@ export default function PersonalizeClient({ product, template }: { product: any;
                   type="button"
                   aria-label="Close panel"
                   onClick={() => setMobilePanelOpen(false)}
-                  className="grid h-8 w-8 place-items-center rounded-full text-[#303839]/60 hover:bg-[#F4ECEC]"
+                  className="grid h-8 w-8 place-items-center rounded-full text-[#303839]/60 hover:bg-[#F8F6F1]"
                 >
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden>
                     <path d="M18 6 6 18M6 6l12 12" />

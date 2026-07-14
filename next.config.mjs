@@ -39,6 +39,9 @@ const nextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
   compress: true,
+  // Native/server-only packages the bundler must not try to chunk. resvg and
+  // sharp ship platform-specific .node bindings used by the render pipeline.
+  serverExternalPackages: ["@resvg/resvg-js", "sharp"],
   images: {
     formats: ["image/avif", "image/webp"],
     remotePatterns: [

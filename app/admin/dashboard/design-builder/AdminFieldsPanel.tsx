@@ -24,10 +24,10 @@ export default function AdminFieldsPanel({
     (layer: any) => layer.customerEditable && (!layer.fieldId || !fields.some((f: any) => f.id === layer.fieldId)),
   );
 
-  const input = "h-9 w-full rounded-md border border-[#303839]/15 bg-white px-2 text-sm outline-none focus:border-[#303839]/45";
+  const input = "h-10 w-full rounded-lg border border-[#303839]/15 bg-white px-3 text-sm text-[#303839] shadow-sm outline-none transition focus:border-[#D4AF37] focus:ring-2 focus:ring-[#D4AF37]/20";
 
   return (
-    <div className="mx-auto grid w-full max-w-3xl gap-4 p-6">
+    <div className="mx-auto grid w-full max-w-7xl gap-5 p-4 md:p-6 2xl:p-8">
       <div>
         <h3 className="font-display text-2xl text-[#303839]">Customer fields</h3>
         <p className="mt-1 text-sm text-[#303839]/55">
@@ -54,14 +54,14 @@ export default function AdminFieldsPanel({
         </div>
       )}
 
-      <div className="grid gap-3">
+      <div className="grid gap-4 xl:grid-cols-2">
         {connected
           .filter((entry: any) => entry.layer)
           .map(({ field, layer }: any) => (
             <div key={field.id} className="rounded-lg border border-[#303839]/12 bg-white p-4">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="flex items-center gap-2">
-                  <span className="rounded bg-[#F4ECEC] px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wide text-[#303839]/70">
+                  <span className="rounded bg-[#F8F6F1] px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wide text-[#303839]/70">
                     {field.type}
                   </span>
                   <span className="text-[11px] font-bold text-[#303839]/45">
@@ -71,7 +71,7 @@ export default function AdminFieldsPanel({
                 <button
                   type="button"
                   onClick={() => onSelectLayer(layer.id)}
-                  className="rounded-full border border-[#303839]/15 px-3 py-1 text-xs font-bold text-[#303839] hover:bg-[#F4ECEC]"
+                  className="rounded-full border border-[#303839]/15 px-3 py-1 text-xs font-bold text-[#303839] hover:bg-[#F8F6F1]"
                 >
                   Open layer →
                 </button>

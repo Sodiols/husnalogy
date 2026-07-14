@@ -4,8 +4,17 @@
 // admin setup preview and the customer customizer so what admin sees is what
 // the customer gets. Customers cannot move design elements here — this only
 // renders; interaction lives in the parent panels.
+//
+// V2: mask paths (incl. true arch shapes) come from the shared generator in
+// lib/customizer/v2/masks, and text uses the shared layout service in
+// lib/customizer/v2/text-layout — the same code the server renderer runs, so
+// editor, thumbnails, review, previews, and print files all break lines and
+// clip photos identically.
 
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { getLegacyMaskPath, getMaskPath } from "@/lib/customizer/v2/masks";
+import { getGridSlotRect, normalizeGridSlot } from "@/lib/customizer/v2/grids";
+import { layoutText, createCanvasMeasure, fallbackMeasure, type MeasureFn } from "@/lib/customizer/v2/text-layout";
 import {
   getEffectiveLayersForPage,
   getFieldById,
@@ -30,39 +39,89 @@ type Props = {
   editorState?: EditorState | null;
 };
 
-function TextLayer({ layer, field, values }: any) {
+let sharedMeasure: MeasureFn | null = null;
+function getMeasure(): MeasureFn {
+  if (!sharedMeasure) {
+    sharedMeasure = typeof document === "undefined" ? fallbackMeasure : createCanvasMeasure();
+  }
+  return sharedMeasure;
+}
+
+// Re-render once webfonts finish loading so measured line wrapping is exact
+// (spec §9: wait for document.fonts.ready before measuring).
+function useFontsReady(): boolean {
+  const [ready, setReady] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    if (typeof document !== "undefined" && (document as any).fonts?.ready) {
+      (document as any).fonts.ready.then(() => {
+        if (!cancelled) setReady(true);
+      });
+    } else {
+      setReady(true);
+    }
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  return ready;
+}
+
+function TextLayer({ layer, field, values, fontsReady }: any) {
   const style = layer.textStyle || {};
   const text = resolveLayerText(layer, field, values);
-  const align = style.textAlign || "center";
-  const anchor = align === "left" ? "start" : align === "right" ? "end" : "middle";
-
-  const anchorX = align === "left" ? layer.x - layer.width / 2 : align === "right" ? layer.x + layer.width / 2 : layer.x;
-
   const fontSize = Number(style.fontSize) || 48;
-  const lineHeight = (Number(style.lineHeight) || 1.15) * fontSize;
-  const lines = style.multiline ? String(text).split("\n") : [String(text)];
-  const startY = layer.y - ((lines.length - 1) * lineHeight) / 2;
 
-  const isPlaceholder = field && (values[field.id] === undefined || values[field.id] === "" || values[field.id] === null) && !field.defaultValue;
+  const isPlaceholder =
+    field && (values[field.id] === undefined || values[field.id] === "" || values[field.id] === null) && !field.defaultValue;
+
+  const layout = useMemo(
+    () =>
+      layoutText(
+        {
+          text: String(text),
+          width: layer.width || 0,
+          height: layer.height || 0,
+          fontFamily: style.fontFamily || "Cormorant Garamond",
+          fontSize,
+          minFontSize: Number(style.minFontSize) || undefined,
+          fontWeight: style.fontWeight || "400",
+          fontStyle: style.fontStyle === "italic" ? "italic" : "normal",
+          letterSpacing: Number(style.letterSpacing) || 0,
+          lineHeight: Number(style.lineHeight) || 1.15,
+          textAlign: style.textAlign || "center",
+          verticalAlign: style.verticalAlign || "middle",
+          multiline: Boolean(style.multiline),
+          fitMode: style.fitMode === "shrink" ? "shrink" : "fixed",
+          maxLines: Number(layer.maxLines) > 0 ? Number(layer.maxLines) : undefined,
+        },
+        getMeasure(),
+      ),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [text, layer.width, layer.height, JSON.stringify(style), fontsReady],
+  );
+
+  const boxLeft = layer.x - layer.width / 2;
+  const boxTop = layer.y - layer.height / 2;
 
   return (
     <text
-      x={anchorX}
-      textAnchor={anchor}
       transform={layer.rotation ? `rotate(${layer.rotation} ${layer.x} ${layer.y})` : undefined}
       style={{
         fontFamily: `"${style.fontFamily || "Cormorant Garamond"}", serif`,
-        fontSize: `${fontSize}px`,
+        fontSize: `${layout.fontSize}px`,
         fontWeight: style.fontWeight || "400",
         fontStyle: style.fontStyle === "italic" ? "italic" : "normal",
         letterSpacing: `${Number(style.letterSpacing) || 0}px`,
+        textDecoration: style.underline ? "underline" : undefined,
         fill: isPlaceholder ? "#9aa0a1" : style.color || "#303839",
       }}
+      textAnchor={layout.anchor}
       dominantBaseline="middle"
     >
-      {lines.map((line: string, index: number) => (
-        <tspan key={index} x={anchorX} y={startY + index * lineHeight}>
-          {line || " "}
+      {layout.lines.map((line, index) => (
+        <tspan key={index} x={boxLeft + line.x} y={boxTop + line.y}>
+          {line.text || " "}
         </tspan>
       ))}
     </text>
@@ -79,13 +138,64 @@ function ShapeLayer({ layer }: any) {
     strokeWidth: layer.strokeWidth || 0,
   };
 
-  if (layer.shape === "ellipse") {
+  if (layer.shape === "ellipse" || layer.shape === "circle" || layer.shape === "oval") {
     return <ellipse cx={layer.x} cy={layer.y} rx={layer.width / 2} ry={layer.height / 2} transform={transform} {...common} />;
   }
   if (layer.shape === "line") {
-    return <line x1={x} y1={layer.y} x2={x + layer.width} y2={layer.y} transform={transform} stroke={layer.stroke || layer.fill || "#303839"} strokeWidth={layer.strokeWidth || 3} />;
+    return <line x1={x} y1={layer.y} x2={x + layer.width} y2={layer.y} transform={transform} stroke={layer.stroke || layer.fill || "#303839"} strokeWidth={layer.strokeWidth || 3} strokeDasharray={layer.lineStyle === "dashed" ? "12 8" : layer.lineStyle === "dotted" ? "2 8" : undefined} strokeLinecap={layer.lineCap || "round"} />;
   }
+  if (layer.shape === "triangle") {
+    return <path d={`M ${layer.x} ${y} L ${x + layer.width} ${y + layer.height} L ${x} ${y + layer.height} Z`} transform={transform} {...common} />;
+  }
+  if (layer.shape === "polygon" && Array.isArray(layer.points) && layer.points.length >= 3) {
+    const points = layer.points.map((point: any) => `${x + Number(point.x || 0) * layer.width},${y + Number(point.y || 0) * layer.height}`).join(" ");
+    return <polygon points={points} transform={transform} {...common} />;
+  }
+  if (layer.shape === "arch") {
+    const path = getMaskPath({ kind: "arch" }, { x, y, width: layer.width, height: layer.height });
+    return <path d={path.d} transform={transform} {...common} />;
+  }
+  if (layer.shape === "path" && layer.path) return <path d={layer.path} transform={transform} {...common} />;
   return <rect x={x} y={y} width={layer.width} height={layer.height} rx={layer.borderRadius || 0} ry={layer.borderRadius || 0} transform={transform} {...common} />;
+}
+
+// Decorative element (customer-inserted or template). Monochrome tinting uses
+// an feFlood/feComposite filter, which recolours every opaque pixel while
+// keeping transparency — supported by browsers and the server renderer alike.
+function ElementLayer({ layer, idPrefix }: any) {
+  const frameX = layer.x - layer.width / 2;
+  const frameY = layer.y - layer.height / 2;
+  const filterId = `${idPrefix}-tint-${layer.id}`;
+  const flipX = layer.flipX ? -1 : 1;
+  const flipY = layer.flipY ? -1 : 1;
+  const flip = layer.flipX || layer.flipY ? `translate(${layer.x} ${layer.y}) scale(${flipX} ${flipY}) translate(${-layer.x} ${-layer.y})` : "";
+  const rotate = layer.rotation ? `rotate(${layer.rotation} ${layer.x} ${layer.y})` : "";
+  const transform = [rotate, flip].filter(Boolean).join(" ") || undefined;
+
+  if (!layer.src) return null;
+
+  return (
+    <g transform={transform}>
+      {layer.tintColor ? (
+        <defs>
+          <filter id={filterId} x="0%" y="0%" width="100%" height="100%">
+            <feFlood floodColor={layer.tintColor} result="tint" />
+            <feComposite in="tint" in2="SourceAlpha" operator="in" />
+          </filter>
+        </defs>
+      ) : null}
+      <image
+        href={layer.src}
+        x={frameX}
+        y={frameY}
+        width={layer.width}
+        height={layer.height}
+        preserveAspectRatio="xMidYMid meet"
+        filter={layer.tintColor ? `url(#${filterId})` : undefined}
+        crossOrigin="anonymous"
+      />
+    </g>
+  );
 }
 
 function ImageLayer({ layer, field, values, idPrefix }: any) {
@@ -94,24 +204,18 @@ function ImageLayer({ layer, field, values, idPrefix }: any) {
   const frameY = layer.y - layer.height / 2;
   const clipId = `${idPrefix}-clip-${layer.id}`;
 
-  const rx =
-    layer.maskShape === "rounded"
-      ? Math.min(layer.width, layer.height) * 0.08
-      : layer.maskShape === "circle"
-        ? Math.min(layer.width, layer.height) / 2
-        : 0;
+  // Shared mask generator — identical clipping in editor, exports, and print.
+  const mask = layer.mask && typeof layer.mask === "object"
+    ? getMaskPath(layer.mask, { x: frameX, y: frameY, width: layer.width, height: layer.height })
+    : getLegacyMaskPath(layer.maskShape, { x: frameX, y: frameY, width: layer.width, height: layer.height });
 
   if (!image?.url) {
     return (
       <g transform={layer.rotation ? `rotate(${layer.rotation} ${layer.x} ${layer.y})` : undefined}>
-        <rect
-          x={frameX}
-          y={frameY}
-          width={layer.width}
-          height={layer.height}
-          rx={rx}
-          ry={rx}
-          fill="#F4ECEC"
+        <path
+          d={mask.d}
+          transform={mask.transform}
+          fill={layer.backgroundColor || "#F8F6F1"}
           stroke="#c9bcbc"
           strokeWidth={3}
           strokeDasharray="14 12"
@@ -135,29 +239,92 @@ function ImageLayer({ layer, field, values, idPrefix }: any) {
   const drawX = frameX - (drawW - layer.width) / 2 + (Number(image.offsetX) || 0);
   const drawY = frameY - (drawH - layer.height) / 2 + (Number(image.offsetY) || 0);
 
-  const isCircle = layer.maskShape === "circle";
+  // In-frame transforms: rotation and flips apply around the frame centre,
+  // inside the clip, so the mask stays put while the photo moves (spec §11).
+  const innerTransforms: string[] = [];
+  if (image.imageRotation) innerTransforms.push(`rotate(${image.imageRotation} ${layer.x} ${layer.y})`);
+  if (image.flipX || image.flipY) {
+    innerTransforms.push(
+      `translate(${layer.x} ${layer.y}) scale(${image.flipX ? -1 : 1} ${image.flipY ? -1 : 1}) translate(${-layer.x} ${-layer.y})`,
+    );
+  }
 
   return (
     <g transform={layer.rotation ? `rotate(${layer.rotation} ${layer.x} ${layer.y})` : undefined}>
       <defs>
         <clipPath id={clipId}>
-          {isCircle ? (
-            <circle cx={layer.x} cy={layer.y} r={Math.min(layer.width, layer.height) / 2} />
-          ) : (
-            <rect x={frameX} y={frameY} width={layer.width} height={layer.height} rx={rx} ry={rx} />
-          )}
+          <path d={mask.d} transform={mask.transform} />
         </clipPath>
       </defs>
-      <image
-        href={image.url}
-        x={drawX}
-        y={drawY}
-        width={drawW}
-        height={drawH}
-        clipPath={`url(#${clipId})`}
-        preserveAspectRatio={layer.fitMode === "contain" ? "xMidYMid meet" : "xMidYMid slice"}
-        crossOrigin="anonymous"
-      />
+      {layer.backgroundColor ? <path d={mask.d} transform={mask.transform} fill={layer.backgroundColor} /> : null}
+      <g clipPath={`url(#${clipId})`}>
+        <g transform={innerTransforms.join(" ") || undefined}>
+          <image
+            href={image.url}
+            x={drawX}
+            y={drawY}
+            width={drawW}
+            height={drawH}
+            preserveAspectRatio={layer.fitMode === "contain" ? "xMidYMid meet" : "xMidYMid slice"}
+            crossOrigin="anonymous"
+          />
+        </g>
+      </g>
+      {Number(layer.borderWidth) > 0 ? (
+        <path
+          d={mask.d}
+          transform={mask.transform}
+          fill="none"
+          stroke={layer.borderColor || "#303839"}
+          strokeWidth={Number(layer.borderWidth)}
+        />
+      ) : null}
+    </g>
+  );
+}
+
+function GridLayer({ layer, idPrefix }: any) {
+  const left = layer.x - layer.width / 2;
+  const top = layer.y - layer.height / 2;
+  return (
+    <g transform={layer.rotation ? `rotate(${layer.rotation} ${layer.x} ${layer.y})` : undefined}>
+      {layer.backgroundColor ? (
+        <rect x={left} y={top} width={layer.width} height={layer.height} rx={layer.cornerRadius || 0} fill={layer.backgroundColor} />
+      ) : null}
+      {(layer.slots || []).map((rawSlot: any, index: number) => {
+        const slot = normalizeGridSlot(rawSlot, index);
+        const rect = getGridSlotRect(layer, slot);
+        const slotLayer = {
+          id: `${layer.id}-${slot.id}`,
+          x: rect.centerX,
+          y: rect.centerY,
+          width: rect.width,
+          height: rect.height,
+          rotation: 0,
+          src: slot.src,
+          imageTransform: slot.transform,
+          mask: slot.mask || (layer.cornerRadius ? { kind: "rounded", radius: layer.cornerRadius } : { kind: "rectangle" }),
+          maskShape: slot.mask?.kind || (layer.cornerRadius ? "rounded" : "rectangle"),
+          fitMode: slot.transform.fitMode || "cover",
+          backgroundColor: layer.backgroundColor || "#F8F6F1",
+          borderColor: layer.borderColor,
+          borderWidth: layer.borderWidth,
+        };
+        return <ImageLayer key={slot.id} layer={slotLayer} field={null} values={{}} idPrefix={`${idPrefix}-${layer.id}-${index}`} />;
+      })}
+    </g>
+  );
+}
+
+function BackgroundLayer({ layer }: any) {
+  const x = layer.x - layer.width / 2;
+  const y = layer.y - layer.height / 2;
+  return (
+    <g transform={layer.rotation ? `rotate(${layer.rotation} ${layer.x} ${layer.y})` : undefined}>
+      <rect x={x} y={y} width={layer.width} height={layer.height} fill={layer.color || "#ffffff"} />
+      {layer.src ? (
+        <image href={layer.src} x={x} y={y} width={layer.width} height={layer.height} preserveAspectRatio={layer.fitMode === "contain" ? "xMidYMid meet" : "xMidYMid slice"} crossOrigin="anonymous" />
+      ) : null}
     </g>
   );
 }
@@ -175,6 +342,7 @@ export default function CustomizerPreview({
 }: Props) {
   const width = template?.canvasWidthPx || 1500;
   const height = template?.canvasHeightPx || 2100;
+  const fontsReady = useFontsReady();
   const activePage = useMemo(() => getPageById(template, page || template?.defaultPage), [template, page]);
   const layers = useMemo(
     () => getEffectiveLayersForPage(template, activePage?.id, editorState),
@@ -209,12 +377,21 @@ export default function CustomizerPreview({
         if (layer.hidden) return null;
         const field = layer.fieldId ? getFieldById(template, layer.fieldId) : null;
         const content =
-          layer.type === "image" ? (
+          layer.type === "image" || layer.type === "frame" ? (
             <ImageLayer layer={layer} field={field} values={values} idPrefix={idPrefix} />
           ) : layer.type === "shape" ? (
             <ShapeLayer layer={layer} />
+          ) : layer.type === "element" ? (
+            <ElementLayer layer={layer} idPrefix={idPrefix} />
+          ) : layer.type === "grid" ? (
+            <GridLayer layer={layer} idPrefix={idPrefix} />
+          ) : layer.type === "background" ? (
+            <BackgroundLayer layer={layer} />
+          ) : layer.type === "group" ? null
+          : layer.type === "text" ? (
+            <TextLayer layer={layer} field={field} values={values} fontsReady={fontsReady} />
           ) : (
-            <TextLayer layer={layer} field={field} values={values} />
+            null
           );
         return (
           <g key={layer.id} opacity={layer.opacity === undefined ? 1 : layer.opacity}>

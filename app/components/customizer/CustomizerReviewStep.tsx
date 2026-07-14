@@ -8,6 +8,7 @@
 import CustomizerPreview from "./CustomizerPreview";
 import { getEnabledPages, getImageUrl, isValueEmpty, type EditorState } from "./customizer-utils";
 import { formatCurrency } from "@/lib/currency";
+import CustomerMockupPreview from "./CustomerMockupPreview";
 
 const APPROVAL_TEXT = "I have checked all names, dates, spelling, photos, and event details.";
 
@@ -46,6 +47,7 @@ type Props = {
   uploading?: boolean;
   saveStatus?: string;
   currency?: string;
+  customizationId?: string;
 };
 
 export default function CustomizerReviewStep({
@@ -64,6 +66,7 @@ export default function CustomizerReviewStep({
   uploading = false,
   saveStatus = "",
   currency = "BDT",
+  customizationId = "",
 }: Props) {
   const pages = getEnabledPages(template);
   const fields = template?.fields || [];
@@ -78,6 +81,7 @@ export default function CustomizerReviewStep({
     <div className="mx-auto grid w-full max-w-5xl gap-8 p-4 sm:p-8 lg:grid-cols-2">
       {/* Left: all pages with the complete customer design */}
       <div className="grid content-start gap-5">
+        <CustomerMockupPreview template={template} values={values} editorState={editorState} customizationId={customizationId} saveStatus={saveStatus} />
         {pages.map((page: any) => (
           <div key={page.id}>
             <p className="mb-1.5 text-xs font-extrabold uppercase tracking-wide text-[#303839]/60">{page.label}</p>
@@ -175,7 +179,7 @@ export default function CustomizerReviewStep({
         </div>
 
         {requireApproval && (
-          <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-[#303839]/15 bg-[#F4ECEC] p-4 text-sm">
+          <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-[#303839]/15 bg-[#F8F6F1] p-4 text-sm">
             <input
               type="checkbox"
               checked={Boolean(approved)}

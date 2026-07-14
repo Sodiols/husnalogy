@@ -1,5 +1,7 @@
 "use client";
 
+import Link from "next/link";
+
 const COLUMNS = [
   {
     title: "Shop",
@@ -39,9 +41,9 @@ export default function Footer() {
         <div className="grid grid-cols-2 gap-x-8 gap-y-12 sm:grid-cols-3 lg:grid-cols-[1.6fr_1fr_1fr_1fr_1.3fr] lg:gap-x-10">
           {/* Brand */}
           <div className="col-span-2 sm:col-span-3 lg:col-span-1">
-            <a href="/" className="inline-block" aria-label="Husnalogy home">
+            <Link href="/" className="inline-block" aria-label="Husnalogy home">
               <img src="/Brand Kit/Logo-5.png" alt="Husnalogy" className="h-12 w-auto object-contain" />
-            </a>
+            </Link>
             <p className="mt-5 max-w-[280px] text-[13px] leading-[1.8] text-[#303839]/60">
               Timeless invitations, meaningful gifts and refined stationery crafted with intention for
               life&rsquo;s special moments.

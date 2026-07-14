@@ -1,8 +1,7 @@
 "use client";
 
-// Narrow left tool rail of the customer customizer (Section 4). Customers get
-// exactly four tools: Edit, Add Text, Uploads, Options. No Elements, Icons,
-// Backgrounds, Layers, or Effects — those do not exist on the customer side.
+// Narrow left tool rail of the customer customizer. Tools appear only when
+// the template enables them: Edit, Add Text, Uploads, Elements, Options.
 
 const RAIL_ICONS: Record<string, React.ReactNode> = {
   edit: (
@@ -31,16 +30,30 @@ const RAIL_ICONS: Record<string, React.ReactNode> = {
       <path d="M1 14h6M9 8h6M17 16h6" />
     </svg>
   ),
+  elements: (
+    <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M12 3l2.4 4.9 5.4.8-3.9 3.8.9 5.4-4.8-2.5-4.8 2.5.9-5.4L4.2 8.7l5.4-.8Z" />
+    </svg>
+  ),
 };
 
-export type CustomerTool = "edit" | "addText" | "uploads" | "options";
+export type CustomerTool = "edit" | "addText" | "uploads" | "elements" | "options";
 
 type ToolDef = { id: CustomerTool; label: string };
 
-export function getCustomerTools({ allowAddText, hasUploads }: { allowAddText: boolean; hasUploads: boolean }): ToolDef[] {
+export function getCustomerTools({
+  allowAddText,
+  hasUploads,
+  allowElements = false,
+}: {
+  allowAddText: boolean;
+  hasUploads: boolean;
+  allowElements?: boolean;
+}): ToolDef[] {
   const tools: ToolDef[] = [{ id: "edit", label: "Edit" }];
   if (allowAddText) tools.push({ id: "addText", label: "Add Text" });
   if (hasUploads) tools.push({ id: "uploads", label: "Uploads" });
+  if (allowElements) tools.push({ id: "elements", label: "Elements" });
   tools.push({ id: "options", label: "Options" });
   return tools;
 }
@@ -76,7 +89,7 @@ export default function CustomerToolRail({ tools, activeTool, onSelect, orientat
             onClick={() => onSelect(tool.id)}
             className={`flex flex-col items-center gap-1 rounded-lg px-1 py-2.5 text-[10px] font-bold transition ${
               active
-                ? "bg-[#F4ECEC] text-[#303839]"
+                ? "bg-[#F8F6F1] text-[#303839]"
                 : "text-[#303839]/55 hover:bg-[#F8F6F1] hover:text-[#303839]"
             } ${vertical ? "mx-1.5" : "flex-1"}`}
           >

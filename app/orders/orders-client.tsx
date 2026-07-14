@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import useAuth from "../lib/useAuth";
 import { subscribeToLocalOrders } from "../lib/customer-lists";
 import { formatCurrency, normalizeCurrency } from "@/lib/currency";
+import ServerCustomizationImage from "@/app/components/customizer/ServerCustomizationImage";
 
 function normalizeOrder(order: any = {}) {
   return {
@@ -147,7 +148,7 @@ export default function OrdersClient() {
                   <div className="mt-4 space-y-3">
                     {items.map((item) => (
                       <div key={item.id || item.productId || item.productSlug || item.slug} className="flex items-center gap-3">
-                        <img src={item.image || "/images/weddings.png"} alt={item.title || item.productTitle || "Product"} className="h-14 w-14 rounded-none object-cover" />
+                        <ServerCustomizationImage customizationId={item.customizationId} outputPageId={item.mockupOutputRef?.pageId} fallbackSrc={item.image || "/images/weddings.png"} alt={item.title || item.productTitle || "Product"} containerClassName="relative h-14 w-14 shrink-0 overflow-hidden bg-[#F8F6F1]" />
                         <div className="flex-1">
                           <p className="text-sm font-bold">{item.title || item.productTitle}</p>
                           <p className="text-xs text-[#303839]/60">Qty {item.quantity || 1}</p>

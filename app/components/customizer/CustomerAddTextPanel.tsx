@@ -45,7 +45,7 @@ export default function CustomerAddTextPanel({
       <button
         type="button"
         onClick={onAddText}
-        className="flex items-center justify-center gap-2 rounded-lg border border-[#303839]/15 bg-white px-4 py-3 text-sm font-bold text-[#303839] transition hover:bg-[#F4ECEC]"
+        className="flex items-center justify-center gap-2 rounded-lg border border-[#303839]/15 bg-white px-4 py-3 text-sm font-bold text-[#303839] transition hover:bg-[#F8F6F1]"
       >
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden>
           <path d="M12 5v14M5 12h14" />

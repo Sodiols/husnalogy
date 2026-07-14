@@ -279,9 +279,9 @@ export default function AdminCustomerPreview({ template, product }: { template: 
           />
         </div>
       ) : (
-        <div className="flex min-h-0 flex-1">
+        <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden">
           <CustomerToolRail tools={tools} activeTool={activeTool} onSelect={setActiveTool} />
-          <aside className="flex w-[320px] shrink-0 flex-col overflow-y-auto border-r border-[#303839]/10 bg-white">
+          <aside className="flex w-[clamp(280px,20vw,390px)] shrink-0 flex-col overflow-y-auto border-r border-[#303839]/10 bg-white shadow-[8px_0_24px_rgba(48,56,57,0.035)]">
             {panelContent}
           </aside>
           <main className="relative min-h-0 min-w-0 flex-1">
@@ -325,7 +325,7 @@ export default function AdminCustomerPreview({ template, product }: { template: 
               </div>
             </div>
           </main>
-          <aside className="hidden w-[120px] shrink-0 overflow-y-auto border-l border-[#303839]/10 bg-white p-3 xl:block">
+          <aside className="hidden w-[clamp(120px,9vw,180px)] shrink-0 overflow-y-auto border-l border-[#303839]/10 bg-white p-3 xl:block">
             <CustomizerPageThumbnails
               template={template}
               values={values}

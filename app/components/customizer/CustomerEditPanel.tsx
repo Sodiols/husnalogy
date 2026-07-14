@@ -211,7 +211,7 @@ export default function CustomerEditPanel({
                             onSelectLayer?.(layer.id);
                             onOpenUploads?.();
                           }}
-                          className="rounded-full border border-[#303839]/15 px-3 py-1 text-xs font-bold text-[#303839] hover:bg-[#F4ECEC]"
+                          className="rounded-full border border-[#303839]/15 px-3 py-1 text-xs font-bold text-[#303839] hover:bg-[#F8F6F1]"
                         >
                           {hasPhoto ? "Edit photo" : "Upload photo"}
                         </button>

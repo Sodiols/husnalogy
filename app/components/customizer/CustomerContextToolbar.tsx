@@ -66,7 +66,7 @@ export default function CustomerContextToolbar({
           <button
             type="button"
             onClick={onEditText}
-            className="whitespace-nowrap rounded-full bg-[#F4ECEC] px-3 py-1.5 text-xs font-bold text-[#303839] hover:bg-[#ECE9E1]"
+            className="whitespace-nowrap rounded-full bg-[#F8F6F1] px-3 py-1.5 text-xs font-bold text-[#303839] hover:bg-[#ECE9E1]"
           >
             Edit Text
           </button>
@@ -95,7 +95,7 @@ export default function CustomerContextToolbar({
             type="button"
             aria-label="Decrease font size"
             onClick={() => onStyleChange({ fontSize: Math.max(10, fontSize - 4) }, "fontSize")}
-            className="grid h-8 w-7 place-items-center text-sm text-[#303839] hover:bg-[#F4ECEC]"
+            className="grid h-8 w-7 place-items-center text-sm text-[#303839] hover:bg-[#F8F6F1]"
           >
             −
           </button>
@@ -106,7 +106,7 @@ export default function CustomerContextToolbar({
             type="button"
             aria-label="Increase font size"
             onClick={() => onStyleChange({ fontSize: Math.min(400, fontSize + 4) }, "fontSize")}
-            className="grid h-8 w-7 place-items-center text-sm text-[#303839] hover:bg-[#F4ECEC]"
+            className="grid h-8 w-7 place-items-center text-sm text-[#303839] hover:bg-[#F8F6F1]"
           >
             +
           </button>
@@ -114,7 +114,7 @@ export default function CustomerContextToolbar({
       )}
 
       {canColor && (
-        <label className="relative grid h-8 w-8 shrink-0 cursor-pointer place-items-center rounded-md border border-[#303839]/12 hover:bg-[#F4ECEC]" title="Text colour">
+        <label className="relative grid h-8 w-8 shrink-0 cursor-pointer place-items-center rounded-md border border-[#303839]/12 hover:bg-[#F8F6F1]" title="Text colour">
           <span className="sr-only">Text colour</span>
           <span className="h-4 w-4 rounded-sm border border-[#303839]/20" style={{ background: style.color || "#303839" }} aria-hidden />
           <input
@@ -135,7 +135,7 @@ export default function CustomerContextToolbar({
             aria-pressed={bold}
             onClick={() => onStyleChange({ fontWeight: bold ? "400" : "700" })}
             className={`grid h-8 w-8 shrink-0 place-items-center rounded-md text-sm font-black transition ${
-              bold ? "bg-[#303839] text-white" : "text-[#303839] hover:bg-[#F4ECEC]"
+              bold ? "bg-[#303839] text-white" : "text-[#303839] hover:bg-[#F8F6F1]"
             }`}
           >
             B
@@ -146,7 +146,7 @@ export default function CustomerContextToolbar({
             aria-pressed={italic}
             onClick={() => onStyleChange({ fontStyle: italic ? "normal" : "italic" })}
             className={`grid h-8 w-8 shrink-0 place-items-center rounded-md text-sm italic transition ${
-              italic ? "bg-[#303839] text-white" : "text-[#303839] hover:bg-[#F4ECEC]"
+              italic ? "bg-[#303839] text-white" : "text-[#303839] hover:bg-[#F8F6F1]"
             }`}
           >
             I
@@ -162,7 +162,7 @@ export default function CustomerContextToolbar({
             const next = ALIGNS[(ALIGNS.indexOf(align as any) + 1) % ALIGNS.length];
             onStyleChange({ textAlign: next });
           }}
-          className="grid h-8 w-8 shrink-0 place-items-center rounded-md text-[#303839] hover:bg-[#F4ECEC]"
+          className="grid h-8 w-8 shrink-0 place-items-center rounded-md text-[#303839] hover:bg-[#F8F6F1]"
         >
           <AlignIcon align={align} />
         </button>
@@ -191,7 +191,7 @@ export default function CustomerContextToolbar({
           type="button"
           aria-label="Duplicate text"
           onClick={onDuplicate}
-          className="grid h-8 w-8 shrink-0 place-items-center rounded-md text-[#303839] hover:bg-[#F4ECEC]"
+          className="grid h-8 w-8 shrink-0 place-items-center rounded-md text-[#303839] hover:bg-[#F8F6F1]"
         >
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" aria-hidden>
             <rect x="9" y="9" width="12" height="12" rx="2" />

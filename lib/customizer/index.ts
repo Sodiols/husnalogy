@@ -9,6 +9,8 @@ import {
   normalizeBoolean,
   normalizeStringArray,
 } from "@/lib/validation";
+import { listFonts } from "@/lib/customizer/v2/fonts";
+import { normalizeGridSlot } from "@/lib/customizer/v2/grids";
 
 export const CUSTOMIZER_ENGINES = new Set(["svg"]);
 export const CUSTOMIZER_ORIENTATIONS = new Set(["portrait", "landscape", "square"]);
@@ -44,9 +46,29 @@ const LEGACY_FIELD_TYPE_MAP: Record<string, string> = {
   file: "file",
 };
 
-export const CUSTOMIZER_LAYER_TYPES = new Set(["text", "image", "shape"]);
-export const CUSTOMIZER_SHAPE_KINDS = new Set(["rectangle", "ellipse", "line"]);
-export const CUSTOMIZER_MASK_SHAPES = new Set(["rectangle", "rounded", "circle", "arch"]);
+export const CUSTOMIZER_LAYER_TYPES = new Set(["text", "image", "frame", "grid", "group", "shape", "element", "background"]);
+export const CUSTOMIZER_SHAPE_KINDS = new Set([
+  "rectangle",
+  "rounded-rectangle",
+  "ellipse",
+  "circle",
+  "oval",
+  "triangle",
+  "polygon",
+  "arch",
+  "path",
+  "line",
+]);
+export const CUSTOMIZER_MASK_SHAPES = new Set([
+  "rectangle",
+  "rounded",
+  "circle",
+  "oval",
+  "arch", // legacy value — top arch
+  "arch-top",
+  "arch-bottom",
+  "arch-full",
+]);
 export const CUSTOMIZER_FIT_MODES = new Set(["cover", "contain"]);
 export const CUSTOMIZER_TEXT_ALIGN = new Set(["left", "center", "right"]);
 
@@ -74,18 +96,14 @@ export const DEFAULT_CUSTOMIZER_SETTINGS = {
 // Fonts approved for template text and customer text. These render consistently
 // in the live editor, exports, and previews (site-loaded webfonts + safe system
 // fonts). Keep this list in sync with fonts actually available in the app.
-export const CUSTOMIZER_APPROVED_FONTS = [
-  { value: "Cormorant Garamond", label: "Cormorant Garamond", stack: `"Cormorant Garamond", serif` },
-  { value: "Inter", label: "Inter", stack: `"Inter", sans-serif` },
-  { value: "Georgia", label: "Georgia", stack: `Georgia, serif` },
-  { value: "Times New Roman", label: "Times New Roman", stack: `"Times New Roman", serif` },
-  { value: "Arial", label: "Arial", stack: `Arial, sans-serif` },
-  { value: "Courier New", label: "Courier New", stack: `"Courier New", monospace` },
-];
+export const CUSTOMIZER_APPROVED_FONTS = listFonts({ adminOnly: true }).map((font) => ({
+  value: font.cssFamily,
+  label: font.displayName,
+  stack: font.cssStack,
+}));
 
-// Per-layer customer permissions (Section 31). Missing keys fall back to
-// behaviour that matches the legacy flags (customerEditable / allowZoom /
-// allowReposition), so templates saved before this existed keep working.
+// Expanded permission keys remain in stored documents for server enforcement.
+// The admin-facing source of truth is now the single customerEditable flag.
 export const CUSTOMER_PERMISSION_KEYS = [
   "editContent",
   "editStyle",
@@ -94,46 +112,34 @@ export const CUSTOMER_PERMISSION_KEYS = [
   "changeColor",
   "changeAlignment",
   "changeLetterSpacing",
+  "changeLineHeight",
   "move",
   "resize",
   "rotate",
   "duplicate",
   "delete",
   "replaceImage",
+  "cropImage",
   "zoomImage",
   "repositionImage",
+  "flipImage",
+  "changeOpacity",
+  "changeLayerOrder",
 ] as const;
 
-export function defaultCustomerPermissions(layer: any = {}): Record<string, boolean> {
-  const editable = Boolean(layer.customerEditable);
-  const isImage = layer.type === "image";
-  return {
-    editContent: editable && !isImage,
-    editStyle: false,
-    changeFont: false,
-    changeFontSize: false,
-    changeColor: false,
-    changeAlignment: false,
-    changeLetterSpacing: false,
-    move: false,
-    resize: false,
-    rotate: false,
-    duplicate: false,
-    delete: false,
-    replaceImage: editable && isImage,
-    zoomImage: editable && isImage && layer.allowZoom !== false,
-    repositionImage: editable && isImage && layer.allowReposition !== false,
-  };
+// The admin builder exposes one Customer editable checkbox. Keep the expanded
+// permission object for customer/server enforcement, but generate it as one
+// complete bundle so administrators never enable every action by hand.
+export function customerEditablePermissionBundle(editable: boolean): Record<string, boolean> {
+  return Object.fromEntries(CUSTOMER_PERMISSION_KEYS.map((key) => [key, editable]));
 }
 
-export function normalizeCustomerPermissions(input: any, layer: any = {}): Record<string, boolean> {
-  const defaults = defaultCustomerPermissions(layer);
-  if (!input || typeof input !== "object") return defaults;
-  const out: Record<string, boolean> = { ...defaults };
-  CUSTOMER_PERMISSION_KEYS.forEach((key) => {
-    if (input[key] !== undefined) out[key] = normalizeBoolean(input[key]);
-  });
-  return out;
+export function defaultCustomerPermissions(layer: any = {}): Record<string, boolean> {
+  return customerEditablePermissionBundle(Boolean(layer.customerEditable));
+}
+
+export function normalizeCustomerPermissions(_input: any, layer: any = {}): Record<string, boolean> {
+  return defaultCustomerPermissions(layer);
 }
 
 export const DEFAULT_TEXT_STYLE = {
@@ -205,16 +211,24 @@ export function normalizeCustomizerField(input: any = {}): any {
 
 function normalizeTextStyle(input: any = {}): any {
   const textAlign = cleanString(input.textAlign).toLowerCase();
+  const verticalAlign = cleanString(input.verticalAlign).toLowerCase();
   return {
     fontFamily: cleanString(input.fontFamily) || DEFAULT_TEXT_STYLE.fontFamily,
     fontSize: toPositiveInt(input.fontSize, DEFAULT_TEXT_STYLE.fontSize),
     fontWeight: cleanString(input.fontWeight) || DEFAULT_TEXT_STYLE.fontWeight,
+    fontStyle: cleanString(input.fontStyle) === "italic" ? "italic" : "normal",
+    underline: normalizeBoolean(input.underline),
     color: cleanString(input.color) || DEFAULT_TEXT_STYLE.color,
     letterSpacing: toNumber(input.letterSpacing, DEFAULT_TEXT_STYLE.letterSpacing),
     lineHeight: toNumber(input.lineHeight, DEFAULT_TEXT_STYLE.lineHeight) || DEFAULT_TEXT_STYLE.lineHeight,
     textAlign: CUSTOMIZER_TEXT_ALIGN.has(textAlign) ? textAlign : DEFAULT_TEXT_STYLE.textAlign,
+    verticalAlign: verticalAlign === "top" || verticalAlign === "bottom" ? verticalAlign : "middle",
     uppercase: normalizeBoolean(input.uppercase),
     multiline: normalizeBoolean(input.multiline),
+    // V2 text box behaviour (spec §9): "shrink" reduces the size down to
+    // minFontSize until the text fits its box.
+    fitMode: cleanString(input.fitMode) === "shrink" ? "shrink" : "fixed",
+    ...(input.minFontSize !== undefined ? { minFontSize: toPositiveInt(input.minFontSize, 8) } : {}),
   };
 }
 
@@ -248,6 +262,9 @@ export function normalizeCustomizerLayer(input: any = {}): any {
     locked: normalizeBoolean(input.locked),
     adminEditable: input.adminEditable === undefined ? true : normalizeBoolean(input.adminEditable),
     customerEditable: normalizeBoolean(input.customerEditable),
+    groupId: cleanString(input.groupId),
+    scale: Math.max(0.0001, toNumber(input.scale, 1)),
+    metadata: input.metadata && typeof input.metadata === "object" ? input.metadata : {},
   };
 
   // Normalized after the base so defaults can read customerEditable/type.
@@ -257,7 +274,7 @@ export function normalizeCustomizerLayer(input: any = {}): any {
   );
   (base as any).customerPermissions = customerPermissions;
 
-  if (type === "image") {
+  if (type === "image" || type === "frame") {
     const maskShape = cleanString(input.maskShape).toLowerCase();
     const fitMode = cleanString(input.fitMode).toLowerCase();
     return {
@@ -269,6 +286,56 @@ export function normalizeCustomizerLayer(input: any = {}): any {
       allowZoom: input.allowZoom === undefined ? true : normalizeBoolean(input.allowZoom),
       allowReposition: input.allowReposition === undefined ? true : normalizeBoolean(input.allowReposition),
       placeholderImage: cleanOptionalString(input.placeholderImage),
+      // Frame styling (spec §12).
+      borderColor: cleanOptionalString(input.borderColor),
+      borderWidth: Math.max(0, toNumber(input.borderWidth, 0)),
+      backgroundColor: cleanOptionalString(input.backgroundColor),
+      ...(type === "frame" ? { defaultAssetId: cleanOptionalString(input.defaultAssetId), assetId: cleanOptionalString(input.assetId) } : {}),
+    };
+  }
+
+  if (type === "grid") {
+    return {
+      ...base,
+      columns: Math.max(1, toInt(input.columns, 2)),
+      rows: Math.max(1, toInt(input.rows, 2)),
+      slots: (Array.isArray(input.slots) ? input.slots : []).map((slot: any, index: number) => normalizeGridSlot(slot, index)),
+      gap: Math.max(0, toNumber(input.gap, 12)),
+      padding: Math.max(0, toNumber(input.padding, 0)),
+      cornerRadius: Math.max(0, toNumber(input.cornerRadius, 0)),
+      borderColor: cleanOptionalString(input.borderColor),
+      borderWidth: Math.max(0, toNumber(input.borderWidth, 0)),
+      backgroundColor: cleanOptionalString(input.backgroundColor),
+    };
+  }
+
+  if (type === "group") {
+    return {
+      ...base,
+      childIds: (Array.isArray(input.childIds) ? input.childIds : []).map(cleanString).filter(Boolean),
+      allowCustomerUngroup: normalizeBoolean(input.allowCustomerUngroup),
+      childSelection: input.childSelection === "group" || input.childSelection === "none" ? input.childSelection : "children",
+    };
+  }
+
+  if (type === "background") {
+    return {
+      ...base,
+      color: cleanString(input.color) || "#ffffff",
+      assetId: cleanOptionalString(input.assetId),
+      src: cleanOptionalString(input.src),
+      fitMode: CUSTOMIZER_FIT_MODES.has(cleanString(input.fitMode)) ? cleanString(input.fitMode) : "cover",
+    };
+  }
+
+  if (type === "element") {
+    return {
+      ...base,
+      assetId: cleanOptionalString(input.assetId),
+      src: cleanOptionalString(input.src),
+      tintColor: cleanOptionalString(input.tintColor),
+      flipX: normalizeBoolean(input.flipX),
+      flipY: normalizeBoolean(input.flipY),
     };
   }
 
@@ -277,10 +344,18 @@ export function normalizeCustomizerLayer(input: any = {}): any {
     return {
       ...base,
       shape: CUSTOMIZER_SHAPE_KINDS.has(kind) ? kind : "rectangle",
-      fill: cleanString(input.fill) || "#F4ECEC",
+      fill: cleanString(input.fill) || "#F8F6F1",
       stroke: cleanOptionalString(input.stroke),
       strokeWidth: toNumber(input.strokeWidth, 0),
       borderRadius: toNumber(input.borderRadius, 0),
+      points: Array.isArray(input.points)
+        ? input.points
+            .map((point: any) => ({ x: toNumber(point?.x, 0), y: toNumber(point?.y, 0) }))
+            .filter((point: any) => Number.isFinite(point.x) && Number.isFinite(point.y))
+        : [],
+      path: clampString(input.path ?? input.d ?? "", 8000),
+      lineStyle: ["solid", "dashed", "dotted"].includes(cleanString(input.lineStyle)) ? cleanString(input.lineStyle) : "solid",
+      lineCap: ["butt", "round", "square"].includes(cleanString(input.lineCap)) ? cleanString(input.lineCap) : "round",
     };
   }
 
@@ -317,6 +392,28 @@ export function normalizeCustomizerPage(input: any = {}, index = 0): any {
 export function normalizeUserLayer(input: any = {}): any | null {
   if (!input || typeof input !== "object") return null;
   const id = cleanString(input.id) || createId("ulayer").replace(/[^a-z0-9_]+/gi, "_");
+
+  // Customer-inserted element from the Husnalogy elements library.
+  if (cleanString(input.type).toLowerCase() === "element") {
+    return {
+      id,
+      type: "element",
+      page: cleanString(input.page) || "front",
+      assetId: cleanString(input.assetId),
+      src: clampString(input.src ?? "", 4000),
+      tintColor: cleanOptionalString(input.tintColor),
+      x: toNumber(input.x, 0),
+      y: toNumber(input.y, 0),
+      width: toNumber(input.width, 300) || 300,
+      height: toNumber(input.height, 300) || 300,
+      rotation: toNumber(input.rotation, 0),
+      opacity: clampOpacity(input.opacity === undefined ? 1 : input.opacity),
+      flipX: normalizeBoolean(input.flipX),
+      flipY: normalizeBoolean(input.flipY),
+      zIndex: toInt(input.zIndex, 1000),
+    };
+  }
+
   const textAlign = cleanString(input.textStyle?.textAlign).toLowerCase();
   return {
     id,
@@ -371,7 +468,44 @@ function normalizeLayerOverride(input: any = {}): any | null {
     if (t.width !== undefined) transform.width = toNumber(t.width, 0);
     if (t.height !== undefined) transform.height = toNumber(t.height, 0);
     if (t.rotation !== undefined) transform.rotation = toNumber(t.rotation, 0);
+    if (t.opacity !== undefined) transform.opacity = clampOpacity(t.opacity);
     if (Object.keys(transform).length) out.transform = transform;
+  }
+  // V2 crop editor state for photo frames (zoom/pan/flip/rotate inside frame).
+  if (input.imageTransform && typeof input.imageTransform === "object") {
+    const t = input.imageTransform;
+    const imageTransform: any = {};
+    if (t.zoom !== undefined) imageTransform.zoom = Math.min(20, Math.max(0.05, toNumber(t.zoom, 1) || 1));
+    if (t.offsetX !== undefined) imageTransform.offsetX = toNumber(t.offsetX, 0);
+    if (t.offsetY !== undefined) imageTransform.offsetY = toNumber(t.offsetY, 0);
+    if (t.rotation !== undefined) imageTransform.rotation = toNumber(t.rotation, 0);
+    if (t.flipX !== undefined) imageTransform.flipX = normalizeBoolean(t.flipX);
+    if (t.flipY !== undefined) imageTransform.flipY = normalizeBoolean(t.flipY);
+    if (t.fitMode !== undefined) imageTransform.fitMode = cleanString(t.fitMode) === "contain" ? "contain" : "cover";
+    if (Object.keys(imageTransform).length) out.imageTransform = imageTransform;
+  }
+  if (input.gridSlots && typeof input.gridSlots === "object") {
+    const gridSlots: Record<string, any> = {};
+    for (const [slotId, raw] of Object.entries(input.gridSlots as Record<string, any>)) {
+      if (!raw || typeof raw !== "object") continue;
+      const transform = raw.transform && typeof raw.transform === "object" ? raw.transform : {};
+      gridSlots[cleanString(slotId)] = {
+        assetId: cleanString(raw.assetId),
+        src: clampString(raw.src ?? "", 4000),
+        bucket: cleanString(raw.bucket),
+        path: clampString(raw.path ?? "", 600),
+        transform: {
+          zoom: Math.min(20, Math.max(0.05, toNumber(transform.zoom, 1) || 1)),
+          offsetX: toNumber(transform.offsetX, 0),
+          offsetY: toNumber(transform.offsetY, 0),
+          rotation: toNumber(transform.rotation, 0),
+          flipX: normalizeBoolean(transform.flipX),
+          flipY: normalizeBoolean(transform.flipY),
+          fitMode: cleanString(transform.fitMode) === "contain" ? "contain" : "cover",
+        },
+      };
+    }
+    if (Object.keys(gridSlots).length) out.gridSlots = gridSlots;
   }
   return Object.keys(out).length ? out : null;
 }
@@ -429,6 +563,24 @@ export function normalizeCustomizerTemplate(input: any = {}, existing: any = {})
     safeArea: normalizeEdgeInset(source.safeArea ?? prev.safeArea, DEFAULT_SAFE_AREA),
     bleed: normalizeEdgeInset(source.bleed ?? prev.bleed, DEFAULT_BLEED),
     assets: source.assets && typeof source.assets === "object" ? source.assets : prev.assets || {},
+    guides: (Array.isArray(source.guides) ? source.guides : Array.isArray(prev.guides) ? prev.guides : []).map((guide: any, index: number) => ({
+      id: cleanString(guide?.id) || `guide_${index + 1}`,
+      pageId: cleanString(guide?.pageId || guide?.page) || pages[0]?.id || "front",
+      axis: guide?.axis === "vertical" ? "vertical" : "horizontal",
+      position: toNumber(guide?.position, 0),
+      locked: normalizeBoolean(guide?.locked),
+      hidden: normalizeBoolean(guide?.hidden),
+      customerVisible: normalizeBoolean(guide?.customerVisible),
+    })),
+    mockupTemplates: Array.isArray(source.mockupTemplates)
+      ? source.mockupTemplates
+      : Array.isArray(prev.mockupTemplates)
+        ? prev.mockupTemplates
+        : Array.isArray(source.settings?.mockupTemplates)
+          ? source.settings.mockupTemplates
+          : Array.isArray(prev.settings?.mockupTemplates)
+            ? prev.settings.mockupTemplates
+            : [],
     settings: {
       ...DEFAULT_CUSTOMIZER_SETTINGS,
       ...(prev.settings && typeof prev.settings === "object" ? prev.settings : {}),
@@ -584,6 +736,7 @@ export function validateCustomizerTemplate(template: any = {}): Record<string, s
   // Customer-editable layers must be connected to a labelled field.
   layers.forEach((layer: any) => {
     if (!layer.customerEditable) return;
+    if (layer.type === "grid" || layer.type === "group" || layer.type === "element") return;
     const field: any = layer.fieldId ? fieldMap.get(layer.fieldId) : null;
     if (!field || !field.label) {
       errors.editable = "Every customer-editable layer needs a field label.";
@@ -736,6 +889,8 @@ export function templateFromRow(row: any = {}): any {
       safeArea: row.safe_area,
       bleed: row.bleed,
       assets: row.assets,
+      guides: row.settings?.guides,
+      mockupTemplates: row.settings?.mockupTemplates,
       settings: row.settings,
     }),
     createdAt: row.created_at,
@@ -763,6 +918,6 @@ export function templateToRow(productId: string, template: any = {}): any {
     safe_area: normalized.safeArea,
     bleed: normalized.bleed,
     assets: normalized.assets,
-    settings: normalized.settings,
+    settings: { ...normalized.settings, guides: normalized.guides, mockupTemplates: normalized.mockupTemplates },
   };
 }

@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import RightArrowIcon from "./RightArrowIcon";
 
 export default function TopBar() {
@@ -18,13 +19,13 @@ export default function TopBar() {
           Elegant cards, gifts and stationery crafted with intention
         </p>
 
-        <a
+        <Link
           href="/products"
           className="group hidden items-center gap-2 text-white underline-offset-4 transition hover:underline lg:inline-flex"
         >
           Shop Now
           <RightArrowIcon className="group-hover:translate-x-1" />
-        </a>
+        </Link>
       </div>
     </div>
   );
