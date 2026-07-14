@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import useAuth from "../lib/useAuth";
 import { subscribeToLocalOrders } from "../lib/customer-lists";
+import { formatCurrency, normalizeCurrency } from "@/lib/currency";
 
 function normalizeOrder(order: any = {}) {
   return {
@@ -13,6 +14,7 @@ function normalizeOrder(order: any = {}) {
     status: order.status || "pending",
     paymentStatus: order.paymentStatus || "unpaid",
     total: Number(order.total || 0),
+    currency: normalizeCurrency(order.currency),
     createdAt: order.createdAt || order.updatedAt || "",
   };
 }
@@ -157,7 +159,7 @@ export default function OrdersClient() {
 
                 <div className="mt-4 flex items-center justify-between border-t border-[#303839]/10 pt-4 text-sm font-bold">
                   <span>{order.paymentStatus || "unpaid"}</span>
-                  <span>${Number(order.total || 0).toFixed(2)}</span>
+                  <span>{formatCurrency(order.total, order.currency)}</span>
                 </div>
               </article>
             );

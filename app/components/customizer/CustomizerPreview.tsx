@@ -7,11 +7,12 @@
 
 import { useMemo } from "react";
 import {
-  getLayersForPage,
+  getEffectiveLayersForPage,
   getFieldById,
   getPageById,
   resolveLayerImage,
   resolveLayerText,
+  type EditorState,
 } from "./customizer-utils";
 
 type Props = {
@@ -23,6 +24,10 @@ type Props = {
   className?: string;
   svgRef?: React.Ref<SVGSVGElement>;
   background?: string;
+  // Customer edits (style/transform overrides + added text layers). The same
+  // design data renders identically in the editor, thumbnails, review, and
+  // exports because they all pass the same editorState here.
+  editorState?: EditorState | null;
 };
 
 function TextLayer({ layer, field, values }: any) {
@@ -49,6 +54,7 @@ function TextLayer({ layer, field, values }: any) {
         fontFamily: `"${style.fontFamily || "Cormorant Garamond"}", serif`,
         fontSize: `${fontSize}px`,
         fontWeight: style.fontWeight || "400",
+        fontStyle: style.fontStyle === "italic" ? "italic" : "normal",
         letterSpacing: `${Number(style.letterSpacing) || 0}px`,
         fill: isPlaceholder ? "#9aa0a1" : style.color || "#303839",
       }}
@@ -165,11 +171,15 @@ export default function CustomizerPreview({
   className,
   svgRef,
   background,
+  editorState,
 }: Props) {
   const width = template?.canvasWidthPx || 1500;
   const height = template?.canvasHeightPx || 2100;
   const activePage = useMemo(() => getPageById(template, page || template?.defaultPage), [template, page]);
-  const layers = useMemo(() => getLayersForPage(template, activePage?.id), [template, activePage]);
+  const layers = useMemo(
+    () => getEffectiveLayersForPage(template, activePage?.id, editorState),
+    [template, activePage, editorState],
+  );
 
   const safe = template?.safeArea || {};
   const bleed = template?.bleed || {};

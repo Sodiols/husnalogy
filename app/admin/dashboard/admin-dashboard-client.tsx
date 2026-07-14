@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import { useRouter, useSearchParams } from "next/navigation";
 import ProductUploadForm from "./product-upload-form";
 import HeroCollectionSection from "./hero-collection-section";
+import { formatCurrency as formatMoneyValue } from "@/lib/currency";
 
 const sections = [
   "Overview",
@@ -224,7 +225,7 @@ export default function AdminDashboardClient() {
       .map((order) => ({
         id: `order-${order.id}`,
         title: `New order from ${order.customerName || "Customer"}`,
-        detail: `${order.productTitle || "Custom order"} | ${formatCurrency(order.total || 0)}`,
+        detail: `${order.productTitle || "Custom order"} | ${formatCurrency(order.total || 0, order.currency)}`,
         section: "Order Requests",
       }));
 
@@ -1570,7 +1571,7 @@ function Overview({
                     <td className="py-4 pr-4">{order.productTitle || order.productSlug || "Custom order"}</td>
                     <td className="py-4 pr-4"><StatusBadge status={order.paymentStatus || "unpaid"} /></td>
                     <td className="py-4 pr-4"><StatusBadge status={order.status || "pending"} /></td>
-                    <td className="py-4 text-right font-bold">{formatCurrency(order.total || 0)}</td>
+                    <td className="py-4 text-right font-bold">{formatCurrency(order.total || 0, order.currency)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -1877,14 +1878,12 @@ function getProductImage(product) {
   return "/images/weddings.png";
 }
 
-function formatCurrency(value) {
-  return `$${Number(value || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
+function formatCurrency(value, currency = "BDT") {
+  return formatMoneyValue(value, currency, { minimumFractionDigits: 0, maximumFractionDigits: 0 });
 }
 
-function formatProductPrice(value) {
-  const amount = Number(value);
-  if (!Number.isFinite(amount)) return "";
-  return `$${amount.toFixed(2)}`;
+function formatProductPrice(value, currency = "BDT") {
+  return formatMoneyValue(value, currency);
 }
 
 function formatDate(value) {
@@ -2677,8 +2676,8 @@ function ProductsSection({ allProducts = [], products, setQuery, statusFilter, s
                     <p className="mt-1 truncate text-xs font-medium text-[#1F1F1F]/60">{product.category || "Uncategorized"}</p>
                   </div>
                   <div className="shrink-0 text-right">
-                    <p className="text-sm font-bold text-[#1F1F1F]">{priceValue !== null && priceValue !== undefined ? formatProductPrice(priceValue) : "-"}</p>
-                    {hasOldPrice ? <p className="mt-1 text-xs font-medium text-[#1F1F1F]/40 line-through">{formatProductPrice(product.oldPrice)}</p> : null}
+                    <p className="text-sm font-bold text-[#1F1F1F]">{priceValue !== null && priceValue !== undefined ? formatProductPrice(priceValue, product.currency) : "-"}</p>
+                    {hasOldPrice ? <p className="mt-1 text-xs font-medium text-[#1F1F1F]/40 line-through">{formatProductPrice(product.oldPrice, product.currency)}</p> : null}
                   </div>
                 </div>
 
@@ -3731,7 +3730,7 @@ function OrdersSection({ orders, query, status, setStatus, onStatusChange, onDel
                     <p className="mt-0.5 text-xs text-[#1F1F1F]/45">{formatDate(order.createdAt)}</p>
                   </div>
                   <div className="text-right">
-                    <p className="font-bold">{formatCurrency(order.total || 0)}</p>
+                    <p className="font-bold">{formatCurrency(order.total || 0, order.currency)}</p>
                     <div className="mt-1"><StatusBadge status={order.paymentStatus || "unpaid"} /></div>
                   </div>
                 </div>
@@ -3854,7 +3853,7 @@ function OrdersSection({ orders, query, status, setStatus, onStatusChange, onDel
                   <div key={item.id || item.productId} className="rounded-none bg-white/70 p-3">
                     <div className="flex justify-between gap-3">
                       <span className="font-semibold">{item.productTitle || item.title}</span>
-                      <span className="font-bold">{formatCurrency(item.finalPrice || item.price || 0)}</span>
+                      <span className="font-bold">{formatCurrency(item.finalPrice || item.price || 0, item.currency || selectedOrder.currency)}</span>
                     </div>
                     {!!Object.keys(item.selectedOptions || {}).length && (
                       <div className="mt-2 flex flex-wrap gap-1.5 text-[11px] font-semibold text-[#1F1F1F]/65">
@@ -3904,9 +3903,9 @@ function OrdersSection({ orders, query, status, setStatus, onStatusChange, onDel
               </div>
             </div>
             <div className="grid gap-2 border-t border-[#1F1F1F]/10 pt-4">
-              <p className="flex justify-between"><span>Subtotal</span><strong>{formatCurrency(selectedOrder.subtotal || selectedOrder.total || 0)}</strong></p>
-              <p className="flex justify-between"><span>Delivery</span><strong>{formatCurrency(selectedOrder.deliveryCharge || 0)}</strong></p>
-              <p className="flex justify-between text-base"><span>Total</span><strong>{formatCurrency(selectedOrder.total || 0)}</strong></p>
+              <p className="flex justify-between"><span>Subtotal</span><strong>{formatCurrency(selectedOrder.subtotal || selectedOrder.total || 0, selectedOrder.currency)}</strong></p>
+              <p className="flex justify-between"><span>Delivery</span><strong>{formatCurrency(selectedOrder.deliveryCharge || 0, selectedOrder.currency)}</strong></p>
+              <p className="flex justify-between text-base"><span>Total</span><strong>{formatCurrency(selectedOrder.total || 0, selectedOrder.currency)}</strong></p>
             </div>
           </div>
         ) : (

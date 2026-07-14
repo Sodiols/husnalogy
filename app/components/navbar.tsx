@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 
 import { mainMenu } from "./data";
@@ -21,9 +21,6 @@ export default function Header({
   const [searchValue, setSearchValue] = useState("");
   const [cartCount, setCartCount] = useState(0);
   const [wishlistCount, setWishlistCount] = useState(0);
-  const [desktopSearchOpen, setDesktopSearchOpen] = useState(false);
-  const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
-  const desktopSearchInputRef = useRef(null);
 
   useEffect(() => {
     const unsubCart = subscribeToUserCart(user, (items) => {
@@ -41,11 +38,6 @@ export default function Header({
       unsubWishlist && unsubWishlist();
     };
   }, [user]);
-
-  useEffect(() => {
-    if (!desktopSearchOpen) return;
-    desktopSearchInputRef.current?.focus();
-  }, [desktopSearchOpen]);
 
   const openProtectedPanel = (panelName) => {
     if (!user) {
@@ -66,17 +58,12 @@ export default function Header({
   const submitSearch = (event) => {
     event.preventDefault();
     const query = searchValue.trim();
-    if (!desktopSearchOpen) {
-      setDesktopSearchOpen(true);
-      return;
-    }
     router.push(query ? `/search?q=${encodeURIComponent(query)}` : "/search");
   };
 
   const submitMobileSearch = (event) => {
     event.preventDefault();
     const query = searchValue.trim();
-    setMobileSearchOpen(false);
     router.push(query ? `/search?q=${encodeURIComponent(query)}` : "/search");
   };
 
@@ -84,8 +71,8 @@ export default function Header({
     <>
     <header className="sticky top-0 z-[2400] border-b border-[#303839]/10 bg-[#ffffff] backdrop-blur-xl">
       <div className="mx-auto max-w-[1480px] px-4 sm:px-6 lg:px-10">
-        <div className="flex h-[64px] items-center justify-between gap-4 lg:h-[80px]">
-          <a href="/" className="flex shrink-0 items-center mx-auto lg:mx-0" aria-label="Husnalogy Home">
+        <div className="flex h-[64px] items-center justify-between gap-4 lg:h-[72px]">
+          <a href="/" className="flex shrink-0 items-center" aria-label="Husnalogy Home">
             <img
               src={logoUrl}
               alt="Husnalogy"
@@ -93,7 +80,98 @@ export default function Header({
             />
           </a>
 
-          <nav className="hidden h-full items-stretch gap-1 lg:flex xl:gap-2" aria-label="Main Navigation">
+          <form
+            onSubmit={submitMobileSearch}
+            role="search"
+            className="flex min-w-0 flex-1 justify-end lg:hidden"
+          >
+            <div className="flex h-9 w-full max-w-[280px] items-center border-b border-[#303839]/25 bg-transparent px-1 transition-colors duration-200 focus-within:border-[#303839]/60">
+              <input
+                type="text"
+                value={searchValue}
+                onChange={(event) => setSearchValue(event.target.value)}
+                placeholder="Search"
+                aria-label="Search"
+                className="min-w-0 flex-1 bg-transparent py-1 text-[13px] text-[#303839] outline-none placeholder:text-[#303839]/45"
+              />
+              <button
+                type="submit"
+                className="grid h-8 w-8 shrink-0 place-items-center text-[#303839]/60 transition-opacity duration-200 hover:opacity-75"
+                aria-label="Submit search"
+              >
+                <NavIcon name="search" className="h-4 w-4" />
+              </button>
+            </div>
+          </form>
+
+          <form
+            onSubmit={submitSearch}
+            role="search"
+            className="hidden min-w-0 flex-1 lg:flex lg:justify-center lg:px-10"
+          >
+            <div className="flex h-11 w-full max-w-[640px] items-center rounded-[6px] border border-[#303839]/15 bg-white pl-5 pr-2 transition-colors duration-200 focus-within:border-[#303839]/35">
+              <input
+                type="text"
+                value={searchValue}
+                onChange={(event) => setSearchValue(event.target.value)}
+                placeholder="Search products, collections and gifts"
+                aria-label="Search"
+                className="min-w-0 flex-1 bg-transparent py-1.5 text-[14px] text-[#303839] outline-none placeholder:text-[#303839]/45"
+              />
+              <button
+                type="submit"
+                className="grid h-9 w-9 shrink-0 place-items-center text-[#303839]/60 transition-opacity duration-200 hover:opacity-75"
+                aria-label="Submit search"
+              >
+                <NavIcon name="search" className="h-[17px] w-[17px]" />
+              </button>
+            </div>
+          </form>
+
+          <div className="hidden shrink-0 items-center lg:flex">
+            <button
+              type="button"
+              onClick={() => openProtectedPanel("wishlist")}
+              data-shape="round"
+              className="relative grid h-10 w-10 place-items-center rounded-full text-[#303839] transition-opacity duration-200 hover:opacity-75"
+              aria-label="Open wishlist"
+            >
+              <NavIcon name="heart" className="h-4 w-4 xl:h-5 xl:w-5" />
+              {wishlistCount > 0 && <CountBadge count={wishlistCount} />}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => openProtectedPanel("cart")}
+              data-shape="round"
+              className="relative grid h-10 w-10 place-items-center rounded-full text-[#303839] transition-opacity duration-200 hover:opacity-75"
+              aria-label="Open cart"
+            >
+              <NavIcon name="bag" className="h-4 w-4 xl:h-5 xl:w-5" />
+              {cartCount > 0 && <CountBadge count={cartCount} />}
+            </button>
+
+            <button
+              type="button"
+              onClick={handleAccount}
+              data-shape="round"
+              className="flex h-10 items-center gap-2 rounded-full px-3 text-[#303839] transition-opacity duration-200 hover:opacity-75"
+              aria-label={user ? "My account" : "Open account login"}
+            >
+              <NavIcon name="user" className="h-4 w-4 xl:h-5 xl:w-5" />
+              <span className="max-w-[120px] truncate text-[11px] font-semibold uppercase tracking-[0.18em] text-[#303839]">
+                {user ? String(user.name || "").split(" ")[0] || "Account" : "Sign In"}
+              </span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div className="hidden lg:block">
+        <nav
+          className="mx-auto flex h-[44px] max-w-[1480px] items-stretch justify-center gap-1 px-4 sm:px-6 lg:px-10 xl:gap-2"
+          aria-label="Main Navigation"
+        >
             {mainMenu.map((item) => {
               const isDropdownOpen = desktopDropdown === item.label;
               const isWideDropdown = item.dropdownColumns === 2;
@@ -182,97 +260,16 @@ export default function Header({
                 </a>
               );
             })}
-          </nav>
-
-          <div className="hidden items-center gap-1 lg:flex xl:gap-1.5">
-            <form
-              onSubmit={submitSearch}
-              className={`relative flex h-10 items-center overflow-hidden border-b transition-all duration-300 ease-out ${
-                desktopSearchOpen ? "border-[#303839]/35" : "border-transparent"
-              }`}
-              role="search"
-            >
-              <input
-                ref={desktopSearchInputRef}
-                type="text"
-                value={searchValue}
-                onChange={(event) => setSearchValue(event.target.value)}
-                onBlur={() => {
-                  if (!searchValue.trim()) setDesktopSearchOpen(false);
-                }}
-                placeholder="Search"
-                aria-label="Search"
-                className={`min-w-0 bg-transparent py-1.5 text-[13px] text-[#303839] outline-none transition-all duration-300 ease-out placeholder:text-[#303839]/40 ${
-                  desktopSearchOpen ? "w-36 opacity-100 xl:w-44" : "w-0 opacity-0"
-                }`}
-              />
-              <button
-                type="submit"
-                onClick={(event) => {
-                  if (!desktopSearchOpen) {
-                    event.preventDefault();
-                    setDesktopSearchOpen(true);
-                  }
-                }}
-                className="grid h-10 w-10 shrink-0 place-items-center rounded-full text-[#303839] transition-opacity duration-200 hover:opacity-75"
-                aria-label="Submit search"
-              >
-                <NavIcon name="search" className="h-4 w-4 md:h-4 md:w-4 xl:h-5 xl:w-5" />
-              </button>
-            </form>
-
-            <div className="flex items-center">
-              <button
-                type="button"
-                onClick={() => openProtectedPanel("wishlist")}
-                data-shape="round"
-                className="relative grid h-10 w-10 place-items-center rounded-full text-[#303839] transition-opacity duration-200 hover:opacity-75"
-                aria-label="Open wishlist"
-              >
-                <NavIcon name="heart" className="h-4 w-4 md:h-4 md:w-4 xl:h-5 xl:w-5" />
-                {wishlistCount > 0 && <CountBadge count={wishlistCount} />}
-              </button>
-
-              <button
-                type="button"
-                onClick={() => openProtectedPanel("cart")}
-                data-shape="round"
-                className="relative grid h-10 w-10 place-items-center rounded-full text-[#303839] transition-opacity duration-200 hover:opacity-75"
-                aria-label="Open cart"
-              >
-                <NavIcon name="bag" className="h-4 w-4 md:h-4 md:w-4 xl:h-5 xl:w-5" />
-                {cartCount > 0 && <CountBadge count={cartCount} />}
-              </button>
-
-              <button
-                type="button"
-                onClick={handleAccount}
-                data-shape="round"
-                className={`flex h-10 items-center gap-2 rounded-full text-[#303839] transition-opacity duration-200 hover:opacity-75 ${
-                  user ? "px-3" : "w-10 justify-center"
-                }`}
-                aria-label={user ? "My account" : "Open account login"}
-              >
-                <NavIcon name="user" className="h-4 w-4 md:h-4 md:w-4 xl:h-5 xl:w-5" />
-                {user && (
-                  <span className="max-w-[120px] truncate text-sm font-normal text-[#303839]">
-                    {String(user.name || "").split(" ")[0] || "Account"}
-                  </span>
-                )}
-              </button>
-            </div>
-          </div>
-
-        </div>
+        </nav>
       </div>
     </header>
 
-    {/* Mobile bottom navigation — hidden on desktop, and while the menu or
-        search overlay is open so it never floats above their scrims. */}
+    {/* Mobile bottom navigation — hidden on desktop, and while the menu is
+        open so it never floats above its scrim. */}
     <nav
       aria-label="Mobile navigation"
       className={`fixed inset-x-0 bottom-0 z-[2200] border-t border-[#303839]/10 bg-[#ffffff] backdrop-blur-xl shadow-[0_-8px_28px_-20px_rgba(48,56,57,0.4)] transition-transform duration-300 lg:hidden ${
-        menuOpen || mobileSearchOpen ? "translate-y-full" : "translate-y-0"
+        menuOpen ? "translate-y-full" : "translate-y-0"
       }`}
       style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
     >
@@ -284,15 +281,6 @@ export default function Header({
           aria-label="Open menu"
         >
           <NavIcon name="menu" size={22} />
-        </button>
-
-        <button
-          type="button"
-          onClick={() => setMobileSearchOpen(true)}
-          className="flex h-[60px] flex-1 items-center justify-center text-[#303839] transition-opacity duration-200 hover:opacity-75"
-          aria-label="Search"
-        >
-          <NavIcon name="search" size={21} />
         </button>
 
         <a
@@ -342,35 +330,6 @@ export default function Header({
       </div>
     </nav>
 
-    {/* Mobile search — top bar with a soft faded-black overlay, matching the
-        cart/wishlist drawer scrim. */}
-    {mobileSearchOpen && (
-      <div className="lg:hidden">
-        <div
-          className="fixed inset-0 z-[3100] bg-[#303839]/40 backdrop-blur-[2px]"
-          onClick={() => setMobileSearchOpen(false)}
-        />
-        <div className="fixed inset-x-0 top-0 z-[3101] border-b border-[#303839]/10 bg-white px-4 py-3 shadow-[0_18px_40px_-24px_rgba(48,56,57,0.45)]">
-          <form onSubmit={submitMobileSearch} className="flex items-center gap-2.5" role="search">
-            <input
-              type="text"
-              autoFocus
-              value={searchValue}
-              onChange={(event) => setSearchValue(event.target.value)}
-              placeholder="Search for invitations, gifts, cards..."
-              aria-label="Search"
-              className="min-w-0 flex-1 rounded-[10px] border border-[#303839]/15 bg-white px-4 py-3 text-sm text-charcoal outline-none transition placeholder:text-charcoal/45 focus:border-[#303839]/45"
-            />
-            <button
-              type="submit"
-              className="shrink-0 rounded-[10px] bg-[#303839] px-5 py-3 text-[13px] font-semibold text-white transition-colors duration-300 hover:bg-[#E6E6E6] hover:text-[#303839] active:bg-[#E6E6E6]"
-            >
-              Search
-            </button>
-          </form>
-        </div>
-      </div>
-    )}
     </>
   );
 }

@@ -1,8 +1,9 @@
 "use client";
 
-// Interactive editing canvas. The base is the SHARED SVG renderer
-// (CustomizerPreview) so what admin arranges is exactly what the customer sees.
-// A transparent overlay adds selection, drag, and resize on top.
+// Interactive admin editing canvas. The base render is the SHARED renderer
+// (CustomizerPreview) so what admin arranges is exactly what customers get.
+// The overlay adds selection, drag, resize, rotation, snapping with alignment
+// guides, and a live position/size readout.
 
 import { useLayoutEffect, useRef, useState } from "react";
 import CustomizerPreview from "@/app/components/customizer/CustomizerPreview";
@@ -15,6 +16,10 @@ const HANDLES: Array<{ id: string; cx: number; cy: number; cursor: string }> = [
   { id: "se", cx: 1, cy: 1, cursor: "nwse-resize" },
 ];
 
+const SNAP_PX = 8; // screen pixels
+
+type Guide = { type: "v" | "h"; at: number };
+
 export default function AdminCanvas({
   template,
   pageId,
@@ -26,10 +31,12 @@ export default function AdminCanvas({
   zoom = 1,
   showSafeArea,
   showBleed,
+  snapEnabled = true,
 }: any) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const [containerWidth, setContainerWidth] = useState(0);
   const dragRef = useRef<any>(null);
+  const [guides, setGuides] = useState<Guide[]>([]);
 
   const canvasW = template?.canvasWidthPx || 1500;
   const canvasH = template?.canvasHeightPx || 2100;
@@ -44,12 +51,53 @@ export default function AdminCanvas({
     return () => ro.disconnect();
   }, []);
 
-  const baseWidth = Math.min(containerWidth || 480, 560);
+  const baseWidth = Math.min(Math.max((containerWidth || 520) - 64, 260), 640);
   const displayW = baseWidth * zoom;
   const displayH = displayW * (canvasH / canvasW);
   const scale = displayW / canvasW;
+  const snapTolerance = SNAP_PX / scale;
 
   const layers = layersForPage(template, pageId);
+
+  // Snap targets: page centre, page edges, safe-area edges, other layer centres.
+  const buildSnapTargets = (excludeId: string) => {
+    const safe = template?.safeArea || {};
+    const xs = [canvasW / 2, 0, canvasW, Number(safe.left || 0), canvasW - Number(safe.right || 0)];
+    const ys = [canvasH / 2, 0, canvasH, Number(safe.top || 0), canvasH - Number(safe.bottom || 0)];
+    layers.forEach((l: any) => {
+      if (l.id === excludeId || l.hidden) return;
+      xs.push(l.x);
+      ys.push(l.y);
+    });
+    return { xs, ys };
+  };
+
+  const applySnap = (x: number, y: number, excludeId: string) => {
+    if (!snapEnabled) return { x, y, guides: [] as Guide[] };
+    const { xs, ys } = buildSnapTargets(excludeId);
+    let outX = x;
+    let outY = y;
+    const activeGuides: Guide[] = [];
+    let bestDx = snapTolerance;
+    xs.forEach((target) => {
+      const d = Math.abs(x - target);
+      if (d < bestDx) {
+        bestDx = d;
+        outX = target;
+      }
+    });
+    if (outX !== x) activeGuides.push({ type: "v", at: outX });
+    let bestDy = snapTolerance;
+    ys.forEach((target) => {
+      const d = Math.abs(y - target);
+      if (d < bestDy) {
+        bestDy = d;
+        outY = target;
+      }
+    });
+    if (outY !== y) activeGuides.push({ type: "h", at: outY });
+    return { x: Math.round(outX), y: Math.round(outY), guides: activeGuides };
+  };
 
   const onLayerPointerDown = (e: React.PointerEvent, layer: any) => {
     e.stopPropagation();
@@ -79,26 +127,58 @@ export default function AdminCanvas({
       startY: layer.y,
       startW: layer.width,
       startH: layer.height,
+      shiftLock: false,
+    };
+  };
+
+  const onRotatePointerDown = (e: React.PointerEvent, layer: any) => {
+    e.stopPropagation();
+    (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
+    dragRef.current = {
+      mode: "rotate",
+      layerId: layer.id,
+      startRotation: Number(layer.rotation || 0),
+      centerX: layer.x,
+      centerY: layer.y,
     };
   };
 
   const onPointerMove = (e: React.PointerEvent) => {
     const drag = dragRef.current;
     if (!drag) return;
-    // Take exactly one history snapshot at the start of a real drag/resize.
     if (!drag.began) {
       drag.began = true;
       onBeginChange?.();
     }
+
+    if (drag.mode === "rotate") {
+      const rect = (wrapRef.current?.querySelector("[data-canvas-surface]") as HTMLElement)?.getBoundingClientRect();
+      if (!rect) return;
+      const cx = rect.left + drag.centerX * scale;
+      const cy = rect.top + drag.centerY * scale;
+      const angle = (Math.atan2(e.clientY - cy, e.clientX - cx) * 180) / Math.PI + 90;
+      let rotation = Math.round(angle);
+      // Snap to 15° increments near them; Shift disables snapping.
+      if (!e.shiftKey) {
+        const nearest = Math.round(rotation / 15) * 15;
+        if (Math.abs(rotation - nearest) <= 4) rotation = nearest;
+      }
+      rotation = ((rotation % 360) + 360) % 360;
+      onLayerChange(drag.layerId, { rotation });
+      return;
+    }
+
     const dx = (e.clientX - drag.startClientX) / scale;
     const dy = (e.clientY - drag.startClientY) / scale;
 
     if (drag.mode === "move") {
-      onLayerChange(drag.layerId, { x: Math.round(drag.startX + dx), y: Math.round(drag.startY + dy) });
+      const snapped = applySnap(drag.startX + dx, drag.startY + dy, drag.layerId);
+      setGuides(snapped.guides);
+      onLayerChange(drag.layerId, { x: snapped.x, y: snapped.y });
       return;
     }
 
-    // Resize anchoring the opposite corner.
+    // Resize anchoring the opposite corner. Shift keeps the aspect ratio.
     const left = drag.startX - drag.startW / 2;
     const top = drag.startY - drag.startH / 2;
     const right = drag.startX + drag.startW / 2;
@@ -109,19 +189,30 @@ export default function AdminCanvas({
     if (drag.handle.includes("e")) nr = Math.max(right + dx, left + min);
     if (drag.handle.includes("n")) nt = Math.min(top + dy, bottom - min);
     if (drag.handle.includes("s")) nb = Math.max(bottom + dy, top + min);
-    const w = Math.round(nr - nl);
-    const h = Math.round(nb - nt);
+    let w = Math.round(nr - nl);
+    let h = Math.round(nb - nt);
+    if (e.shiftKey && drag.startW > 0 && drag.startH > 0) {
+      const ratio = drag.startW / drag.startH;
+      if (w / h > ratio) w = Math.round(h * ratio);
+      else h = Math.round(w / ratio);
+      if (drag.handle.includes("w")) nl = nr - w;
+      else nr = nl + w;
+      if (drag.handle.includes("n")) nt = nb - h;
+      else nb = nt + h;
+    }
     onLayerChange(drag.layerId, { x: Math.round(nl + w / 2), y: Math.round(nt + h / 2), width: w, height: h });
   };
 
   const endDrag = () => {
     dragRef.current = null;
+    setGuides([]);
   };
 
   return (
-    <div ref={wrapRef} className="flex w-full justify-center overflow-auto bg-[#F8F8F8] p-4">
+    <div ref={wrapRef} className="flex h-full w-full items-start justify-center overflow-auto bg-[#F8F6F1] p-8">
       <div
-        className="relative shrink-0 bg-white shadow-sm"
+        data-canvas-surface
+        className="relative shrink-0 bg-white shadow-[0_10px_40px_rgba(48,56,57,0.12)]"
         style={{ width: displayW, height: displayH }}
         onPointerMove={onPointerMove}
         onPointerUp={endDrag}
@@ -132,6 +223,25 @@ export default function AdminCanvas({
         <div className="pointer-events-none absolute inset-0">
           <CustomizerPreview template={template} values={values} page={pageId} showSafeArea={showSafeArea} showBleed={showBleed} />
         </div>
+
+        {/* Alignment guides */}
+        {guides.map((guide, index) =>
+          guide.type === "v" ? (
+            <span
+              key={`g${index}`}
+              aria-hidden
+              className="pointer-events-none absolute inset-y-0 w-px bg-[#D4AF37]"
+              style={{ left: guide.at * scale }}
+            />
+          ) : (
+            <span
+              key={`g${index}`}
+              aria-hidden
+              className="pointer-events-none absolute inset-x-0 h-px bg-[#D4AF37]"
+              style={{ top: guide.at * scale }}
+            />
+          ),
+        )}
 
         {/* Interactive overlay */}
         {layers.map((layer: any) => {
@@ -155,33 +265,70 @@ export default function AdminCanvas({
                 height: boxH,
                 transform: layer.rotation ? `rotate(${layer.rotation}deg)` : undefined,
                 cursor: layer.locked ? "default" : "move",
-                outline: selected ? "2px solid #111111" : "1px dashed rgba(48,56,57,0.25)",
+                outline: selected ? "2px solid #303839" : "1px dashed rgba(48,56,57,0.22)",
                 background: "transparent",
                 touchAction: "none",
               }}
             >
-              {layer.locked && selected && (
-                <span className="absolute -top-5 left-0 bg-[#111111] px-1 text-[9px] font-bold text-white">Locked</span>
+              {selected && (
+                <span className="pointer-events-none absolute -top-6 left-0 z-10 whitespace-nowrap rounded bg-[#303839] px-1.5 py-0.5 text-[9px] font-bold text-white">
+                  {layer.locked ? "🔒 " : ""}
+                  {layer.name} · {Math.round(layer.x)},{Math.round(layer.y)} · {Math.round(layer.width)}×{Math.round(layer.height)}
+                  {layer.rotation ? ` · ${Math.round(layer.rotation)}°` : ""}
+                </span>
               )}
-              {selected && !layer.locked &&
-                HANDLES.map((h) => (
+              {selected && !layer.locked && (
+                <>
+                  {HANDLES.map((h) => (
+                    <span
+                      key={h.id}
+                      data-canvas-handle={h.id}
+                      onPointerDown={(e) => onHandlePointerDown(e, layer, h.id)}
+                      style={{
+                        position: "absolute",
+                        left: `calc(${h.cx * 100}% - 5px)`,
+                        top: `calc(${h.cy * 100}% - 5px)`,
+                        width: 10,
+                        height: 10,
+                        background: "#fff",
+                        border: "2px solid #303839",
+                        borderRadius: 2,
+                        cursor: h.cursor,
+                        touchAction: "none",
+                      }}
+                    />
+                  ))}
+                  {/* Rotation handle */}
                   <span
-                    key={h.id}
-                    data-canvas-handle={h.id}
-                    onPointerDown={(e) => onHandlePointerDown(e, layer, h.id)}
+                    onPointerDown={(e) => onRotatePointerDown(e, layer)}
+                    title="Rotate"
                     style={{
                       position: "absolute",
-                      left: `calc(${h.cx * 100}% - 5px)`,
-                      top: `calc(${h.cy * 100}% - 5px)`,
-                      width: 10,
-                      height: 10,
+                      left: "calc(50% - 6px)",
+                      top: -26,
+                      width: 12,
+                      height: 12,
                       background: "#fff",
-                      border: "2px solid #111111",
-                      cursor: h.cursor,
+                      border: "2px solid #303839",
+                      borderRadius: "50%",
+                      cursor: "grab",
                       touchAction: "none",
                     }}
                   />
-                ))}
+                  <span
+                    aria-hidden
+                    style={{
+                      position: "absolute",
+                      left: "calc(50% - 0.5px)",
+                      top: -14,
+                      width: 1,
+                      height: 14,
+                      background: "rgba(48,56,57,0.4)",
+                      pointerEvents: "none",
+                    }}
+                  />
+                </>
+              )}
             </div>
           );
         })}

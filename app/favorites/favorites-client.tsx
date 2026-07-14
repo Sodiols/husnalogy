@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import useAuth from "../lib/useAuth";
 import { openCustomerLogin, removeFromWishlist, subscribeToUserWishlist } from "../lib/customer-lists";
+import { formatCurrency } from "@/lib/currency";
 
 export default function FavoritesClient() {
   const { user, authLoading } = useAuth();
@@ -32,7 +33,7 @@ export default function FavoritesClient() {
               <Link href={item.slug ? `/products/${item.slug}` : "/products"}>
                 <img src={item.image} alt={item.title} className="aspect-square w-full rounded-none object-cover" />
                 <h2 className="mt-3 text-sm font-bold">{item.title}</h2>
-                <p className="mt-1 text-sm text-[#303839]/65">${Number(item.price || 0).toFixed(2)}</p>
+                <p className="mt-1 text-sm text-[#303839]/65">{formatCurrency(item.price, item.currency)}</p>
               </Link>
               <button type="button" onClick={() => removeFromWishlist(user, item.productId || item.id)} className="mt-3 text-xs font-bold text-red-600">Remove</button>
             </article>

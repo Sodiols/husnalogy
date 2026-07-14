@@ -13,6 +13,8 @@ import {
   normalizePrice,
   normalizeStringArray,
 } from "@/lib/validation";
+import { normalizeProductOptionEntries } from "@/lib/products/options";
+import { normalizeCurrency } from "@/lib/currency";
 
 const PRODUCT_STATUSES = new Set(["draft", "active", "hidden", "deleted"]);
 const PRODUCT_VISIBILITIES = new Set(["public", "hidden", "direct"]);
@@ -127,11 +129,11 @@ function normalizeCustomizationFields(value) {
   return fields.length ? fields : DEFAULT_CUSTOMIZATION_FIELDS;
 }
 
+// Option lists accept plain label strings (legacy, may carry "+$x") and rich
+// option objects (label/value/description/image/surcharge/badge/…). Both are
+// stored as-is in the product's JSONB data.
 function normalizeOptions(value, fallback = []) {
-  if (Array.isArray(value)) return value.map((item) => cleanString(item)).filter(Boolean);
-  if (value === undefined || value === null) return fallback;
-  const list = normalizeStringArray(value);
-  return list;
+  return normalizeProductOptionEntries(value, fallback);
 }
 
 function normalizeReview(review: any = {}) {
@@ -469,9 +471,13 @@ export function normalizeProduct(input: any, existing: any = {}) {
     envelopeOptions: normalizeOptions(input.envelopeOptions ?? existing.envelopeOptions, DEFAULT_ENVELOPE_OPTIONS),
     cornerOptions: normalizeOptions(input.cornerOptions ?? existing.cornerOptions, ["Squared", "Rounded", "Arch", "Scallop", "Bracket", "Ticket"]),
     printingOptions: normalizeOptions(input.printingOptions ?? existing.printingOptions, ["Standard", "High Definition +$0.40"]),
+    // Newer option groups. Empty means "not configured": the customizer falls
+    // back to its built-in format list and hides Paper Style entirely.
+    formatOptions: normalizeOptions(input.formatOptions ?? existing.formatOptions, []),
+    paperStyleOptions: normalizeOptions(input.paperStyleOptions ?? existing.paperStyleOptions, []),
     isStockOut,
     comingInDays,
-    currency: cleanOptionalString(input.currency ?? existing.currency) || "USD",
+    currency: normalizeCurrency(input.currency ?? existing.currency),
     stockStatus: isStockOut ? "out-of-stock" : (cleanOptionalString(input.stockStatus ?? existing.stockStatus) === "out-of-stock" ? "in-stock" : cleanOptionalString(input.stockStatus ?? existing.stockStatus) || "in-stock"),
     availability: cleanOptionalString(input.availability ?? existing.availability) || "available",
     deliveryEstimate: cleanOptionalString(input.deliveryEstimate ?? existing.deliveryEstimate),

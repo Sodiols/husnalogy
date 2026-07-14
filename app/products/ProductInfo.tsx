@@ -19,6 +19,8 @@ import {
   saveLocalProductOptions,
   saveProductOptions,
 } from "../lib/product-options";
+import { parseProductOption } from "@/lib/products/options";
+import { formatCurrency, formatCurrencySurcharge, normalizeCurrency } from "@/lib/currency";
 
 const FORMAT_OPTIONS = [
   {
@@ -255,31 +257,55 @@ function optionValueFromLabel(label) {
 }
 
 function toConfiguredOptionArray(value) {
-  if (Array.isArray(value)) return value.map((item) => String(item).trim()).filter(Boolean);
+  if (Array.isArray(value)) return value;
   return String(value || "")
     .split("\n")
     .map((item) => item.trim())
     .filter(Boolean);
 }
 
-function buildConfiguredOptions(value, defaults, fallbackIcon) {
-  return toConfiguredOptionArray(value).map((label) => {
-    const normalizedLabel = normalizeOptionLabel(label);
-    const preset = defaults.find((item) =>
-      [item.label, item.cartLabel, item.value].some((candidate) => normalizeOptionLabel(candidate) === normalizedLabel)
-    );
+function localizeOptionCartLabel(label, surcharge, currency) {
+  if (!surcharge) return label || "";
+  const base = String(label || "")
+    .replace(/\s*\+\s*(?:৳|\$|BDT\s*)?\s*\d+(?:\.\d+)?\s*$/i, "")
+    .trim();
+  return `${base} ${formatCurrencySurcharge(surcharge, currency)}`.trim();
+}
 
-    if (preset) return preset;
+// Option lists may hold plain label strings (legacy) or rich option objects
+// configured in the admin Product Options manager. Both render here; inactive
+// or customer-hidden options never reach the page.
+function buildConfiguredOptions(value, defaults, fallbackIcon, currency = "BDT") {
+  return toConfiguredOptionArray(value)
+    .map((entry) => parseProductOption(entry))
+    .filter((option) => option && option.active && option.customerVisible)
+    .map((option) => {
+      const normalizedLabel = normalizeOptionLabel(option.label);
+      const preset = defaults.find((item) =>
+        [item.label, item.cartLabel, item.value].some((candidate) => normalizeOptionLabel(candidate) === normalizedLabel)
+      );
 
-    return {
-      value: optionValueFromLabel(label),
-      label,
-      cartLabel: label,
-      description: "",
-      price: label.includes("+$") ? label.slice(label.indexOf("+$")) : "",
-      icon: fallbackIcon,
-    };
-  });
+      // Legacy string entries keep their exact preset behaviour.
+      if (preset && option.kind === "string") {
+        const surcharge = Number(String(preset.price || "").replace(/[^0-9.]/g, "")) || 0;
+        return {
+          ...preset,
+          cartLabel: localizeOptionCartLabel(preset.cartLabel || preset.label, surcharge, currency),
+          price: surcharge ? formatCurrencySurcharge(surcharge, currency) : "",
+        };
+      }
+
+      return {
+        value: option.value,
+        label: option.displayLabel,
+        cartLabel: localizeOptionCartLabel(option.cartValue, option.surcharge, currency),
+        description: option.description || preset?.description || "",
+        badge: option.badge || preset?.badge || "",
+        image: option.image || "",
+        price: option.surcharge ? formatCurrencySurcharge(option.surcharge, currency) : "",
+        icon: preset?.icon || fallbackIcon,
+      };
+    });
 }
 
 function decorateSizeOption(option) {
@@ -311,6 +337,7 @@ function fallbackOption(label = "") {
 export default function ProductInfo({ product, initialUser = undefined }) {
   const router = useRouter();
   const { user } = useAuth(initialUser);
+  const currency = normalizeCurrency(product.currency);
 
   const fields = useMemo(
     () =>
@@ -331,15 +358,25 @@ export default function ProductInfo({ product, initialUser = undefined }) {
     ? product.quantityOptions
     : ["1", "10", "20", "30", "40", "50"];
   const sizeOptions = useMemo(
-    () => buildConfiguredOptions(product.sizeOptions, SIZE_OPTIONS, "fa-solid fa-ruler-combined").map(decorateSizeOption),
-    [product.sizeOptions],
+    () => buildConfiguredOptions(product.sizeOptions, SIZE_OPTIONS, "fa-solid fa-ruler-combined", currency).map(decorateSizeOption),
+    [product.sizeOptions, currency],
   );
-  const envelopeOptions = useMemo(() => buildConfiguredOptions(product.envelopeOptions, ENVELOPE_OPTIONS, "fa-regular fa-envelope"), [product.envelopeOptions]);
-  const cornerOptions = useMemo(() => buildConfiguredOptions(product.cornerOptions, CORNER_OPTIONS, "square"), [product.cornerOptions]);
-  const paperOptions = useMemo(() => buildConfiguredOptions(product.paperOptions, PAPER_OPTIONS, "fa-regular fa-file-lines"), [product.paperOptions]);
-  const printingOptions = useMemo(() => buildConfiguredOptions(product.printingOptions, PRINTING_OPTIONS, "fa-solid fa-print"), [product.printingOptions]);
+  const envelopeOptions = useMemo(() => buildConfiguredOptions(product.envelopeOptions, ENVELOPE_OPTIONS, "fa-regular fa-envelope", currency), [product.envelopeOptions, currency]);
+  const cornerOptions = useMemo(() => buildConfiguredOptions(product.cornerOptions, CORNER_OPTIONS, "square", currency), [product.cornerOptions, currency]);
+  const paperOptions = useMemo(() => buildConfiguredOptions(product.paperOptions, PAPER_OPTIONS, "fa-regular fa-file-lines", currency), [product.paperOptions, currency]);
+  const printingOptions = useMemo(() => buildConfiguredOptions(product.printingOptions, PRINTING_OPTIONS, "fa-solid fa-print", currency), [product.printingOptions, currency]);
+  // Configured format options replace the built-in list when the admin set any.
+  const formatOptions = useMemo(() => {
+    const configured = buildConfiguredOptions(product.formatOptions, FORMAT_OPTIONS, "fa-solid fa-print", currency);
+    return configured.length ? configured : FORMAT_OPTIONS;
+  }, [product.formatOptions, currency]);
+  const paperStyleOptions = useMemo(
+    () => buildConfiguredOptions(product.paperStyleOptions, [], "fa-regular fa-file-lines", currency),
+    [product.paperStyleOptions, currency],
+  );
 
   const [format, setFormat] = useState(FORMAT_OPTIONS[0].value);
+  const [paperStyle, setPaperStyle] = useState("");
   const [size, setSize] = useState(SIZE_OPTIONS[0].value);
   const [quantity, setQuantity] = useState(String(quantityOptions[0] || "1"));
   const [customQty, setCustomQty] = useState("");
@@ -368,18 +405,22 @@ export default function ProductInfo({ product, initialUser = undefined }) {
   const selectedQty = quantity === "custom" ? customQty || 1 : quantity;
   const safeQuantity = Math.max(1, Number(selectedQty || 1));
 
-  const selectedFormat = findOption(FORMAT_OPTIONS, format);
+  const selectedFormat = findOption(formatOptions, format);
   const selectedSize = findOption(sizeOptions, size) || fallbackOption();
   const selectedEnvelope = findOption(envelopeOptions, envelope) || fallbackOption();
   const selectedCorner = findOption(cornerOptions, corner) || fallbackOption();
   const selectedPaper = findOption(paperOptions, paper) || fallbackOption();
+  const selectedPaperStyle = findOption(paperStyleOptions, paperStyle) || fallbackOption();
   const selectedPrinting = findOption(printingOptions, printing) || fallbackOption();
 
   const selectedOptions = {
-    format: selectedFormat.label,
-    size: selectedSize.displayLabel || selectedSize.label,
+    format: selectedFormat.cartLabel || selectedFormat.label,
+    // cartLabel first so rich size options carry their configured surcharge;
+    // presets keep no size surcharge exactly as before.
+    size: selectedSize.price && selectedSize.cartLabel ? selectedSize.cartLabel : selectedSize.displayLabel || selectedSize.label,
     envelope: selectedEnvelope.cartLabel,
     corner: selectedCorner.cartLabel,
+    ...(paperStyleOptions.length ? { paperStyle: selectedPaperStyle.cartLabel } : {}),
     paper: selectedPaper.cartLabel,
     printing: selectedPrinting.cartLabel,
     logo,
@@ -420,6 +461,7 @@ export default function ProductInfo({ product, initialUser = undefined }) {
     envelope,
     corner,
     paper,
+    paperStyle,
     printing,
     logo,
   });
@@ -465,6 +507,14 @@ export default function ProductInfo({ product, initialUser = undefined }) {
   }, [printingOptions, printing]);
 
   useEffect(() => {
+    if (formatOptions.length && !formatOptions.some((item) => item.value === format)) setFormat(formatOptions[0].value);
+  }, [formatOptions, format]);
+
+  useEffect(() => {
+    if (paperStyleOptions.length && !paperStyleOptions.some((item) => item.value === paperStyle)) setPaperStyle(paperStyleOptions[0].value);
+  }, [paperStyleOptions, paperStyle]);
+
+  useEffect(() => {
     let active = true;
 
     async function loadSavedOptions() {
@@ -481,6 +531,7 @@ export default function ProductInfo({ product, initialUser = undefined }) {
         if (localSaved.envelope) setEnvelope(localSaved.envelope);
         if (localSaved.corner) setCorner(localSaved.corner);
         if (localSaved.paper) setPaper(localSaved.paper);
+        if (localSaved.paperStyle) setPaperStyle(localSaved.paperStyle);
         if (localSaved.printing) setPrinting(localSaved.printing);
         if (typeof localSaved.logo === "boolean") setLogo(localSaved.logo);
 
@@ -510,6 +561,7 @@ export default function ProductInfo({ product, initialUser = undefined }) {
           if (saved.envelope) setEnvelope(saved.envelope);
           if (saved.corner) setCorner(saved.corner);
           if (saved.paper) setPaper(saved.paper);
+          if (saved.paperStyle) setPaperStyle(saved.paperStyle);
           if (saved.printing) setPrinting(saved.printing);
           if (typeof saved.logo === "boolean") setLogo(saved.logo);
 
@@ -740,13 +792,13 @@ export default function ProductInfo({ product, initialUser = undefined }) {
             <div className="flex flex-wrap items-end gap-x-2 gap-y-1">
               {hasPrice && (
                 <h2 className="text-[28px] font-extrabold leading-none tracking-[-0.01em] sm:text-[30px]">
-                  ${unitPrice.toFixed(2)}
+                  {formatCurrency(unitPrice, currency)}
                 </h2>
               )}
 
               {product.oldPrice !== null && product.oldPrice !== undefined && (
                 <p className="pb-0.5 text-sm font-semibold text-[#303839]/42 line-through">
-                  ${Number(product.oldPrice).toFixed(2)}
+                  {formatCurrency(product.oldPrice, currency)}
                 </p>
               )}
             </div>
@@ -771,7 +823,7 @@ export default function ProductInfo({ product, initialUser = undefined }) {
             {optionsSurcharge > 0 && (
               <span>
                 {" "}
-                (${basePrice.toFixed(2)} base + ${optionsSurcharge.toFixed(2)} options)
+                ({formatCurrency(basePrice, currency)} base + {formatCurrency(optionsSurcharge, currency)} options)
               </span>
             )}
           </p>
@@ -893,10 +945,10 @@ export default function ProductInfo({ product, initialUser = undefined }) {
           {hasPrice && (
             <div className="flex items-center justify-between gap-3 rounded-none bg-white px-4 py-3 text-xs sm:text-sm">
               <span className="min-w-0 text-[#303839]/60">
-                Estimated total ({safeQuantity} × ${unitPrice.toFixed(2)})
+                Estimated total ({safeQuantity} × {formatCurrency(unitPrice, currency)})
               </span>
 
-              <span className="shrink-0 text-lg font-extrabold">${lineTotal.toFixed(2)}</span>
+              <span className="shrink-0 text-lg font-extrabold">{formatCurrency(lineTotal, currency)}</span>
             </div>
           )}
         </div>
@@ -908,7 +960,7 @@ export default function ProductInfo({ product, initialUser = undefined }) {
         <AnimatedSelect
           value={format}
           onChange={setFormat}
-          options={FORMAT_OPTIONS}
+          options={formatOptions}
           showIcon={false}
         />
       </OptionSection>
@@ -950,6 +1002,23 @@ export default function ProductInfo({ product, initialUser = undefined }) {
                 option={item}
                 active={corner === item.value}
                 onClick={() => setCorner(item.value)}
+              />
+            ))}
+          </div>
+        </OptionSection>
+      )}
+
+      {!!paperStyleOptions.length && (
+        <OptionSection title="Paper Style" selectedText={selectedPaperStyle.label}>
+          <div className="grid gap-2 min-[520px]:grid-cols-2 lg:grid-cols-1 2xl:grid-cols-2">
+            {paperStyleOptions.map((item) => (
+              <LargeOptionButton
+                key={item.value}
+                option={item}
+                active={paperStyle === item.value}
+                onClick={() => setPaperStyle(item.value)}
+                compact
+                showIcon={false}
               />
             ))}
           </div>

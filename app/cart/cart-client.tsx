@@ -10,6 +10,7 @@ import {
   subscribeToUserCart,
   updateCartQuantity,
 } from "../lib/customer-lists";
+import { formatCurrency } from "@/lib/currency";
 
 export default function CartClient() {
   const { user, authLoading } = useAuth();
@@ -47,7 +48,7 @@ export default function CartClient() {
 
                 <div>
                   <h2 className="font-bold">{item.title}</h2>
-                  <p className="mt-1 text-sm text-[#303839]/60">${Number(item.price || 0).toFixed(2)} each</p>
+                  <p className="mt-1 text-sm text-[#303839]/60">{formatCurrency(item.price, item.currency)} each</p>
 
                   {/* Keep the cart clean: no raw field keys or option flags — just a
                       quiet marker that the item is personalized. */}
@@ -75,7 +76,7 @@ export default function CartClient() {
                     <button type="button" onClick={() => updateCartQuantity(user, item.id, Number(item.quantity || 1) + 1)} data-shape="round" className="grid h-9 w-9 place-items-center rounded-full border border-[#303839]/15">+</button>
                   </div>
 
-                  <p className="font-bold">${(Number(item.price || 0) * Number(item.quantity || 1)).toFixed(2)}</p>
+                  <p className="font-bold">{formatCurrency(Number(item.price || 0) * Number(item.quantity || 1), item.currency)}</p>
                   <button type="button" onClick={() => removeFromCart(user, item.id)} className="text-xs font-bold text-red-600">Remove</button>
                 </div>
               </article>
@@ -93,9 +94,9 @@ export default function CartClient() {
         <aside className="h-fit rounded-none border border-[#303839]/10 bg-white p-6 shadow-[0_18px_60px_rgba(48,56,57,0.06)]">
           <h2 className="text-xl font-bold">Order summary</h2>
           <div className="mt-5 space-y-3 text-sm">
-            <div className="flex justify-between"><span>Subtotal</span><span>${totals.subtotal.toFixed(2)}</span></div>
-            <div className="flex justify-between"><span>Delivery</span><span>{totals.deliveryCharge ? `$${totals.deliveryCharge.toFixed(2)}` : "Calculated later"}</span></div>
-            <div className="border-t border-[#303839]/10 pt-3 flex justify-between font-bold"><span>Total</span><span>${totals.total.toFixed(2)}</span></div>
+            <div className="flex justify-between"><span>Subtotal</span><span>{formatCurrency(totals.subtotal, totals.currency)}</span></div>
+            <div className="flex justify-between"><span>Delivery</span><span>{totals.deliveryCharge ? formatCurrency(totals.deliveryCharge, totals.currency) : "Calculated later"}</span></div>
+            <div className="border-t border-[#303839]/10 pt-3 flex justify-between font-bold"><span>Total</span><span>{formatCurrency(totals.total, totals.currency)}</span></div>
           </div>
 
           {items.length ? (

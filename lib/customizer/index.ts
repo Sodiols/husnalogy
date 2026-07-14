@@ -59,7 +59,82 @@ export const DEFAULT_CUSTOMIZER_SETTINGS = {
   allowCustomerPhotoCrop: true,
   allowCustomerTextMove: false,
   requireApprovalCheckbox: true,
+  // Whether customers may add their own text layers (template-wide default;
+  // individual pages can override via page.allowCustomerText).
+  allowCustomerText: false,
+  allowCustomerUploads: true,
+  // Screenshot/copy deterrence on the customer customizer.
+  protectedPreview: true,
+  autosave: true,
+  templateName: "",
+  templateDescription: "",
+  adminNotes: "",
 };
+
+// Fonts approved for template text and customer text. These render consistently
+// in the live editor, exports, and previews (site-loaded webfonts + safe system
+// fonts). Keep this list in sync with fonts actually available in the app.
+export const CUSTOMIZER_APPROVED_FONTS = [
+  { value: "Cormorant Garamond", label: "Cormorant Garamond", stack: `"Cormorant Garamond", serif` },
+  { value: "Inter", label: "Inter", stack: `"Inter", sans-serif` },
+  { value: "Georgia", label: "Georgia", stack: `Georgia, serif` },
+  { value: "Times New Roman", label: "Times New Roman", stack: `"Times New Roman", serif` },
+  { value: "Arial", label: "Arial", stack: `Arial, sans-serif` },
+  { value: "Courier New", label: "Courier New", stack: `"Courier New", monospace` },
+];
+
+// Per-layer customer permissions (Section 31). Missing keys fall back to
+// behaviour that matches the legacy flags (customerEditable / allowZoom /
+// allowReposition), so templates saved before this existed keep working.
+export const CUSTOMER_PERMISSION_KEYS = [
+  "editContent",
+  "editStyle",
+  "changeFont",
+  "changeFontSize",
+  "changeColor",
+  "changeAlignment",
+  "changeLetterSpacing",
+  "move",
+  "resize",
+  "rotate",
+  "duplicate",
+  "delete",
+  "replaceImage",
+  "zoomImage",
+  "repositionImage",
+] as const;
+
+export function defaultCustomerPermissions(layer: any = {}): Record<string, boolean> {
+  const editable = Boolean(layer.customerEditable);
+  const isImage = layer.type === "image";
+  return {
+    editContent: editable && !isImage,
+    editStyle: false,
+    changeFont: false,
+    changeFontSize: false,
+    changeColor: false,
+    changeAlignment: false,
+    changeLetterSpacing: false,
+    move: false,
+    resize: false,
+    rotate: false,
+    duplicate: false,
+    delete: false,
+    replaceImage: editable && isImage,
+    zoomImage: editable && isImage && layer.allowZoom !== false,
+    repositionImage: editable && isImage && layer.allowReposition !== false,
+  };
+}
+
+export function normalizeCustomerPermissions(input: any, layer: any = {}): Record<string, boolean> {
+  const defaults = defaultCustomerPermissions(layer);
+  if (!input || typeof input !== "object") return defaults;
+  const out: Record<string, boolean> = { ...defaults };
+  CUSTOMER_PERMISSION_KEYS.forEach((key) => {
+    if (input[key] !== undefined) out[key] = normalizeBoolean(input[key]);
+  });
+  return out;
+}
 
 export const DEFAULT_TEXT_STYLE = {
   fontFamily: "Cormorant Garamond",
@@ -175,6 +250,13 @@ export function normalizeCustomizerLayer(input: any = {}): any {
     customerEditable: normalizeBoolean(input.customerEditable),
   };
 
+  // Normalized after the base so defaults can read customerEditable/type.
+  const customerPermissions = normalizeCustomerPermissions(
+    input.customerPermissions,
+    { ...base, allowZoom: input.allowZoom, allowReposition: input.allowReposition },
+  );
+  (base as any).customerPermissions = customerPermissions;
+
   if (type === "image") {
     const maskShape = cleanString(input.maskShape).toLowerCase();
     const fitMode = cleanString(input.fitMode).toLowerCase();
@@ -221,7 +303,92 @@ export function normalizeCustomizerPage(input: any = {}, index = 0): any {
     backgroundImage: cleanOptionalString(input.backgroundImage),
     backgroundColor: cleanOptionalString(input.backgroundColor) || "#ffffff",
     thumbnail: cleanOptionalString(input.thumbnail) || cleanOptionalString(input.backgroundImage),
+    // Tri-state: undefined inherits template settings.allowCustomerText.
+    ...(input.allowCustomerText === undefined ? {} : { allowCustomerText: normalizeBoolean(input.allowCustomerText) }),
   };
+}
+
+/* ---- Customer editor state (Section 15) -----------------------------------
+   Customer changes never mutate the template. They are stored as an
+   editorState object inside the customization's renderData JSONB:
+   layerOverrides keyed by template layer id (style/transform patches the admin
+   allowed) plus userLayers (customer-added text). */
+
+export function normalizeUserLayer(input: any = {}): any | null {
+  if (!input || typeof input !== "object") return null;
+  const id = cleanString(input.id) || createId("ulayer").replace(/[^a-z0-9_]+/gi, "_");
+  const textAlign = cleanString(input.textStyle?.textAlign).toLowerCase();
+  return {
+    id,
+    type: "text",
+    page: cleanString(input.page) || "front",
+    text: clampString(input.text ?? "", 500),
+    x: toNumber(input.x, 0),
+    y: toNumber(input.y, 0),
+    width: toNumber(input.width, 600) || 600,
+    height: toNumber(input.height, 90) || 90,
+    rotation: toNumber(input.rotation, 0),
+    zIndex: toInt(input.zIndex, 1000),
+    textStyle: {
+      fontFamily: cleanString(input.textStyle?.fontFamily) || DEFAULT_TEXT_STYLE.fontFamily,
+      fontSize: toPositiveInt(input.textStyle?.fontSize, 48),
+      fontWeight: cleanString(input.textStyle?.fontWeight) || "400",
+      fontStyle: cleanString(input.textStyle?.fontStyle) === "italic" ? "italic" : "normal",
+      color: cleanString(input.textStyle?.color) || DEFAULT_TEXT_STYLE.color,
+      letterSpacing: toNumber(input.textStyle?.letterSpacing, 0),
+      lineHeight: toNumber(input.textStyle?.lineHeight, 1.2) || 1.2,
+      textAlign: CUSTOMIZER_TEXT_ALIGN.has(textAlign) ? textAlign : "center",
+      uppercase: normalizeBoolean(input.textStyle?.uppercase),
+      multiline: normalizeBoolean(input.textStyle?.multiline),
+    },
+  };
+}
+
+function normalizeLayerOverride(input: any = {}): any | null {
+  if (!input || typeof input !== "object") return null;
+  const out: any = {};
+  if (input.textStyle && typeof input.textStyle === "object") {
+    const style: any = {};
+    const src = input.textStyle;
+    if (src.fontFamily !== undefined) style.fontFamily = cleanString(src.fontFamily);
+    if (src.fontSize !== undefined) style.fontSize = toPositiveInt(src.fontSize, 0) || undefined;
+    if (src.fontWeight !== undefined) style.fontWeight = cleanString(src.fontWeight);
+    if (src.fontStyle !== undefined) style.fontStyle = cleanString(src.fontStyle) === "italic" ? "italic" : "normal";
+    if (src.color !== undefined) style.color = cleanString(src.color);
+    if (src.letterSpacing !== undefined) style.letterSpacing = toNumber(src.letterSpacing, 0);
+    if (src.textAlign !== undefined) {
+      const align = cleanString(src.textAlign).toLowerCase();
+      if (CUSTOMIZER_TEXT_ALIGN.has(align)) style.textAlign = align;
+    }
+    const cleaned = Object.fromEntries(Object.entries(style).filter(([, v]) => v !== undefined && v !== ""));
+    if (Object.keys(cleaned).length) out.textStyle = cleaned;
+  }
+  if (input.transform && typeof input.transform === "object") {
+    const t = input.transform;
+    const transform: any = {};
+    if (t.x !== undefined) transform.x = toNumber(t.x, 0);
+    if (t.y !== undefined) transform.y = toNumber(t.y, 0);
+    if (t.width !== undefined) transform.width = toNumber(t.width, 0);
+    if (t.height !== undefined) transform.height = toNumber(t.height, 0);
+    if (t.rotation !== undefined) transform.rotation = toNumber(t.rotation, 0);
+    if (Object.keys(transform).length) out.transform = transform;
+  }
+  return Object.keys(out).length ? out : null;
+}
+
+export function normalizeEditorState(input: any = {}): any {
+  const source = input && typeof input === "object" ? input : {};
+  const layerOverrides: Record<string, any> = {};
+  const rawOverrides = source.layerOverrides && typeof source.layerOverrides === "object" ? source.layerOverrides : {};
+  Object.entries(rawOverrides).forEach(([layerId, override]) => {
+    const cleanId = cleanString(layerId);
+    const normalized = normalizeLayerOverride(override);
+    if (cleanId && normalized) layerOverrides[cleanId] = normalized;
+  });
+  const userLayers = (Array.isArray(source.userLayers) ? source.userLayers : [])
+    .map(normalizeUserLayer)
+    .filter(Boolean);
+  return { layerOverrides, userLayers };
 }
 
 export function normalizeCustomizerTemplate(input: any = {}, existing: any = {}): any {
@@ -327,10 +494,13 @@ export function prepareCustomizerTemplateForSave(template: any = {}): any {
 
     const prior: any = priorFields.get(originalId) || priorFields.get(fieldId) || {};
     const isImage = layer.type === "image";
+    // Keep the admin's chosen field type (date, time, select, …) for text
+    // layers; only derive it when nothing was configured yet.
+    const priorTextType = !isImage && prior.type && prior.type !== "image" && prior.type !== "file" ? prior.type : "";
     nextFields.push({
       id: fieldId,
       label: prior.label || layer.name || "Editable field",
-      type: isImage ? "image" : layer.textStyle?.multiline ? "textarea" : "text",
+      type: isImage ? "image" : priorTextType || (layer.textStyle?.multiline ? "textarea" : "text"),
       required: Boolean(prior.required),
       // Text defaults track the layer's design text; images keep any prior default.
       defaultValue: isImage ? prior.defaultValue || "" : layer.text || prior.defaultValue || "",
@@ -433,6 +603,94 @@ export function validateCustomizerTemplate(template: any = {}): Record<string, s
   });
 
   return errors;
+}
+
+// Detailed publish validation (Section 35): blocking errors vs. warnings the
+// admin may acknowledge. Wraps the legacy validateCustomizerTemplate checks.
+export function validateCustomizerTemplateDetailed(template: any = {}): { errors: string[]; warnings: string[] } {
+  const errors: string[] = [];
+  const warnings: string[] = [];
+  const t = template && typeof template === "object" ? template : {};
+
+  const pages = Array.isArray(t.pages) ? t.pages : [];
+  const enabledPages = pages.filter((page: any) => page.enabled !== false);
+  const layers = Array.isArray(t.layers) ? t.layers : [];
+  const fields = Array.isArray(t.fields) ? t.fields : [];
+
+  if (!(t.canvasWidthPx > 0) || !(t.canvasHeightPx > 0)) {
+    errors.push("Canvas width and height must be positive numbers.");
+  }
+  if (!enabledPages.length) errors.push("At least one enabled page is required.");
+
+  // Unique page ids.
+  const pageIds = pages.map((page: any) => page.id);
+  if (new Set(pageIds).size !== pageIds.length) errors.push("Page IDs must be unique.");
+
+  // Unique layer ids and valid page references.
+  const layerIds = layers.map((layer: any) => layer.id);
+  if (new Set(layerIds).size !== layerIds.length) errors.push("Layer IDs must be unique.");
+  const pageIdSet = new Set(pageIds);
+  layers.forEach((layer: any) => {
+    if (!pageIdSet.has(layer.page)) errors.push(`Layer "${layer.name || layer.id}" points at a missing page.`);
+  });
+
+  // Unique field keys.
+  const fieldIds = fields.map((field: any) => field.id);
+  if (new Set(fieldIds).size !== fieldIds.length) errors.push("Field keys must be unique.");
+
+  const fieldMap = new Map(fields.map((field: any) => [field.id, field]));
+  const enabledPageIdSet = new Set(enabledPages.map((page: any) => page.id));
+  const layersOnEnabledPages = layers.filter((layer: any) => enabledPageIdSet.has(layer.page));
+  if (!layersOnEnabledPages.length) errors.push("Add at least one design layer to an enabled page.");
+
+  layers.forEach((layer: any) => {
+    if (!layer.customerEditable) return;
+    const field: any = layer.fieldId ? fieldMap.get(layer.fieldId) : null;
+    if (!field) {
+      errors.push(`Editable layer "${layer.name || layer.id}" has no connected customer field.`);
+      return;
+    }
+    if (!field.label) errors.push(`The field for layer "${layer.name || layer.id}" needs a customer label.`);
+    if (layer.type === "image" && field.type !== "image" && field.type !== "file") {
+      errors.push(`Photo area "${layer.name || layer.id}" must connect to an image upload field.`);
+    }
+    if (layer.hidden) warnings.push(`Editable layer "${layer.name || layer.id}" is hidden — customers will not see it.`);
+    if (!enabledPageIdSet.has(layer.page)) {
+      warnings.push(`Editable layer "${layer.name || layer.id}" sits on a disabled page.`);
+    }
+  });
+
+  // Fonts must come from the approved list so every surface renders the same.
+  const approvedFonts = new Set(CUSTOMIZER_APPROVED_FONTS.map((font) => font.value));
+  const badFonts = new Set<string>();
+  layers.forEach((layer: any) => {
+    const font = layer?.textStyle?.fontFamily;
+    if (layer.type === "text" && font && !approvedFonts.has(font)) badFonts.add(font);
+  });
+  badFonts.forEach((font) => warnings.push(`Font "${font}" is not in the approved list and may render inconsistently.`));
+
+  // Safe area / bleed sanity.
+  const safe = t.safeArea || {};
+  const bleedVals = t.bleed || {};
+  const insetTooBig =
+    Number(safe.left || 0) + Number(safe.right || 0) >= Number(t.canvasWidthPx || 0) ||
+    Number(safe.top || 0) + Number(safe.bottom || 0) >= Number(t.canvasHeightPx || 0);
+  if (insetTooBig) errors.push("Safe area insets are larger than the canvas.");
+  Object.values({ ...safe, ...bleedVals }).forEach((value: any) => {
+    if (Number(value) < 0) errors.push("Safe area and bleed values cannot be negative.");
+  });
+
+  // Default page must exist and be enabled.
+  if (t.defaultPage && !enabledPageIdSet.has(t.defaultPage)) {
+    warnings.push("The default page is disabled — the first enabled page will be used instead.");
+  }
+
+  // Nothing editable at all is publishable but usually a mistake.
+  if (!layers.some((layer: any) => layer.customerEditable) && !t.settings?.allowCustomerText) {
+    warnings.push("No layer is customer-editable and customer text is off — customers will have nothing to personalize.");
+  }
+
+  return { errors, warnings };
 }
 
 // Part 13: bump the version when the editable structure (not just default text)

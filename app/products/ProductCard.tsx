@@ -13,6 +13,7 @@ import {
   removeFromWishlist,
 } from "../lib/customer-lists";
 import { getMainMockupImage } from "./product-image";
+import { formatCurrency } from "@/lib/currency";
 
 const COLOR_SWATCH_CLASSES = {
   beige: "bg-[#E6E6E6]",
@@ -35,12 +36,6 @@ const COLOR_SWATCH_CLASSES = {
   tan: "bg-[#c9a37a]",
   white: "bg-white",
 };
-
-function formatPrice(value) {
-  const amount = Number(value);
-  if (!Number.isFinite(amount)) return "";
-  return `$${amount.toFixed(2)}`;
-}
 
 function getSalePercent(product) {
   const original = Number(product?.price);
@@ -124,8 +119,8 @@ export default function ProductCard({ product, hasOtherStyles = false, hasSuite 
 
   const image = getMainMockupImage(product);
   const currentPrice = product?.salePrice ?? product?.price;
-  const currentPriceLabel = formatPrice(currentPrice);
-  const originalPriceLabel = formatPrice(product?.price);
+  const currentPriceLabel = formatCurrency(currentPrice, product.currency);
+  const originalPriceLabel = formatCurrency(product?.price, product.currency);
   const salePercent = getSalePercent(product);
   const hasOriginalPrice = Boolean(salePercent && originalPriceLabel);
   const collectionLabel = product.collection || product.category || product.productType || "Husnalogy Collection";

@@ -1,47 +1,83 @@
 "use client";
 
-// Admin-only visual Design Builder. Composes the toolbar, interactive canvas,
-// and layer panel into a Canva-style editor. The customer never sees this — they
-// only get the finished design plus the fields admin marked editable.
+// Admin Design Studio (Sections 18–39). Lives inside the product form: the
+// template is form state (onChange), product options are form state too, and
+// Save Draft / Publish delegate to the form's existing save pipeline — so
+// template versioning, validation, and persistence all keep working.
+//
+// Collapsed: a launch card with a live summary. Open: a full-screen
+// professional editor (fixed overlay, no site chrome).
 
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+import {
+  validateCustomizerTemplateDetailed,
+} from "@/lib/customizer";
 import CustomizerPreview from "@/app/components/customizer/CustomizerPreview";
-import AdminDesignToolbar from "./AdminDesignToolbar";
-import AdminPageSwitcher from "./AdminPageSwitcher";
+import CustomizerZoomControls from "@/app/components/customizer/CustomizerZoomControls";
+import AdminBuilderHeader from "./AdminBuilderHeader";
+import AdminToolRail from "./AdminToolRail";
 import AdminCanvas from "./AdminCanvas";
-import AdminLayerPanel from "./AdminLayerPanel";
-import AdminProductSettings from "./AdminProductSettings";
-import AdminEditableFieldsPanel from "./AdminEditableFieldsPanel";
+import AdminPropertiesPanel from "./AdminPropertiesPanel";
+import AdminLayersPanel from "./AdminLayersPanel";
+import AdminPagesPanel from "./AdminPagesPanel";
+import AdminFieldsPanel from "./AdminFieldsPanel";
+import AdminProductOptionsPanel from "./AdminProductOptionsPanel";
+import AdminTemplateSettings from "./AdminTemplateSettings";
+import AdminCustomerPreview from "./AdminCustomerPreview";
 import {
   addLayer,
+  addPage,
   bringLayerToFront,
+  deletePage,
   duplicateLayer,
+  duplicatePage,
   getEnabledBuilderPages,
+  getLayer,
+  movePage,
   newImageLayer,
   newShapeLayer,
   newTextLayer,
+  patchPage,
   removeLayer,
+  renamePage,
   reorderLayer,
   sendLayerToBack,
   setCustomerEditable,
   updateConnectedField,
+  updateCustomerPermissions,
   updateLayer,
   updateLayerStyle,
   uploadBuilderImage,
 } from "./builder-utils";
 
-export default function AdminDesignBuilder({ template, onChange, productName = "Product" }: any) {
+export default function AdminDesignBuilder({
+  template,
+  onChange,
+  productName = "Product",
+  product = null,
+  productOptions = {},
+  quantityOptions = [],
+  onProductOptionsChange,
+  onQuantityOptionsChange,
+  onSave,
+  productStatus = "draft",
+  saving = false,
+  errorMessage = "",
+}: any) {
   const t = template || {};
-  const [activePage, setActivePage] = useState("front");
+  const [studioOpen, setStudioOpen] = useState(false);
+  const [tab, setTab] = useState("design");
+  const [activePage, setActivePage] = useState(t.defaultPage || "front");
   const [selectedLayerId, setSelectedLayerId] = useState<string | null>(null);
   const [zoom, setZoom] = useState(1);
-  const [previewMode, setPreviewMode] = useState(false);
-  const [settingsOpen, setSettingsOpen] = useState(false);
-  const [fieldsOpen, setFieldsOpen] = useState(false);
+  const [rightPanel, setRightPanel] = useState<"pages" | "layers">("pages");
   const [uploading, setUploading] = useState(false);
+  const [snapEnabled, setSnapEnabled] = useState(true);
+  const [publishCheck, setPublishCheck] = useState<{ errors: string[]; warnings: string[] } | null>(null);
+  const [dirtySinceSave, setDirtySinceSave] = useState(false);
 
-  // History with deep-cloned snapshots. Refs keep the latest template/onChange so
-  // the keyboard handler stays stable; a tick forces re-render for button state.
+  /* ----- history (deep-cloned snapshots, refs keep handlers stable) ----- */
   const clone = (obj: any) => (typeof structuredClone === "function" ? structuredClone(obj) : JSON.parse(JSON.stringify(obj)));
   const tRef = useRef(t);
   tRef.current = t;
@@ -52,7 +88,10 @@ export default function AdminDesignBuilder({ template, onChange, productName = "
   const [, forceTick] = useState(0);
   const bump = () => forceTick((x) => x + 1);
 
-  const apply = (next: any) => onChangeRef.current(next);
+  const apply = (next: any) => {
+    setDirtySinceSave(true);
+    onChangeRef.current(next);
+  };
   const snapshot = () => {
     undoStack.current.push(clone(tRef.current));
     if (undoStack.current.length > 60) undoStack.current.shift();
@@ -75,33 +114,65 @@ export default function AdminDesignBuilder({ template, onChange, productName = "
     apply(redoStack.current.pop());
     bump();
   };
-  const canUndo = undoStack.current.length > 0;
-  const canRedo = redoStack.current.length > 0;
 
+  /* ----- keyboard (only while the studio is open) ----- */
   useEffect(() => {
+    if (!studioOpen) return;
     const onKey = (e: KeyboardEvent) => {
       const el = e.target as HTMLElement | null;
-      // Don't hijack undo/redo while the admin is typing in a field.
-      if (el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || (el as any).isContentEditable)) return;
-      if (!(e.ctrlKey || e.metaKey)) return;
+      const typing = el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || (el as any).isContentEditable);
       const k = String(e.key).toLowerCase();
-      if (k === "z" && !e.shiftKey) {
+      if ((e.ctrlKey || e.metaKey) && !typing) {
+        if (k === "z" && !e.shiftKey) {
+          e.preventDefault();
+          undo();
+          return;
+        }
+        if (k === "y" || (k === "z" && e.shiftKey)) {
+          e.preventDefault();
+          redo();
+          return;
+        }
+      }
+      if (typing || tab !== "design") return;
+      const layer = selectedLayerId ? getLayer(tRef.current, selectedLayerId) : null;
+      if (!layer || layer.locked) return;
+      if (e.key === "Delete" || e.key === "Backspace") {
         e.preventDefault();
-        undo();
-      } else if (k === "y" || (k === "z" && e.shiftKey)) {
+        commit(removeLayer(tRef.current, layer.id));
+        setSelectedLayerId(null);
+        return;
+      }
+      if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.key)) {
         e.preventDefault();
-        redo();
+        const amount = e.shiftKey ? 40 : 8;
+        const dx = e.key === "ArrowLeft" ? -amount : e.key === "ArrowRight" ? amount : 0;
+        const dy = e.key === "ArrowUp" ? -amount : e.key === "ArrowDown" ? amount : 0;
+        commit(updateLayer(tRef.current, layer.id, { x: (layer.x || 0) + dx, y: (layer.y || 0) + dy }));
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-    // Intentionally empty deps: undo/redo use refs, so they stay correct.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [studioOpen, tab, selectedLayerId]);
+
+  // Lock page scroll while the studio overlay is open.
+  useEffect(() => {
+    if (!studioOpen) return;
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previous;
+    };
+  }, [studioOpen]);
 
   const settings = t.settings || {};
+  const enabledPages = getEnabledBuilderPages(t);
+  const layerCount = (t.layers || []).length;
+  const fieldCount = (t.fields || []).length;
+  const validation = validateCustomizerTemplateDetailed(t);
 
-  /* ----- enable gate ----- */
+  /* ----- enable gate + launch card ----- */
   if (!t.enabled) {
     return (
       <button
@@ -111,7 +182,9 @@ export default function AdminDesignBuilder({ template, onChange, productName = "
       >
         <span>
           <span className="block text-sm font-bold text-[#111111]">Enable product customizer</span>
-          <span className="mt-0.5 block text-xs text-[#111111]/55">Turn on to design an editable template. When off, this product works normally.</span>
+          <span className="mt-0.5 block text-xs text-[#111111]/55">
+            Turn on to design an editable template in the Design Studio. When off, this product works normally.
+          </span>
         </span>
         <span className="relative h-6 w-11 shrink-0 rounded-full bg-[#111111]/20">
           <span className="absolute left-1 top-1 h-4 w-4 rounded-full bg-white" />
@@ -120,19 +193,24 @@ export default function AdminDesignBuilder({ template, onChange, productName = "
     );
   }
 
-  /* ----- toolbar actions ----- */
+  /* ----- tool actions ----- */
   const addText = () => {
     const layer = newTextLayer(t, activePage);
     commit(addLayer(t, layer));
     setSelectedLayerId(layer.id);
   };
-  const addPhotoPlaceholder = () => {
+  const addPhotoArea = () => {
     const layer = newImageLayer(t, activePage);
-    commit(addLayer(t, layer));
+    let next = addLayer(t, layer);
+    // A Photo Area is customer-replaceable by definition — connect its field.
+    next = setCustomerEditable(next, layer.id, true);
+    commit(next);
     setSelectedLayerId(layer.id);
   };
   const addShape = (kind: string) => {
-    const layer = newShapeLayer(t, activePage, kind);
+    const rounded = kind === "rectangle-rounded";
+    const layer = newShapeLayer(t, activePage, rounded ? "rectangle" : kind);
+    if (rounded) (layer as any).borderRadius = 40;
     commit(addLayer(t, layer));
     setSelectedLayerId(layer.id);
   };
@@ -149,29 +227,12 @@ export default function AdminDesignBuilder({ template, onChange, productName = "
       setUploading(false);
     }
   };
-  const setBackground = async (file: File) => {
-    setUploading(true);
-    try {
-      const url = await uploadBuilderImage(file);
-      if (url) {
-        commit({
-          ...t,
-          pages: (t.pages || []).map((p: any) => (p.id === activePage ? { ...p, backgroundImage: url, thumbnail: p.thumbnail || url } : p)),
-        });
-      }
-    } finally {
-      setUploading(false);
-    }
-  };
-  const toggleBack = (on: boolean) => {
-    commit({ ...t, pages: (t.pages || []).map((p: any) => (p.id === "back" ? { ...p, enabled: on } : p)) });
-    if (!on && activePage === "back") setActivePage("front");
-  };
 
-  /* ----- layer panel actions ----- */
+  /* ----- layer + field + permission actions ----- */
   const onLayerPatch = (id: string, patch: any) => commit(updateLayer(t, id, patch));
   const onStylePatch = (id: string, patch: any) => commit(updateLayerStyle(t, id, patch));
   const onFieldPatch = (id: string, patch: any) => commit(updateConnectedField(t, id, patch));
+  const onPermissionsPatch = (id: string, patch: any) => commit(updateCustomerPermissions(t, id, patch));
   const onToggleCustomerEditable = (id: string, v: boolean) => commit(setCustomerEditable(t, id, v));
   const onDuplicate = (id: string) => {
     const { template: nt, newId } = duplicateLayer(t, id);
@@ -183,106 +244,388 @@ export default function AdminDesignBuilder({ template, onChange, productName = "
     setSelectedLayerId(null);
   };
   const onReorder = (id: string, dir: "up" | "down") => commit(reorderLayer(t, id, dir));
-  const onBringToFront = (id: string) => commit(bringLayerToFront(t, id));
-  const onSendToBack = (id: string) => commit(sendLayerToBack(t, id));
-  // Canvas drag applies without a history entry per move; one snapshot is taken at
-  // the start of a drag/resize via onBeginChange.
   const onCanvasLayerChange = (id: string, patch: any) => apply(updateLayer(tRef.current, id, patch));
 
-  const enabledPages = getEnabledBuilderPages(t);
+  /* ----- page actions ----- */
+  const handleAddPage = () => {
+    const { template: nt, pageId } = addPage(t);
+    commit(nt);
+    setActivePage(pageId);
+  };
+  const handleDuplicatePage = (pageId: string) => {
+    const { template: nt, pageId: newId } = duplicatePage(t, pageId);
+    commit(nt);
+    if (newId) setActivePage(newId);
+  };
+  const handleDeletePage = (pageId: string) => {
+    const page = (t.pages || []).find((p: any) => p.id === pageId);
+    const layersOnPage = (t.layers || []).filter((l: any) => l.page === pageId).length;
+    const confirmed = window.confirm(
+      `Delete page "${page?.label || pageId}"? Its ${layersOnPage} layer${layersOnPage === 1 ? "" : "s"} and their customer fields will be removed. This cannot be undone from outside the editor.`,
+    );
+    if (!confirmed) return;
+    commit(deletePage(t, pageId));
+    if (activePage === pageId) setActivePage((t.pages || []).find((p: any) => p.id !== pageId)?.id || "front");
+    setSelectedLayerId(null);
+  };
 
-  return (
-    <div className="overflow-hidden border border-[#111111]/12 bg-white">
-      {/* Top bar */}
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#111111]/10 bg-white px-3 py-2">
-        <div className="flex items-center gap-3">
-          <span className="max-w-[180px] truncate font-body text-lg text-[#111111]">{productName}</span>
-          <AdminPageSwitcher template={t} activePage={activePage} onSelect={setActivePage} onToggleBack={toggleBack} />
+  /* ----- save / publish ----- */
+  const isPublished = productStatus === "active";
+  const statusChips = [
+    isPublished ? "Published" : "Draft",
+    t.enabled ? "Active" : "Inactive",
+    ...(dirtySinceSave ? ["Unsaved"] : []),
+  ];
+
+  const requestPublish = () => {
+    const result = validateCustomizerTemplateDetailed(tRef.current);
+    setPublishCheck(result);
+  };
+
+  const confirmPublish = async () => {
+    setPublishCheck(null);
+    await onSave?.("publish");
+    setDirtySinceSave(false);
+  };
+
+  const saveDraft = async () => {
+    await onSave?.(isPublished ? "publish" : "draft");
+    setDirtySinceSave(false);
+  };
+
+  const deactivate = () => {
+    if (!window.confirm("Deactivate the customizer for this product? Customers will no longer be able to personalize it (existing customizations are kept).")) return;
+    onChange({ ...t, enabled: false });
+    setStudioOpen(false);
+  };
+
+  const selectedLayer = selectedLayerId ? getLayer(t, selectedLayerId) : null;
+
+  /* ----- collapsed launch card ----- */
+  if (!studioOpen) {
+    return (
+      <div className="grid gap-3 border border-[#111111]/12 bg-white p-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p className="text-sm font-bold text-[#111111]">Design Studio</p>
+            <p className="mt-0.5 text-xs text-[#111111]/55">
+              {enabledPages.length} page{enabledPages.length === 1 ? "" : "s"} · {layerCount} layer{layerCount === 1 ? "" : "s"} · {fieldCount} customer field{fieldCount === 1 ? "" : "s"} · v{t.version || 1}
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={deactivate}
+              className="rounded-full border border-red-200 px-3 py-1.5 text-xs font-bold text-red-700 hover:bg-red-50"
+            >
+              Disable
+            </button>
+            <button
+              type="button"
+              onClick={() => setStudioOpen(true)}
+              className="rounded-full bg-[#111111] px-4 py-2 text-xs font-bold text-white hover:bg-[#333]"
+            >
+              Open Design Studio
+            </button>
+          </div>
         </div>
-        <div className="flex items-center gap-2">
-          <button type="button" onClick={undo} disabled={!canUndo} title="Undo (Ctrl+Z)" className="border border-[#111111]/15 px-2 py-1 text-xs font-bold hover:bg-[#F8F8F8] disabled:opacity-40 disabled:hover:bg-white">Undo</button>
-          <button type="button" onClick={redo} disabled={!canRedo} title="Redo (Ctrl+Shift+Z)" className="border border-[#111111]/15 px-2 py-1 text-xs font-bold hover:bg-[#F8F8F8] disabled:opacity-40 disabled:hover:bg-white">Redo</button>
-          <button type="button" onClick={() => setPreviewMode((v) => !v)} className={`px-3 py-1 text-xs font-bold ${previewMode ? "bg-[#111111] text-white" : "border border-[#111111]/15 hover:bg-[#F8F8F8]"}`}>
-            {previewMode ? "Editing off" : "Preview"}
-          </button>
-          <button type="button" onClick={() => onChange({ ...t, enabled: false })} className="border border-red-200 px-2 py-1 text-xs font-bold text-red-700 hover:bg-red-50">Disable</button>
-        </div>
-      </div>
 
-      {uploading && <div className="bg-[#F8F8F8] px-3 py-1 text-center text-[11px] font-bold text-[#111111]/70">Uploading image…</div>}
-
-      <div className="flex min-h-[600px]">
-        {!previewMode && (
-          <AdminDesignToolbar
-            onAddText={addText}
-            onUploadImage={uploadImage}
-            onAddPhotoPlaceholder={addPhotoPlaceholder}
-            onAddShape={addShape}
-            onSetBackground={setBackground}
-            onOpenSettings={() => setSettingsOpen(true)}
-            onOpenFields={() => setFieldsOpen(true)}
-          />
+        {validation.errors.length > 0 && (
+          <p className="border border-red-200 bg-red-50 px-3 py-2 text-xs font-bold text-red-700">
+            {validation.errors[0]}
+            {validation.errors.length > 1 ? ` (+${validation.errors.length - 1} more)` : ""}
+          </p>
         )}
 
-        {/* Center */}
-        <div className="flex min-w-0 flex-1 flex-col">
-          <div className="flex items-center justify-end gap-1 border-b border-[#111111]/10 bg-white px-3 py-1.5">
-            <button type="button" onClick={() => setZoom((z) => Math.max(0.5, +(z - 0.1).toFixed(2)))} className="grid h-6 w-6 place-items-center border border-[#111111]/15 text-sm">−</button>
-            <span className="w-10 text-center text-[11px] font-bold text-[#111111]/60">{Math.round(zoom * 100)}%</span>
-            <button type="button" onClick={() => setZoom((z) => Math.min(2, +(z + 0.1).toFixed(2)))} className="grid h-6 w-6 place-items-center border border-[#111111]/15 text-sm">+</button>
-          </div>
-
-          {previewMode ? (
-            <div className="flex flex-wrap justify-center gap-6 overflow-auto bg-[#F8F8F8] p-6">
-              {enabledPages.map((page: any) => (
-                <div key={page.id} className="w-[320px]">
-                  <p className="mb-1.5 text-center text-xs font-bold uppercase tracking-wide text-[#111111]/55">{page.label}</p>
-                  <div className="border border-[#111111]/10 bg-white p-2">
-                    <CustomizerPreview template={t} values={{}} page={page.id} showSafeArea={Boolean(settings.showSafeArea)} showBleed={Boolean(settings.showBleed)} />
-                  </div>
-                </div>
-              ))}
+        <div className="flex flex-wrap gap-3">
+          {enabledPages.slice(0, 4).map((page: any) => (
+            <div key={page.id} className="w-24">
+              <div className="overflow-hidden border border-[#111111]/10 bg-white">
+                <CustomizerPreview template={t} values={{}} page={page.id} showSafeArea={false} showBleed={false} />
+              </div>
+              <p className="mt-1 text-center text-[10px] font-bold text-[#111111]/55">{page.label}</p>
             </div>
-          ) : (
-            <AdminCanvas
-              template={t}
-              pageId={activePage}
-              values={{}}
-              selectedLayerId={selectedLayerId}
-              onSelect={setSelectedLayerId}
-              onBeginChange={snapshot}
-              onLayerChange={onCanvasLayerChange}
-              zoom={zoom}
-              showSafeArea={Boolean(settings.showSafeArea)}
-              showBleed={Boolean(settings.showBleed)}
-            />
-          )}
+          ))}
         </div>
+      </div>
+    );
+  }
 
-        {/* Right panel */}
-        {!previewMode && (
-          <div className="w-80 shrink-0 border-l border-[#111111]/10 bg-white">
-            <AdminLayerPanel
-              template={t}
-              pageId={activePage}
-              selectedLayerId={selectedLayerId}
-              onSelect={setSelectedLayerId}
-              onLayerPatch={onLayerPatch}
-              onStylePatch={onStylePatch}
-              onFieldPatch={onFieldPatch}
-              onToggleCustomerEditable={onToggleCustomerEditable}
-              onDuplicate={onDuplicate}
-              onRemove={onRemove}
-              onReorder={onReorder}
-              onBringToFront={onBringToFront}
-              onSendToBack={onSendToBack}
+  /* ----- full-screen studio ----- */
+  const studio = (
+    <div className="fixed inset-0 z-[120] flex flex-col bg-[#F8F6F1] text-[#303839]">
+      <AdminBuilderHeader
+        templateName={settings.templateName || productName}
+        productName={productName}
+        statusChips={statusChips}
+        saveStatusLabel={saving ? "Saving…" : ""}
+        tab={tab}
+        onTabChange={setTab}
+        canUndo={undoStack.current.length > 0}
+        canRedo={redoStack.current.length > 0}
+        onUndo={undo}
+        onRedo={redo}
+        onBack={() => setStudioOpen(false)}
+        onSaveDraft={saveDraft}
+        onPublish={requestPublish}
+        publishLabel={isPublished ? "Update Published" : "Publish"}
+        saving={saving}
+      />
+
+      {errorMessage && (
+        <p className="border-b border-red-200 bg-red-50 px-4 py-2 text-xs font-bold text-red-700" role="alert">
+          {errorMessage}
+        </p>
+      )}
+
+      <div className="flex min-h-0 flex-1">
+        {tab === "design" && (
+          <>
+            <AdminToolRail
+              activeTool="select"
+              onSelectTool={() => setSelectedLayerId(null)}
+              onAddText={addText}
+              onUploadImage={uploadImage}
+              onAddPhotoArea={addPhotoArea}
+              onAddShape={addShape}
+              onOpenPanel={setRightPanel}
+              onGoTab={setTab}
+              uploading={uploading}
             />
+
+            <aside className="w-[300px] shrink-0 overflow-y-auto border-r border-[#303839]/10 bg-white">
+              <AdminPropertiesPanel
+                template={t}
+                layer={selectedLayer}
+                onLayerPatch={onLayerPatch}
+                onStylePatch={onStylePatch}
+                onFieldPatch={onFieldPatch}
+                onToggleCustomerEditable={onToggleCustomerEditable}
+                onPermissionsPatch={onPermissionsPatch}
+                onDuplicate={onDuplicate}
+                onRemove={onRemove}
+                onReorder={onReorder}
+                onBringToFront={(id: string) => commit(bringLayerToFront(t, id))}
+                onSendToBack={(id: string) => commit(sendLayerToBack(t, id))}
+              />
+            </aside>
+
+            <main className="relative min-h-0 min-w-0 flex-1">
+              <AdminCanvas
+                template={t}
+                pageId={activePage}
+                values={{}}
+                selectedLayerId={selectedLayerId}
+                onSelect={setSelectedLayerId}
+                onBeginChange={snapshot}
+                onLayerChange={onCanvasLayerChange}
+                zoom={zoom}
+                showSafeArea={Boolean(settings.showSafeArea)}
+                showBleed={Boolean(settings.showBleed)}
+                snapEnabled={snapEnabled}
+              />
+              <div className="pointer-events-none absolute inset-x-0 bottom-3 z-30 flex items-center justify-center gap-2">
+                <div className="pointer-events-auto flex items-center gap-2">
+                  <CustomizerZoomControls zoom={zoom} onZoomChange={setZoom} onFit={() => setZoom(1)} />
+                  <button
+                    type="button"
+                    aria-pressed={snapEnabled}
+                    onClick={() => setSnapEnabled((v) => !v)}
+                    className={`rounded-full border px-3 py-1.5 text-[11px] font-bold shadow-[0_4px_18px_rgba(48,56,57,0.10)] ${
+                      snapEnabled ? "border-[#303839] bg-[#303839] text-white" : "border-[#303839]/12 bg-white text-[#303839]/60"
+                    }`}
+                  >
+                    Snap
+                  </button>
+                  <button
+                    type="button"
+                    aria-pressed={Boolean(settings.showSafeArea)}
+                    onClick={() => commit({ ...t, settings: { ...settings, showSafeArea: !settings.showSafeArea } })}
+                    className={`rounded-full border px-3 py-1.5 text-[11px] font-bold shadow-[0_4px_18px_rgba(48,56,57,0.10)] ${
+                      settings.showSafeArea ? "border-[#303839] bg-[#303839] text-white" : "border-[#303839]/12 bg-white text-[#303839]/60"
+                    }`}
+                  >
+                    Safe area
+                  </button>
+                  <button
+                    type="button"
+                    aria-pressed={Boolean(settings.showBleed)}
+                    onClick={() => commit({ ...t, settings: { ...settings, showBleed: !settings.showBleed } })}
+                    className={`rounded-full border px-3 py-1.5 text-[11px] font-bold shadow-[0_4px_18px_rgba(48,56,57,0.10)] ${
+                      settings.showBleed ? "border-[#303839] bg-[#303839] text-white" : "border-[#303839]/12 bg-white text-[#303839]/60"
+                    }`}
+                  >
+                    Bleed
+                  </button>
+                </div>
+              </div>
+            </main>
+
+            <aside className="flex w-[230px] shrink-0 flex-col border-l border-[#303839]/10 bg-white">
+              <div className="flex shrink-0 border-b border-[#303839]/10">
+                {(["pages", "layers"] as const).map((panel) => (
+                  <button
+                    key={panel}
+                    type="button"
+                    onClick={() => setRightPanel(panel)}
+                    aria-pressed={rightPanel === panel}
+                    className={`flex-1 px-2 py-2 text-xs font-bold capitalize transition ${
+                      rightPanel === panel ? "border-b-2 border-[#303839] text-[#303839]" : "text-[#303839]/50 hover:text-[#303839]"
+                    }`}
+                  >
+                    {panel}
+                  </button>
+                ))}
+              </div>
+              <div className="min-h-0 flex-1 overflow-y-auto">
+                {rightPanel === "pages" ? (
+                  <AdminPagesPanel
+                    template={t}
+                    activePage={activePage}
+                    onSelectPage={(pageId: string) => {
+                      setActivePage(pageId);
+                      setSelectedLayerId(null);
+                    }}
+                    onAddPage={handleAddPage}
+                    onDuplicatePage={handleDuplicatePage}
+                    onRenamePage={(pageId: string, label: string) => commit(renamePage(t, pageId, label))}
+                    onMovePage={(pageId: string, dir: "up" | "down") => commit(movePage(t, pageId, dir))}
+                    onDeletePage={handleDeletePage}
+                    onPatchPage={(pageId: string, patch: any) => commit(patchPage(t, pageId, patch))}
+                  />
+                ) : (
+                  <AdminLayersPanel
+                    template={t}
+                    pageId={activePage}
+                    selectedLayerId={selectedLayerId}
+                    onSelect={setSelectedLayerId}
+                    onLayerPatch={onLayerPatch}
+                    onReorder={onReorder}
+                    onDuplicate={onDuplicate}
+                    onRemove={onRemove}
+                  />
+                )}
+              </div>
+            </aside>
+          </>
+        )}
+
+        {tab === "fields" && (
+          <div className="min-h-0 flex-1 overflow-y-auto">
+            <AdminFieldsPanel
+              template={t}
+              onFieldPatch={onFieldPatch}
+              onToggleRequired={(layerId: string, required: boolean) => onFieldPatch(layerId, { required })}
+              onSelectLayer={(layerId: string) => {
+                const layer = getLayer(t, layerId);
+                if (layer) setActivePage(layer.page);
+                setSelectedLayerId(layerId);
+                setTab("design");
+              }}
+            />
+          </div>
+        )}
+
+        {tab === "options" && (
+          <div className="min-h-0 flex-1 overflow-y-auto">
+            <AdminProductOptionsPanel
+              productOptions={productOptions}
+              quantityOptions={quantityOptions}
+              onOptionsChange={(key: string, entries: any[]) => onProductOptionsChange?.(key, entries)}
+              onQuantityOptionsChange={(values: string[]) => onQuantityOptionsChange?.(values)}
+            />
+          </div>
+        )}
+
+        {tab === "preview" && (
+          <div className="min-h-0 flex-1">
+            <AdminCustomerPreview template={t} product={product || { title: productName }} />
+          </div>
+        )}
+
+        {tab === "settings" && (
+          <div className="min-h-0 flex-1 overflow-y-auto">
+            <AdminTemplateSettings
+              template={t}
+              onChange={(next: any) => commit(next)}
+              productName={productName}
+              templateVersion={t.version}
+            />
+            <div className="mx-auto w-full max-w-3xl px-6 pb-8">
+              <button
+                type="button"
+                onClick={deactivate}
+                className="rounded-full border border-red-200 px-4 py-2 text-xs font-bold text-red-700 hover:bg-red-50"
+              >
+                Deactivate customizer for this product
+              </button>
+            </div>
           </div>
         )}
       </div>
 
-      {settingsOpen && <AdminProductSettings template={t} onChange={(next: any) => commit(next)} onClose={() => setSettingsOpen(false)} />}
-      {fieldsOpen && <AdminEditableFieldsPanel template={t} onSelectLayer={setSelectedLayerId} onClose={() => setFieldsOpen(false)} />}
+      {/* Publish validation dialog */}
+      {publishCheck && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-[#303839]/40 p-4" onClick={() => setPublishCheck(null)}>
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label="Publish checks"
+            className="w-full max-w-lg rounded-lg bg-white p-5 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="font-display text-2xl text-[#303839]">Publish checks</h3>
+
+            {publishCheck.errors.length > 0 && (
+              <div className="mt-3 rounded-md border border-red-200 bg-red-50 p-3">
+                <p className="text-sm font-bold text-red-700">Fix these before publishing:</p>
+                <ul className="mt-1 grid gap-0.5 text-sm text-red-700">
+                  {publishCheck.errors.map((error) => (
+                    <li key={error}>• {error}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {publishCheck.warnings.length > 0 && (
+              <div className="mt-3 rounded-md border border-[#D4AF37]/50 bg-[#D4AF37]/10 p-3">
+                <p className="text-sm font-bold text-[#8a701d]">Warnings:</p>
+                <ul className="mt-1 grid gap-0.5 text-sm text-[#8a701d]">
+                  {publishCheck.warnings.map((warning) => (
+                    <li key={warning}>• {warning}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {!publishCheck.errors.length && !publishCheck.warnings.length && (
+              <p className="mt-3 text-sm text-[#303839]/70">All checks passed. The template is ready to publish.</p>
+            )}
+
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setPublishCheck(null)}
+                className="rounded-full border border-[#303839]/15 px-4 py-2 text-xs font-bold text-[#303839] hover:bg-[#F4ECEC]"
+              >
+                Back to editing
+              </button>
+              {!publishCheck.errors.length && (
+                <button
+                  type="button"
+                  onClick={confirmPublish}
+                  className="rounded-full bg-[#303839] px-5 py-2 text-xs font-bold text-white hover:bg-[#434c4d]"
+                >
+                  {publishCheck.warnings.length ? "Publish anyway" : isPublished ? "Update Published" : "Publish"}
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
+
+  if (typeof document === "undefined") return null;
+  return createPortal(studio, document.body);
 }

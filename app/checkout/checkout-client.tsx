@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { formatCurrency } from "@/lib/currency";
 import { useEffect, useState } from "react";
 import useAuth from "../lib/useAuth";
 import {
@@ -109,6 +110,7 @@ export default function CheckoutClient({ initialUser = undefined }: any) {
           subtotal: totals.subtotal,
           deliveryCharge: totals.deliveryCharge,
           total: totals.total,
+          currency: totals.currency,
           paymentStatus: "unpaid",
           paymentMethod: "Cash on Delivery",
           status: "pending",
@@ -146,6 +148,7 @@ export default function CheckoutClient({ initialUser = undefined }: any) {
         subtotal: totals.subtotal,
         deliveryCharge: totals.deliveryCharge,
         total: totals.total,
+        currency: totals.currency,
         paymentStatus: data.order?.paymentStatus || "unpaid",
         status: data.order?.status || "pending",
         createdAt: data.order?.createdAt || new Date().toISOString(),
@@ -162,7 +165,7 @@ export default function CheckoutClient({ initialUser = undefined }: any) {
     }
   };
 
-  const money = (value) => `$${Number(value || 0).toFixed(2)}`;
+  const money = (value, currency = totals.currency) => formatCurrency(value, currency);
   const itemCount = items.reduce((sum, item) => sum + Number(item.quantity || 1), 0);
 
   return (
@@ -312,7 +315,7 @@ export default function CheckoutClient({ initialUser = undefined }: any) {
                         <p className="mt-0.5 text-[11px] text-[#303839]/55">Qty {item.quantity || 1}</p>
                       </div>
                       <p className="shrink-0 text-sm font-bold text-[#303839]">
-                        {money(Number(item.price || 0) * Number(item.quantity || 1))}
+                        {money(Number(item.price || 0) * Number(item.quantity || 1), item.currency)}
                       </p>
                     </div>
                   );

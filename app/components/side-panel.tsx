@@ -9,6 +9,7 @@ import {
   subscribeToUserWishlist,
   updateCartQuantity,
 } from "../lib/customer-lists";
+import { formatCurrency, normalizeCurrency } from "@/lib/currency";
 
 export default function SidePanel({ type, setType, user, openAuth }) {
   const [cart, setCart] = useState([]);
@@ -84,6 +85,7 @@ export default function SidePanel({ type, setType, user, openAuth }) {
     (sum, item) => sum + Number(item.price || 0) * Number(item.quantity || 1),
     0
   );
+  const cartCurrency = normalizeCurrency(cart[0]?.currency);
   const panelCopy =
     type === "cart"
       ? {
@@ -175,12 +177,12 @@ export default function SidePanel({ type, setType, user, openAuth }) {
                             {item.title}
                           </Link>
                           <span className="shrink-0 text-[13.5px] font-semibold text-[#303839]">
-                            ${lineTotal.toFixed(2)}
+                            {formatCurrency(lineTotal, item.currency)}
                           </span>
                         </div>
 
                         <p className="mt-1 text-[12px] text-[#303839]/50">
-                          ${Number(item.price || 0).toFixed(2)} each
+                          {formatCurrency(item.price, item.currency)} each
                         </p>
 
                         <div className="mt-3 flex items-center justify-between gap-3">
@@ -240,7 +242,7 @@ export default function SidePanel({ type, setType, user, openAuth }) {
             <div className="space-y-2.5 text-[13px]">
               <div className="flex items-center justify-between text-[#303839]/70">
                 <span>Subtotal</span>
-                <span className="font-medium text-[#303839]">${total.toFixed(2)}</span>
+                <span className="font-medium text-[#303839]">{formatCurrency(total, cartCurrency)}</span>
               </div>
               <div className="flex items-center justify-between text-[#303839]/70">
                 <span>Delivery</span>
@@ -248,7 +250,7 @@ export default function SidePanel({ type, setType, user, openAuth }) {
               </div>
               <div className="flex items-center justify-between border-t border-[#303839]/10 pt-3 text-[15px] font-semibold text-[#303839]">
                 <span>Total</span>
-                <span>${total.toFixed(2)}</span>
+                <span>{formatCurrency(total, cartCurrency)}</span>
               </div>
             </div>
 

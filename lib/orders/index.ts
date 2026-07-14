@@ -2,6 +2,7 @@ import { createId, nowIso } from "@/lib/core/id";
 import { clampNumber, clampString, cleanOptionalString, cleanString, isValidEmail } from "@/lib/validation";
 import { getProductBySlug } from "@/lib/products";
 import { createServiceRoleClient } from "@/lib/supabase/server";
+import { normalizeCurrency } from "@/lib/currency";
 
 const ORDER_STATUSES = new Set([
   "pending",
@@ -33,6 +34,7 @@ function orderFromSupabaseRow(row: any = {}) {
           productTitle: item.product_title || "",
           image: item.product_image || "",
           price: Number(item.unit_price || 0),
+          currency: normalizeCurrency(itemMeta.currency || metadata.currency),
           quantity: Number(item.quantity || 1),
           selectedOptions: item.selected_options || {},
           customizationValues: item.customization_values || {},
@@ -222,6 +224,7 @@ function normalizeOrderItem(item) {
     productTitle: clampString(item.title || item.productTitle, 300),
     image: cleanOptionalString(item.image),
     price,
+    currency: normalizeCurrency(item.currency),
     quantity,
     selectedOptions: item.selectedOptions || item.options || {},
     customizationValues: item.customizationValues || item.customization || {},
@@ -278,6 +281,7 @@ function normalizeOrderRequest(input: any, existing: any = {}) {
     subtotal: Number(subtotal.toFixed(2)),
     deliveryCharge: Number(deliveryCharge.toFixed(2)),
     total: Number(total.toFixed(2)),
+    currency: normalizeCurrency(input.currency ?? existing.currency ?? items[0]?.currency),
     paymentStatus,
     status,
     message: clampString(input.message ?? existing.message, 5000),

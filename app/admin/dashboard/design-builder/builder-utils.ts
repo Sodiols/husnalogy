@@ -331,6 +331,103 @@ export function sendLayerToBack(template: any, layerId: string) {
   return normalizeZIndexes(updateLayer(template, layerId, { zIndex: minZ - 1 }), layer.page);
 }
 
+/* ---------- customer permissions ---------- */
+
+// Patch a layer's customer permission flags (Section 31). Turning on any
+// content-ish permission implies customerEditable so the legacy flag and the
+// customer UI stay in sync.
+export function updateCustomerPermissions(template: any, layerId: string, patch: Record<string, boolean>) {
+  const layer = getLayer(template, layerId);
+  if (!layer) return template;
+  const current = layer.customerPermissions || {};
+  const next = { ...current, ...patch };
+  return updateLayer(template, layerId, { customerPermissions: next });
+}
+
+/* ---------- page management (Section 27) ---------- */
+
+function pageIdFromLabel(template: any, label: string) {
+  const base = keyify(label) || "page";
+  const taken = new Set((template.pages || []).map((p: any) => p.id));
+  if (!taken.has(base)) return base;
+  let i = 2;
+  while (taken.has(`${base}-${i}`)) i += 1;
+  return `${base}-${i}`;
+}
+
+export function addPage(template: any, label = "") {
+  const count = (template.pages || []).length;
+  const finalLabel = label || `Page ${count + 1}`;
+  const page = {
+    id: pageIdFromLabel(template, finalLabel),
+    label: finalLabel,
+    enabled: true,
+    backgroundColor: "#ffffff",
+    backgroundImage: "",
+  };
+  return { template: { ...template, pages: [...(template.pages || []), page] }, pageId: page.id };
+}
+
+export function duplicatePage(template: any, pageId: string) {
+  const pages = template.pages || [];
+  const index = pages.findIndex((p: any) => p.id === pageId);
+  if (index === -1) return { template, pageId: null };
+  const source = pages[index];
+  const copy = { ...source, id: pageIdFromLabel(template, `${source.label} copy`), label: `${source.label} copy` };
+  const nextPages = [...pages.slice(0, index + 1), copy, ...pages.slice(index + 1)];
+
+  // Copy the page's layers too. Duplicated editable layers lose their field
+  // binding so field keys stay unique (admin reconnects what they need).
+  const copiedLayers = (template.layers || [])
+    .filter((l: any) => l.page === pageId)
+    .map((l: any) => ({ ...l, id: genId(l.type), page: copy.id, fieldId: "", customerEditable: false }));
+
+  return {
+    template: { ...template, pages: nextPages, layers: [...(template.layers || []), ...copiedLayers] },
+    pageId: copy.id,
+  };
+}
+
+export function renamePage(template: any, pageId: string, label: string) {
+  return {
+    ...template,
+    pages: (template.pages || []).map((p: any) => (p.id === pageId ? { ...p, label: label || p.label } : p)),
+  };
+}
+
+export function patchPage(template: any, pageId: string, patch: any) {
+  return {
+    ...template,
+    pages: (template.pages || []).map((p: any) => (p.id === pageId ? { ...p, ...patch } : p)),
+  };
+}
+
+export function movePage(template: any, pageId: string, direction: "up" | "down") {
+  const pages = [...(template.pages || [])];
+  const index = pages.findIndex((p: any) => p.id === pageId);
+  const target = direction === "up" ? index - 1 : index + 1;
+  if (index === -1 || target < 0 || target >= pages.length) return template;
+  [pages[index], pages[target]] = [pages[target], pages[index]];
+  return { ...template, pages };
+}
+
+// Deleting a page removes its layers and their connected fields. The caller
+// must confirm first and must not allow deleting the only page.
+export function deletePage(template: any, pageId: string) {
+  const pages = template.pages || [];
+  if (pages.length <= 1) return template;
+  const removedLayerFieldIds = new Set(
+    (template.layers || []).filter((l: any) => l.page === pageId && l.fieldId).map((l: any) => l.fieldId),
+  );
+  const layers = (template.layers || []).filter((l: any) => l.page !== pageId);
+  // Only drop fields that no remaining layer references.
+  const stillUsed = new Set(layers.map((l: any) => l.fieldId).filter(Boolean));
+  const fields = (template.fields || []).filter((f: any) => !removedLayerFieldIds.has(f.id) || stillUsed.has(f.id));
+  const nextPages = pages.filter((p: any) => p.id !== pageId);
+  const defaultPage = template.defaultPage === pageId ? nextPages[0]?.id || "front" : template.defaultPage;
+  return { ...template, pages: nextPages, layers, fields, defaultPage };
+}
+
 export async function uploadBuilderImage(file: File): Promise<string> {
   const formData = new FormData();
   formData.append("folder", "product-images");

@@ -9,6 +9,7 @@ import {
   prepareCustomizerTemplateForSave,
   validateCustomizerTemplate,
 } from "@/lib/customizer";
+import { formatCurrency, PRIMARY_CURRENCY, SUPPORTED_CURRENCIES } from "@/lib/currency";
 
 /* ------------------------------------------------------------------ */
 /* Static option data                                                   */
@@ -121,7 +122,7 @@ const STATUS_OPTIONS = [
   { value: "hidden", label: "Hidden", helper: "Stored in admin, hidden from the website" },
 ];
 
-const CURRENCY_OPTIONS = ["USD", "AED", "EUR", "GBP"];
+const CURRENCY_OPTIONS = [...SUPPORTED_CURRENCIES];
 
 const COLLECTION_SECTION_OPTIONS = [
   {
@@ -250,11 +251,10 @@ function buildCollectionSectionsPayload(value, collectionIds = []) {
   }, {});
 }
 
-function formatMoney(value, currency = "USD") {
+function formatMoney(value, currency = PRIMARY_CURRENCY) {
   const amount = Number(value);
   if (!Number.isFinite(amount) || amount <= 0) return "";
-  const symbols = { USD: "$", AED: "AED ", EUR: "€", GBP: "£" };
-  return `${symbols[currency] || "$"}${amount.toFixed(2)}`;
+  return formatCurrency(amount, currency);
 }
 
 function tagCharacterCount(tags) {
@@ -295,6 +295,24 @@ function uploadImages(files, folder, onProgress): Promise<string[]> {
   });
 }
 
+// Starting option lists for brand-new products — mirrors the server defaults
+// in lib/products so a new product behaves exactly like before until the admin
+// edits its options in the Design Studio.
+const DEFAULT_FORM_OPTION_LISTS = {
+  formatOptions: [],
+  sizeOptions: ['5" x 7"', '4.25" x 5.5"', '6" x 8"'],
+  envelopeOptions: ["No Envelopes", "Blank White Envelopes", "Addressed Envelopes"],
+  cornerOptions: ["Squared", "Rounded", "Arch", "Scallop", "Bracket", "Ticket"],
+  paperStyleOptions: [],
+  paperOptions: ["Signature Matte", "Premium Linen", "Pearl Shimmer", "Soft Touch"],
+  printingOptions: ["Standard", "High Definition +$0.40"],
+  quantityOptions: ["1", "10", "20", "30", "40", "50", "75", "100"],
+};
+
+function initialOptionList(product, key) {
+  return Array.isArray(product?.[key]) ? product[key] : DEFAULT_FORM_OPTION_LISTS[key];
+}
+
 function buildInitialForm(product) {
   const mockups = Array.isArray(product?.mockups) ? product.mockups.filter(Boolean) : [];
   const images = Array.isArray(product?.images) ? product.images.filter(Boolean) : [];
@@ -331,11 +349,20 @@ function buildInitialForm(product) {
     comingInDays: product?.comingInDays ?? "",
     regularPrice: regularPrice === null ? "" : regularPrice,
     salePrice: salePrice === null ? "" : salePrice,
-    currency: product?.currency || "USD",
+    currency: product?.currency === "USD" ? "USD" : PRIMARY_CURRENCY,
     customizationFields: normalizeFormPersonalizationFields(product?.customizationFields),
     customizerTemplate: product?.customizerTemplate
       ? normalizeCustomizerTemplate(product.customizerTemplate)
       : normalizeCustomizerTemplate({ ...createDefaultCustomizerTemplate(), enabled: false }),
+    // Product option lists managed inside the Design Studio (Section 32).
+    formatOptions: initialOptionList(product, "formatOptions"),
+    sizeOptions: initialOptionList(product, "sizeOptions"),
+    envelopeOptions: initialOptionList(product, "envelopeOptions"),
+    cornerOptions: initialOptionList(product, "cornerOptions"),
+    paperStyleOptions: initialOptionList(product, "paperStyleOptions"),
+    paperOptions: initialOptionList(product, "paperOptions"),
+    printingOptions: initialOptionList(product, "printingOptions"),
+    quantityOptions: initialOptionList(product, "quantityOptions"),
     agreementAccepted: Boolean(product?.id),
   };
 }
@@ -1371,6 +1398,15 @@ export default function ProductUploadForm({ product = null, onSaved, onClose }) 
       oldPrice: hasSale ? regularPrice : null,
       currency: form.currency,
       customizationFields: buildPersonalizationPayload(form.customizationFields),
+      // Product option lists edited in the Design Studio's Options tab.
+      formatOptions: form.formatOptions,
+      sizeOptions: form.sizeOptions,
+      envelopeOptions: form.envelopeOptions,
+      cornerOptions: form.cornerOptions,
+      paperStyleOptions: form.paperStyleOptions,
+      paperOptions: form.paperOptions,
+      printingOptions: form.printingOptions,
+      quantityOptions: form.quantityOptions,
       // Only persist the customizer template when it is enabled or the product
       // already had one — keeps template rows off products that never use it.
       ...(preparedCustomizerTemplate?.enabled || product?.customizerTemplate
@@ -1664,14 +1700,44 @@ export default function ProductUploadForm({ product = null, onSaved, onClose }) 
 
           {form.customizeEnabled && (
             <FormSection
-              title="Design Builder"
-              description="Create the actual editable product design here. Add text and image layers, arrange them, and mark only the layers customers may personalize. Mockups above are what customers browse; this design is what they personalize."
+              title="Design Studio"
+              description="Create the actual editable product design here. Add pages, text, photo areas and shapes, mark what customers may personalize, and configure product options. Mockups above are what customers browse; this design is what they personalize."
             >
               <div data-field-error={errors.customizerTemplate ? "" : undefined}>
                 <AdminDesignBuilder
                   template={form.customizerTemplate}
                   onChange={(next) => update("customizerTemplate", next)}
                   productName={form.title || "Product"}
+                  product={{
+                    title: form.title || "Product",
+                    price: form.regularPrice === "" ? 0 : Number(form.regularPrice),
+                    salePrice: form.salePrice === "" ? null : Number(form.salePrice),
+                    currency: form.currency,
+                    formatOptions: form.formatOptions,
+                    sizeOptions: form.sizeOptions,
+                    envelopeOptions: form.envelopeOptions,
+                    cornerOptions: form.cornerOptions,
+                    paperStyleOptions: form.paperStyleOptions,
+                    paperOptions: form.paperOptions,
+                    printingOptions: form.printingOptions,
+                    quantityOptions: form.quantityOptions,
+                  }}
+                  productOptions={{
+                    formatOptions: form.formatOptions,
+                    sizeOptions: form.sizeOptions,
+                    envelopeOptions: form.envelopeOptions,
+                    cornerOptions: form.cornerOptions,
+                    paperStyleOptions: form.paperStyleOptions,
+                    paperOptions: form.paperOptions,
+                    printingOptions: form.printingOptions,
+                  }}
+                  quantityOptions={form.quantityOptions}
+                  onProductOptionsChange={(key, entries) => update(key, entries)}
+                  onQuantityOptionsChange={(values) => update("quantityOptions", values)}
+                  onSave={save}
+                  productStatus={form.status}
+                  saving={Boolean(saving)}
+                  errorMessage={saveError}
                 />
                 <FieldError message={errors.customizerTemplate} />
               </div>

@@ -1,6 +1,7 @@
 "use client";
 
 import { createClient } from "@/lib/supabase/client";
+import { normalizeCurrency } from "@/lib/currency";
 
 const RECENT_KEY = "husnalogy_recently_viewed";
 const ADDRESS_KEY = "husnalogy_saved_addresses";
@@ -147,6 +148,7 @@ function normalizeRemoteCartItem(row: any = {}) {
     title: row.product_title || metadata.title || "Untitled product",
     image: row.product_image || metadata.image || "/images/weddings.png",
     price,
+    currency: normalizeCurrency(metadata.currency),
     quantity,
     selectedOptions: metadata.selectedOptions || metadata.options || {},
     options: metadata.selectedOptions || metadata.options || {},
@@ -175,6 +177,7 @@ function normalizeRemoteWishlistItem(row: any = {}) {
     title: row.product_title || metadata.title || "Untitled product",
     image: row.product_image || metadata.image || "/images/weddings.png",
     price: Number(row.price ?? metadata.price ?? 0),
+    currency: normalizeCurrency(metadata.currency),
     quantity: 1,
     addedAt: row.created_at || metadata.addedAt || nowIso(),
     updatedAt: row.updated_at || metadata.updatedAt || row.created_at || nowIso(),
@@ -202,6 +205,7 @@ function normalizeCartItem(product, quantity = 1, payload: any = {}) {
     title: product?.title || "Untitled product",
     image,
     price,
+    currency: normalizeCurrency(payload.currency || product?.currency),
     quantity: safeQuantity,
     selectedOptions,
     options: selectedOptions,
@@ -228,6 +232,7 @@ function normalizeWishlistItem(product) {
     title: product?.title || "Untitled product",
     image: getProductImage(product),
     price: Number(product?.salePrice ?? product?.price ?? 0),
+    currency: normalizeCurrency(product?.currency),
     quantity: 1,
     addedAt: nowIso(),
     updatedAt: nowIso(),
@@ -244,6 +249,7 @@ function normalizeRecentlyViewedItem(product) {
     title: product?.title || "Untitled product",
     image: getProductImage(product),
     price: Number(product?.salePrice ?? product?.price ?? 0),
+    currency: normalizeCurrency(product?.currency),
     category: product?.category || "",
     productType: product?.productType || "",
     viewedAt: currentTime,
@@ -561,7 +567,7 @@ export function getProductBasePrice(product) {
 }
 
 export function parseOptionSurcharge(label) {
-  const match = String(label || "").match(/\+\s*\$?\s*(\d+(?:\.\d+)?)/);
+  const match = String(label || "").match(/\+\s*(?:৳|\$|BDT\s*)?\s*(\d+(?:\.\d+)?)/i);
   return match ? Number(match[1]) : 0;
 }
 
@@ -648,6 +654,7 @@ export function getCartTotals(items = []) {
     subtotal: Number(subtotal.toFixed(2)),
     deliveryCharge: Number(deliveryCharge.toFixed(2)),
     total: Number(total.toFixed(2)),
+    currency: normalizeCurrency(items[0]?.currency),
   };
 }
 

@@ -19,6 +19,7 @@ const AskLogy = dynamic(() => import("./logy"), { ssr: false });
 export default function SiteShell({ children, initialUser, initialSettings = null }) {
   const pathname = usePathname();
   const isAdminRoute = pathname?.startsWith("/admin");
+  const isCustomizerRoute = /^\/products\/[^/]+\/personalize\/?$/.test(pathname || "");
 
   // Seed with the settings the server resolved for this request so SSR and the
   // first client render are identical (no hydration mismatch), and maintenance
@@ -83,13 +84,13 @@ export default function SiteShell({ children, initialUser, initialSettings = nul
   useEffect(() => {
     document.body.classList.toggle(
       "menu-open",
-      Boolean(menuOpen || sidePanel || authOpen)
+      Boolean(menuOpen || sidePanel || authOpen || isCustomizerRoute)
     );
 
     return () => {
       document.body.classList.remove("menu-open");
     };
-  }, [menuOpen, sidePanel, authOpen]);
+  }, [menuOpen, sidePanel, authOpen || isCustomizerRoute]);
 
   useEffect(() => {
     function openAuthFromEvent(event) {
@@ -126,6 +127,28 @@ export default function SiteShell({ children, initialUser, initialSettings = nul
     setAuthOpen(true);
     setMenuOpen(false);
     setDesktopDropdown(false);
+  }
+
+  if (isCustomizerRoute) {
+    return (
+      <>
+        <a
+          href="#main"
+          className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[4000] focus:bg-black focus:px-5 focus:py-3 focus:text-white"
+        >
+          Skip to customizer
+        </a>
+        <main id="main">{children}</main>
+        {authOpen && (
+          <AuthModal
+            open={authOpen}
+            setOpen={setAuthOpen}
+            mode={authMode}
+            setMode={setAuthMode}
+          />
+        )}
+      </>
+    );
   }
 
   if (isAdminRoute) {

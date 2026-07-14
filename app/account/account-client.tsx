@@ -8,6 +8,7 @@ import RightArrowIcon from "../components/RightArrowIcon";
 import useAuth from "../lib/useAuth";
 import { logoutUser } from "../lib/auth";
 import { createClient } from "@/lib/supabase/client";
+import { formatCurrency } from "@/lib/currency";
 import {
   subscribeToUserWishlist,
   removeFromWishlist,
@@ -34,7 +35,7 @@ const initials = (v) => {
   const p = String(v || "").trim().split(/\s+/).filter(Boolean);
   return p.length ? (p[0][0] + (p[1]?.[0] || "")).toUpperCase() : "U";
 };
-const money = (v) => `$${Number(v || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
+const money = (v, currency = "BDT") => formatCurrency(v, currency, { minimumFractionDigits: 0, maximumFractionDigits: 0 });
 const shortDate = (v) => {
   if (!v) return "";
   const d = new Date(v);
@@ -550,7 +551,7 @@ function OrderRow({ order, onOpen }) {
         <StatusBadge status={order.paymentStatus || "unpaid"} />
         <StatusBadge status={order.status || "pending"} />
       </div>
-      <p className="text-sm font-bold text-[#111111] sm:w-20 sm:text-right">{money(order.total)}</p>
+      <p className="text-sm font-bold text-[#111111] sm:w-20 sm:text-right">{money(order.total, order.currency)}</p>
       <button type="button" onClick={onOpen} className="shrink-0 rounded-full border border-[#111111]/15 px-4 py-2 text-xs font-bold text-[#111111] transition hover:bg-[#F4F4F4]">
         View Order
       </button>
@@ -628,7 +629,7 @@ function WishlistView({ items, onRemove }) {
                   {item.title || "Product"}
                 </Link>
                 <div className="mt-1.5 flex items-center justify-between">
-                  <span className="text-sm font-bold text-[#111111]">{item.price ? money(item.price) : ""}</span>
+                  <span className="text-sm font-bold text-[#111111]">{item.price ? money(item.price, item.currency) : ""}</span>
                   <button type="button" onClick={() => onRemove(item.productId || item.id)} className="rounded-full border border-[#111111]/15 px-3 py-1 text-[11px] font-bold text-[#111111] transition hover:bg-[#F4F4F4]">
                     Remove
                   </button>
@@ -777,7 +778,7 @@ function HistoryView({ orders, loading, error, onOpen }) {
                   <StatusBadge status={o.paymentStatus || "unpaid"} />
                   <StatusBadge status={o.status || "pending"} />
                 </div>
-                <p className="text-sm font-bold text-[#111111] sm:w-20 sm:text-right">{money(o.total)}</p>
+                <p className="text-sm font-bold text-[#111111] sm:w-20 sm:text-right">{money(o.total, o.currency)}</p>
                 <button type="button" onClick={() => onOpen(o)} className="shrink-0 rounded-full border border-[#111111]/15 px-4 py-2 text-xs font-bold text-[#111111] transition hover:bg-[#F4F4F4]">
                   View Order
                 </button>
@@ -912,16 +913,16 @@ function OrderDetailModal({ order, onClose }) {
                   <p className="truncate font-semibold text-[#111111]">{item.title || item.productTitle}</p>
                   <p className="text-xs text-[#111111]/55">Qty {item.quantity || 1}</p>
                 </div>
-                <p className="font-bold">{money(item.finalPrice || item.price || 0)}</p>
+                <p className="font-bold">{money(item.finalPrice || item.price || 0, item.currency || order.currency)}</p>
               </div>
             ))}
           </div>
         </div>
 
         <div className="grid gap-1 border-t border-[#111111]/10 pt-3">
-          <Row label="Subtotal" value={money(order.subtotal ?? order.total ?? 0)} />
-          <Row label="Delivery" value={order.deliveryCharge ? money(order.deliveryCharge) : "Calculated later"} />
-          <Row label="Total" value={money(order.total ?? 0)} strong />
+          <Row label="Subtotal" value={money(order.subtotal ?? order.total ?? 0, order.currency)} />
+          <Row label="Delivery" value={order.deliveryCharge ? money(order.deliveryCharge, order.currency) : "Calculated later"} />
+          <Row label="Total" value={money(order.total ?? 0, order.currency)} strong />
         </div>
 
         {(addr.addressLine1 || addr.city) && (
