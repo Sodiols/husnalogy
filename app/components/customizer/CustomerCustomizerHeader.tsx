@@ -19,7 +19,7 @@ function IconButton({ label, onClick, disabled, children }: any) {
       title={label}
       onClick={onClick}
       disabled={disabled}
-      className="grid h-9 w-9 place-items-center rounded-full text-[#303839] transition hover:bg-[#F8F6F1] disabled:opacity-35 disabled:hover:bg-transparent"
+      className="grid h-11 w-11 place-items-center rounded-full text-[#303839] transition hover:bg-[#F8F6F1] disabled:opacity-35 disabled:hover:bg-transparent"
     >
       {children}
     </button>
@@ -98,7 +98,7 @@ export default function CustomerCustomizerHeader({
 }: Props) {
   return (
     <>
-    <header className="relative z-40 flex h-14 shrink-0 items-center justify-between gap-2 border-b border-[#303839]/10 bg-white px-3 sm:px-4">
+    <header className="relative z-40 flex h-16 shrink-0 items-center justify-between gap-2 border-b border-[#303839]/10 bg-white px-2 sm:px-4">
       {/* Left */}
       <div className="flex min-w-0 flex-1 items-center gap-1 sm:gap-2">
         <IconButton label="Close customizer" onClick={onClose}>
@@ -108,7 +108,7 @@ export default function CustomerCustomizerHeader({
           type="button"
           onClick={onSaveExit}
           disabled={savingDraft || !restoreReady}
-          className="hidden whitespace-nowrap rounded-full border border-[#303839]/15 px-3.5 py-1.5 text-xs font-bold text-[#303839] transition hover:bg-[#F8F6F1] disabled:opacity-50 md:block"
+          className="hidden min-h-11 whitespace-nowrap rounded-full border border-[#303839]/15 px-3.5 py-1.5 text-xs font-bold text-[#303839] transition hover:bg-[#F8F6F1] disabled:opacity-50 md:block"
         >
           {savingDraft ? "Saving…" : "Save & Exit"}
         </button>
@@ -168,7 +168,7 @@ export default function CustomerCustomizerHeader({
         <button
           type="button"
           onClick={onTogglePreview}
-          className={`hidden items-center gap-1.5 rounded-full px-3.5 py-1.5 text-xs font-bold transition sm:flex ${
+          className={`hidden min-h-11 items-center gap-1.5 rounded-full px-3.5 py-1.5 text-xs font-bold transition sm:flex ${
             previewMode
               ? "bg-[#303839] text-white"
               : "border border-[#303839]/15 text-[#303839] hover:bg-[#F8F6F1]"
@@ -181,19 +181,19 @@ export default function CustomerCustomizerHeader({
           type="button"
           onClick={onPrimary}
           disabled={primaryDisabled}
-          className="whitespace-nowrap rounded-full bg-[#303839] px-4 py-2 text-xs font-bold text-white transition hover:bg-[#434c4d] disabled:opacity-50 sm:px-5 sm:text-sm"
+          className="min-h-11 whitespace-nowrap rounded-full bg-[#303839] px-4 py-2 text-xs font-bold text-white transition hover:bg-[#434c4d] disabled:opacity-50 sm:px-5 sm:text-sm"
         >
           {primaryLabel}
         </button>
       </div>
     </header>
 
-    <div className="relative z-40 flex h-11 shrink-0 items-center justify-between border-b border-[#303839]/10 bg-white px-3 sm:hidden">
+    <div className="relative z-40 flex h-12 shrink-0 items-center justify-between border-b border-[#303839]/10 bg-white px-3 sm:hidden">
       <button
         type="button"
         onClick={onSaveExit}
         disabled={savingDraft || !restoreReady}
-        className="rounded-full border border-[#303839]/15 px-3 py-1.5 text-xs font-bold text-[#303839] transition hover:bg-[#F8F6F1] disabled:opacity-50"
+        className="min-h-11 rounded-full border border-[#303839]/15 px-3 py-1.5 text-xs font-bold text-[#303839] transition hover:bg-[#F8F6F1] disabled:opacity-50"
       >
         {savingDraft ? "Saving…" : "Save & Exit"}
       </button>

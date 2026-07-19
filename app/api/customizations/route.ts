@@ -6,6 +6,7 @@ import {
 } from "@/lib/customizer/customizations";
 import { validateCustomizationSave } from "@/lib/customizer/save-validation";
 import { resolvePrivateAssetsForDelivery } from "@/lib/customizer/server/private-assets";
+import { writeCustomizerAudit } from "@/lib/customizer/audit";
 
 // GET /api/customizations — list customizations visible to the caller.
 // RLS restricts this to the caller's own rows (or all rows for admins).
@@ -54,6 +55,13 @@ export async function POST(request: Request) {
   // Unauthorized changes are rejected; permitted changes are sanitized.
   const validation = await validateCustomizationSave(user.id, rawBody);
   if (validation.ok === false) {
+    await writeCustomizerAudit(supabase, {
+      actorId: user.id,
+      action: "customization.save_rejected",
+      productId: rawBody.productId,
+      editorState: rawBody.editorState || rawBody.renderData?.editorState,
+      details: { violationCodes: validation.violations.map((item) => item.code) },
+    });
     return Response.json(
       { ok: false, error: validation.error, violations: validation.violations },
       { status: validation.status },
@@ -70,6 +78,14 @@ export async function POST(request: Request) {
       .maybeSingle();
     if (error) return Response.json({ ok: false, error: error.message }, { status: 500 });
     if (data) {
+      await writeCustomizerAudit(supabase, {
+        actorId: user.id,
+        action: "customization.updated",
+        customizationId: data.id,
+        productId: data.product_id,
+        editorState: rawBody.editorState || rawBody.renderData?.editorState,
+        details: { schemaVersion: 4 },
+      });
       const customization = await resolvePrivateAssetsForDelivery(customizationFromRow(data), { userId: user.id }, "editor", supabase);
       return Response.json({ ok: true, customization });
     }
@@ -79,6 +95,15 @@ export async function POST(request: Request) {
 
   const { data, error } = await supabase.from("product_customizations").insert(row).select("*").single();
   if (error) return Response.json({ ok: false, error: error.message }, { status: 500 });
+
+  await writeCustomizerAudit(supabase, {
+    actorId: user.id,
+    action: "customization.created",
+    customizationId: data.id,
+    productId: data.product_id,
+    editorState: rawBody.editorState || rawBody.renderData?.editorState,
+    details: { schemaVersion: 4 },
+  });
 
   const customization = await resolvePrivateAssetsForDelivery(customizationFromRow(data), { userId: user.id }, "editor", supabase);
   return Response.json({ ok: true, customization });

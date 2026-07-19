@@ -15,6 +15,8 @@ import { useEffect, useMemo, useState } from "react";
 import { getLegacyMaskPath, getMaskPath } from "@/lib/customizer/v2/masks";
 import { getGridSlotRect, normalizeGridSlot } from "@/lib/customizer/v2/grids";
 import { layoutText, createCanvasMeasure, fallbackMeasure, type MeasureFn } from "@/lib/customizer/v2/text-layout";
+import { hasImageFilters, imageFilterSvgPrimitives } from "@/lib/customizer/v2/image-filters";
+import { normalizeQRCodeStyle, qrModuleRects } from "@/lib/customizer/v2/qr";
 import {
   getEffectiveLayersForPage,
   getFieldById,
@@ -142,7 +144,10 @@ function ShapeLayer({ layer }: any) {
     return <ellipse cx={layer.x} cy={layer.y} rx={layer.width / 2} ry={layer.height / 2} transform={transform} {...common} />;
   }
   if (layer.shape === "line") {
-    return <line x1={x} y1={layer.y} x2={x + layer.width} y2={layer.y} transform={transform} stroke={layer.stroke || layer.fill || "#303839"} strokeWidth={layer.strokeWidth || 3} strokeDasharray={layer.lineStyle === "dashed" ? "12 8" : layer.lineStyle === "dotted" ? "2 8" : undefined} strokeLinecap={layer.lineCap || "round"} />;
+    const color = layer.stroke || layer.fill || "#303839";
+    const thickness = Number(layer.strokeWidth) || 3;
+    const capSize = Math.max(8, thickness * 3);
+    return <g transform={transform}><line x1={x} y1={layer.y} x2={x + layer.width} y2={layer.y} stroke={color} strokeWidth={thickness} strokeDasharray={layer.lineStyle === "dashed" ? "12 8" : layer.lineStyle === "dotted" ? "2 8" : undefined} strokeLinecap={layer.lineCap || "round"} />{layer.lineStartCap === "circle" && <circle cx={x} cy={layer.y} r={capSize / 2} fill={color} />}{layer.lineEndCap === "circle" && <circle cx={x + layer.width} cy={layer.y} r={capSize / 2} fill={color} />}{layer.lineStartCap === "arrow" && <polygon points={`${x},${layer.y} ${x + capSize},${layer.y - capSize * 0.7} ${x + capSize},${layer.y + capSize * 0.7}`} fill={color} />}{layer.lineEndCap === "arrow" && <polygon points={`${x + layer.width},${layer.y} ${x + layer.width - capSize},${layer.y - capSize * 0.7} ${x + layer.width - capSize},${layer.y + capSize * 0.7}`} fill={color} />}</g>;
   }
   if (layer.shape === "triangle") {
     return <path d={`M ${layer.x} ${y} L ${x + layer.width} ${y + layer.height} L ${x} ${y + layer.height} Z`} transform={transform} {...common} />;
@@ -203,6 +208,8 @@ function ImageLayer({ layer, field, values, idPrefix }: any) {
   const frameX = layer.x - layer.width / 2;
   const frameY = layer.y - layer.height / 2;
   const clipId = `${idPrefix}-clip-${layer.id}`;
+  const filterId = `${idPrefix}-filter-${layer.id}`;
+  const filtered = hasImageFilters(layer.filters);
 
   // Shared mask generator — identical clipping in editor, exports, and print.
   const mask = layer.mask && typeof layer.mask === "object"
@@ -255,6 +262,7 @@ function ImageLayer({ layer, field, values, idPrefix }: any) {
         <clipPath id={clipId}>
           <path d={mask.d} transform={mask.transform} />
         </clipPath>
+        {filtered ? <filter id={filterId} colorInterpolationFilters="sRGB" dangerouslySetInnerHTML={{ __html: imageFilterSvgPrimitives(layer.filters) }} /> : null}
       </defs>
       {layer.backgroundColor ? <path d={mask.d} transform={mask.transform} fill={layer.backgroundColor} /> : null}
       <g clipPath={`url(#${clipId})`}>
@@ -267,6 +275,7 @@ function ImageLayer({ layer, field, values, idPrefix }: any) {
             height={drawH}
             preserveAspectRatio={layer.fitMode === "contain" ? "xMidYMid meet" : "xMidYMid slice"}
             crossOrigin="anonymous"
+            filter={filtered ? `url(#${filterId})` : undefined}
           />
         </g>
       </g>
@@ -303,6 +312,7 @@ function GridLayer({ layer, idPrefix }: any) {
           rotation: 0,
           src: slot.src,
           imageTransform: slot.transform,
+          filters: slot.filters,
           mask: slot.mask || (layer.cornerRadius ? { kind: "rounded", radius: layer.cornerRadius } : { kind: "rectangle" }),
           maskShape: slot.mask?.kind || (layer.cornerRadius ? "rounded" : "rectangle"),
           fitMode: slot.transform.fitMode || "cover",
@@ -319,12 +329,41 @@ function GridLayer({ layer, idPrefix }: any) {
 function BackgroundLayer({ layer }: any) {
   const x = layer.x - layer.width / 2;
   const y = layer.y - layer.height / 2;
+  const filtered = hasImageFilters(layer.filters);
+  const filterId = `background-filter-${String(layer.id).replace(/[^a-z0-9_-]/gi, "-")}`;
   return (
     <g transform={layer.rotation ? `rotate(${layer.rotation} ${layer.x} ${layer.y})` : undefined}>
+      {filtered ? <defs><filter id={filterId} colorInterpolationFilters="sRGB" dangerouslySetInnerHTML={{ __html: imageFilterSvgPrimitives(layer.filters) }} /></defs> : null}
       <rect x={x} y={y} width={layer.width} height={layer.height} fill={layer.color || "#ffffff"} />
       {layer.src ? (
-        <image href={layer.src} x={x} y={y} width={layer.width} height={layer.height} preserveAspectRatio={layer.fitMode === "contain" ? "xMidYMid meet" : "xMidYMid slice"} crossOrigin="anonymous" />
+        <image href={layer.src} x={x} y={y} width={layer.width} height={layer.height} preserveAspectRatio={layer.fitMode === "contain" ? "xMidYMid meet" : "xMidYMid slice"} crossOrigin="anonymous" filter={filtered ? `url(#${filterId})` : undefined} />
       ) : null}
+    </g>
+  );
+}
+
+function QRCodeLayer({ layer }: any) {
+  const style = normalizeQRCodeStyle(layer);
+  const qr = qrModuleRects(style);
+  const size = Math.min(Number(layer.width) || 1, Number(layer.height) || 1);
+  const moduleSize = size / qr.totalSize;
+  const left = Number(layer.x) - size / 2;
+  const top = Number(layer.y) - size / 2;
+  const transform = layer.rotation ? `rotate(${layer.rotation} ${layer.x} ${layer.y})` : undefined;
+  return (
+    <g transform={transform} shapeRendering="crispEdges">
+      <rect x={left} y={top} width={size} height={size} fill={style.backgroundColor} />
+      {qr.rects.map((rect) => (
+        <rect
+          key={`${rect.x}-${rect.y}`}
+          x={left + rect.x * moduleSize}
+          y={top + rect.y * moduleSize}
+          width={moduleSize}
+          height={moduleSize}
+          rx={style.moduleStyle === "rounded" ? moduleSize * 0.32 : 0}
+          fill={style.foregroundColor}
+        />
+      ))}
     </g>
   );
 }
@@ -387,6 +426,8 @@ export default function CustomizerPreview({
             <GridLayer layer={layer} idPrefix={idPrefix} />
           ) : layer.type === "background" ? (
             <BackgroundLayer layer={layer} />
+          ) : layer.type === "qrCode" ? (
+            <QRCodeLayer layer={layer} />
           ) : layer.type === "group" ? null
           : layer.type === "text" ? (
             <TextLayer layer={layer} field={field} values={values} fontsReady={fontsReady} />

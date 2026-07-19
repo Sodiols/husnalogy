@@ -12,8 +12,8 @@
 
 import type { CustomerAssetReference } from "./asset-references";
 
-export const CUSTOMIZER_SCHEMA_VERSION = 3;
-export const CUSTOMIZER_ENGINE_VERSION = "husnalogy-2.1.0";
+export const CUSTOMIZER_SCHEMA_VERSION = 4;
+export const CUSTOMIZER_ENGINE_VERSION = "husnalogy-2.2.0";
 
 /* ---------------------------------------------------------------- geometry */
 
@@ -42,9 +42,16 @@ export type CustomerPermissions = {
   select: boolean;
   editContent: boolean;
   editStyle: boolean;
+  group: boolean;
+  ungroup: boolean;
+  hide: boolean;
+  lock: boolean;
   changeFont: boolean;
   changeFontSize: boolean;
+  changeFontWeight: boolean;
+  changeFontStyle: boolean;
   changeColor: boolean;
+  changeTextColor: boolean;
   changeAlignment: boolean;
   changeLetterSpacing: boolean;
   changeLineHeight: boolean;
@@ -58,6 +65,15 @@ export type CustomerPermissions = {
   zoomImage: boolean;
   repositionImage: boolean;
   flipImage: boolean;
+  rotateImage: boolean;
+  applyImageFilters: boolean;
+  changeFill: boolean;
+  changeBorder: boolean;
+  editGrid: boolean;
+  editGridLayout: boolean;
+  moveGridPhotos: boolean;
+  editQRCodeValue: boolean;
+  editQRCodeStyle: boolean;
   changeOpacity: boolean;
   changeLayerOrder: boolean;
 };
@@ -66,9 +82,16 @@ export const ALL_PERMISSION_KEYS: ReadonlyArray<keyof CustomerPermissions> = [
   "select",
   "editContent",
   "editStyle",
+  "group",
+  "ungroup",
+  "hide",
+  "lock",
   "changeFont",
   "changeFontSize",
+  "changeFontWeight",
+  "changeFontStyle",
   "changeColor",
+  "changeTextColor",
   "changeAlignment",
   "changeLetterSpacing",
   "changeLineHeight",
@@ -82,6 +105,15 @@ export const ALL_PERMISSION_KEYS: ReadonlyArray<keyof CustomerPermissions> = [
   "zoomImage",
   "repositionImage",
   "flipImage",
+  "rotateImage",
+  "applyImageFilters",
+  "changeFill",
+  "changeBorder",
+  "editGrid",
+  "editGridLayout",
+  "moveGridPhotos",
+  "editQRCodeValue",
+  "editQRCodeStyle",
   "changeOpacity",
   "changeLayerOrder",
 ];
@@ -117,6 +149,16 @@ export type ImageTransform = {
   flipX: boolean;
   flipY: boolean;
   fitMode: "cover" | "contain";
+};
+
+export type ImageFilters = {
+  brightness: number;
+  contrast: number;
+  saturation: number;
+  grayscale: number;
+  sepia: number;
+  tintColor?: string;
+  tintAmount: number;
 };
 
 export function defaultImageTransform(assetId = ""): ImageTransform {
@@ -198,6 +240,8 @@ type LayerBase = {
   hidden: boolean;
   zIndex: number;
   locked: boolean; // admin lock (design builder)
+  positionLocked: boolean;
+  customerInteractionDisabled: boolean;
   adminEditable: boolean;
   customerEditable: boolean;
   customerPermissions: CustomerPermissions;
@@ -223,6 +267,7 @@ export type ImageLayer = LayerBase & {
   placeholderImage: string;
   mask: MaskShape;
   transform: ImageTransform;
+  filters: ImageFilters;
   borderColor: string;
   borderWidth: number;
   backgroundColor: string;
@@ -233,11 +278,17 @@ export type ImageLayer = LayerBase & {
 
 export type ShapeLayer = LayerBase & {
   type: "shape";
-  shape: "rectangle" | "ellipse" | "line";
+  shape: "rectangle" | "rounded-rectangle" | "ellipse" | "circle" | "oval" | "triangle" | "polygon" | "arch" | "path" | "line";
   fill: string;
   stroke: string;
   strokeWidth: number;
   borderRadius: number;
+  points?: Array<{ x: number; y: number }>;
+  path?: string;
+  lineStyle?: "solid" | "dashed" | "dotted";
+  lineCap?: "butt" | "round" | "square";
+  lineStartCap?: "none" | "circle" | "arrow";
+  lineEndCap?: "none" | "circle" | "arrow";
 };
 
 // A frame is an image placeholder with a mask, border, and replacement rules —
@@ -252,6 +303,7 @@ export type FrameLayer = LayerBase & {
   path?: string;
   placeholderImage: string;
   transform: ImageTransform;
+  filters: ImageFilters;
   borderColor: string;
   borderWidth: number;
   backgroundColor: string;
@@ -270,6 +322,7 @@ export type GridSlot = {
   bucket?: string;
   path?: string;
   transform: ImageTransform;
+  filters?: ImageFilters;
   permissions: Partial<CustomerPermissions>;
   required?: boolean;
   mask?: MaskShape;
@@ -281,6 +334,7 @@ export type GridSlot = {
 
 export type GridLayer = LayerBase & {
   type: "grid";
+  presetId?: string;
   slots: GridSlot[];
   columns?: number;
   rows?: number;
@@ -318,6 +372,19 @@ export type BackgroundLayer = LayerBase & {
   bucket?: string;
   path?: string;
   assetReference?: CustomerAssetReference;
+  fitMode?: "cover" | "contain";
+  filters?: ImageFilters;
+};
+
+export type QRCodeLayer = LayerBase & {
+  type: "qrCode";
+  value: string;
+  foregroundColor: string;
+  backgroundColor: string;
+  errorCorrection: "L" | "M" | "Q" | "H";
+  margin: number;
+  moduleStyle: "square" | "rounded";
+  required: boolean;
 };
 
 export type CustomizerLayer =
@@ -328,7 +395,8 @@ export type CustomizerLayer =
   | GridLayer
   | GroupLayer
   | ElementLayer
-  | BackgroundLayer;
+  | BackgroundLayer
+  | QRCodeLayer;
 
 export type CustomizerLayerType = CustomizerLayer["type"];
 
@@ -400,6 +468,35 @@ export type CustomizerSettings = {
   allowCustomerText: boolean;
   allowCustomerUploads: boolean;
   allowCustomerElements: boolean;
+  allowCustomerShapes?: boolean;
+  allowCustomerLines?: boolean;
+  allowCustomerFrames?: boolean;
+  allowCustomerGrids?: boolean;
+  allowCustomerQRCodes?: boolean;
+  allowCustomerBackground?: boolean;
+  allowCustomerGrouping?: boolean;
+  showCustomerLayers?: boolean;
+  allowedCustomerFonts?: string[];
+  allowedCustomerColors?: string[];
+  allowedCustomerShapes?: string[];
+  allowedCustomerElementIds?: string[];
+  allowedCustomerFrameMasks?: string[];
+  allowedCustomerGridPresets?: string[];
+  allowedCustomerImageFilters?: string[];
+  allowedCustomerPages?: string[];
+  maxCustomerObjectsPerPage?: number;
+  customerObjectLimits?: {
+    minWidth?: number;
+    maxWidth?: number;
+    minHeight?: number;
+    maxHeight?: number;
+    minRotation?: number;
+    maxRotation?: number;
+    insetLeft?: number;
+    insetTop?: number;
+    insetRight?: number;
+    insetBottom?: number;
+  };
   protectedPreview: boolean;
   autosave: boolean;
   snapping: boolean;
@@ -430,8 +527,13 @@ export type CustomizerDocument = {
 // layer id; userLayers are customer-added layers (text/elements).
 export type LayerOverride = {
   textStyle?: Partial<TextStyle>;
-  transform?: Partial<{ x: number; y: number; width: number; height: number; rotation: number; opacity: number }>;
+  transform?: Partial<{ x: number; y: number; width: number; height: number; rotation: number; opacity: number; zIndex: number }>;
   imageTransform?: Partial<ImageTransform>;
+  imageFilters?: Partial<ImageFilters>;
+  properties?: Record<string, unknown>;
+  name?: string;
+  hidden?: boolean;
+  customerLocked?: boolean;
   gridSlots?: Record<
     string,
     {

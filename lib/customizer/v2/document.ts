@@ -20,7 +20,6 @@ import {
   type CustomizerPage,
   type CustomizerSettings,
   type EdgeInsets,
-  type ImageLayer,
   type ImageTransform,
   type LayerOverride,
   type TextLayer,
@@ -29,6 +28,8 @@ import {
 } from "./types";
 import { maskShapeFromLegacy } from "./masks";
 import { mergeGridSlotOverrides, normalizeGridSlot } from "./grids";
+import { normalizeImageFilters } from "./image-filters";
+import { normalizeQRCodeStyle } from "./qr";
 
 /* ----------------------------------------------------------------- helpers */
 
@@ -147,6 +148,8 @@ function migrateLayerV1(raw: Record<string, any>, pageIdFallback: string): Custo
     hidden: bool(raw.hidden),
     zIndex: Math.round(num(raw.zIndex, 1)),
     locked: bool(raw.locked),
+    positionLocked: bool(raw.positionLocked),
+    customerInteractionDisabled: bool(raw.customerInteractionDisabled),
     adminEditable: raw.adminEditable === undefined ? true : bool(raw.adminEditable),
     customerEditable: bool(raw.customerEditable),
     customerPermissions: normalizePermissionsV2(raw.customerPermissions, raw),
@@ -156,9 +159,9 @@ function migrateLayerV1(raw: Record<string, any>, pageIdFallback: string): Custo
   };
 
   if (type === "image" || type === "frame") {
-    const layer: ImageLayer = {
+    const layer: any = {
       ...base,
-      type: "image",
+      type: type === "frame" ? "frame" : "image",
       src: str(raw.src || raw.imageSrc),
       assetId: str(raw.assetId),
       placeholderImage: str(raw.placeholderImage),
@@ -167,24 +170,32 @@ function migrateLayerV1(raw: Record<string, any>, pageIdFallback: string): Custo
           ? raw.mask
           : maskShapeFromLegacy(raw.maskShape, base.width, base.height),
       transform: normalizeImageTransformV2(raw.transform, str(raw.assetId)),
+      filters: normalizeImageFilters(raw.filters || raw.imageFilters),
       borderColor: str(raw.borderColor),
       borderWidth: Math.max(0, num(raw.borderWidth, 0)),
       backgroundColor: str(raw.backgroundColor),
     };
     if (raw.fitMode && !raw.transform) layer.transform.fitMode = str(raw.fitMode) === "contain" ? "contain" : "cover";
-    return layer;
+    return layer as CustomizerLayer;
   }
 
   if (type === "shape") {
     const kind = str(raw.shape || raw.shapeKind).toLowerCase();
+    const supported = ["rectangle", "rounded-rectangle", "ellipse", "circle", "oval", "triangle", "polygon", "arch", "path", "line"];
     return {
       ...base,
       type: "shape",
-      shape: kind === "ellipse" || kind === "line" ? (kind as "ellipse" | "line") : "rectangle",
+      shape: (supported.includes(kind) ? kind : "rectangle") as any,
       fill: str(raw.fill) || "#F8F6F1",
       stroke: str(raw.stroke),
       strokeWidth: Math.max(0, num(raw.strokeWidth, 0)),
       borderRadius: Math.max(0, num(raw.borderRadius, 0)),
+      points: Array.isArray(raw.points) ? raw.points.map((point: any) => ({ x: num(point?.x), y: num(point?.y) })) : [],
+      path: str(raw.path || raw.d),
+      lineStyle: raw.lineStyle === "dashed" || raw.lineStyle === "dotted" ? raw.lineStyle : "solid",
+      lineCap: raw.lineCap === "butt" || raw.lineCap === "square" ? raw.lineCap : "round",
+      lineStartCap: raw.lineStartCap === "circle" || raw.lineStartCap === "arrow" ? raw.lineStartCap : "none",
+      lineEndCap: raw.lineEndCap === "circle" || raw.lineEndCap === "arrow" ? raw.lineEndCap : "none",
     };
   }
 
@@ -192,6 +203,7 @@ function migrateLayerV1(raw: Record<string, any>, pageIdFallback: string): Custo
     return {
       ...base,
       type: "grid",
+      presetId: str(raw.presetId),
       slots: Array.isArray(raw.slots)
         ? raw.slots.map((slot: any, index: number) =>
             normalizeGridSlot(
@@ -227,6 +239,11 @@ function migrateLayerV1(raw: Record<string, any>, pageIdFallback: string): Custo
       childSelection:
         raw.childSelection === "group" || raw.childSelection === "none" ? raw.childSelection : "children",
     };
+  }
+
+  if (type === "qrcode" || type === "qr-code" || type === "qr_code") {
+    const qr = normalizeQRCodeStyle(raw);
+    return { ...base, type: "qrCode", ...qr, required: bool(raw.required) };
   }
 
   if (type === "element") {
@@ -362,6 +379,37 @@ export function templateToDocument(template: Record<string, any>): { document: C
     allowCustomerText: bool(settingsSrc.allowCustomerText),
     allowCustomerUploads: settingsSrc.allowCustomerUploads === undefined ? true : bool(settingsSrc.allowCustomerUploads),
     allowCustomerElements: bool(settingsSrc.allowCustomerElements),
+    allowCustomerShapes: bool(settingsSrc.allowCustomerShapes),
+    allowCustomerLines: bool(settingsSrc.allowCustomerLines),
+    allowCustomerFrames: bool(settingsSrc.allowCustomerFrames),
+    allowCustomerGrids: bool(settingsSrc.allowCustomerGrids),
+    allowCustomerQRCodes: bool(settingsSrc.allowCustomerQRCodes),
+    allowCustomerBackground: bool(settingsSrc.allowCustomerBackground),
+    allowCustomerGrouping: bool(settingsSrc.allowCustomerGrouping),
+    showCustomerLayers: bool(settingsSrc.showCustomerLayers),
+    allowedCustomerFonts: Array.isArray(settingsSrc.allowedCustomerFonts) ? settingsSrc.allowedCustomerFonts.map((value: unknown) => str(value)).filter(Boolean) : [],
+    allowedCustomerColors: Array.isArray(settingsSrc.allowedCustomerColors) ? settingsSrc.allowedCustomerColors.map((value: unknown) => str(value)).filter(Boolean) : [],
+    allowedCustomerShapes: Array.isArray(settingsSrc.allowedCustomerShapes) ? settingsSrc.allowedCustomerShapes.map((value: unknown) => str(value)).filter(Boolean) : [],
+    allowedCustomerElementIds: Array.isArray(settingsSrc.allowedCustomerElementIds) ? settingsSrc.allowedCustomerElementIds.map((value: unknown) => str(value)).filter(Boolean) : [],
+    allowedCustomerFrameMasks: Array.isArray(settingsSrc.allowedCustomerFrameMasks) ? settingsSrc.allowedCustomerFrameMasks.map((value: unknown) => str(value)).filter(Boolean) : [],
+    allowedCustomerGridPresets: Array.isArray(settingsSrc.allowedCustomerGridPresets) ? settingsSrc.allowedCustomerGridPresets.map((value: unknown) => str(value)).filter(Boolean) : [],
+    allowedCustomerImageFilters: Array.isArray(settingsSrc.allowedCustomerImageFilters) ? settingsSrc.allowedCustomerImageFilters.map((value: unknown) => str(value)).filter(Boolean) : [],
+    allowedCustomerPages: Array.isArray(settingsSrc.allowedCustomerPages) ? settingsSrc.allowedCustomerPages.map((value: unknown) => str(value)).filter(Boolean) : [],
+    maxCustomerObjectsPerPage: Math.max(0, Math.round(num(settingsSrc.maxCustomerObjectsPerPage, 0))),
+    customerObjectLimits: settingsSrc.customerObjectLimits && typeof settingsSrc.customerObjectLimits === "object"
+      ? {
+          minWidth: Math.max(0, num((settingsSrc.customerObjectLimits as any).minWidth, 0)),
+          maxWidth: Math.max(0, num((settingsSrc.customerObjectLimits as any).maxWidth, 0)),
+          minHeight: Math.max(0, num((settingsSrc.customerObjectLimits as any).minHeight, 0)),
+          maxHeight: Math.max(0, num((settingsSrc.customerObjectLimits as any).maxHeight, 0)),
+          minRotation: num((settingsSrc.customerObjectLimits as any).minRotation, -360),
+          maxRotation: num((settingsSrc.customerObjectLimits as any).maxRotation, 360),
+          insetLeft: Math.max(0, num((settingsSrc.customerObjectLimits as any).insetLeft, 0)),
+          insetTop: Math.max(0, num((settingsSrc.customerObjectLimits as any).insetTop, 0)),
+          insetRight: Math.max(0, num((settingsSrc.customerObjectLimits as any).insetRight, 0)),
+          insetBottom: Math.max(0, num((settingsSrc.customerObjectLimits as any).insetBottom, 0)),
+        }
+      : {},
     protectedPreview: settingsSrc.protectedPreview === undefined ? true : bool(settingsSrc.protectedPreview),
     autosave: settingsSrc.autosave === undefined ? true : bool(settingsSrc.autosave),
     snapping: settingsSrc.snapping === undefined ? true : bool(settingsSrc.snapping),
@@ -429,8 +477,8 @@ export function migrateCustomizerDocument(
     // Re-normalize a V2 document (defensive against hand-edited JSON).
     return normalizeDocumentV2(document);
   }
-  if ((fromVersion === 1 || fromVersion === 2) && toVersion === CUSTOMIZER_SCHEMA_VERSION) {
-    if (fromVersion === 2) return normalizeDocumentV2(document);
+  if ((fromVersion === 1 || fromVersion === 2 || fromVersion === 3) && toVersion === CUSTOMIZER_SCHEMA_VERSION) {
+    if (fromVersion === 2 || fromVersion === 3) return normalizeDocumentV2(document);
     return templateToDocument(document);
   }
   throw new Error(`Unsupported customizer document migration: v${fromVersion} → v${toVersion}`);
@@ -522,10 +570,22 @@ export function applyOverrideV2(layer: CustomizerLayer, override?: LayerOverride
     if (t.height !== undefined) next.height = Math.max(1, num(t.height, next.height));
     if (t.rotation !== undefined) next.rotation = num(t.rotation, next.rotation);
     if (t.opacity !== undefined) next.opacity = clamp01(t.opacity, next.opacity);
+    if (t.zIndex !== undefined) next.zIndex = Math.round(num(t.zIndex, next.zIndex));
   }
   if (override.textStyle && next.type === "text") {
     next = { ...next, textStyle: { ...next.textStyle, ...override.textStyle } };
   }
+  if (override.imageFilters && (next.type === "image" || next.type === "frame")) {
+    next = { ...next, filters: normalizeImageFilters({ ...next.filters, ...override.imageFilters }) };
+  }
+  if (override.properties) {
+    const allowed = ["fill", "stroke", "strokeWidth", "borderRadius", "lineStyle", "lineCap", "lineStartCap", "lineEndCap", "foregroundColor", "backgroundColor", "margin", "errorCorrection", "moduleStyle", "value", "gap", "padding", "cornerRadius", "borderColor", "borderWidth"];
+    const properties = Object.fromEntries(Object.entries(override.properties).filter(([key]) => allowed.includes(key)));
+    next = { ...next, ...properties } as CustomizerLayer;
+  }
+  if (override.name !== undefined) next = { ...next, name: str(override.name).slice(0, 120) };
+  if (override.hidden !== undefined) next = { ...next, hidden: bool(override.hidden) };
+  if (override.customerLocked !== undefined) next = { ...next, metadata: { ...next.metadata, customerLocked: bool(override.customerLocked) } };
   if (override.imageTransform && (next.type === "image" || next.type === "frame")) {
     next = { ...next, transform: { ...next.transform, ...normalizePartialTransform(override.imageTransform, next.transform) } };
   }

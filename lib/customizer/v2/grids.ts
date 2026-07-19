@@ -1,20 +1,85 @@
 import type { GridLayer, GridSlot, ImageTransform, MaskShape } from "./types";
 import { defaultImageTransform } from "./types";
+import { normalizeImageFilters } from "./image-filters";
 
 export type GridPreset = {
   id: string;
   label: string;
   columns: number;
   rows: number;
+  photoCount: number;
   weights?: number[][];
+  slots?: Array<Partial<GridSlot> & Pick<GridSlot, "x" | "y" | "width" | "height">>;
 };
 
 export const GRID_PRESETS: GridPreset[] = [
-  { id: "two-columns", label: "Two columns", columns: 2, rows: 1 },
-  { id: "two-rows", label: "Two rows", columns: 1, rows: 2 },
-  { id: "four", label: "Four photos", columns: 2, rows: 2 },
-  { id: "six", label: "Six photos", columns: 3, rows: 2 },
-  { id: "feature-left", label: "Feature left", columns: 3, rows: 2, weights: [[2, 1, 1], [2, 1, 1]] },
+  { id: "two-columns", label: "Two columns", columns: 2, rows: 1, photoCount: 2 },
+  { id: "two-rows", label: "Two rows", columns: 1, rows: 2, photoCount: 2 },
+  { id: "three-editorial", label: "Three photo editorial", columns: 3, rows: 1, photoCount: 3 },
+  { id: "four", label: "Four photos", columns: 2, rows: 2, photoCount: 4 },
+  {
+    id: "five-hero",
+    label: "Hero with four photos",
+    columns: 3,
+    rows: 2,
+    photoCount: 5,
+    slots: [
+      { x: 0, y: 0, width: 0.5, height: 1 },
+      { x: 0.5, y: 0, width: 0.25, height: 0.5 },
+      { x: 0.75, y: 0, width: 0.25, height: 0.5 },
+      { x: 0.5, y: 0.5, width: 0.25, height: 0.5 },
+      { x: 0.75, y: 0.5, width: 0.25, height: 0.5 },
+    ],
+  },
+  { id: "six", label: "Six photos", columns: 3, rows: 2, photoCount: 6 },
+  {
+    id: "seven-magazine",
+    label: "Seven photo magazine",
+    columns: 4,
+    rows: 2,
+    photoCount: 7,
+    slots: [
+      { x: 0, y: 0, width: 0.5, height: 1 },
+      { x: 0.5, y: 0, width: 1 / 6, height: 0.5 },
+      { x: 2 / 3, y: 0, width: 1 / 6, height: 0.5 },
+      { x: 5 / 6, y: 0, width: 1 / 6, height: 0.5 },
+      { x: 0.5, y: 0.5, width: 1 / 6, height: 0.5 },
+      { x: 2 / 3, y: 0.5, width: 1 / 6, height: 0.5 },
+      { x: 5 / 6, y: 0.5, width: 1 / 6, height: 0.5 },
+    ],
+  },
+  { id: "eight-window", label: "Eight photo window", columns: 4, rows: 2, photoCount: 8 },
+  { id: "nine", label: "Nine photo grid", columns: 3, rows: 3, photoCount: 9 },
+  { id: "ten-collage", label: "Ten photo collage", columns: 5, rows: 2, photoCount: 10 },
+  { id: "twelve", label: "Twelve photo grid", columns: 4, rows: 3, photoCount: 12 },
+  { id: "sixteen", label: "Sixteen photo grid", columns: 4, rows: 4, photoCount: 16 },
+  { id: "polaroid-story", label: "Polaroid inspired", columns: 3, rows: 1, photoCount: 3, slots: [
+    { x: 0.01, y: 0.04, width: 0.31, height: 0.84, mask: { kind: "rounded", radius: 24 } },
+    { x: 0.345, y: 0.1, width: 0.31, height: 0.84, mask: { kind: "rounded", radius: 24 } },
+    { x: 0.68, y: 0.02, width: 0.31, height: 0.84, mask: { kind: "rounded", radius: 24 } },
+  ] },
+  { id: "arch-gallery", label: "Arch gallery", columns: 4, rows: 1, photoCount: 4, slots: [0, 1, 2, 3].map((column) => ({ x: column / 4, y: 0, width: 0.25, height: 1, mask: { kind: "arch-top" as const } })) },
+  { id: "minimal-wedding", label: "Minimal wedding", columns: 3, rows: 2, photoCount: 5, slots: [
+    { x: 0, y: 0, width: 2 / 3, height: 0.62, mask: { kind: "rounded", radius: 24 } },
+    { x: 2 / 3, y: 0, width: 1 / 3, height: 0.62, mask: { kind: "arch-top" } },
+    { x: 0, y: 0.62, width: 1 / 3, height: 0.38, mask: { kind: "rounded", radius: 24 } },
+    { x: 1 / 3, y: 0.62, width: 1 / 3, height: 0.38, mask: { kind: "rounded", radius: 24 } },
+    { x: 2 / 3, y: 0.62, width: 1 / 3, height: 0.38, mask: { kind: "rounded", radius: 24 } },
+  ] },
+  {
+    id: "feature-left",
+    label: "Feature left",
+    columns: 3,
+    rows: 2,
+    photoCount: 5,
+    slots: [
+      { x: 0, y: 0, width: 0.5, height: 1 },
+      { x: 0.5, y: 0, width: 0.25, height: 0.5 },
+      { x: 0.75, y: 0, width: 0.25, height: 0.5 },
+      { x: 0.5, y: 0.5, width: 0.25, height: 0.5 },
+      { x: 0.75, y: 0.5, width: 0.25, height: 0.5 },
+    ],
+  },
 ];
 
 function finite(value: unknown, fallback = 0): number {
@@ -39,6 +104,7 @@ export function normalizeGridSlot(slot: Partial<GridSlot> | Record<string, unkno
     ownerId: source.ownerId ? String(source.ownerId) : undefined,
     assetReference: source.assetReference,
     transform: { ...defaultImageTransform(String(source.assetId || "")), ...(source.transform || {}) },
+    filters: normalizeImageFilters(source.filters),
     permissions: source.permissions && typeof source.permissions === "object" ? source.permissions : {},
     required: Boolean(source.required),
     mask,
@@ -71,6 +137,9 @@ export function createGridSlots(columns: number, rows: number): GridSlot[] {
 
 export function createGridSlotsFromPreset(presetId: string): GridSlot[] {
   const preset = GRID_PRESETS.find((item) => item.id === presetId) || GRID_PRESETS[2];
+  if (preset.slots?.length) {
+    return preset.slots.map((slot, index) => normalizeGridSlot({ ...slot, id: `slot_${index + 1}` }, index));
+  }
   return createGridSlots(preset.columns, preset.rows);
 }
 

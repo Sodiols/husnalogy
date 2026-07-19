@@ -1,7 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { CUSTOMIZER_APPROVED_FONTS } from "@/lib/customizer";
 import { CUSTOMIZER_FEATURE_FLAGS } from "@/lib/customizer/v2/feature-flags";
+import { GRID_PRESETS } from "@/lib/customizer/v2/grids";
 
 // Template Settings tab (Section 33): identity, canvas, guides, customer
 // abilities, protection, and admin-only notes. Everything is stored on the
@@ -26,6 +28,23 @@ function Toggle({ checked, onChange, label, hint }: any) {
         {hint && <span className="block text-xs text-[#303839]/50">{hint}</span>}
       </span>
     </label>
+  );
+}
+
+function MultiChoice({ value, options, onChange, emptyLabel = "All available options" }: any) {
+  const selected = Array.isArray(value) ? value : [];
+  const toggle = (item: string) => onChange(selected.includes(item) ? selected.filter((entry: string) => entry !== item) : [...selected, item]);
+  return (
+    <div>
+      <div className="flex max-h-40 flex-wrap gap-1.5 overflow-y-auto rounded-xl border border-[#303839]/12 bg-[#F8F6F1] p-2">
+        {options.map((option: any) => {
+          const item = String(option.value);
+          const active = selected.includes(item);
+          return <button key={item} type="button" aria-pressed={active} onClick={() => toggle(item)} className={`min-h-9 rounded-lg border px-2.5 text-left text-xs font-semibold transition ${active ? "border-[#303839] bg-[#303839] text-white" : "border-[#303839]/10 bg-white text-[#303839] hover:border-[#D4AF37]"}`}>{option.label}</button>;
+        })}
+      </div>
+      <div className="mt-1 flex items-center justify-between gap-2 text-[10px] text-[#303839]/45"><span>{selected.length ? `${selected.length} allowed` : emptyLabel}</span>{selected.length > 0 && <button type="button" onClick={() => onChange([])} className="font-bold text-[#303839] hover:underline">Allow all</button>}</div>
+    </div>
   );
 }
 
@@ -128,6 +147,17 @@ export default function AdminTemplateSettings({ template, onChange, productName,
           ["customizer_v2_perspective_mockups", "Four-corner perspective"],
           ["customizer_v2_server_rendering", "Server rendering"],
           ["customizer_v2_print_pdf", "Print PDF"],
+          ["customizer_v2_customer_layers", "Customer layers panel"],
+          ["customizer_v2_customer_multiselect", "Customer multiselect"],
+          ["customizer_v2_customer_grouping", "Customer grouping"],
+          ["customizer_v2_qr_codes", "QR codes"],
+          ["customizer_v2_customer_shapes", "Customer shapes"],
+          ["customizer_v2_customer_lines", "Customer lines"],
+          ["customizer_v2_customer_frames", "Customer frames"],
+          ["customizer_v2_customer_grids", "Customer grids"],
+          ["customizer_v2_image_filters", "Image filters"],
+          ["customizer_v2_product_preview_editing", "Product preview editing"],
+          ["customizer_v2_split_view", "Split view"],
         ].map(([flag, label]) => (
           <Toggle
             key={flag}
@@ -230,6 +260,18 @@ export default function AdminTemplateSettings({ template, onChange, productName,
           label="Allow customers to add elements"
           hint="Customers can insert decorative elements from the Husnalogy elements library."
         />
+        {[
+          ["allowCustomerShapes", "Allow customers to add shapes"],
+          ["allowCustomerLines", "Allow customers to add lines"],
+          ["allowCustomerFrames", "Allow customers to add photo frames"],
+          ["allowCustomerGrids", "Allow customers to add photo grids"],
+          ["allowCustomerQRCodes", "Allow customers to add QR codes"],
+          ["allowCustomerBackground", "Allow customers to edit page backgrounds"],
+          ["allowCustomerGrouping", "Allow customers to group permitted objects"],
+          ["showCustomerLayers", "Show the customer Layers panel"],
+        ].map(([key, label]) => (
+          <Toggle key={key} checked={Boolean(settings[key])} onChange={(value: boolean) => patchSettings({ [key]: value })} label={label} />
+        ))}
         <Toggle
           checked={settings.requireApprovalCheckbox !== false}
           onChange={(v: boolean) => patchSettings({ requireApprovalCheckbox: v })}
@@ -247,6 +289,30 @@ export default function AdminTemplateSettings({ template, onChange, productName,
           label="Customer autosave"
           hint="Automatically saves customer drafts while they edit."
         />
+      </section>
+
+      <section className="grid gap-4 rounded-xl border border-[#303839]/12 bg-white p-4 shadow-[0_12px_30px_rgba(48,56,57,0.04)] md:p-5 xl:col-span-2">
+        <div>
+          <h4 className="font-display text-xl text-[#303839]">Customer content limits</h4>
+          <p className="mt-1 text-xs leading-5 text-[#303839]/50">Optional allowlists and hard page bounds. An empty allowlist keeps every available option enabled; saved customizations are checked against these rules on the server.</p>
+        </div>
+        <div className="grid gap-4 lg:grid-cols-2">
+          <Field label="Fonts"><MultiChoice value={settings.allowedCustomerFonts} options={CUSTOMIZER_APPROVED_FONTS.map((font) => ({ value: font.value, label: font.label }))} onChange={(value: string[]) => patchSettings({ allowedCustomerFonts: value })} /></Field>
+          <Field label="Customer-created content pages"><MultiChoice value={settings.allowedCustomerPages} options={(t.pages || []).filter((page: any) => page.enabled !== false).map((page: any) => ({ value: page.id, label: page.label || page.name || page.id }))} onChange={(value: string[]) => patchSettings({ allowedCustomerPages: value })} /></Field>
+          <Field label="Shapes"><MultiChoice value={settings.allowedCustomerShapes} options={["rectangle", "rounded-rectangle", "circle", "oval", "triangle", "polygon", "arch"].map((value) => ({ value, label: value.replaceAll("-", " ") }))} onChange={(value: string[]) => patchSettings({ allowedCustomerShapes: value })} /></Field>
+          <Field label="Frame masks"><MultiChoice value={settings.allowedCustomerFrameMasks} options={["rectangle", "rounded", "circle", "oval", "arch", "arch-top", "arch-bottom"].map((value) => ({ value, label: value.replaceAll("-", " ") }))} onChange={(value: string[]) => patchSettings({ allowedCustomerFrameMasks: value })} /></Field>
+          <Field label="Grid layouts"><MultiChoice value={settings.allowedCustomerGridPresets} options={GRID_PRESETS.map((preset) => ({ value: preset.id, label: `${preset.label} · ${preset.photoCount}` }))} onChange={(value: string[]) => patchSettings({ allowedCustomerGridPresets: value })} /></Field>
+          <Field label="Image filters"><MultiChoice value={settings.allowedCustomerImageFilters} options={["brightness", "contrast", "saturation", "grayscale", "sepia", "tint"].map((value) => ({ value, label: value }))} onChange={(value: string[]) => patchSettings({ allowedCustomerImageFilters: value })} /></Field>
+          <Field label="Allowed colours" hint="Comma-separated hex colours, for example #303839, #D4AF37. Leave blank for the full colour picker."><input className={inputCls} value={(settings.allowedCustomerColors || []).join(", ")} onChange={(event) => patchSettings({ allowedCustomerColors: event.target.value.split(",").map((value) => value.trim()).filter(Boolean) })} placeholder="#303839, #D4AF37" /></Field>
+          <Field label="Allowed element IDs" hint="Optional comma-separated IDs from the Elements library."><input className={inputCls} value={(settings.allowedCustomerElementIds || []).join(", ")} onChange={(event) => patchSettings({ allowedCustomerElementIds: event.target.value.split(",").map((value) => value.trim()).filter(Boolean) })} placeholder="Leave blank to allow the full library" /></Field>
+        </div>
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
+          <Field label="Objects / page" hint="0 means unlimited"><input type="number" min="0" className={inputCls} value={settings.maxCustomerObjectsPerPage ?? 0} onChange={(event) => patchSettings({ maxCustomerObjectsPerPage: Math.max(0, Number(event.target.value) || 0) })} /></Field>
+          {[
+            ["minWidth", "Min width"], ["maxWidth", "Max width"], ["minHeight", "Min height"], ["maxHeight", "Max height"],
+            ["minRotation", "Min rotation"], ["maxRotation", "Max rotation"], ["insetLeft", "Left inset"], ["insetTop", "Top inset"], ["insetRight", "Right inset"], ["insetBottom", "Bottom inset"],
+          ].map(([key, label]) => <Field key={key} label={label}><input type="number" className={inputCls} value={settings.customerObjectLimits?.[key] ?? (key === "minRotation" ? -360 : key === "maxRotation" ? 360 : 0)} onChange={(event) => patchSettings({ customerObjectLimits: { ...(settings.customerObjectLimits || {}), [key]: Number(event.target.value) || 0 } })} /></Field>)}
+        </div>
       </section>
     </div>
   );

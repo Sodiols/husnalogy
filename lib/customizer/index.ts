@@ -11,6 +11,8 @@ import {
 } from "@/lib/validation";
 import { listFonts } from "@/lib/customizer/v2/fonts";
 import { normalizeGridSlot } from "@/lib/customizer/v2/grids";
+import { normalizeImageFilters } from "@/lib/customizer/v2/image-filters";
+import { normalizeQRCodeStyle } from "@/lib/customizer/v2/qr";
 
 export const CUSTOMIZER_ENGINES = new Set(["svg"]);
 export const CUSTOMIZER_ORIENTATIONS = new Set(["portrait", "landscape", "square"]);
@@ -46,7 +48,7 @@ const LEGACY_FIELD_TYPE_MAP: Record<string, string> = {
   file: "file",
 };
 
-export const CUSTOMIZER_LAYER_TYPES = new Set(["text", "image", "frame", "grid", "group", "shape", "element", "background"]);
+export const CUSTOMIZER_LAYER_TYPES = new Set(["text", "image", "frame", "grid", "group", "shape", "element", "background", "qrcode"]);
 export const CUSTOMIZER_SHAPE_KINDS = new Set([
   "rectangle",
   "rounded-rectangle",
@@ -85,6 +87,25 @@ export const DEFAULT_CUSTOMIZER_SETTINGS = {
   // individual pages can override via page.allowCustomerText).
   allowCustomerText: false,
   allowCustomerUploads: true,
+  allowCustomerElements: false,
+  allowCustomerShapes: false,
+  allowCustomerLines: false,
+  allowCustomerFrames: false,
+  allowCustomerGrids: false,
+  allowCustomerQRCodes: false,
+  allowCustomerBackground: false,
+  allowCustomerGrouping: false,
+  showCustomerLayers: false,
+  allowedCustomerFonts: [],
+  allowedCustomerColors: [],
+  allowedCustomerShapes: [],
+  allowedCustomerElementIds: [],
+  allowedCustomerFrameMasks: [],
+  allowedCustomerGridPresets: [],
+  allowedCustomerImageFilters: [],
+  allowedCustomerPages: [],
+  maxCustomerObjectsPerPage: 0,
+  customerObjectLimits: {},
   // Screenshot/copy deterrence on the customer customizer.
   protectedPreview: true,
   autosave: true,
@@ -105,11 +126,19 @@ export const CUSTOMIZER_APPROVED_FONTS = listFonts({ adminOnly: true }).map((fon
 // Expanded permission keys remain in stored documents for server enforcement.
 // The admin-facing source of truth is now the single customerEditable flag.
 export const CUSTOMER_PERMISSION_KEYS = [
+  "select",
   "editContent",
   "editStyle",
+  "group",
+  "ungroup",
+  "hide",
+  "lock",
   "changeFont",
   "changeFontSize",
+  "changeFontWeight",
+  "changeFontStyle",
   "changeColor",
+  "changeTextColor",
   "changeAlignment",
   "changeLetterSpacing",
   "changeLineHeight",
@@ -123,6 +152,15 @@ export const CUSTOMER_PERMISSION_KEYS = [
   "zoomImage",
   "repositionImage",
   "flipImage",
+  "rotateImage",
+  "applyImageFilters",
+  "changeFill",
+  "changeBorder",
+  "editGrid",
+  "editGridLayout",
+  "moveGridPhotos",
+  "editQRCodeValue",
+  "editQRCodeStyle",
   "changeOpacity",
   "changeLayerOrder",
 ] as const;
@@ -240,7 +278,7 @@ function clampOpacity(value: any): number {
 
 export function normalizeCustomizerLayer(input: any = {}): any {
   const rawType = cleanString(input.type).toLowerCase();
-  const type = CUSTOMIZER_LAYER_TYPES.has(rawType) ? rawType : "text";
+  const type = rawType === "qrcode" || rawType === "qr-code" || rawType === "qr_code" ? "qrCode" : CUSTOMIZER_LAYER_TYPES.has(rawType) ? rawType : "text";
   const id = keyify(input.id || input.name || "") || createId("layer").replace(/[^a-z0-9]+/gi, "_");
 
   const base = {
@@ -260,6 +298,8 @@ export function normalizeCustomizerLayer(input: any = {}): any {
     // Two independent controls (spec): whether admin can move/edit the layer in
     // the builder, and whether the customer may edit it in the customizer.
     locked: normalizeBoolean(input.locked),
+    positionLocked: normalizeBoolean(input.positionLocked),
+    customerInteractionDisabled: normalizeBoolean(input.customerInteractionDisabled),
     adminEditable: input.adminEditable === undefined ? true : normalizeBoolean(input.adminEditable),
     customerEditable: normalizeBoolean(input.customerEditable),
     groupId: cleanString(input.groupId),
@@ -281,6 +321,11 @@ export function normalizeCustomizerLayer(input: any = {}): any {
       ...base,
       // Admin-provided image content for this layer (design art / photo frame).
       src: cleanOptionalString(input.src || input.imageSrc),
+      assetId: cleanOptionalString(input.assetId),
+      bucket: cleanOptionalString(input.bucket),
+      path: cleanOptionalString(input.path),
+      assetReference: input.assetReference && typeof input.assetReference === "object" ? input.assetReference : undefined,
+      imageTransform: input.imageTransform && typeof input.imageTransform === "object" ? input.imageTransform : undefined,
       maskShape: CUSTOMIZER_MASK_SHAPES.has(maskShape) ? maskShape : "rectangle",
       fitMode: CUSTOMIZER_FIT_MODES.has(fitMode) ? fitMode : "cover",
       allowZoom: input.allowZoom === undefined ? true : normalizeBoolean(input.allowZoom),
@@ -290,13 +335,15 @@ export function normalizeCustomizerLayer(input: any = {}): any {
       borderColor: cleanOptionalString(input.borderColor),
       borderWidth: Math.max(0, toNumber(input.borderWidth, 0)),
       backgroundColor: cleanOptionalString(input.backgroundColor),
-      ...(type === "frame" ? { defaultAssetId: cleanOptionalString(input.defaultAssetId), assetId: cleanOptionalString(input.assetId) } : {}),
+      filters: normalizeImageFilters(input.filters || input.imageFilters),
+      ...(type === "frame" ? { defaultAssetId: cleanOptionalString(input.defaultAssetId) } : {}),
     };
   }
 
   if (type === "grid") {
     return {
       ...base,
+      presetId: cleanString(input.presetId),
       columns: Math.max(1, toInt(input.columns, 2)),
       rows: Math.max(1, toInt(input.rows, 2)),
       slots: (Array.isArray(input.slots) ? input.slots : []).map((slot: any, index: number) => normalizeGridSlot(slot, index)),
@@ -325,6 +372,7 @@ export function normalizeCustomizerLayer(input: any = {}): any {
       assetId: cleanOptionalString(input.assetId),
       src: cleanOptionalString(input.src),
       fitMode: CUSTOMIZER_FIT_MODES.has(cleanString(input.fitMode)) ? cleanString(input.fitMode) : "cover",
+      filters: normalizeImageFilters(input.filters || input.imageFilters),
     };
   }
 
@@ -356,6 +404,17 @@ export function normalizeCustomizerLayer(input: any = {}): any {
       path: clampString(input.path ?? input.d ?? "", 8000),
       lineStyle: ["solid", "dashed", "dotted"].includes(cleanString(input.lineStyle)) ? cleanString(input.lineStyle) : "solid",
       lineCap: ["butt", "round", "square"].includes(cleanString(input.lineCap)) ? cleanString(input.lineCap) : "round",
+      lineStartCap: ["none", "circle", "arrow"].includes(cleanString(input.lineStartCap)) ? cleanString(input.lineStartCap) : "none",
+      lineEndCap: ["none", "circle", "arrow"].includes(cleanString(input.lineEndCap)) ? cleanString(input.lineEndCap) : "none",
+    };
+  }
+
+  if (type === "qrCode") {
+    return {
+      ...base,
+      type: "qrCode",
+      ...normalizeQRCodeStyle(input),
+      required: normalizeBoolean(input.required),
     };
   }
 
@@ -393,31 +452,28 @@ export function normalizeUserLayer(input: any = {}): any | null {
   if (!input || typeof input !== "object") return null;
   const id = cleanString(input.id) || createId("ulayer").replace(/[^a-z0-9_]+/gi, "_");
 
-  // Customer-inserted element from the Husnalogy elements library.
-  if (cleanString(input.type).toLowerCase() === "element") {
-    return {
+  const rawType = cleanString(input.type).toLowerCase();
+  if (rawType && rawType !== "text") {
+    const supported = ["element", "shape", "image", "frame", "grid", "group", "background", "qrcode", "qr-code", "qr_code"];
+    if (!supported.includes(rawType)) return null;
+    const normalized = normalizeCustomizerLayer({
+      ...input,
       id,
-      type: "element",
       page: cleanString(input.page) || "front",
-      assetId: cleanString(input.assetId),
-      src: clampString(input.src ?? "", 4000),
-      tintColor: cleanOptionalString(input.tintColor),
-      x: toNumber(input.x, 0),
-      y: toNumber(input.y, 0),
+      customerEditable: true,
+      adminEditable: false,
       width: toNumber(input.width, 300) || 300,
       height: toNumber(input.height, 300) || 300,
-      rotation: toNumber(input.rotation, 0),
-      opacity: clampOpacity(input.opacity === undefined ? 1 : input.opacity),
-      flipX: normalizeBoolean(input.flipX),
-      flipY: normalizeBoolean(input.flipY),
       zIndex: toInt(input.zIndex, 1000),
-    };
+    });
+    return { ...normalized, name: clampString(input.name || normalized.name || "Customer object", 120), locked: normalizeBoolean(input.locked), hidden: normalizeBoolean(input.hidden) };
   }
 
   const textAlign = cleanString(input.textStyle?.textAlign).toLowerCase();
   return {
     id,
     type: "text",
+    name: clampString(input.name || "Customer text", 120),
     page: cleanString(input.page) || "front",
     text: clampString(input.text ?? "", 500),
     x: toNumber(input.x, 0),
@@ -425,6 +481,10 @@ export function normalizeUserLayer(input: any = {}): any | null {
     width: toNumber(input.width, 600) || 600,
     height: toNumber(input.height, 90) || 90,
     rotation: toNumber(input.rotation, 0),
+    opacity: clampOpacity(input.opacity === undefined ? 1 : input.opacity),
+    hidden: normalizeBoolean(input.hidden),
+    locked: normalizeBoolean(input.locked),
+    groupId: cleanString(input.groupId),
     zIndex: toInt(input.zIndex, 1000),
     textStyle: {
       fontFamily: cleanString(input.textStyle?.fontFamily) || DEFAULT_TEXT_STYLE.fontFamily,
@@ -435,6 +495,7 @@ export function normalizeUserLayer(input: any = {}): any | null {
       letterSpacing: toNumber(input.textStyle?.letterSpacing, 0),
       lineHeight: toNumber(input.textStyle?.lineHeight, 1.2) || 1.2,
       textAlign: CUSTOMIZER_TEXT_ALIGN.has(textAlign) ? textAlign : "center",
+      verticalAlign: ["top", "middle", "bottom"].includes(cleanString(input.textStyle?.verticalAlign)) ? cleanString(input.textStyle?.verticalAlign) : "middle",
       uppercase: normalizeBoolean(input.textStyle?.uppercase),
       multiline: normalizeBoolean(input.textStyle?.multiline),
     },
@@ -453,9 +514,14 @@ function normalizeLayerOverride(input: any = {}): any | null {
     if (src.fontStyle !== undefined) style.fontStyle = cleanString(src.fontStyle) === "italic" ? "italic" : "normal";
     if (src.color !== undefined) style.color = cleanString(src.color);
     if (src.letterSpacing !== undefined) style.letterSpacing = toNumber(src.letterSpacing, 0);
+    if (src.lineHeight !== undefined) style.lineHeight = Math.min(4, Math.max(0.5, toNumber(src.lineHeight, 1.2)));
     if (src.textAlign !== undefined) {
       const align = cleanString(src.textAlign).toLowerCase();
       if (CUSTOMIZER_TEXT_ALIGN.has(align)) style.textAlign = align;
+    }
+    if (src.verticalAlign !== undefined) {
+      const align = cleanString(src.verticalAlign).toLowerCase();
+      if (["top", "middle", "bottom"].includes(align)) style.verticalAlign = align;
     }
     const cleaned = Object.fromEntries(Object.entries(style).filter(([, v]) => v !== undefined && v !== ""));
     if (Object.keys(cleaned).length) out.textStyle = cleaned;
@@ -469,6 +535,7 @@ function normalizeLayerOverride(input: any = {}): any | null {
     if (t.height !== undefined) transform.height = toNumber(t.height, 0);
     if (t.rotation !== undefined) transform.rotation = toNumber(t.rotation, 0);
     if (t.opacity !== undefined) transform.opacity = clampOpacity(t.opacity);
+    if (t.zIndex !== undefined) transform.zIndex = toInt(t.zIndex, 0);
     if (Object.keys(transform).length) out.transform = transform;
   }
   // V2 crop editor state for photo frames (zoom/pan/flip/rotate inside frame).
@@ -484,6 +551,11 @@ function normalizeLayerOverride(input: any = {}): any | null {
     if (t.fitMode !== undefined) imageTransform.fitMode = cleanString(t.fitMode) === "contain" ? "contain" : "cover";
     if (Object.keys(imageTransform).length) out.imageTransform = imageTransform;
   }
+  if (input.imageFilters && typeof input.imageFilters === "object") out.imageFilters = normalizeImageFilters(input.imageFilters);
+  if (input.properties && typeof input.properties === "object") out.properties = input.properties;
+  if (input.name !== undefined) out.name = clampString(input.name, 120);
+  if (input.hidden !== undefined) out.hidden = normalizeBoolean(input.hidden);
+  if (input.customerLocked !== undefined) out.customerLocked = normalizeBoolean(input.customerLocked);
   if (input.gridSlots && typeof input.gridSlots === "object") {
     const gridSlots: Record<string, any> = {};
     for (const [slotId, raw] of Object.entries(input.gridSlots as Record<string, any>)) {

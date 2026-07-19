@@ -312,6 +312,7 @@ export default function AdminCustomerPreview({ template, product }: { template: 
               editorState={editorState}
               pageId={activePage}
               zoom={zoom}
+              onZoomChange={setZoom}
               selectedLayerId={selectedLayerId}
               onSelectLayer={setSelectedLayerId}
               onLayerTransform={onLayerTransform}

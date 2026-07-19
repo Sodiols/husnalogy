@@ -323,6 +323,8 @@ type Props = {
   selectedGridLayer?: any;
   selectedGridSlotId?: string | null;
   onPickGridAsset?: (asset: LibraryAsset) => void;
+  selectedUserFrame?: any;
+  onPickUserFrame?: (asset: any) => void;
 };
 
 export default function CustomerUploadsPanel({
@@ -337,6 +339,8 @@ export default function CustomerUploadsPanel({
   selectedGridLayer,
   selectedGridSlotId,
   onPickGridAsset,
+  selectedUserFrame,
+  onPickUserFrame,
 }: Props) {
   const { user } = useAuth();
   const [libraryRefresh, setLibraryRefresh] = useState(0);
@@ -345,8 +349,9 @@ export default function CustomerUploadsPanel({
   );
 
   const hasSelectedGridSlot = Boolean(selectedGridLayer?.type === "grid" && selectedGridSlotId);
+  const hasSelectedUserFrame = Boolean(selectedUserFrame?.isUserLayer && (selectedUserFrame.type === "frame" || selectedUserFrame.type === "image"));
 
-  if (!photoEntries.length && !hasSelectedGridSlot) {
+  if (!photoEntries.length && !hasSelectedGridSlot && !hasSelectedUserFrame) {
     return <p className="p-5 text-sm text-[#303839]/55">This design has no photo areas to fill.</p>;
   }
 
@@ -355,6 +360,10 @@ export default function CustomerUploadsPanel({
   const applyLibraryAsset = (asset: LibraryAsset) => {
     if (hasSelectedGridSlot && onPickGridAsset) {
       onPickGridAsset(asset);
+      return;
+    }
+    if (hasSelectedUserFrame && onPickUserFrame) {
+      onPickUserFrame(asset);
       return;
     }
     const target =
@@ -386,6 +395,16 @@ export default function CustomerUploadsPanel({
         <div className="rounded-lg border border-[#D4AF37]/40 bg-[#D4AF37]/8 p-3 text-xs text-[#303839]">
           <p className="font-extrabold">Photo grid slot selected</p>
           <p className="mt-1 text-[#303839]/60">Choose a library photo below, drag one onto a slot, or use Replace above the canvas.</p>
+        </div>
+      )}
+      {hasSelectedUserFrame && (
+        <div className="grid gap-2 rounded-lg border border-[#D4AF37]/40 bg-[#D4AF37]/8 p-3 text-xs text-[#303839]">
+          <p className="font-extrabold">Customer frame selected</p>
+          <p className="text-[#303839]/60">Choose a library photo or upload a new one.</p>
+          <label className="flex min-h-11 cursor-pointer items-center justify-center rounded-lg bg-[#303839] px-3 font-bold text-white">
+            Upload photo
+            <input type="file" accept="image/jpeg,image/png,image/webp" className="sr-only" onChange={async (event) => { const file = event.target.files?.[0]; if (file && onPickUserFrame) { const uploaded = await onUploadPhoto(file); onPickUserFrame(uploaded); setLibraryRefresh((current) => current + 1); } event.target.value = ""; }} />
+          </label>
         </div>
       )}
       {photoEntries.map(({ field, layer, page }) => (

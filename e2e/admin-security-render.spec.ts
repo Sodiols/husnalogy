@@ -62,6 +62,28 @@ test("trusted customization produces protected PNG output", async ({ page }) => 
   expect(payload.outputs[0].heightPx).toBeGreaterThan(0);
 });
 
+test("administrator produces QR-backed print PNG and PDF outputs", async ({ page }) => {
+  await login(page, adminCredentials.email, adminCredentials.password);
+  const png = await page.request.post("/api/customizer/render", { data: { customizationId: customizationAId, jobType: "print_png" }, timeout: 90_000 });
+  expect(png.ok()).toBe(true);
+  const pngPayload = await png.json();
+  expect(pngPayload.outputs.length).toBeGreaterThanOrEqual(2);
+  expect(pngPayload.outputs.every((output: any) => output.format === "png" && output.watermarked === false && output.checksum)).toBe(true);
+
+  const pdf = await page.request.post("/api/customizer/render", { data: { customizationId: customizationAId, jobType: "print_pdf" }, timeout: 90_000 });
+  expect(pdf.ok()).toBe(true);
+  const pdfPayload = await pdf.json();
+  expect(pdfPayload.outputs).toHaveLength(1);
+  expect(pdfPayload.outputs[0].format).toBe("pdf");
+  expect(pdfPayload.outputs[0].checksum).toBeTruthy();
+});
+
+test("customer cannot invoke unwatermarked print production", async ({ page }) => {
+  await login(page, customerCredentials.email, customerCredentials.password);
+  const response = await page.request.post("/api/customizer/render", { data: { customizationId: customizationAId, jobType: "print_pdf" } });
+  expect(response.status()).toBe(403);
+});
+
 test("trusted customization produces cached WebP perspective mockups", async ({ page }) => {
   await login(page, customerCredentials.email, customerCredentials.password);
   const first = await page.request.post("/api/customizer/render", { data: { customizationId: customizationAId, jobType: "mockup" }, timeout: 90_000 });

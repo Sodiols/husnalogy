@@ -11,6 +11,7 @@ type Props = {
   onAddGrid: (columns: number, rows: number) => void;
   onAddShape: (shape: string) => void;
   onAddLine: () => void;
+  onAddQRCode: () => void;
   onOpenElements: () => void;
   onGroup: () => void;
   onUngroup: () => void;
@@ -41,6 +42,7 @@ const ICONS: Record<string, React.ReactNode> = {
   grid: icon(<><rect x="3" y="3" width="8" height="8" rx="1" /><rect x="13" y="3" width="8" height="8" rx="1" /><rect x="3" y="13" width="8" height="8" rx="1" /><rect x="13" y="13" width="8" height="8" rx="1" /></>),
   shape: icon(<><rect x="3" y="4" width="9" height="9" rx="2" /><circle cx="17" cy="17" r="4" /></>),
   line: icon(<path d="M4 18 20 6" />),
+  qr: icon(<><rect x="3" y="3" width="7" height="7" /><rect x="14" y="3" width="7" height="7" /><rect x="3" y="14" width="7" height="7" /><path d="M14 14h3v3h-3zM19 14h2v7h-7v-2" /></>),
   elements: icon(<path d="m12 3 2.2 4.5L19 8.2l-3.5 3.4.8 4.8-4.3-2.3-4.3 2.3.8-4.8L5 8.2l4.8-.7Z" />),
   group: icon(<><rect x="4" y="4" width="7" height="7" rx="1" /><rect x="13" y="13" width="7" height="7" rx="1" /><path d="M8 13v3h3M13 8h3v3" /></>),
   ungroup: icon(<><rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="14" width="7" height="7" rx="1" /><path d="M10 14 14 10" /></>),
@@ -91,6 +93,7 @@ export default function AdminToolRail(props: Props) {
       <RailButton id="grid" label="Grid" active={menu === "grid"} onClick={() => setMenu((value) => value === "grid" ? null : "grid")} disabled={!props.gridsEnabled} disabledHint="Enable Photo grids in Settings for this product." />
       <RailButton id="shape" label="Shape" active={menu === "shape"} onClick={() => setMenu((value) => value === "shape" ? null : "shape")} />
       <RailButton id="line" label="Line" onClick={props.onAddLine} />
+      <RailButton id="qr" label="QR Code" onClick={props.onAddQRCode} />
       <RailButton id="elements" label="Elements" onClick={props.onOpenElements} />
       <RailButton id="group" label="Group" onClick={props.onGroup} disabled={!props.groupsEnabled || !props.canGroup} disabledHint={!props.groupsEnabled ? "Enable Persistent groups in Settings for this product." : "Select at least two layers."} />
       <RailButton id="ungroup" label="Ungroup" onClick={props.onUngroup} disabled={!props.groupsEnabled || !props.canUngroup} disabledHint={!props.groupsEnabled ? "Enable Persistent groups in Settings for this product." : "Select a group layer."} />

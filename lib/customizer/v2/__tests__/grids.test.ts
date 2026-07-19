@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createGridSlots, getGridSlotRect, mergeGridSlotOverrides, validateGridGeometry } from "../grids";
+import { createGridSlots, createGridSlotsFromPreset, GRID_PRESETS, getGridSlotRect, mergeGridSlotOverrides, validateGridGeometry } from "../grids";
 import { templateToDocument, resolveCustomerDocument } from "../document";
 import { runPreflight } from "../preflight";
 import { buildPageSvg } from "../svg";
@@ -60,6 +60,15 @@ describe("photo grid engine", () => {
     expect(rect.height).toBe(450);
   });
 
+  it("keeps every expanded preset's advertised photo count and valid geometry", () => {
+    for (const preset of GRID_PRESETS) {
+      const slots = createGridSlotsFromPreset(preset.id);
+      expect(slots, preset.id).toHaveLength(preset.photoCount);
+      expect(validateGridGeometry({ slots }), preset.id).toEqual([]);
+    }
+    expect(createGridSlotsFromPreset("five-hero")[0]).toMatchObject({ width: 0.5, height: 1 });
+  });
+
   it("merges independent slot photos and crop transforms without mutating siblings", () => {
     const slots = createGridSlots(2, 1);
     const resolved = mergeGridSlotOverrides(slots, {
@@ -76,7 +85,7 @@ describe("photo grid engine", () => {
   it("migrates, restores, renders and preflights every slot independently", () => {
     const template = gridTemplate();
     const { document } = templateToDocument(template);
-    expect(document.schemaVersion).toBe(3);
+    expect(document.schemaVersion).toBe(4);
     expect(document.layers[0].type).toBe("grid");
     const secondId = (document.layers[0] as any).slots[1].id;
     const resolved = resolveCustomerDocument(document, {}, { layerOverrides: { grid: { gridSlots: { [secondId]: { src: RED_PIXEL, assetId: "customer-photo", bucket: "customer-uploads", path: "user/photo.webp", metadata: { width: 2400, height: 1800 }, transform: { zoom: 1.4 } } } } }, userLayers: [] });

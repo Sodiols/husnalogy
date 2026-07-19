@@ -8,6 +8,17 @@ export const CUSTOMIZER_FEATURE_FLAGS = [
   "customizer_v2_perspective_mockups",
   "customizer_v2_server_rendering",
   "customizer_v2_print_pdf",
+  "customizer_v2_customer_layers",
+  "customizer_v2_customer_multiselect",
+  "customizer_v2_customer_grouping",
+  "customizer_v2_qr_codes",
+  "customizer_v2_customer_shapes",
+  "customizer_v2_customer_lines",
+  "customizer_v2_customer_frames",
+  "customizer_v2_customer_grids",
+  "customizer_v2_image_filters",
+  "customizer_v2_product_preview_editing",
+  "customizer_v2_split_view",
 ] as const;
 
 export type CustomizerFeatureFlag = (typeof CUSTOMIZER_FEATURE_FLAGS)[number];

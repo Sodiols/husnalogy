@@ -6,6 +6,48 @@ const customizerUrl = process.env.E2E_CUSTOMIZER_URL || seedManifest.customizerU
 requireSeededAcceptance([["E2E_CUSTOMIZER_URL", customizerUrl], ["customer email", customerCredentials.email], ["customer password", customerCredentials.password]]);
 
 test.describe("seeded customer Customizer V2 journey", () => {
+  test("customer layers, multi-selection, grouping, QR, lines and expanded grids", async ({ page }) => {
+    await login(page, customerCredentials.email, customerCredentials.password, customizerUrl);
+    await page.goto(customizerUrl);
+    const root = page.locator("[data-customizer-root]");
+    await expect(root).toBeVisible();
+
+    await root.getByRole("button", { name: "Shapes", exact: true }).click();
+    await root.getByRole("button", { name: "rectangle", exact: true }).click();
+    await expect(root.getByRole("toolbar", { name: "1 selected objects" })).toBeVisible();
+
+    await root.getByRole("button", { name: "Lines", exact: true }).click();
+    await root.getByRole("button", { name: "solid line", exact: true }).click();
+    await expect(root.getByLabel("Line start cap")).toBeVisible();
+
+    await root.getByRole("button", { name: "Layers", exact: true }).click();
+    const shapeLayer = root.getByRole("button", { name: /Customer shape/i }).first();
+    const lineLayer = root.getByRole("button", { name: /Customer line/i }).first();
+    await shapeLayer.click();
+    await lineLayer.click({ modifiers: ["Control"] });
+    const multiToolbar = root.getByRole("toolbar", { name: "2 selected objects" });
+    await expect(multiToolbar).toBeVisible();
+    await multiToolbar.getByRole("button", { name: "Group", exact: true }).click();
+    await expect(root.getByRole("button", { name: /Customer group/i }).first()).toBeVisible();
+    await root.getByRole("toolbar", { name: "1 selected objects" }).getByRole("button", { name: "Ungroup", exact: true }).click();
+
+    await root.getByRole("button", { name: "QR Code", exact: true }).click();
+    await root.getByLabel("Destination URL").fill("https://husnalogy.com/playwright");
+    await root.getByRole("button", { name: "Add QR code", exact: true }).click();
+    await expect(root.getByRole("status")).toContainText("Readable");
+    await expect(root.getByLabel("QR error correction")).toBeVisible();
+
+    await root.getByRole("button", { name: "Grids", exact: true }).click();
+    await root.getByRole("button", { name: /Minimal wedding/i }).click();
+    await root.getByRole("button", { name: "Layers", exact: true }).click();
+    await expect(root.getByText("Minimal wedding", { exact: true })).toBeVisible();
+    await expect(root.getByRole("button", { name: /Empty slot 5/i })).toBeVisible();
+
+    await root.getByRole("button", { name: "Help", exact: true }).click();
+    await expect(page.getByRole("dialog", { name: "Keyboard shortcuts" })).toBeVisible();
+    await page.getByRole("button", { name: "Close", exact: true }).click();
+  });
+
   test("desktop edit, upload, grid crop, history, restore, review and cart", async ({ page }) => {
     await login(page, customerCredentials.email, customerCredentials.password, customizerUrl);
     await page.goto(customizerUrl);

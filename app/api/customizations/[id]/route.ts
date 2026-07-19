@@ -5,6 +5,7 @@ import {
 } from "@/lib/customizer/customizations";
 import { validateCustomizationSave } from "@/lib/customizer/save-validation";
 import { resolvePrivateAssetsForDelivery } from "@/lib/customizer/server/private-assets";
+import { writeCustomizerAudit } from "@/lib/customizer/audit";
 
 async function getUser() {
   const supabase = await createClient();
@@ -54,6 +55,14 @@ export async function PATCH(request: Request, { params }: any) {
     templateVersion: Number(existingRow.template_version) || 0,
   });
   if (validation.ok === false) {
+    await writeCustomizerAudit(supabase, {
+      actorId: user.id,
+      action: "customization.save_rejected",
+      customizationId: id,
+      productId: existingRow.product_id,
+      editorState: rawBody.editorState || rawBody.renderData?.editorState,
+      details: { violationCodes: validation.violations.map((item) => item.code) },
+    });
     return Response.json(
       { ok: false, error: validation.error, violations: validation.violations },
       { status: validation.status },
@@ -71,6 +80,15 @@ export async function PATCH(request: Request, { params }: any) {
   if (error) return Response.json({ ok: false, error: error.message }, { status: 500 });
   if (!data) return Response.json({ ok: false, error: "Not found." }, { status: 404 });
 
+  await writeCustomizerAudit(supabase, {
+    actorId: user.id,
+    action: "customization.updated",
+    customizationId: data.id,
+    productId: data.product_id,
+    editorState: rawBody.editorState || rawBody.renderData?.editorState,
+    details: { schemaVersion: 4 },
+  });
+
   const customization = await resolvePrivateAssetsForDelivery(customizationFromRow(data), { userId: user.id }, "editor", supabase);
   return Response.json({ ok: true, customization });
 }
@@ -80,8 +98,16 @@ export async function DELETE(_request: Request, { params }: any) {
   const { supabase, user } = await getUser();
   if (!user) return Response.json({ ok: false, error: "Sign in required." }, { status: 401 });
 
+  const { data: existing } = await supabase.from("product_customizations").select("product_id").eq("id", id).maybeSingle();
   const { error } = await supabase.from("product_customizations").delete().eq("id", id);
   if (error) return Response.json({ ok: false, error: error.message }, { status: 500 });
+
+  await writeCustomizerAudit(supabase, {
+    actorId: user.id,
+    action: "customization.deleted",
+    productId: existing?.product_id,
+    details: { deletedCustomizationId: id },
+  });
 
   return Response.json({ ok: true });
 }

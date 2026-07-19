@@ -13,6 +13,7 @@ import { getFontByFamily } from "./fonts";
 import { layoutText, fallbackMeasure, type MeasureFn } from "./text-layout";
 import { getGridSlotRect, normalizeGridSlot, validateGridGeometry } from "./grids";
 import { validateGroupRelationships } from "./groups";
+import { isValidQRValue, qrContrastRatio } from "./qr";
 
 export type PreflightOptions = {
   measure?: MeasureFn;
@@ -51,7 +52,7 @@ export function runPreflight(document: CustomizerDocument, options: PreflightOpt
   const pageById = new Map(enabledPages.map((page) => [page.id, page]));
   const fieldById = new Map(document.fields.map((field) => [field.id, field]));
   const assetIds = new Set(document.assets.map((asset) => asset.id));
-  const supportedLayerTypes = new Set(["text", "image", "frame", "shape", "grid", "group", "element", "background"]);
+  const supportedLayerTypes = new Set(["text", "image", "frame", "shape", "grid", "group", "element", "background", "qrCode"]);
 
   for (const layer of document.layers) {
     if (!supportedLayerTypes.has(layer.type)) {
@@ -202,6 +203,30 @@ export function runPreflight(document: CustomizerDocument, options: PreflightOpt
         layerId: layer.id,
         message: `Element "${layer.name}" points at a missing asset.`,
       });
+    }
+
+    if (layer.type === "qrCode") {
+      const sizePx = Math.min(layer.width, layer.height);
+      const physicalSize = sizePx / page.dpi;
+      if (!isValidQRValue(layer.value)) {
+        issues.push({ code: "INVALID_QR_URL", severity: "error", pageId: page.id, layerId: layer.id, message: `QR code "${layer.name}" needs a valid http, https, email, or telephone destination.` });
+      }
+      if (sizePx < 150 || physicalSize < 0.5) {
+        issues.push({ code: "QR_TOO_SMALL", severity: "error", pageId: page.id, layerId: layer.id, message: `QR code "${layer.name}" is too small to print reliably.` });
+      } else if (sizePx < 225 || physicalSize < 0.75) {
+        issues.push({ code: "QR_CLOSE_TO_MINIMUM", severity: "warning", pageId: page.id, layerId: layer.id, message: `QR code "${layer.name}" is close to the minimum recommended print size.` });
+      }
+      if (Number(layer.margin) < 4) {
+        issues.push({ code: "QR_QUIET_ZONE", severity: "error", pageId: page.id, layerId: layer.id, message: `QR code "${layer.name}" needs a quiet zone of at least four modules.` });
+      }
+      if (qrContrastRatio(layer.foregroundColor, layer.backgroundColor) < 4.5) {
+        issues.push({ code: "QR_LOW_CONTRAST", severity: "error", pageId: page.id, layerId: layer.id, message: `QR code "${layer.name}" does not have enough foreground/background contrast.` });
+      }
+      if (layer.opacity < 0.65) {
+        issues.push({ code: "QR_OPACITY_UNREADABLE", severity: "error", pageId: page.id, layerId: layer.id, message: `QR code "${layer.name}" is too transparent to scan reliably.` });
+      } else if (layer.opacity < 0.9) {
+        issues.push({ code: "QR_HIGH_TRANSPARENCY", severity: "warning", pageId: page.id, layerId: layer.id, message: `QR code "${layer.name}" may be harder to scan because of its transparency.` });
+      }
     }
   }
 

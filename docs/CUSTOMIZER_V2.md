@@ -47,13 +47,13 @@ Design principles:
 
 Defined in `lib/customizer/v2/types.ts`.
 
-- `CustomizerDocument` — schemaVersion (3), templateId, templateVersion,
+- `CustomizerDocument` — schemaVersion (4), templateId, templateVersion,
   engineVersion, canvas, pages, fields, layers, settings, assets.
 - `CustomizerPage` — id, name, enabled, widthPx/heightPx, widthIn/heightIn,
   dpi, backgroundColor, backgroundAssetId, safeArea, bleed, allowCustomerText,
   allowCustomerUploads.
 - Discriminated layer types: `text`, `image`, `shape`, `frame`, `grid`,
-  `group`, `element`, `background`. All share id, name, pageId, x/y (centre),
+  `group`, `element`, `background`, and native `qrCode`. All share id, name, pageId, x/y (centre),
   width/height, scale, rotation, opacity, hidden, zIndex, locked,
   adminEditable, customerEditable, customerPermissions, groupId, fieldId,
   metadata.
@@ -61,13 +61,20 @@ Defined in `lib/customizer/v2/types.ts`.
   cropX/Y/Width/Height, zoom, offsetX/Y, rotation, flipX/Y, fitMode.
 - `MaskShape` — rectangle, rounded, circle, oval, arch, arch-top,
   arch-bottom, polygon (normalized points), path (custom SVG path + viewBox).
+- `CustomizerSettings` carries customer tool flags plus optional font, colour,
+  shape, element, frame, grid, filter, and page allowlists. It also carries a
+  per-page customer-object count and position/size/rotation bounds. Empty
+  allowlists mean all registered values; every non-empty rule is enforced by
+  both the UI and the save API.
 
 **Schema versions.** Version 1 is the legacy flat template stored in
 `product_customizer_templates` (kept as the live draft format for backward
 compatibility). Version 2 is the first typed document; version 3 adds
 persistent guides, photo-grid slot overrides, groups, and mockup configuration.
-Both old formats migrate through
-`migrateCustomizerDocument(document, 1 | 2, 3)` / `templateToDocument()` in
+Version 4 adds native QR vectors, structured image filters, explicit customer
+visibility/lock/interaction state, inserted shapes/lines/frames/grids/
+backgrounds, and the expanded permission model. All old formats migrate through
+`migrateCustomizerDocument(document, 1 | 2 | 3, 4)` / `templateToDocument()` in
 `lib/customizer/v2/document.ts` and persisted in
 `customizer_template_versions.document` and `order_design_snapshots.snapshot`.
 
@@ -79,10 +86,13 @@ Both old formats migrate through
 ## 3. Customer permissions
 
 `CustomerPermissions` (spec §18) remains a per-layer enforcement object with:
-select, editContent, editStyle, changeFont, changeFontSize, changeColor,
+select, editContent, editStyle, group, ungroup, hide, lock, changeFont,
+changeFontSize, changeFontWeight, changeFontStyle, changeTextColor,
 changeAlignment, changeLetterSpacing, changeLineHeight, move, resize, rotate,
 duplicate, delete, replaceImage, cropImage, zoomImage, repositionImage,
-flipImage, changeOpacity, changeLayerOrder.
+rotateImage, flipImage, applyImageFilters, changeFill, changeBorder, editGrid,
+editGridLayout, moveGridPhotos, editQRCodeValue, editQRCodeStyle,
+changeOpacity, and changeLayerOrder.
 
 The admin exposes one **Customer editable** checkbox. When checked, every
 permission is enabled automatically; when unchecked, every permission is
@@ -221,7 +231,10 @@ depend on Google Fonts.
   recoloured by customers via an feFlood/feComposite filter.
 - Customer: Elements tool (shown when the template's
   `settings.allowCustomerElements` is on) → browse/search/filter → insert as
-  a user layer (move/resize/rotate/flip/tint/opacity/duplicate/delete).
+  a user layer (move/resize/rotate/flip/tint/opacity/duplicate/delete). Elements
+  can be clicked or dragged to an exact canvas position. Recent and favourite
+  elements are kept locally and filtered through the template's element
+  allowlist before display or insertion.
 - Storage: public `customizer-elements` bucket; rows in `customizer_assets` +
   `customizer_asset_categories`.
 
@@ -244,8 +257,9 @@ depend on Google Fonts.
 ## 11. Database tables (V2 additions)
 
 Migrations: `20260714120000_customizer_v2.sql`,
-`20260714153000_customizer_v2_completion.sql`, and the production hardening
-migration `20260714210000_customizer_v2_production_hardening.sql`.
+`20260714153000_customizer_v2_completion.sql`, the production hardening
+migration `20260714210000_customizer_v2_production_hardening.sql`, followed by
+`20260718120000_customizer_v2_customer_parity.sql`.
 
 | Table | Purpose |
 |---|---|
@@ -259,6 +273,7 @@ migration `20260714210000_customizer_v2_production_hardening.sql`.
 | `customizer_guides` | Admin canvas guides |
 | `customizer_mockup_views` / `customizer_mockup_artwork_areas` / `customizer_mockup_overlays` | Normalized flat mockup scenes |
 | `customizer_feature_flags` | DB-authoritative global/product-type/product rollout controls |
+| `customizer_audit_logs` | Append-only customer save/rejection/deletion audit trail |
 
 **RLS:** admins manage everything; customers read/write only their own
 uploads, designs, and render jobs; public reads only enabled published
@@ -275,7 +290,8 @@ service-role only + signed URLs).
 text/images, text overflow (via real layout), text below readable size,
 unknown/unrenderable fonts, empty frames/grid slots, broken asset refs,
 low-resolution photos (effective DPI vs page DPI), objects outside the page,
-important objects outside the safe area, invalid page dimensions. Errors
+important objects outside the safe area, QR URL/size/quiet-zone/opacity/contrast,
+and invalid page dimensions. Errors
 block ordering; warnings don't. Server endpoint:
 `POST /api/customizer/preflight` (`{customizationId, context}`), results are
 persisted to `customizer_preflight_results`.
@@ -284,7 +300,9 @@ persisted to `customizer_preflight_results`.
 
 Photo grids remain structured layers. `lib/customizer/v2/grids.ts` owns slot
 normalization, layout rectangles, crop merging, and geometry validation.
-Admins can insert 2/3/4/5/6/8/9-photo layouts and configure the container plus
+Admins and permitted customers can insert exact 2/3/4/5/6/7/8/9/10/12/16-photo
+layouts plus editorial, magazine, window, polaroid-inspired, arch, and minimal
+wedding arrangements, and configure the container plus
 each slot's mask, default image, required state, and customer editability.
 Customers can upload, reuse, or drag library photos into slots; clear, crop,
 pan, zoom, rotate, flip, reset, or swap them; and undo/redo those operations.
@@ -371,7 +389,7 @@ variables. Create the manifest with `npm run seed:customizer:test` against an
 explicitly confirmed local/staging Supabase project. Seeded suites fail setup
 when the fixture is absent; they never silently skip.
 
-Apply all three migrations before enabling feature flags. Required buckets are
+Apply all four migrations before enabling feature flags. Required buckets are
 `customer-uploads` (private), `customizer-elements` (public read),
 `product-mockups` (admin managed), and `customizer-renders` (private service
 role). Configure `RENDER_WORKER_SECRET` and a scheduler.
@@ -387,3 +405,88 @@ or mutate those structures, disabled mockups stay out of the customer preview,
 and render/PDF jobs are rejected with `FEATURE_DISABLED`. Existing saved layers
 remain readable and client-renderable so disabling a flag is a safe product-level
 fallback instead of a destructive document rewrite.
+
+## 19. Customer editor parity architecture
+
+### Layers, selection, and arrange
+
+`CustomerLayersPanel.tsx` displays only permitted objects. It represents
+administrator/customer ownership, hidden and locked state, nested groups, and
+expandable grid slots. Customers can rename their own layers, show/hide where
+permitted, lock their inserted objects, duplicate/delete, and use the same four
+arrange commands as the canvas toolbar. Protected administrator objects are
+hard boundaries: arrange operations cannot cross them.
+
+`CustomizerWorkspace.tsx` owns hit testing and pointer gestures at canvas
+coordinates, independent of displayed zoom. Click selects one object;
+Shift/Ctrl/Cmd adds or removes one; empty-canvas dragging creates a marquee;
+Ctrl/Cmd+A selects every permitted object. Multiple selected objects move,
+resize, rotate, duplicate, delete, align, distribute, arrange, or group as one
+operation. Groups have an explicit enter/exit mode so a normal click selects
+the group and Enter or double-click exposes its children. Every gesture records
+one undo snapshot.
+
+### Customer-created content
+
+Inserted objects stay in `editorState.userLayers`; templates are never
+mutated. Supported types are text, elements, shapes, lines, frames, grids,
+backgrounds, groups, and QR codes. Line endpoints support none/circle/arrow.
+Frames use the shared mask/crop engine. Grid slot photos remain independent and
+carry their own asset reference, crop transform, filter, mask, and required
+state. Page backgrounds are inserted behind artwork and start locked against
+accidental movement.
+
+QR content is generated locally by `qrcode` through `v2/qr.ts`; it never calls
+an external QR service. URL schemes are allow-listed, module matrices are
+deterministic, and preflight checks the destination, quiet zone, size, opacity,
+and foreground/background contrast. Browser SVG, server SVG, PNG, PDF, mockup,
+cart thumbnail, and order snapshot paths all use the same vector modules.
+
+Image filters are structured numeric values (brightness, contrast, saturation,
+grayscale, sepia, tint colour/amount), not a serialized CSS string.
+`v2/image-filters.ts` emits the identical SVG primitive chain used by browser
+and server rendering for images, frames, grid slots, and image backgrounds.
+
+### Product preview and mobile behavior
+
+Print Canvas is canonical. Product Preview embeds the same workspace directly
+inside published flat or rotated rectangular artwork areas, so transforms
+remain print-canvas transforms. Split View mounts Print Canvas and Product
+Preview against the same React state; editing either updates both immediately.
+Perspective/cylinder/custom areas remain clearly preview-only because editing a
+warped surface would conceal precision loss. `v2/preview-mapping.ts` provides
+inverse-homography mapping for supported coordinate workflows.
+
+On phones and tablets, every customer tool remains in the horizontally
+scrollable bottom rail and opens in a bottom sheet. Canvas handles are enlarged,
+toolbars scroll horizontally, one-finger crop pan works, two-finger pinch zooms
+the canvas or active crop, and two-finger movement pans the workspace. Save
+state and the next/review action remain in the sticky header.
+
+### Lock states and server authority
+
+`locked`, `positionLocked`, `customerLocked`, and
+`customerInteractionDisabled` are independent. `locked` governs the admin
+editor, while the two customer locks stop customer geometry changes at their
+intended scope; interaction-disabled objects receive no canvas
+hit target and do not appear in Customer Layers. The API reloads the trusted
+published template, resolves database feature flags, validates every field,
+override, inserted object, asset owner, group, QR value, filter, visibility,
+lock, and z-index change, and stores only the sanitized result. Accepted and
+rejected design saves append a compact record to `customizer_audit_logs`.
+Template allowlists and customer-object count/page/geometry limits are also
+hard-reject rules; client-side filtering and clamping are usability aids, not
+the security boundary.
+
+### Rollout and rollback
+
+The parity capabilities are independently staged by
+`customizer_v2_customer_layers`, `customizer_v2_customer_multiselect`,
+`customizer_v2_customer_grouping`, `customizer_v2_qr_codes`,
+`customizer_v2_customer_shapes`, `customizer_v2_customer_lines`,
+`customizer_v2_customer_frames`, `customizer_v2_customer_grids`,
+`customizer_v2_image_filters`, `customizer_v2_product_preview_editing`, and
+`customizer_v2_split_view`. Enable them for the dedicated staging product
+first. Rollback is flag-only: disable the affected flag. Schema-v4 documents
+and editor state remain readable, and no migration or historical row is
+deleted.

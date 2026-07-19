@@ -374,6 +374,23 @@ export default function AdminPropertiesPanel({
         </Section>
       )}
 
+      {(layer.type === "image" || layer.type === "frame") && (
+        <Section title="Image filters">
+          <div className="grid grid-cols-2 gap-2">
+            {[
+              ["brightness", "Brightness", 0, 2, 0.05, 1],
+              ["contrast", "Contrast", 0, 2, 0.05, 1],
+              ["saturation", "Saturation", 0, 2, 0.05, 1],
+              ["grayscale", "Grayscale", 0, 1, 0.05, 0],
+              ["sepia", "Sepia", 0, 1, 0.05, 0],
+            ].map(([key, label, min, max, step, fallback]: any) => (
+              <div key={key}><Lbl>{label}</Lbl><CarouselStepper ariaLabel={label} value={layer.filters?.[key] ?? fallback} min={min} max={max} step={step} onChange={(value: number) => onLayerPatch(layer.id, { filters: { ...(layer.filters || {}), [key]: value } })} /></div>
+            ))}
+          </div>
+          <button type="button" onClick={() => onLayerPatch(layer.id, { filters: { brightness: 1, contrast: 1, saturation: 1, grayscale: 0, sepia: 0, tintAmount: 0 } })} className="min-h-10 rounded-lg border border-[#303839]/15 text-xs font-bold hover:bg-[#F8F6F1]">Reset filters</button>
+        </Section>
+      )}
+
       {layer.type === "grid" && (
         <Section title="Photo grid">
           <div className="grid grid-cols-2 gap-2">
@@ -417,6 +434,8 @@ export default function AdminPropertiesPanel({
             <div><Lbl>Thickness</Lbl><CarouselStepper ariaLabel="Line thickness" value={layer.strokeWidth || 4} min={1} max={100} onChange={(value: number) => onLayerPatch(layer.id, { strokeWidth: value })} /></div>
             <div><Lbl>Style</Lbl><Sel ariaLabel="Line style" value={layer.lineStyle || "solid"} onChange={(value: string) => onLayerPatch(layer.id, { lineStyle: value })} options={[{ value: "solid", label: "Solid" }, { value: "dashed", label: "Dashed" }, { value: "dotted", label: "Dotted" }]} /></div>
             <div><Lbl>Caps</Lbl><Sel ariaLabel="Line caps" value={layer.lineCap || "round"} onChange={(value: string) => onLayerPatch(layer.id, { lineCap: value })} options={[{ value: "butt", label: "Flat" }, { value: "round", label: "Round" }, { value: "square", label: "Square" }]} /></div>
+            <div><Lbl>Start</Lbl><Sel ariaLabel="Line start cap" value={layer.lineStartCap || "none"} onChange={(value: string) => onLayerPatch(layer.id, { lineStartCap: value })} options={[{ value: "none", label: "None" }, { value: "circle", label: "Circle" }, { value: "arrow", label: "Arrow" }]} /></div>
+            <div><Lbl>End</Lbl><Sel ariaLabel="Line end cap" value={layer.lineEndCap || "none"} onChange={(value: string) => onLayerPatch(layer.id, { lineEndCap: value })} options={[{ value: "none", label: "None" }, { value: "circle", label: "Circle" }, { value: "arrow", label: "Arrow" }]} /></div>
           </div>}
         </Section>
       )}
@@ -425,6 +444,19 @@ export default function AdminPropertiesPanel({
         <Section title="Element">
           <label><Lbl>Colour tint</Lbl><input type="color" value={layer.tintColor || "#303839"} onChange={(event) => onLayerPatch(layer.id, { tintColor: event.target.value })} className="h-10 w-full rounded-lg border border-[#303839]/15" /></label>
           <div className="flex gap-3"><Check checked={Boolean(layer.flipX)} onChange={(value: boolean) => onLayerPatch(layer.id, { flipX: value })} label="Flip horizontal" /><Check checked={Boolean(layer.flipY)} onChange={(value: boolean) => onLayerPatch(layer.id, { flipY: value })} label="Flip vertical" /></div>
+        </Section>
+      )}
+
+      {layer.type === "qrCode" && (
+        <Section title="QR code">
+          <label><Lbl>Destination</Lbl><Txt value={layer.value} placeholder="https://example.com" onChange={(value: string) => onLayerPatch(layer.id, { value })} /></label>
+          <div className="grid grid-cols-2 gap-2">
+            <label><Lbl>Foreground</Lbl><input type="color" value={layer.foregroundColor || "#303839"} onChange={(event) => onLayerPatch(layer.id, { foregroundColor: event.target.value })} className="h-10 w-full rounded-lg border border-[#303839]/15" /></label>
+            <label><Lbl>Background</Lbl><input type="color" value={layer.backgroundColor || "#ffffff"} onChange={(event) => onLayerPatch(layer.id, { backgroundColor: event.target.value })} className="h-10 w-full rounded-lg border border-[#303839]/15" /></label>
+            <div><Lbl>Quiet zone</Lbl><CarouselStepper ariaLabel="QR quiet zone" value={layer.margin ?? 4} min={0} max={16} onChange={(margin: number) => onLayerPatch(layer.id, { margin })} /></div>
+            <div><Lbl>Error correction</Lbl><Sel ariaLabel="QR error correction" value={layer.errorCorrection || "M"} onChange={(errorCorrection: string) => onLayerPatch(layer.id, { errorCorrection })} options={[{ value: "L", label: "Low" }, { value: "M", label: "Medium" }, { value: "Q", label: "Quartile" }, { value: "H", label: "High" }]} /></div>
+          </div>
+          <Check checked={Boolean(layer.required)} onChange={(required: boolean) => onLayerPatch(layer.id, { required })} label="Required and preflight checked" />
         </Section>
       )}
 
@@ -450,6 +482,8 @@ export default function AdminPropertiesPanel({
             onChange={(v: boolean) => onToggleCustomerEditable(layer.id, v)}
             label="Customer editable"
           />
+          <Check checked={Boolean(layer.positionLocked)} onChange={(positionLocked: boolean) => onLayerPatch(layer.id, { positionLocked })} label="Position locked for customers" />
+          <Check checked={Boolean(layer.customerInteractionDisabled)} onChange={(customerInteractionDisabled: boolean) => onLayerPatch(layer.id, { customerInteractionDisabled })} label="Customer interaction disabled" />
 
           {layer.customerEditable && field && (
             <div className="grid gap-2 border-t border-[#303839]/10 pt-2">

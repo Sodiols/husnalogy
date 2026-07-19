@@ -16,6 +16,7 @@ import {
   isLayerCustomerInteractive,
   type EditorState,
 } from "./customizer-utils";
+import { layersInsideSelection, selectionBounds } from "@/lib/customizer/v2/customer-actions";
 
 const HANDLES: Array<{ id: string; cx: number; cy: number; cursor: string }> = [
   { id: "nw", cx: 0, cy: 0, cursor: "nwse-resize" },
@@ -34,8 +35,11 @@ type Props = {
   editorState: EditorState;
   pageId: string;
   zoom?: number;
+  onZoomChange?: (zoom: number) => void;
   selectedLayerId?: string | null;
+  selectedLayerIds?: string[];
   onSelectLayer?: (layerId: string | null) => void;
+  onSelectionChange?: (layerIds: string[]) => void;
   onLayerTransform?: (layerId: string, patch: any, phase: "start" | "move") => void;
   // Crop mode: drag/zoom the photo INSIDE its fixed frame (spec §11).
   cropLayerId?: string | null;
@@ -44,6 +48,7 @@ type Props = {
   onGridSlotTransform?: (layerId: string, slotId: string, patch: any, phase: "start" | "move") => void;
   onGridSlotSelect?: (layerId: string, slotId: string) => void;
   onGridSlotAssetDrop?: (layerId: string, slotId: string, asset: any) => void;
+  onElementDrop?: (element: any, position: { x: number; y: number }) => void;
   onTextLayerActivate?: (layerId: string) => void;
   onImageLayerActivate?: (layerId: string) => void;
   previewMode?: boolean;
@@ -51,6 +56,10 @@ type Props = {
   showSafeArea?: boolean;
   showBleed?: boolean;
   maxCanvasWidth?: number;
+  embedded?: boolean;
+  interactionRotation?: number;
+  editingGroupId?: string | null;
+  onEnterGroup?: (groupId: string) => void;
 };
 
 export default function CustomizerWorkspace({
@@ -59,8 +68,11 @@ export default function CustomizerWorkspace({
   editorState,
   pageId,
   zoom = 1,
+  onZoomChange,
   selectedLayerId,
+  selectedLayerIds,
   onSelectLayer,
+  onSelectionChange,
   onLayerTransform,
   cropLayerId = null,
   onImageTransform,
@@ -68,6 +80,7 @@ export default function CustomizerWorkspace({
   onGridSlotTransform,
   onGridSlotSelect,
   onGridSlotAssetDrop,
+  onElementDrop,
   onTextLayerActivate,
   onImageLayerActivate,
   previewMode = false,
@@ -75,12 +88,19 @@ export default function CustomizerWorkspace({
   showSafeArea,
   showBleed,
   maxCanvasWidth = 620,
+  embedded = false,
+  interactionRotation = 0,
+  editingGroupId = null,
+  onEnterGroup,
 }: Props) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const surfaceRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<any>(null);
+  const gestureRef = useRef<any>(null);
+  const touchPointsRef = useRef(new Map<number, { x: number; y: number }>());
   const [containerWidth, setContainerWidth] = useState(0);
   const [guides, setGuides] = useState<Guide[]>([]);
+  const [selectionBox, setSelectionBox] = useState<null | { startX: number; startY: number; x: number; y: number; additive: boolean }>(null);
 
   const canvasW = template?.canvasWidthPx || 1500;
   const canvasH = template?.canvasHeightPx || 2100;
@@ -96,7 +116,7 @@ export default function CustomizerWorkspace({
     return () => ro.disconnect();
   }, []);
 
-  const padding = 32;
+  const padding = embedded ? 0 : 32;
   const baseWidth = Math.min(Math.max((containerWidth || 480) - padding * 2, 220), maxCanvasWidth);
   const displayW = baseWidth * zoom;
   const displayH = displayW * (canvasH / canvasW);
@@ -114,11 +134,27 @@ export default function CustomizerWorkspace({
       ? [] // while cropping, the crop surface owns all interaction
       : cropGridLayer
         ? []
-      : layers.filter((layer: any) => layer.isUserLayer || isLayerCustomerInteractive(layer));
+      : layers
+        .filter((layer: any) => layer.isUserLayer || isLayerCustomerInteractive(layer))
+        .filter((layer: any) => {
+          if (layer.type === "group" && editingGroupId === layer.id) return false;
+          if (layer.groupId && layer.groupId !== editingGroupId) {
+            const parent = layers.find((candidate: any) => candidate.id === layer.groupId);
+            if (parent && (parent.isUserLayer || isLayerCustomerInteractive(parent))) return false;
+          }
+          return true;
+        });
 
-  const canMove = (layer: any) => layer.isUserLayer || getLayerPermissions(layer).move;
-  const canResize = (layer: any) => layer.isUserLayer || getLayerPermissions(layer).resize;
-  const canRotate = (layer: any) => layer.isUserLayer || getLayerPermissions(layer).rotate;
+  const activeSelection = selectedLayerIds?.length ? selectedLayerIds : selectedLayerId ? [selectedLayerId] : [];
+
+  const isTransformLocked = (layer: any) => Boolean((layer.isUserLayer && layer.locked) || layer.customerLocked || layer.positionLocked || layer.customerInteractionDisabled);
+  const canMove = (layer: any) => !isTransformLocked(layer) && (layer.isUserLayer || getLayerPermissions(layer).move);
+  const canResize = (layer: any) => !isTransformLocked(layer) && (layer.isUserLayer || getLayerPermissions(layer).resize);
+  const canRotate = (layer: any) => !isTransformLocked(layer) && (layer.isUserLayer || getLayerPermissions(layer).rotate);
+  const selectedInteractiveLayers = interactiveLayers.filter((layer: any) => activeSelection.includes(layer.id));
+  const multiBounds = activeSelection.length > 1 ? selectionBounds(selectedInteractiveLayers, activeSelection) : null;
+  const multiCanResize = Boolean(multiBounds && selectedInteractiveLayers.length === activeSelection.length && selectedInteractiveLayers.every((layer: any) => canMove(layer) && canResize(layer)));
+  const multiCanRotate = Boolean(multiBounds && selectedInteractiveLayers.length === activeSelection.length && selectedInteractiveLayers.every((layer: any) => canMove(layer) && canRotate(layer)));
 
   /* ---- snapping (canvas centre/edges, safe area, other object centres) ---- */
   const buildSnapTargets = (excludeId: string) => {
@@ -162,8 +198,15 @@ export default function CustomizerWorkspace({
 
   /* ---- pointer interactions ---- */
   const onLayerPointerDown = (e: React.PointerEvent, layer: any) => {
+    if (gestureRef.current) return;
     e.stopPropagation();
-    onSelectLayer?.(layer.id);
+    const additive = e.shiftKey || e.ctrlKey || e.metaKey;
+    const nextSelection = additive
+      ? activeSelection.includes(layer.id) ? activeSelection.filter((id) => id !== layer.id) : [...activeSelection, layer.id]
+      : activeSelection.includes(layer.id) && activeSelection.length > 1 ? activeSelection : [layer.id];
+    if (onSelectionChange) onSelectionChange(nextSelection);
+    else onSelectLayer?.(nextSelection[nextSelection.length - 1] || null);
+    if (!nextSelection.includes(layer.id)) return;
     if (!canMove(layer)) return;
     (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
     dragRef.current = {
@@ -173,7 +216,32 @@ export default function CustomizerWorkspace({
       startClientY: e.clientY,
       startX: layer.x,
       startY: layer.y,
+      selected: nextSelection.filter((id) => {
+        const item = interactiveLayers.find((candidate: any) => candidate.id === id);
+        return item && canMove(item);
+      }).map((id) => {
+        const item = interactiveLayers.find((candidate: any) => candidate.id === id);
+        return { id, x: item.x, y: item.y };
+      }),
     };
+  };
+
+  const onSurfacePointerDown = (e: React.PointerEvent) => {
+    if (gestureRef.current) return;
+    if (previewMode || cropLayer || cropGridLayer || e.button !== 0) return;
+    if (e.target !== surfaceRef.current) return;
+    const rect = surfaceRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const x = (e.clientX - rect.left) / scale;
+    const y = (e.clientY - rect.top) / scale;
+    const additive = e.shiftKey || e.ctrlKey || e.metaKey;
+    if (!additive) {
+      if (onSelectionChange) onSelectionChange([]);
+      else onSelectLayer?.(null);
+    }
+    setSelectionBox({ startX: x, startY: y, x, y, additive });
+    dragRef.current = { mode: "marquee" };
+    (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
   };
 
   const onHandlePointerDown = (e: React.PointerEvent, layer: any, handle: string) => {
@@ -200,6 +268,39 @@ export default function CustomizerWorkspace({
       layerId: layer.id,
       centerX: layer.x,
       centerY: layer.y,
+    };
+  };
+
+  const onMultiHandlePointerDown = (e: React.PointerEvent, handle: string) => {
+    if (!multiBounds || !multiCanResize) return;
+    e.stopPropagation();
+    (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
+    dragRef.current = {
+      mode: "multi-resize",
+      handle,
+      layerId: selectedInteractiveLayers[0]?.id,
+      startClientX: e.clientX,
+      startClientY: e.clientY,
+      bounds: multiBounds,
+      selected: selectedInteractiveLayers.map((layer: any) => ({ id: layer.id, x: layer.x, y: layer.y, width: layer.width, height: layer.height })),
+    };
+  };
+
+  const onMultiRotatePointerDown = (e: React.PointerEvent) => {
+    if (!multiBounds || !multiCanRotate) return;
+    e.stopPropagation();
+    (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
+    const rect = surfaceRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const centerClientX = rect.left + multiBounds.x * scale;
+    const centerClientY = rect.top + multiBounds.y * scale;
+    dragRef.current = {
+      mode: "multi-rotate",
+      layerId: selectedInteractiveLayers[0]?.id,
+      centerX: multiBounds.x,
+      centerY: multiBounds.y,
+      startAngle: Math.atan2(e.clientY - centerClientY, e.clientX - centerClientX),
+      selected: selectedInteractiveLayers.map((layer: any) => ({ id: layer.id, x: layer.x, y: layer.y, rotation: Number(layer.rotation) || 0 })),
     };
   };
 
@@ -234,6 +335,12 @@ export default function CustomizerWorkspace({
   const onPointerMove = (e: React.PointerEvent) => {
     const drag = dragRef.current;
     if (!drag) return;
+    if (drag.mode === "marquee") {
+      const rect = surfaceRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      setSelectionBox((current) => current ? { ...current, x: (e.clientX - rect.left) / scale, y: (e.clientY - rect.top) / scale } : current);
+      return;
+    }
     if (!drag.began) {
       drag.began = true;
       if (drag.mode === "crop-pan") onImageTransform?.(drag.layerId, {}, "start");
@@ -258,11 +365,29 @@ export default function CustomizerWorkspace({
       return;
     }
 
-    if (drag.mode === "rotate") {
+    if (drag.mode === "rotate" || drag.mode === "multi-rotate") {
       const rect = surfaceRef.current?.getBoundingClientRect();
       if (!rect) return;
       const cx = rect.left + drag.centerX * scale;
       const cy = rect.top + drag.centerY * scale;
+      if (drag.mode === "multi-rotate") {
+        const currentAngle = Math.atan2(e.clientY - cy, e.clientX - cx);
+        let delta = ((currentAngle - drag.startAngle) * 180) / Math.PI;
+        if (!e.shiftKey) delta = Math.round(delta / 15) * 15;
+        const radians = (delta * Math.PI) / 180;
+        const cos = Math.cos(radians);
+        const sin = Math.sin(radians);
+        drag.selected.forEach((item: any) => {
+          const dx = item.x - drag.centerX;
+          const dy = item.y - drag.centerY;
+          onLayerTransform?.(item.id, {
+            x: Math.round(drag.centerX + dx * cos - dy * sin),
+            y: Math.round(drag.centerY + dx * sin + dy * cos),
+            rotation: ((Math.round(item.rotation + delta) % 360) + 360) % 360,
+          }, "move");
+        });
+        return;
+      }
       const angle = (Math.atan2(e.clientY - cy, e.clientX - cx) * 180) / Math.PI + 90;
       let rotation = Math.round(angle);
       // Snap near 15° increments; hold Shift for free rotation.
@@ -275,13 +400,50 @@ export default function CustomizerWorkspace({
       return;
     }
 
-    const dx = (e.clientX - drag.startClientX) / scale;
-    const dy = (e.clientY - drag.startClientY) / scale;
+    const rawDx = (e.clientX - drag.startClientX) / scale;
+    const rawDy = (e.clientY - drag.startClientY) / scale;
+    const radians = (-interactionRotation * Math.PI) / 180;
+    const dx = rawDx * Math.cos(radians) - rawDy * Math.sin(radians);
+    const dy = rawDx * Math.sin(radians) + rawDy * Math.cos(radians);
 
     if (drag.mode === "move") {
       const snapped = applySnap(drag.startX + dx, drag.startY + dy, drag.layerId);
       setGuides(snapped.guides);
-      onLayerTransform?.(drag.layerId, { x: snapped.x, y: snapped.y }, "move");
+      const selected = Array.isArray(drag.selected) && drag.selected.length ? drag.selected : [{ id: drag.layerId, x: drag.startX, y: drag.startY }];
+      selected.forEach((item: any) => {
+        if (item.id === drag.layerId) onLayerTransform?.(item.id, { x: snapped.x, y: snapped.y }, "move");
+        else onLayerTransform?.(item.id, { x: Math.round(item.x + dx), y: Math.round(item.y + dy) }, "move");
+      });
+      return;
+    }
+
+    if (drag.mode === "multi-resize") {
+      const start = drag.bounds;
+      const min = 24;
+      let left = start.left, top = start.top, right = start.right, bottom = start.bottom;
+      if (drag.handle.includes("w")) left = Math.min(start.left + dx, start.right - min);
+      if (drag.handle.includes("e")) right = Math.max(start.right + dx, start.left + min);
+      if (drag.handle.includes("n")) top = Math.min(start.top + dy, start.bottom - min);
+      if (drag.handle.includes("s")) bottom = Math.max(start.bottom + dy, start.top + min);
+      let width = right - left;
+      let height = bottom - top;
+      if (e.shiftKey) {
+        const scaleFactor = Math.max(width / start.width, height / start.height);
+        width = start.width * scaleFactor;
+        height = start.height * scaleFactor;
+        if (drag.handle.includes("w")) left = right - width; else right = left + width;
+        if (drag.handle.includes("n")) top = bottom - height; else bottom = top + height;
+      }
+      const scaleX = width / start.width;
+      const scaleY = height / start.height;
+      drag.selected.forEach((item: any) => {
+        onLayerTransform?.(item.id, {
+          x: Math.round(left + (item.x - start.left) * scaleX),
+          y: Math.round(top + (item.y - start.top) * scaleY),
+          width: Math.max(1, Math.round(item.width * scaleX)),
+          height: Math.max(1, Math.round(item.height * scaleY)),
+        }, "move");
+      });
       return;
     }
 
@@ -315,8 +477,15 @@ export default function CustomizerWorkspace({
   };
 
   const endDrag = () => {
+    if (dragRef.current?.mode === "marquee" && selectionBox) {
+      const found = layersInsideSelection({ left: selectionBox.startX, top: selectionBox.startY, right: selectionBox.x, bottom: selectionBox.y }, interactiveLayers);
+      const next = selectionBox.additive ? Array.from(new Set([...activeSelection, ...found])) : found;
+      if (onSelectionChange) onSelectionChange(next);
+      else onSelectLayer?.(next[next.length - 1] || null);
+    }
     dragRef.current = null;
     setGuides([]);
+    setSelectionBox(null);
   };
 
   // Wheel zoom while cropping (spec §11).
@@ -337,19 +506,95 @@ export default function CustomizerWorkspace({
     onGridSlotTransform?.(layer.id, slot.id, { zoom: Number(next.toFixed(3)) }, "move");
   };
 
+  const onGesturePointerDown = (event: React.PointerEvent) => {
+    if (event.pointerType !== "touch") return;
+    touchPointsRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    if (touchPointsRef.current.size !== 2) return;
+    const [first, second] = [...touchPointsRef.current.values()];
+    const centerX = (first.x + second.x) / 2;
+    const centerY = (first.y + second.y) / 2;
+    gestureRef.current = {
+      distance: Math.hypot(second.x - first.x, second.y - first.y),
+      centerX,
+      centerY,
+      zoom,
+      cropZoom: Number(cropLayer?.imageTransform?.zoom) || 1,
+      gridZoom: Number(cropGridSlot?.transform?.zoom) || 1,
+      scrollLeft: wrapRef.current?.scrollLeft || 0,
+      scrollTop: wrapRef.current?.scrollTop || 0,
+    };
+    dragRef.current = null;
+    setSelectionBox(null);
+    if (cropLayer) onImageTransform?.(cropLayer.id, {}, "start");
+    if (cropGridLayer && cropGridSlot) onGridSlotTransform?.(cropGridLayer.id, cropGridSlot.id, {}, "start");
+  };
+
+  const onGesturePointerMove = (event: React.PointerEvent) => {
+    if (event.pointerType !== "touch" || !touchPointsRef.current.has(event.pointerId)) return;
+    touchPointsRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    const gesture = gestureRef.current;
+    if (!gesture || touchPointsRef.current.size < 2) return;
+    event.preventDefault();
+    const [first, second] = [...touchPointsRef.current.values()];
+    const distance = Math.max(1, Math.hypot(second.x - first.x, second.y - first.y));
+    const ratio = distance / Math.max(1, gesture.distance);
+    const centerX = (first.x + second.x) / 2;
+    const centerY = (first.y + second.y) / 2;
+    if (cropLayer) {
+      onImageTransform?.(cropLayer.id, { zoom: Number(Math.min(8, Math.max(1, gesture.cropZoom * ratio)).toFixed(3)) }, "move");
+    } else if (cropGridLayer && cropGridSlot) {
+      onGridSlotTransform?.(cropGridLayer.id, cropGridSlot.id, { zoom: Number(Math.min(8, Math.max(1, gesture.gridZoom * ratio)).toFixed(3)) }, "move");
+    } else {
+      onZoomChange?.(Math.min(3, Math.max(0.35, gesture.zoom * ratio)));
+      if (wrapRef.current) {
+        wrapRef.current.scrollLeft = gesture.scrollLeft - (centerX - gesture.centerX);
+        wrapRef.current.scrollTop = gesture.scrollTop - (centerY - gesture.centerY);
+      }
+    }
+  };
+
+  const onGesturePointerUp = (event: React.PointerEvent) => {
+    if (event.pointerType !== "touch") return;
+    touchPointsRef.current.delete(event.pointerId);
+    if (touchPointsRef.current.size < 2) gestureRef.current = null;
+  };
+
   return (
     <div
       ref={wrapRef}
-      className="flex h-full w-full items-start justify-center overflow-auto p-4 sm:p-8"
-      onPointerDown={() => onSelectLayer?.(null)}
+      className={embedded ? "flex h-full w-full items-start justify-center overflow-hidden" : "flex h-full w-full items-start justify-center overflow-auto p-4 sm:p-8"}
     >
       <div
         ref={surfaceRef}
         className="relative shrink-0 bg-white shadow-[0_10px_40px_rgba(48,56,57,0.12)]"
-        style={{ width: displayW, height: displayH }}
+        style={{ width: displayW, height: displayH, touchAction: "none" }}
+        onPointerDownCapture={onGesturePointerDown}
+        onPointerMoveCapture={onGesturePointerMove}
+        onPointerUpCapture={onGesturePointerUp}
+        onPointerCancelCapture={onGesturePointerUp}
         onPointerMove={onPointerMove}
         onPointerUp={endDrag}
         onPointerLeave={endDrag}
+        onPointerDown={onSurfacePointerDown}
+        onPointerCancel={endDrag}
+        onDragOver={(event) => {
+          if (event.dataTransfer.types.includes("application/x-husnalogy-element")) {
+            event.preventDefault();
+            event.dataTransfer.dropEffect = "copy";
+          }
+        }}
+        onDrop={(event) => {
+          if (!event.dataTransfer.types.includes("application/x-husnalogy-element")) return;
+          event.preventDefault();
+          try {
+            const element = JSON.parse(event.dataTransfer.getData("application/x-husnalogy-element"));
+            const rect = surfaceRef.current?.getBoundingClientRect();
+            if (!rect) return;
+            onElementDrop?.(element, { x: (event.clientX - rect.left) / scale, y: (event.clientY - rect.top) / scale });
+          } catch {
+            // Ignore malformed external drag payloads.
+          }
+        }}
       >
         {/* Shared renderer — identical output to thumbnails, review, exports. */}
         <div className="pointer-events-none absolute inset-0">
@@ -382,6 +627,10 @@ export default function CustomizerWorkspace({
               style={{ top: guide.at * scale }}
             />
           ),
+        )}
+
+        {selectionBox && (
+          <span aria-hidden className="pointer-events-none absolute z-50 border border-[#D4AF37] bg-[#D4AF37]/10" style={{ left: Math.min(selectionBox.startX, selectionBox.x) * scale, top: Math.min(selectionBox.startY, selectionBox.y) * scale, width: Math.abs(selectionBox.x - selectionBox.startX) * scale, height: Math.abs(selectionBox.y - selectionBox.startY) * scale }} />
         )}
 
         {/* Crop mode surface: frame stays fixed, photo pans/zooms inside. */}
@@ -443,6 +692,47 @@ export default function CustomizerWorkspace({
           </>
         )}
 
+        {multiBounds && (
+          <div
+            aria-label={`${activeSelection.length} selected objects`}
+            className="pointer-events-none absolute z-[45] border-2 border-[#D4AF37]"
+            style={{
+              left: multiBounds.left * scale,
+              top: multiBounds.top * scale,
+              width: multiBounds.width * scale,
+              height: multiBounds.height * scale,
+            }}
+          >
+            {multiCanResize && HANDLES.map((handle) => (
+              <span
+                key={`multi-${handle.id}`}
+                role="slider"
+                aria-label={`Resize ${activeSelection.length} selected objects from ${handle.id}`}
+                aria-valuenow={Math.round(multiBounds.width)}
+                aria-valuemin={24}
+                onPointerDown={(event) => onMultiHandlePointerDown(event, handle.id)}
+                className="pointer-events-auto absolute h-[18px] w-[18px] rounded border-2 border-[#D4AF37] bg-white shadow-sm"
+                style={{ left: `calc(${handle.cx * 100}% - 9px)`, top: `calc(${handle.cy * 100}% - 9px)`, cursor: handle.cursor, touchAction: "none" }}
+              />
+            ))}
+            {multiCanRotate && (
+              <>
+                <span
+                  role="slider"
+                  aria-label={`Rotate ${activeSelection.length} selected objects`}
+                  aria-valuenow={0}
+                  aria-valuemin={0}
+                  aria-valuemax={359}
+                  onPointerDown={onMultiRotatePointerDown}
+                  className="pointer-events-auto absolute -top-11 left-1/2 h-5 w-5 -translate-x-1/2 rounded-full border-2 border-[#D4AF37] bg-white shadow-sm"
+                  style={{ cursor: "grab", touchAction: "none" }}
+                />
+                <span aria-hidden className="absolute -top-6 left-1/2 h-6 w-px bg-[#D4AF37]" />
+              </>
+            )}
+          </div>
+        )}
+
         {/* Interaction overlay: only customer-editable layers. */}
         {interactiveLayers.map((layer: any) => {
           if (layer.hidden) return null;
@@ -450,12 +740,12 @@ export default function CustomizerWorkspace({
           const boxTop = (layer.y - layer.height / 2) * scale;
           const boxW = layer.width * scale;
           const boxH = layer.height * scale;
-          const selected = layer.id === selectedLayerId;
+          const selected = activeSelection.includes(layer.id);
           const movable = canMove(layer);
           const resizable = canResize(layer);
           const rotatable = canRotate(layer);
-          const isText = layer.type === "text" || (layer.isUserLayer && layer.type !== "element");
-          const isImage = layer.type === "image";
+          const isText = layer.type === "text";
+          const isImage = layer.type === "image" || layer.type === "frame";
 
           return (
             <div
@@ -466,13 +756,19 @@ export default function CustomizerWorkspace({
               aria-label={`Edit ${layer.name || (isText ? "text" : "photo")}`}
               onPointerDown={(e) => onLayerPointerDown(e, layer)}
               onDoubleClick={() => {
-                if (isText) onTextLayerActivate?.(layer.id);
+                if (layer.type === "group") onEnterGroup?.(layer.id);
+                else if (isText) onTextLayerActivate?.(layer.id);
                 else if (isImage) onImageLayerActivate?.(layer.id);
               }}
               onKeyDown={(e) => {
                 if (e.key === "Enter" || e.key === " ") {
                   e.preventDefault();
-                  onSelectLayer?.(layer.id);
+                  if (e.key === "Enter" && layer.type === "group") {
+                    onEnterGroup?.(layer.id);
+                    return;
+                  }
+                  if (onSelectionChange) onSelectionChange([layer.id]);
+                  else onSelectLayer?.(layer.id);
                 }
               }}
               className="absolute outline-none"
@@ -499,7 +795,8 @@ export default function CustomizerWorkspace({
                     aria-label={`Select photo grid slot ${index + 1}`}
                     onPointerDown={(event) => {
                       event.stopPropagation();
-                      onSelectLayer?.(layer.id);
+                      if (onSelectionChange) onSelectionChange([layer.id]);
+                      else onSelectLayer?.(layer.id);
                       onGridSlotSelect?.(layer.id, slot.id);
                     }}
                     onDragOver={(event) => {
@@ -529,7 +826,7 @@ export default function CustomizerWorkspace({
                   />
                 );
               })}
-              {selected && resizable &&
+              {selected && activeSelection.length === 1 && resizable &&
                 HANDLES.map((h) => (
                   <span
                     key={h.id}
@@ -548,7 +845,7 @@ export default function CustomizerWorkspace({
                     }}
                   />
                 ))}
-              {selected && rotatable && (
+              {selected && activeSelection.length === 1 && rotatable && (
                 <>
                   <span
                     onPointerDown={(e) => onRotatePointerDown(e, layer)}

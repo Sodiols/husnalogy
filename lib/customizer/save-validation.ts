@@ -30,12 +30,21 @@ const HARD_REJECT_CODES = new Set([
   "resize-not-allowed",
   "rotate-not-allowed",
   "opacity-not-allowed",
+  "layer-order-not-allowed",
+  "interaction-disabled",
+  "filters-not-allowed",
+  "property-not-allowed",
+  "invalid-qr-url",
+  "rename-not-allowed",
+  "visibility-not-allowed",
+  "lock-not-allowed",
   "font-not-allowed",
   "font-size-not-allowed",
   "color-not-allowed",
   "alignment-not-allowed",
   "letter-spacing-not-allowed",
   "line-height-not-allowed",
+  "vertical-alignment-not-allowed",
   "style-not-allowed",
   "zoom-not-allowed",
   "reposition-not-allowed",
@@ -45,6 +54,23 @@ const HARD_REJECT_CODES = new Set([
   "grid-crop-not-allowed",
   "user-text-not-allowed",
   "user-element-not-allowed",
+  "user-shape-not-allowed",
+  "user-line-not-allowed",
+  "user-frame-not-allowed",
+  "user-grid-not-allowed",
+  "user-qr-not-allowed",
+  "user-background-not-allowed",
+  "user-group-not-allowed",
+  "user-layer-page-not-allowed",
+  "customer-object-count-limit",
+  "customer-object-limit",
+  "font-not-allowed-by-template",
+  "color-not-allowed-by-template",
+  "filter-not-allowed-by-template",
+  "user-element-not-allowed-by-template",
+  "user-shape-not-allowed-by-template",
+  "user-frame-not-allowed-by-template",
+  "user-grid-not-allowed-by-template",
   "not-owned-upload",
   "feature-disabled",
 ]);
@@ -86,6 +112,22 @@ export async function validateCustomizationSave(
   if (!isCustomizerFeatureEnabled(authoritativeTemplate, "customizer_v2_grids")) {
     const hasGridChanges = Object.values(editorState?.layerOverrides || {}).some((override: any) => override?.gridSlots && Object.keys(override.gridSlots).length);
     if (hasGridChanges) result.violations.push({ code: "feature-disabled", message: "Photo grids are disabled for this product." });
+  }
+  const submittedUserLayers = Array.isArray(editorState?.userLayers) ? editorState.userLayers : [];
+  const featureByLayerType: Record<string, any> = {
+    shape: "customizer_v2_customer_shapes",
+    frame: "customizer_v2_customer_frames",
+    grid: "customizer_v2_customer_grids",
+    qrCode: "customizer_v2_qr_codes",
+    group: "customizer_v2_customer_grouping",
+  };
+  for (const layer of submittedUserLayers) {
+    const flag = layer?.type === "shape" && layer?.shape === "line"
+      ? "customizer_v2_customer_lines"
+      : featureByLayerType[String(layer?.type || "")];
+    if (flag && !isCustomizerFeatureEnabled(authoritativeTemplate, flag)) {
+      result.violations.push({ code: "feature-disabled", message: `${String(layer.type)} customer objects are disabled for this product.` });
+    }
   }
 
   // Uploaded storage paths must belong to the caller (spec §21, §33).

@@ -26,6 +26,9 @@ type Props = {
   onCancelCrop?: () => void;
   onImagePatch: (patch: ImageTransformState, group?: string) => void;
   onLayerRotate?: (rotation: number) => void;
+  filtersEnabled?: boolean;
+  onFilterPatch?: (patch: Record<string, number | string | undefined>, group?: string) => void;
+  allowedFilters?: string[];
 };
 
 const IconButton = ({
@@ -44,7 +47,7 @@ const IconButton = ({
     aria-label={label}
     title={label}
     onClick={onClick}
-    className={`grid h-8 w-8 shrink-0 place-items-center rounded-md transition ${
+    className={`grid h-11 w-11 shrink-0 place-items-center rounded-lg transition ${
       active ? "bg-[#303839] text-white" : "text-[#303839] hover:bg-[#F8F6F1]"
     }`}
   >
@@ -63,6 +66,9 @@ export default function CustomerImageToolbar({
   onCancelCrop,
   onImagePatch,
   onLayerRotate,
+  filtersEnabled = false,
+  onFilterPatch,
+  allowedFilters = [],
 }: Props) {
   const transform: ImageTransformState = layer?.imageTransform || {};
   const zoom = Number(transform.zoom) > 0 ? Number(transform.zoom) : 1;
@@ -73,6 +79,8 @@ export default function CustomerImageToolbar({
   const canZoom = Boolean(permissions.zoomImage || permissions.cropImage);
   const canFlip = Boolean(permissions.flipImage);
   const canRotateLayer = Boolean(permissions.rotate);
+  const filterAllowed = (key: string) => !allowedFilters.length || allowedFilters.includes(key) || (key.startsWith("tint") && allowedFilters.includes("tint"));
+  const resetFilters = Object.fromEntries(Object.entries({ brightness: 1, contrast: 1, saturation: 1, grayscale: 0, sepia: 0, tintAmount: 0 }).filter(([key]) => filterAllowed(key)));
 
   const divider = <span className="mx-0.5 h-5 w-px shrink-0 bg-[#303839]/12" aria-hidden />;
 
@@ -153,14 +161,14 @@ export default function CustomerImageToolbar({
         <button
           type="button"
           onClick={onCancelCrop}
-          className="whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-bold text-[#303839]/70 hover:bg-[#F8F6F1]"
+          className="min-h-11 whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-bold text-[#303839]/70 hover:bg-[#F8F6F1]"
         >
           Cancel
         </button>
         <button
           type="button"
           onClick={onConfirmCrop}
-          className="whitespace-nowrap rounded-full bg-[#303839] px-4 py-1.5 text-xs font-bold text-white hover:bg-[#1f2526]"
+          className="min-h-11 whitespace-nowrap rounded-full bg-[#303839] px-4 py-1.5 text-xs font-bold text-white hover:bg-[#1f2526]"
         >
           Done
         </button>
@@ -178,7 +186,7 @@ export default function CustomerImageToolbar({
         <button
           type="button"
           onClick={onReplace}
-          className="whitespace-nowrap rounded-full bg-[#F8F6F1] px-3 py-1.5 text-xs font-bold text-[#303839] hover:bg-[#ECE9E1]"
+          className="min-h-11 whitespace-nowrap rounded-full bg-[#F8F6F1] px-3 py-1.5 text-xs font-bold text-[#303839] hover:bg-[#ECE9E1]"
         >
           {hasImage ? "Replace Photo" : "Add Photo"}
         </button>
@@ -188,7 +196,7 @@ export default function CustomerImageToolbar({
         <button
           type="button"
           onClick={onEnterCrop}
-          className="flex items-center gap-1.5 whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-bold text-[#303839] hover:bg-[#F8F6F1]"
+          className="flex min-h-11 items-center gap-1.5 whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-bold text-[#303839] hover:bg-[#F8F6F1]"
         >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden>
             <path d="M6 2v16a2 2 0 0 0 2 2h14" />
@@ -214,6 +222,26 @@ export default function CustomerImageToolbar({
               aria-label="Rotation in degrees"
             />
           </label>
+        </>
+      )}
+      {filtersEnabled && permissions.applyImageFilters && onFilterPatch && (
+        <>
+          {divider}
+          {[
+            ["brightness", "Brightness", 0, 2, 0.05, 1],
+            ["contrast", "Contrast", 0, 2, 0.05, 1],
+            ["saturation", "Saturation", 0, 2, 0.05, 1],
+            ["grayscale", "Grayscale", 0, 1, 0.05, 0],
+            ["sepia", "Sepia", 0, 1, 0.05, 0],
+          ].filter(([key]) => !allowedFilters.length || allowedFilters.includes(String(key))).map(([key, label, min, max, step, fallback]: any) => (
+            <label key={key} className="flex shrink-0 items-center gap-1 rounded-lg bg-[#F8F6F1] px-2 py-1 text-[9px] font-bold">
+              <span>{label}</span>
+              <input type="range" min={min} max={max} step={step} value={layer.filters?.[key] ?? fallback} onChange={(event) => onFilterPatch({ [key]: Number(event.target.value) }, `filter-${key}`)} className="w-16 accent-[#303839]" aria-label={label} />
+            </label>
+          ))}
+          {(!allowedFilters.length || allowedFilters.includes("tint")) && <><label className="grid min-h-11 shrink-0 grid-cols-[auto_30px] items-center gap-2 rounded-lg bg-[#F8F6F1] px-2 text-[9px] font-bold"><span>Tint</span><input type="color" value={layer.filters?.tintColor || "#D4AF37"} onChange={(event) => onFilterPatch({ tintColor: event.target.value, tintAmount: Math.max(0.2, Number(layer.filters?.tintAmount) || 0) }, "filter-tint")} className="h-8 w-8 rounded-full" /></label>
+          <label className="flex min-h-11 shrink-0 items-center gap-1 rounded-lg bg-[#F8F6F1] px-2 text-[9px] font-bold"><span>Tint amount</span><input type="range" min="0" max="1" step="0.05" value={layer.filters?.tintAmount || 0} onChange={(event) => onFilterPatch({ tintAmount: Number(event.target.value) }, "filter-tint") } className="w-16 accent-[#303839]" /></label></>}
+          <button type="button" onClick={() => onFilterPatch(resetFilters, "filter-reset")} className="min-h-11 shrink-0 rounded-lg px-2 text-[10px] font-bold hover:bg-[#F8F6F1]">Reset filters</button>
         </>
       )}
     </div>

@@ -8,6 +8,7 @@ import {
 } from "@/lib/customizer";
 import { mergeGridSlotOverrides } from "@/lib/customizer/v2/grids";
 import { getRenderableLayers } from "@/lib/customizer/v2/groups";
+import { normalizeImageFilters } from "@/lib/customizer/v2/image-filters";
 
 export type ImageValue = {
   assetId?: string;
@@ -45,6 +46,11 @@ export type EditorState = {
       textStyle?: any;
       transform?: any;
       imageTransform?: ImageTransformOverride;
+      imageFilters?: Record<string, unknown>;
+      properties?: Record<string, unknown>;
+      name?: string;
+      hidden?: boolean;
+      customerLocked?: boolean;
       gridSlots?: Record<string, { assetId?: string; ownerId?: string; src?: string; bucket?: string; path?: string; originalPath?: string; assetReference?: Record<string, unknown>; metadata?: Record<string, unknown>; transform?: ImageTransformOverride }>;
     }
   >;
@@ -71,6 +77,7 @@ export function getLayerPermissions(layer: any): Record<string, boolean> {
 // Whether the customer may interact with this template layer on the canvas.
 export function isLayerCustomerInteractive(layer: any): boolean {
   if (!layer || layer.hidden) return false;
+  if (layer.customerInteractionDisabled) return false;
   if (!layer.customerEditable) return false;
   const permissions = getLayerPermissions(layer);
   if (layer.type === "text") {
@@ -100,7 +107,10 @@ export function isLayerCustomerInteractive(layer: any): boolean {
     );
   }
   if (layer.type === "group") return Boolean(permissions.select || permissions.move || permissions.resize || permissions.rotate);
-  return false;
+  if (["shape", "element", "background", "qrCode"].includes(layer.type)) {
+    return ["select", "editContent", "editStyle", "move", "resize", "rotate", "changeOpacity", "changeFill", "changeBorder", "editQRCodeValue", "editQRCodeStyle"].some((key) => permissions[key]);
+  }
+  return Boolean(permissions.select);
 }
 
 // Whether a page allows customer-added text (page overrides template setting).
@@ -116,7 +126,7 @@ export function pageAllowsCustomerText(template: any, pageId: string): boolean {
 // layer without mutating the template.
 export function applyLayerOverride(layer: any, override: any): any {
   if (!override) return layer;
-  const next = { ...layer };
+  let next = { ...layer };
   if (override.transform && typeof override.transform === "object") {
     const t = override.transform;
     if (t.x !== undefined) next.x = Number(t.x);
@@ -125,6 +135,7 @@ export function applyLayerOverride(layer: any, override: any): any {
     if (t.height !== undefined) next.height = Number(t.height);
     if (t.rotation !== undefined) next.rotation = Number(t.rotation);
     if (t.opacity !== undefined) next.opacity = Number(t.opacity);
+    if (t.zIndex !== undefined) next.zIndex = Number(t.zIndex);
   }
   if (override.textStyle && typeof override.textStyle === "object" && layer.type === "text") {
     next.textStyle = { ...(layer.textStyle || {}), ...override.textStyle };
@@ -134,6 +145,13 @@ export function applyLayerOverride(layer: any, override: any): any {
   if (override.imageTransform && typeof override.imageTransform === "object" && (layer.type === "image" || layer.type === "frame")) {
     next.imageTransform = { ...(layer.imageTransform || {}), ...override.imageTransform };
   }
+  if (override.imageFilters && typeof override.imageFilters === "object" && (layer.type === "image" || layer.type === "frame")) {
+    next.filters = normalizeImageFilters({ ...(layer.filters || {}), ...override.imageFilters });
+  }
+  if (override.properties && typeof override.properties === "object") next = { ...next, ...override.properties };
+  if (override.name !== undefined) next.name = String(override.name).slice(0, 120);
+  if (override.hidden !== undefined) next.hidden = Boolean(override.hidden);
+  if (override.customerLocked !== undefined) next.customerLocked = Boolean(override.customerLocked);
   if (override.gridSlots && typeof override.gridSlots === "object" && layer.type === "grid") {
     next.slots = mergeGridSlotOverrides(Array.isArray(layer.slots) ? layer.slots : [], override.gridSlots);
   }

@@ -16,6 +16,8 @@ import {
 import { getLegacyMaskPath, getMaskPath } from "./masks";
 import { layoutText, fallbackMeasure, type MeasureFn } from "./text-layout";
 import { getGridSlotRect, normalizeGridSlot } from "./grids";
+import { hasImageFilters, imageFilterSvgPrimitives } from "./image-filters";
+import { normalizeQRCodeStyle, qrModuleRects } from "./qr";
 
 export type SvgBuildOptions = {
   template: any;
@@ -140,7 +142,12 @@ function renderShapeLayer(layer: any): string {
   }
   if (layer.shape === "line") {
     const dash = layer.lineStyle === "dashed" ? "12 8" : layer.lineStyle === "dotted" ? "2 8" : "";
-    return `<line x1="${x}" y1="${layer.y}" x2="${x + layer.width}" y2="${layer.y}"${rotate} stroke="${esc(layer.stroke || layer.fill || "#303839")}" stroke-width="${layer.strokeWidth || 3}"${attr("stroke-dasharray", dash)} stroke-linecap="${esc(layer.lineCap || "round")}"/>`;
+    const color = esc(layer.stroke || layer.fill || "#303839");
+    const thickness = Number(layer.strokeWidth) || 3;
+    const capSize = Math.max(8, thickness * 3);
+    const start = layer.lineStartCap === "circle" ? `<circle cx="${x}" cy="${layer.y}" r="${capSize / 2}" fill="${color}"/>` : layer.lineStartCap === "arrow" ? `<polygon points="${x},${layer.y} ${x + capSize},${layer.y - capSize * 0.7} ${x + capSize},${layer.y + capSize * 0.7}" fill="${color}"/>` : "";
+    const end = layer.lineEndCap === "circle" ? `<circle cx="${x + layer.width}" cy="${layer.y}" r="${capSize / 2}" fill="${color}"/>` : layer.lineEndCap === "arrow" ? `<polygon points="${x + layer.width},${layer.y} ${x + layer.width - capSize},${layer.y - capSize * 0.7} ${x + layer.width - capSize},${layer.y + capSize * 0.7}" fill="${color}"/>` : "";
+    return `<g${rotate}><line x1="${x}" y1="${layer.y}" x2="${x + layer.width}" y2="${layer.y}" stroke="${color}" stroke-width="${thickness}"${attr("stroke-dasharray", dash)} stroke-linecap="${esc(layer.lineCap || "round")}"/>${start}${end}</g>`;
   }
   if (layer.shape === "triangle") {
     return `<path d="M ${layer.x} ${y} L ${x + layer.width} ${y + layer.height} L ${x} ${y + layer.height} Z"${rotate}${common}/>`;
@@ -193,6 +200,8 @@ function renderImageLayer(
   const frameX = layer.x - layer.width / 2;
   const frameY = layer.y - layer.height / 2;
   const clipId = `${idPrefix}-clip-${layer.id}`;
+  const filterId = `${idPrefix}-filter-${layer.id}`;
+  const filtered = hasImageFilters(layer.filters);
   const mask = layer.mask && typeof layer.mask === "object"
     ? getMaskPath(layer.mask, { x: frameX, y: frameY, width: layer.width, height: layer.height })
     : getLegacyMaskPath(layer.maskShape, { x: frameX, y: frameY, width: layer.width, height: layer.height });
@@ -228,10 +237,10 @@ function renderImageLayer(
 
   return (
     `<g${rotate}>` +
-    `<defs><clipPath id="${clipId}"><path d="${mask.d}"${maskTransform}/></clipPath></defs>` +
+    `<defs><clipPath id="${clipId}"><path d="${mask.d}"${maskTransform}/></clipPath>${filtered ? `<filter id="${filterId}" color-interpolation-filters="sRGB">${imageFilterSvgPrimitives(layer.filters)}</filter>` : ""}</defs>` +
     (layer.backgroundColor ? `<path d="${mask.d}"${maskTransform} fill="${esc(layer.backgroundColor)}"/>` : "") +
     `<g clip-path="url(#${clipId})"><g${innerTransform}>` +
-    `<image href="${esc(mapHref(image.url, hrefMap))}" x="${drawX}" y="${drawY}" width="${drawW}" height="${drawH}" preserveAspectRatio="${preserve}"/>` +
+    `<image href="${esc(mapHref(image.url, hrefMap))}" x="${drawX}" y="${drawY}" width="${drawW}" height="${drawH}" preserveAspectRatio="${preserve}"${filtered ? ` filter="url(#${filterId})"` : ""}/>` +
     `</g></g>` +
     (Number(layer.borderWidth) > 0
       ? `<path d="${mask.d}"${maskTransform} fill="none" stroke="${esc(layer.borderColor || "#303839")}" stroke-width="${Number(layer.borderWidth)}"/>`
@@ -260,6 +269,7 @@ function renderGridLayer(layer: any, idPrefix: string, hrefMap: Record<string, s
       rotation: 0,
       src: slot.src,
       imageTransform: slot.transform,
+      filters: slot.filters,
       mask: slot.mask || (layer.cornerRadius ? { kind: "rounded", radius: layer.cornerRadius } : { kind: "rectangle" }),
       maskShape: slot.mask?.kind || (layer.cornerRadius ? "rounded" : "rectangle"),
       fitMode: slot.transform.fitMode || "cover",
@@ -276,11 +286,25 @@ function renderBackgroundLayer(layer: any, hrefMap: Record<string, string>): str
   const x = layer.x - layer.width / 2;
   const y = layer.y - layer.height / 2;
   const rotate = layer.rotation ? ` transform="rotate(${layer.rotation} ${layer.x} ${layer.y})"` : "";
-  return `<g${rotate}><rect x="${x}" y="${y}" width="${layer.width}" height="${layer.height}" fill="${esc(layer.color || "#ffffff")}"/>${
+  const filterId = `background-filter-${layer.id}`;
+  const filtered = hasImageFilters(layer.filters);
+  return `<g${rotate}>${filtered ? `<defs><filter id="${filterId}" color-interpolation-filters="sRGB">${imageFilterSvgPrimitives(layer.filters)}</filter></defs>` : ""}<rect x="${x}" y="${y}" width="${layer.width}" height="${layer.height}" fill="${esc(layer.color || "#ffffff")}"/>${
     layer.src
-      ? `<image href="${esc(mapHref(layer.src, hrefMap))}" x="${x}" y="${y}" width="${layer.width}" height="${layer.height}" preserveAspectRatio="${layer.fitMode === "contain" ? "xMidYMid meet" : "xMidYMid slice"}"/>`
+      ? `<image href="${esc(mapHref(layer.src, hrefMap))}" x="${x}" y="${y}" width="${layer.width}" height="${layer.height}" preserveAspectRatio="${layer.fitMode === "contain" ? "xMidYMid meet" : "xMidYMid slice"}"${filtered ? ` filter="url(#${filterId})"` : ""}/>`
       : ""
   }</g>`;
+}
+
+function renderQRCodeLayer(layer: any): string {
+  const style = normalizeQRCodeStyle(layer);
+  const qr = qrModuleRects(style);
+  const size = Math.min(Number(layer.width) || 1, Number(layer.height) || 1);
+  const moduleSize = size / qr.totalSize;
+  const left = Number(layer.x) - size / 2;
+  const top = Number(layer.y) - size / 2;
+  const rotate = layer.rotation ? ` transform="rotate(${layer.rotation} ${layer.x} ${layer.y})"` : "";
+  const modules = qr.rects.map((rect) => `<rect x="${left + rect.x * moduleSize}" y="${top + rect.y * moduleSize}" width="${moduleSize}" height="${moduleSize}"${style.moduleStyle === "rounded" ? ` rx="${moduleSize * 0.32}"` : ""} fill="${esc(style.foregroundColor)}"/>`).join("");
+  return `<g${rotate} shape-rendering="crispEdges"><rect x="${left}" y="${top}" width="${size}" height="${size}" fill="${esc(style.backgroundColor)}"/>${modules}</g>`;
 }
 
 // Build a complete standalone SVG document string for one page.
@@ -331,6 +355,7 @@ export function buildPageSvg(options: SvgBuildOptions): string {
     else if (layer.type === "element") inner = renderElementLayer(layer, idPrefix, hrefMap);
     else if (layer.type === "grid") inner = renderGridLayer(layer, idPrefix, hrefMap, mode);
     else if (layer.type === "background") inner = renderBackgroundLayer(layer, hrefMap);
+    else if (layer.type === "qrCode") inner = renderQRCodeLayer(layer);
     else if (layer.type === "group") continue;
     else if (layer.type === "text") inner = renderTextLayer(layer, field, values, measure, mode);
     else throw new Error(`UNSUPPORTED_LAYER: ${String(layer.type)}`);

@@ -50,6 +50,7 @@ import {
   newBackgroundLayer,
   newElementLayer,
   newGridLayer,
+  newQRCodeLayer,
   newShapeLayer,
   newTextLayer,
   patchPage,
@@ -240,6 +241,12 @@ export default function AdminDesignBuilder({
     setActiveTool("select");
   };
   const addLine = () => addShape("line");
+  const addQRCode = () => {
+    const layer = newQRCodeLayer(t, activePage);
+    commit(addLayer(t, layer));
+    setSelectedLayerId(layer.id);
+    setActiveTool("select");
+  };
   const addElement = (element: LibraryElement) => {
     const layer = newElementLayer(tRef.current, activePage, element);
     commit(addLayer(tRef.current, layer));
@@ -601,6 +608,7 @@ export default function AdminDesignBuilder({
               onAddGrid={addGrid}
               onAddShape={addShape}
               onAddLine={addLine}
+              onAddQRCode={addQRCode}
               onOpenElements={() => setActiveTool("elements")}
               onGroup={groupSelection}
               onUngroup={ungroupSelection}

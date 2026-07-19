@@ -140,6 +140,8 @@ export function newShapeLayer(template: any, pageId: string, shape = "rectangle"
     customerEditable: false,
     lineStyle: "solid",
     lineCap: "round",
+    lineStartCap: "none",
+    lineEndCap: "none",
     points: shape === "polygon" ? [{ x: 0.5, y: 0 }, { x: 1, y: 0.38 }, { x: 0.82, y: 1 }, { x: 0.18, y: 1 }, { x: 0, y: 0.38 }] : [],
   };
 }
@@ -229,6 +231,38 @@ export function newBackgroundLayer(template: any, pageId: string, src = "") {
     opacity: 1,
     hidden: false,
     locked: true,
+    adminEditable: true,
+    customerEditable: false,
+    groupId: "",
+    fieldId: "",
+  };
+}
+
+export function newQRCodeLayer(template: any, pageId: string) {
+  const size = Math.max(180, Math.round(Math.min(Number(template?.canvasWidthPx) || 1500, Number(template?.canvasHeightPx) || 2100) * 0.2));
+  return {
+    id: genId("qr"),
+    name: "QR code",
+    page: pageId,
+    type: "qrCode",
+    value: "https://husnalogy.com",
+    foregroundColor: "#303839",
+    backgroundColor: "#ffffff",
+    errorCorrection: "M",
+    margin: 4,
+    moduleStyle: "square",
+    required: false,
+    x: Math.round((Number(template?.canvasWidthPx) || 1500) / 2),
+    y: Math.round((Number(template?.canvasHeightPx) || 2100) / 2),
+    width: size,
+    height: size,
+    rotation: 0,
+    zIndex: nextZIndex(template, pageId),
+    opacity: 1,
+    hidden: false,
+    locked: false,
+    positionLocked: false,
+    customerInteractionDisabled: false,
     adminEditable: true,
     customerEditable: false,
     groupId: "",

@@ -61,7 +61,7 @@ const legacyTemplate = {
 describe("V1 → V2 document migration", () => {
   it("migrates canvas, pages, fields, and layers", () => {
     const { document } = templateToDocument(legacyTemplate);
-    expect(document.schemaVersion).toBe(3);
+    expect(document.schemaVersion).toBe(4);
     expect(document.templateId).toBe("tpl-1");
     expect(document.canvas.widthPx).toBe(1500);
     expect(document.pages).toHaveLength(2);
@@ -105,7 +105,7 @@ describe("V1 → V2 document migration", () => {
 
   it("v2 documents re-normalize through the same entry point", () => {
     const { document } = templateToDocument(legacyTemplate);
-    const { document: again } = migrateCustomizerDocument(document as any, 3, 3);
+    const { document: again } = migrateCustomizerDocument(document as any, 4, 4);
     expect(again.layers).toHaveLength(document.layers.length);
     expect(again.canvas.widthPx).toBe(1500);
   });

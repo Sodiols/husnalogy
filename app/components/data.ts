@@ -61,6 +61,30 @@ export const mainMenu = [
       },
     ],
   },
+
+   {
+    label: "Personalizations",
+    href: "/personalizations",
+    children: [
+      {
+        href: "/collections/personalized-gifts",
+        title: "mugs",
+      },
+      {
+        href: "/collections/birthday-gifts",
+        title: "invitation cards",
+      },
+      {
+        href: "/collections/gifts-for-her",
+        title: "Gifts for Her",
+      },
+      {
+        href: "/collections/gifts-for-him",
+        title: "Gifts for Him",
+      },
+    ],
+  }, 
+
   {
     label: "Invitations",
     href: "/stationery",

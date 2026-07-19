@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { rateLimit, rejectLargeRequest } from "@/lib/security/rate-limit";
 import { enqueueRenderJob, processRenderJob, getRenderOutputs } from "@/lib/customizer/render-jobs";
 import { RenderError } from "@/lib/customizer/v2/server/render";
+import type { RenderJobType } from "@/lib/customizer/v2/types";
 
 // POST /api/customizer/render — request a server-rendered preview of your own
 // customization (spec §23). Preview/thumbnail jobs process inline; print jobs
@@ -20,7 +21,8 @@ export async function POST(request: Request) {
 
   const body = await request.json().catch(() => ({}));
   const customizationId = String(body.customizationId || "").trim();
-  const jobType = ["thumbnail", "cart_thumbnail", "mockup"].includes(body.jobType) ? body.jobType : "preview";
+  const requestedJobType = String(body.jobType || "preview");
+  const jobType = (["preview", "thumbnail", "cart_thumbnail", "mockup", "print_png", "print_pdf"].includes(requestedJobType) ? requestedJobType : "preview") as RenderJobType;
   if (!customizationId) {
     return Response.json({ ok: false, error: "customizationId is required." }, { status: 400 });
   }
@@ -33,6 +35,13 @@ export async function POST(request: Request) {
     .maybeSingle();
   if (ownError) return Response.json({ ok: false, error: "Could not verify customization." }, { status: 500 });
   if (!owned) return Response.json({ ok: false, error: "Not found." }, { status: 404 });
+
+  if (jobType === "print_png" || jobType === "print_pdf") {
+    const { data: actor } = await supabase.from("profiles").select("role").eq("id", user.id).maybeSingle();
+    if (actor?.role !== "admin") {
+      return Response.json({ ok: false, error: "Print production is restricted to administrators and order processing." }, { status: 403 });
+    }
+  }
 
   try {
     const { job, reused } = await enqueueRenderJob({ customizationId, jobType });

@@ -21,9 +21,10 @@ type Category = { id: string; name: string };
 
 type Props = {
   onInsertElement: (element: LibraryElement) => void;
+  allowedElementIds?: string[];
 };
 
-export default function CustomerElementsPanel({ onInsertElement }: Props) {
+export default function CustomerElementsPanel({ onInsertElement, allowedElementIds = [] }: Props) {
   const [elements, setElements] = useState<LibraryElement[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [category, setCategory] = useState("");
@@ -32,13 +33,71 @@ export default function CustomerElementsPanel({ onInsertElement }: Props) {
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [recent, setRecent] = useState<LibraryElement[]>([]);
+  const [favourites, setFavourites] = useState<LibraryElement[]>([]);
   const requestRef = useRef(0);
+
+  useEffect(() => {
+    try {
+      setRecent(JSON.parse(window.localStorage.getItem("husnalogy-customizer-recent-elements") || "[]"));
+      setFavourites(JSON.parse(window.localStorage.getItem("husnalogy-customizer-favourite-elements") || "[]"));
+    } catch {
+      // Private browsing/storage failures must never block the library.
+    }
+  }, []);
+
+  const remember = (element: LibraryElement) => {
+    setRecent((current) => {
+      const next = [element, ...current.filter((entry) => entry.id !== element.id)].slice(0, 8);
+      try { window.localStorage.setItem("husnalogy-customizer-recent-elements", JSON.stringify(next)); } catch {}
+      return next;
+    });
+  };
+
+  const toggleFavourite = (element: LibraryElement) => {
+    setFavourites((current) => {
+      const next = current.some((entry) => entry.id === element.id) ? current.filter((entry) => entry.id !== element.id) : [element, ...current];
+      try { window.localStorage.setItem("husnalogy-customizer-favourite-elements", JSON.stringify(next)); } catch {}
+      return next;
+    });
+  };
+
+  const insert = (element: LibraryElement) => {
+    remember(element);
+    onInsertElement(element);
+  };
+
+  const elementCard = (element: LibraryElement) => {
+    const favourite = favourites.some((entry) => entry.id === element.id);
+    return (
+      <div key={element.id} className="group relative aspect-square">
+        <button
+          type="button"
+          draggable
+          onDragStart={(event) => {
+            remember(element);
+            event.dataTransfer.effectAllowed = "copy";
+            event.dataTransfer.setData("application/x-husnalogy-element", JSON.stringify(element));
+          }}
+          onClick={() => insert(element)}
+          title={`Insert ${element.title}`}
+          aria-label={`Insert ${element.title}`}
+          className="h-full w-full overflow-hidden rounded-lg border border-[#303839]/10 bg-white p-2 transition hover:border-[#D4AF37] hover:bg-[#F8F6F1] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#D4AF37]"
+        >
+          <img src={element.url} alt={element.title} loading="lazy" draggable={false} className="h-full w-full object-contain transition group-hover:scale-105" />
+        </button>
+        <button type="button" aria-label={`${favourite ? "Remove" : "Add"} ${element.title} ${favourite ? "from" : "to"} favourites`} aria-pressed={favourite} onClick={() => toggleFavourite(element)} className={`absolute right-1 top-1 grid h-9 w-9 place-items-center rounded-full border border-[#303839]/10 shadow-sm ${favourite ? "bg-[#D4AF37] text-[#303839]" : "bg-white text-[#303839]/55 hover:text-[#D4AF37]"}`}>
+          <span aria-hidden>{favourite ? "★" : "☆"}</span>
+        </button>
+      </div>
+    );
+  };
 
   useEffect(() => {
     const requestId = ++requestRef.current;
     setLoading(true);
     setError("");
-    const query = new URLSearchParams({ page: String(page), pageSize: "30" });
+    const query = new URLSearchParams({ page: String(page), pageSize: allowedElementIds.length ? "200" : "30" });
     if (search.trim()) query.set("search", search.trim());
     if (category) query.set("category", category);
 
@@ -48,10 +107,10 @@ export default function CustomerElementsPanel({ onInsertElement }: Props) {
         const data = await res.json().catch(() => ({}));
         if (requestRef.current !== requestId) return; // stale request
         if (!res.ok || data.ok === false) throw new Error(data?.error || "Could not load elements.");
-        const incoming: LibraryElement[] = data.elements || [];
+        const incoming: LibraryElement[] = (data.elements || []).filter((element: LibraryElement) => !allowedElementIds.length || allowedElementIds.includes(element.id));
         setElements((current) => (page === 1 ? incoming : [...current, ...incoming]));
         setCategories(data.categories || []);
-        setTotal(Number(data.total) || 0);
+        setTotal(allowedElementIds.length ? incoming.length : Number(data.total) || 0);
       } catch (e: any) {
         if (requestRef.current === requestId) setError(e?.message || "Could not load elements.");
       } finally {
@@ -60,7 +119,7 @@ export default function CustomerElementsPanel({ onInsertElement }: Props) {
     }, search ? 300 : 0);
 
     return () => window.clearTimeout(timer);
-  }, [search, category, page]);
+  }, [search, category, page, allowedElementIds]);
 
   const hasMore = elements.length < total;
 
@@ -116,6 +175,20 @@ export default function CustomerElementsPanel({ onInsertElement }: Props) {
         </div>
       )}
 
+      {!search && !category && favourites.length > 0 && (
+        <section aria-labelledby="favourite-elements-title">
+          <h3 id="favourite-elements-title" className="mb-2 text-[10px] font-bold uppercase tracking-[0.16em] text-[#303839]/50">Favourites</h3>
+          <div className="grid grid-cols-3 gap-2">{favourites.filter((element) => !allowedElementIds.length || allowedElementIds.includes(element.id)).slice(0, 6).map(elementCard)}</div>
+        </section>
+      )}
+
+      {!search && !category && recent.length > 0 && (
+        <section aria-labelledby="recent-elements-title">
+          <h3 id="recent-elements-title" className="mb-2 text-[10px] font-bold uppercase tracking-[0.16em] text-[#303839]/50">Recently used</h3>
+          <div className="grid grid-cols-3 gap-2">{recent.filter((element) => !allowedElementIds.length || allowedElementIds.includes(element.id)).slice(0, 6).map(elementCard)}</div>
+        </section>
+      )}
+
       {error && (
         <p className="text-xs font-bold text-red-700" role="alert">
           {error}
@@ -132,24 +205,7 @@ export default function CustomerElementsPanel({ onInsertElement }: Props) {
         <p className="text-sm text-[#303839]/55">No elements found{search ? ` for “${search}”` : ""}.</p>
       ) : (
         <div className="grid grid-cols-3 gap-2 overflow-y-auto">
-          {elements.map((element) => (
-            <button
-              key={element.id}
-              type="button"
-              onClick={() => onInsertElement(element)}
-              title={`Insert ${element.title}`}
-              aria-label={`Insert ${element.title}`}
-              className="group aspect-square overflow-hidden rounded-lg border border-[#303839]/10 bg-white p-2 transition hover:border-[#D4AF37] hover:bg-[#F8F6F1] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#D4AF37]"
-            >
-              <img
-                src={element.url}
-                alt={element.title}
-                loading="lazy"
-                draggable={false}
-                className="h-full w-full object-contain transition group-hover:scale-105"
-              />
-            </button>
-          ))}
+          {elements.map(elementCard)}
         </div>
       )}
 
