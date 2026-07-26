@@ -14,7 +14,7 @@ export default function CustomerProductEditingPreview({ template, values, editor
   const perspective = area.warpType === "perspective" || area.warpType === "cylinder" || area.warpType === "custom";
 
   return (
-    <div className="flex h-full min-h-0 items-center justify-center overflow-auto bg-[#F8F6F1] p-3 sm:p-6">
+    <div className="flex h-full min-h-0 items-center justify-center overflow-auto bg-white p-3 sm:p-6">
       <div className="relative w-full max-w-4xl overflow-hidden rounded-2xl border border-[#303839]/10 bg-white shadow-[0_18px_55px_rgba(48,56,57,0.14)]" style={{ aspectRatio: `${config.width || 1600}/${config.height || 1200}` }}>
         {view.baseImageUrl ? <img src={view.baseImageUrl} alt={`${view.name || "Product"} mockup`} className="absolute inset-0 h-full w-full object-fill" /> : null}
         <div className="absolute overflow-hidden" style={{ left: `${area.x / config.width * 100}%`, top: `${area.y / config.height * 100}%`, width: `${area.width / config.width * 100}%`, height: `${area.height / config.height * 100}%`, transform: `rotate(${area.rotation || 0}deg)`, transformOrigin: "center", opacity: area.opacity ?? 1, clipPath: area.clipPath || undefined }}>

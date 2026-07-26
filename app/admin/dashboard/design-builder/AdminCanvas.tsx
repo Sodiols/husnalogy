@@ -5,7 +5,7 @@
 // The overlay adds selection, drag, resize, rotation, snapping with alignment
 // guides, and a live position/size readout.
 
-import { useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import CustomizerPreview from "@/app/components/customizer/CustomizerPreview";
 import EditableNumericStepper from "@/app/components/customizer/EditableNumericStepper";
 import InlineCanvasTextEditor from "@/app/components/customizer/InlineCanvasTextEditor";
@@ -19,6 +19,18 @@ import {
   type MeasureFn,
 } from "@/lib/customizer/v2/text-layout";
 import { getFieldById, resolveLayerText } from "@/app/components/customizer/customizer-utils";
+import {
+  createPanGesture,
+  isTypingTarget,
+  MIDDLE_MOUSE_BUTTON,
+  panCursor,
+  panFromGesture,
+  panHasPointerPriority,
+  PAN_TOOL,
+  shouldBeginPan,
+  type PanBounds,
+  type PanGesture,
+} from "@/lib/customizer/v2/viewport-pan";
 import { layersForPage } from "./builder-utils";
 
 const HANDLES: Array<{ id: string; cx: number; cy: number; cursor: string }> = [
@@ -49,6 +61,9 @@ export default function AdminCanvas({
   onBeginChange,
   onTextCommit,
   zoom = 1,
+  panX = 0,
+  panY = 0,
+  onPanChange,
   showSafeArea,
   showBleed,
   snapEnabled = true,
@@ -58,11 +73,14 @@ export default function AdminCanvas({
 }: any) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const [containerWidth, setContainerWidth] = useState(0);
+  const [containerHeight, setContainerHeight] = useState(0);
   const dragRef = useRef<any>(null);
   const [guides, setGuides] = useState<Guide[]>([]);
   const [selectedGuideId, setSelectedGuideId] = useState<string | null>(null);
   const [editingTextId, setEditingTextId] = useState<string | null>(null);
-  const panRef = useRef<any>(null);
+  const panRef = useRef<PanGesture | null>(null);
+  const [isPanning, setIsPanning] = useState(false);
+  const [spacePanActive, setSpacePanActive] = useState(false);
   const textMeasureRef = useRef<MeasureFn | null>(null);
   if (!textMeasureRef.current) textMeasureRef.current = createCanvasMeasure();
 
@@ -72,7 +90,10 @@ export default function AdminCanvas({
   useLayoutEffect(() => {
     if (!wrapRef.current) return;
     const el = wrapRef.current;
-    const update = () => setContainerWidth(el.clientWidth);
+    const update = () => {
+      setContainerWidth(el.clientWidth);
+      setContainerHeight(el.clientHeight);
+    };
     update();
     const ro = new ResizeObserver(update);
     ro.observe(el);
@@ -85,6 +106,15 @@ export default function AdminCanvas({
   const displayH = displayW * (canvasH / canvasW);
   const scale = displayW / canvasW;
   const snapTolerance = SNAP_PX / scale;
+
+  // Pan tool proper, or Space held down as a temporary override.
+  const panToolActive = activeTool === PAN_TOOL || spacePanActive;
+  const panBounds: PanBounds = {
+    workspaceWidth: containerWidth,
+    workspaceHeight: containerHeight,
+    displayWidth: displayW,
+    displayHeight: displayH,
+  };
 
   const layers = layersForPage(template, pageId);
 
@@ -210,6 +240,8 @@ export default function AdminCanvas({
       : [];
 
   const onLayerPointerDown = (e: React.PointerEvent, layer: any) => {
+    // Let the workspace pan instead — no stopPropagation, no selection change.
+    if (panOwnsPointer(e)) return;
     e.stopPropagation();
     onSelect(layer.id, e.shiftKey);
     if (layer.locked || layer.adminEditable === false) return;
@@ -238,6 +270,7 @@ export default function AdminCanvas({
   };
 
   const onHandlePointerDown = (e: React.PointerEvent, layer: any, handle: string) => {
+    if (panOwnsPointer(e)) return;
     e.stopPropagation();
     (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
     const interactionLayer = singleLineInteractionLayer(layer);
@@ -258,6 +291,7 @@ export default function AdminCanvas({
   };
 
   const onRotatePointerDown = (e: React.PointerEvent, layer: any) => {
+    if (panOwnsPointer(e)) return;
     e.stopPropagation();
     (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
     dragRef.current = {
@@ -406,6 +440,9 @@ export default function AdminCanvas({
   };
 
   const onGuidePointerDown = (event: React.PointerEvent, guide: any) => {
+    // Dragging over a guide while panning pans the viewport, it does not move
+    // the guide.
+    if (panOwnsPointer(event)) return;
     event.stopPropagation();
     setSelectedGuideId(guide.id);
     if (guide.locked) return;
@@ -414,36 +451,142 @@ export default function AdminCanvas({
     dragRef.current = { mode: "guide", guideId: guide.id, axis: guide.axis };
   };
 
+  /* ------------------------------------------------------------------ pan --
+   * Viewport translation, NOT scrollLeft/scrollTop. The old scroll approach
+   * needed scrollable overflow to exist, so it did nothing whenever the canvas
+   * already fitted inside the workspace. Pan is pure editor UI state: it never
+   * calls onBeginChange/onLayerChange, so it creates no history and no save.
+   */
+  const panBoundsRef = useRef(panBounds);
+  panBoundsRef.current = panBounds;
+  const onPanChangeRef = useRef(onPanChange);
+  onPanChangeRef.current = onPanChange;
+
+  // Pointer moves are batched through requestAnimationFrame so a fast drag does
+  // not queue one React render per pointer event.
+  const pendingPanRef = useRef<{ panX: number; panY: number } | null>(null);
+  const rafRef = useRef<number | null>(null);
+
+  const flushPan = useCallback(() => {
+    rafRef.current = null;
+    const next = pendingPanRef.current;
+    pendingPanRef.current = null;
+    if (next) onPanChangeRef.current?.(next);
+  }, []);
+
+  const endPan = useCallback((event?: React.PointerEvent) => {
+    if (!panRef.current) return;
+    if (event && panRef.current.pointerId >= 0) {
+      const node = event.currentTarget as HTMLElement | null;
+      if (node?.hasPointerCapture?.(panRef.current.pointerId)) {
+        node.releasePointerCapture?.(panRef.current.pointerId);
+      }
+    }
+    panRef.current = null;
+    if (rafRef.current !== null) {
+      cancelAnimationFrame(rafRef.current);
+      rafRef.current = null;
+      flushPan();
+    }
+    setIsPanning(false);
+  }, [flushPan]);
+
   const beginPan = (event: React.PointerEvent) => {
-    if (activeTool !== "pan" || !wrapRef.current) return;
-    const target = wrapRef.current;
-    panRef.current = { x: event.clientX, y: event.clientY, left: target.scrollLeft, top: target.scrollTop };
+    if (!shouldBeginPan({ activeTool, spacePanActive, button: event.button, editingText: Boolean(editingTextId) })) return;
+    // Middle-click would otherwise start the browser's auto-scroll.
+    event.preventDefault();
     (event.currentTarget as HTMLElement).setPointerCapture?.(event.pointerId);
+    panRef.current = createPanGesture(event, { panX, panY });
+    setIsPanning(true);
   };
 
   const movePan = (event: React.PointerEvent) => {
-    if (!panRef.current || !wrapRef.current) return;
-    wrapRef.current.scrollLeft = panRef.current.left - (event.clientX - panRef.current.x);
-    wrapRef.current.scrollTop = panRef.current.top - (event.clientY - panRef.current.y);
+    const gesture = panRef.current;
+    if (!gesture) return;
+    pendingPanRef.current = panFromGesture(gesture, event.clientX, event.clientY, panBoundsRef.current);
+    if (rafRef.current === null) rafRef.current = requestAnimationFrame(flushPan);
   };
+
+  useEffect(() => () => {
+    if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
+  }, []);
+
+  // Space temporarily switches to Pan from any tool, without changing activeTool.
+  // It must never steal a space character from a field or the inline text editor.
+  useEffect(() => {
+    const down = (event: KeyboardEvent) => {
+      if (event.code !== "Space" || event.repeat) return;
+      if (editingTextId || isTypingTarget(event.target) || isTypingTarget(document.activeElement)) return;
+      event.preventDefault();
+      setSpacePanActive(true);
+    };
+    const up = (event: KeyboardEvent) => {
+      if (event.code !== "Space") return;
+      setSpacePanActive(false);
+    };
+    // Releasing Space outside the window would otherwise leave pan stuck on.
+    const clear = () => setSpacePanActive(false);
+    window.addEventListener("keydown", down);
+    window.addEventListener("keyup", up);
+    window.addEventListener("blur", clear);
+    return () => {
+      window.removeEventListener("keydown", down);
+      window.removeEventListener("keyup", up);
+      window.removeEventListener("blur", clear);
+    };
+  }, [editingTextId]);
+
+  // Pan wins over object interaction: layer, handle, rotation and guide
+  // gestures stand down (without stopPropagation) so the event reaches the
+  // workspace and pans instead.
+  const panOwnsPointer = (event: React.PointerEvent) =>
+    panHasPointerPriority({ activeTool, spacePanActive, button: event.button });
+
+  const cursor = panCursor({ isPanning, panToolActive });
+  // While a temporary pan is armed or running, overlays stay rendered (so the
+  // selection does not flicker away) but stop intercepting pointer events.
+  const overlayInert = spacePanActive || isPanning;
 
   return (
     <div
       ref={wrapRef}
-      className={`flex h-full w-full items-start justify-center overflow-auto bg-transparent p-6 xl:p-8 2xl:p-12 ${activeTool === "pan" ? "cursor-grab active:cursor-grabbing" : ""}`}
+      data-canvas-workspace
+      // overflow-hidden: pan owns canvas movement, so browser scrollbars must
+      // not fight it with a second, competing movement system.
+      className="flex h-full w-full items-start justify-center overflow-hidden bg-transparent p-6 xl:p-8 2xl:p-12"
+      style={{
+        cursor: cursor || undefined,
+        // Stop the browser claiming one-finger drags while panning on touch.
+        touchAction: panToolActive || isPanning ? "none" : undefined,
+      }}
       onPointerDown={beginPan}
       onPointerMove={movePan}
-      onPointerUp={() => { panRef.current = null; }}
-      onPointerLeave={() => { panRef.current = null; }}
+      onPointerUp={endPan}
+      onPointerCancel={endPan}
+      onAuxClick={(event) => {
+        if (event.button === MIDDLE_MOUSE_BUTTON) event.preventDefault();
+      }}
     >
       <div
         data-canvas-surface
         className="relative shrink-0 bg-white shadow-[0_10px_40px_rgba(48,56,57,0.12)]"
-        style={{ width: displayW, height: displayH }}
+        style={{
+          width: displayW,
+          height: displayH,
+          // One shared transform: artwork, safe area, bleed, guides, selection
+          // outlines, handles and the inline editor all move together and stay
+          // aligned, because they all live inside this element.
+          transform: `translate3d(${panX}px, ${panY}px, 0)`,
+        }}
         onPointerMove={onPointerMove}
         onPointerUp={endDrag}
         onPointerLeave={endDrag}
-        onPointerDown={() => onSelect(null)}
+        onPointerDown={(event) => {
+          // Panning must never clear the selection: switch to Pan, move around,
+          // switch back, and the same layer is still selected.
+          if (panOwnsPointer(event)) return;
+          onSelect(null);
+        }}
       >
         {/* Base render (shared with the customer) */}
         <div className="pointer-events-none absolute inset-0">
@@ -480,7 +623,10 @@ export default function AdminCanvas({
                 aria-label={`${vertical ? "Vertical" : "Horizontal"} guide at ${Math.round(guide.position)} pixels`}
                 onPointerDown={(event) => onGuidePointerDown(event, guide)}
                 className={`absolute z-30 cursor-col-resize border-0 bg-transparent p-0 focus-visible:outline-none ${vertical ? "inset-y-0 w-3 -translate-x-1/2" : "inset-x-0 h-3 -translate-y-1/2 cursor-row-resize"}`}
-                style={vertical ? { left: guide.position * scale } : { top: guide.position * scale }}
+                style={{
+                  ...(vertical ? { left: guide.position * scale } : { top: guide.position * scale }),
+                  pointerEvents: panToolActive || isPanning ? "none" : undefined,
+                }}
               >
                 <span className={`absolute bg-[#D4AF37] ${vertical ? "inset-y-0 left-1/2 w-px" : "inset-x-0 top-1/2 h-px"}`} />
               </button>
@@ -542,6 +688,9 @@ export default function AdminCanvas({
                     : "1px dashed rgba(48,56,57,0.22)",
                 background: "transparent",
                 touchAction: "none",
+                // Space/middle-mouse pan keeps the selection visible but lets
+                // the gesture through to the workspace.
+                pointerEvents: overlayInert ? "none" : undefined,
               }}
             >
               {editingTextId === layer.id && (

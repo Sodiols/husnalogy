@@ -31,7 +31,7 @@ export default function CustomizerProtectionOverlay({ covered }: { covered: bool
       {/* Full cover while the tab is hidden, unfocused, printing, or a
           PrintScreen press was detected. */}
       {covered && (
-        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-[#F8F6F1] print:hidden">
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-white print:hidden">
           <div className="px-6 text-center">
             <p className="font-display text-2xl text-[#303839]">Protected preview</p>
             <p className="mt-2 text-sm text-[#303839]/60">

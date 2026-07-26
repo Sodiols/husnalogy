@@ -15,6 +15,7 @@ import {
 } from "@/lib/customizer";
 import CustomizerPreview from "@/app/components/customizer/CustomizerPreview";
 import CustomizerZoomControls from "@/app/components/customizer/CustomizerZoomControls";
+import { fitViewport, INITIAL_VIEWPORT, type ViewportState } from "@/lib/customizer/v2/viewport-pan";
 import AdminBuilderHeader from "./AdminBuilderHeader";
 import AdminContextToolbar from "./AdminContextToolbar";
 import AdminToolRail from "./AdminToolRail";
@@ -134,7 +135,14 @@ export default function AdminDesignBuilder({
   const [selectedLayerIds, setSelectedLayerIds] = useState<string[]>([]);
   const selectedLayerId = selectedLayerIds[selectedLayerIds.length - 1] || null;
   const setSelectedLayerId = (id: string | null) => setSelectedLayerIds(id ? [id] : []);
-  const [zoom, setZoom] = useState(1);
+  // Editor viewport: zoom + pan travel together so Fit can reset both. This is
+  // navigation state only — it never enters the template, never marks the
+  // document dirty, and never creates undo history.
+  const [viewport, setViewport] = useState<ViewportState>(INITIAL_VIEWPORT);
+  const { zoom } = viewport;
+  const setZoom = (next: number) => setViewport((current) => ({ ...current, zoom: next }));
+  const setPan = (pan: { panX: number; panY: number }) => setViewport((current) => ({ ...current, ...pan }));
+  const resetViewport = () => setViewport(fitViewport(1));
   const [rightPanel, setRightPanel] = useState<"pages" | "layers">("pages");
   const [snapEnabled, setSnapEnabled] = useState(true);
   const [publishCheck, setPublishCheck] = useState<{ errors: string[]; warnings: string[] } | null>(null);
@@ -704,6 +712,9 @@ export default function AdminDesignBuilder({
                 onLayersChange={onCanvasLayersChange}
                 onTextCommit={onCanvasTextCommit}
                 zoom={zoom}
+                panX={viewport.panX}
+                panY={viewport.panY}
+                onPanChange={setPan}
                 showSafeArea={Boolean(settings.showSafeArea)}
                 showBleed={Boolean(settings.showBleed)}
                 snapEnabled={snapEnabled}
@@ -718,7 +729,14 @@ export default function AdminDesignBuilder({
               />
               <div className="pointer-events-none absolute inset-x-0 bottom-3 z-30 flex items-center justify-center gap-2">
                 <div className="pointer-events-auto flex items-center gap-2">
-                  <CustomizerZoomControls zoom={zoom} onZoomChange={setZoom} onFit={() => setZoom(1)} />
+                  {/* Fit and 1:1 both recentre: zoom and pan reset together, so
+                      the page is always recoverable however far it was panned. */}
+                  <CustomizerZoomControls
+                    zoom={zoom}
+                    onZoomChange={setZoom}
+                    onFit={resetViewport}
+                    onActualSize={resetViewport}
+                  />
                   <button
                     type="button"
                     aria-pressed={snapEnabled}

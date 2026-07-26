@@ -24,10 +24,19 @@ const OPTION_LABELS: Record<string, string> = {
 
 function DetailRow({ label, value }: any) {
   return (
-    <div className="flex justify-between gap-4 border-b border-[#303839]/8 py-1.5 text-sm">
-      <span className="text-[#303839]/60">{label}</span>
+    <div className="flex justify-between gap-4 border-b border-[#303839]/6 py-2 text-sm last:border-b-0">
+      <span className="text-[#303839]/50">{label}</span>
       <span className="text-right font-semibold text-[#303839]">{value}</span>
     </div>
+  );
+}
+
+function ReviewCard({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <section className="rounded-xl border border-[#303839]/8 bg-white p-5">
+      <h3 className="mb-1 font-display text-[22px] leading-tight text-[#303839]">{title}</h3>
+      {children}
+    </section>
   );
 }
 
@@ -84,8 +93,8 @@ export default function CustomizerReviewStep({
         <CustomerMockupPreview template={template} values={values} editorState={editorState} customizationId={customizationId} saveStatus={saveStatus} />
         {pages.map((page: any) => (
           <div key={page.id}>
-            <p className="mb-1.5 text-xs font-extrabold uppercase tracking-wide text-[#303839]/60">{page.label}</p>
-            <div className="rounded-lg border border-[#303839]/12 bg-white p-2 shadow-[0_6px_24px_rgba(48,56,57,0.06)]">
+            <p className="mb-2 text-[11px] font-bold uppercase tracking-[0.11em] text-[#303839]/45">{page.label}</p>
+            <div className="overflow-hidden rounded-xl border border-[#303839]/8 bg-white p-2 shadow-[0_4px_20px_rgba(48,56,57,0.05)]">
               <CustomizerPreview
                 template={template}
                 values={values}
@@ -100,26 +109,33 @@ export default function CustomizerReviewStep({
       </div>
 
       {/* Right: details, options, price, approval */}
-      <div className="grid content-start gap-6">
+      <div className="grid content-start gap-4">
         {issues.length > 0 && (
-          <div className="rounded-lg border border-red-200 bg-red-50 p-4" role="alert">
-            <p className="text-sm font-bold text-red-700">Please complete before adding to cart:</p>
-            <ul className="mt-1.5 grid gap-0.5 text-sm text-red-700">
+          <div className="rounded-xl border border-red-200 bg-red-50 p-4" role="alert">
+            <p className="flex items-center gap-2 text-sm font-bold text-red-700">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden>
+                <circle cx="12" cy="12" r="9" /><path d="M12 8v5M12 16.5v.01" />
+              </svg>
+              Please complete before adding to cart
+            </p>
+            <ul className="mt-2 grid gap-1 text-sm text-red-700">
               {issues.map((issue) => (
-                <li key={String(issue)}>• {String(issue)}</li>
+                <li key={String(issue)} className="flex gap-2">
+                  <span aria-hidden>•</span>
+                  <span>{String(issue)}</span>
+                </li>
               ))}
             </ul>
           </div>
         )}
 
         {uploading && (
-          <p className="rounded-lg border border-[#D4AF37]/40 bg-[#D4AF37]/10 px-4 py-3 text-sm font-bold text-[#8a701d]">
+          <p className="rounded-xl border border-[#D4AF37]/35 bg-[#D4AF37]/10 px-4 py-3 text-sm font-semibold text-[#8a701d]">
             A photo is still uploading — one moment…
           </p>
         )}
 
-        <div>
-          <h3 className="mb-2 font-display text-2xl text-[#303839]">Your details</h3>
+        <ReviewCard title="Your details">
           <div className="grid">
             {fields.map((field: any) => {
               const raw = values[field.id];
@@ -144,10 +160,9 @@ export default function CustomizerReviewStep({
               />
             )}
           </div>
-        </div>
+        </ReviewCard>
 
-        <div>
-          <h3 className="mb-2 font-display text-2xl text-[#303839]">Options</h3>
+        <ReviewCard title="Options">
           <div className="grid">
             {optionEntries.map(([key, value]) => (
               <DetailRow key={key} label={OPTION_LABELS[key] || key.charAt(0).toUpperCase() + key.slice(1)} value={String(value)} />
@@ -155,15 +170,15 @@ export default function CustomizerReviewStep({
             <DetailRow label="Logo on back" value={options?.logo ? "Yes" : "No"} />
             <DetailRow label="Quantity" value={quantity} />
           </div>
-        </div>
+        </ReviewCard>
 
-        <div className="rounded-lg bg-[#F8F6F1] p-4">
-          <div className="grid gap-1 text-sm">
-            <div className="flex justify-between text-[#303839]/70">
+        <div className="rounded-xl border border-[#303839]/8 bg-[#F0EDED] p-5">
+          <div className="grid gap-1.5 text-sm tabular-nums">
+            <div className="flex justify-between text-[#303839]/60">
               <span>Base price</span>
               <span>{formatCurrency(basePrice, currency)}</span>
             </div>
-            <div className="flex justify-between text-[#303839]/70">
+            <div className="flex justify-between text-[#303839]/60">
               <span>Option upgrades</span>
               <span>{optionsSurcharge > 0 ? `+${formatCurrency(optionsSurcharge, currency)}` : formatCurrency(0, currency)}</span>
             </div>
@@ -171,27 +186,27 @@ export default function CustomizerReviewStep({
               <span>Unit price</span>
               <span>{formatCurrency(unitPrice, currency)}</span>
             </div>
-            <div className="mt-1 flex justify-between border-t border-[#303839]/12 pt-2 text-base font-extrabold text-[#303839]">
-              <span>Total ({quantity})</span>
-              <span>{formatCurrency(lineTotal, currency)}</span>
+            <div className="mt-2 flex items-baseline justify-between border-t border-[#303839]/10 pt-3">
+              <span className="text-sm font-semibold text-[#303839]">Total ({quantity})</span>
+              <span className="font-display text-[26px] leading-none text-[#303839]">{formatCurrency(lineTotal, currency)}</span>
             </div>
           </div>
         </div>
 
         {requireApproval && (
-          <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-[#303839]/15 bg-[#F8F6F1] p-4 text-sm">
+          <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-[#303839]/10 bg-white p-4 text-sm transition-colors hover:border-[#303839]/25 has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-[#D4AF37]">
             <input
               type="checkbox"
               checked={Boolean(approved)}
               onChange={(e) => onApprove(e.target.checked)}
-              className="mt-0.5 h-4 w-4 accent-[#303839]"
+              className="mt-0.5 h-4 w-4 shrink-0 accent-[#303839]"
             />
-            <span className="font-semibold text-[#303839]">{APPROVAL_TEXT}</span>
+            <span className="font-medium leading-snug text-[#303839]">{APPROVAL_TEXT}</span>
           </label>
         )}
 
         {saveStatus === "error" && (
-          <p className="text-sm font-bold text-red-700" role="alert">
+          <p className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700" role="alert">
             Your latest changes could not be saved. Please try again before adding to cart.
           </p>
         )}

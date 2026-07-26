@@ -25,7 +25,7 @@ export default function CustomerGridToolbar({
   const width = Number(slot?.metadata?.width) || 0;
   const height = Number(slot?.metadata?.height) || 0;
   const quality = Math.min(width, height) >= 1200 ? "High quality" : width && height ? "Check resolution" : "";
-  const button = "grid min-h-11 min-w-11 cursor-pointer place-items-center rounded-lg border border-[#303839]/12 bg-white px-3 text-xs font-bold text-[#303839] shadow-sm transition-colors hover:border-[#D4AF37] hover:bg-[#F8F6F1] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37]";
+  const button = "grid min-h-11 min-w-11 cursor-pointer place-items-center rounded-lg border border-[#303839]/12 bg-white px-3 text-xs font-bold text-[#303839] shadow-sm transition-colors hover:border-[#D4AF37] hover:bg-[#303839]/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37]";
 
   if (!slot) return null;
 

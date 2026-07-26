@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 
-export default function ServerCustomizationImage({ customizationId, outputPageId, fallbackSrc, alt, className = "h-full w-full object-cover", containerClassName = "relative overflow-hidden bg-[#F8F6F1]" }: any) {
+export default function ServerCustomizationImage({ customizationId, outputPageId, fallbackSrc, alt, className = "h-full w-full object-cover", containerClassName = "relative overflow-hidden bg-white" }: any) {
   const [src, setSrc] = useState(fallbackSrc || "/images/weddings.png");
   const [loading, setLoading] = useState(Boolean(customizationId));
 

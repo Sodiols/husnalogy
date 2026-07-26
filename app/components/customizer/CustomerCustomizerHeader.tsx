@@ -19,7 +19,7 @@ function IconButton({ label, onClick, disabled, children }: any) {
       title={label}
       onClick={onClick}
       disabled={disabled}
-      className="grid h-11 w-11 place-items-center rounded-full text-[#303839] transition hover:bg-[#F8F6F1] disabled:opacity-35 disabled:hover:bg-transparent"
+      className="grid h-10 w-10 place-items-center rounded-lg text-[#303839]/70 transition-colors hover:bg-[#303839]/5 hover:text-[#303839] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] disabled:opacity-30 disabled:hover:bg-transparent"
     >
       {children}
     </button>
@@ -102,9 +102,9 @@ export default function CustomerCustomizerHeader({
 }: Props) {
   return (
     <>
-    <header className="relative z-40 flex h-16 shrink-0 items-center justify-between gap-2 border-b border-[#303839]/10 bg-white px-2 sm:px-4">
-      {/* Left */}
-      <div className="flex min-w-0 flex-1 items-center gap-1 sm:gap-2">
+    <header className="relative z-40 flex h-16 shrink-0 items-center justify-between gap-3 border-b border-[#303839]/8 bg-white px-3 sm:px-5">
+      {/* Left: exit, product identity, page, save status */}
+      <div className="flex min-w-0 flex-1 items-center gap-2">
         <IconButton label="Close customizer" onClick={onClose}>
           {CloseIcon}
         </IconButton>
@@ -112,26 +112,36 @@ export default function CustomerCustomizerHeader({
           type="button"
           onClick={onSaveExit}
           disabled={savingDraft || !restoreReady}
-          className="hidden min-h-11 whitespace-nowrap rounded-full border border-[#303839]/15 px-3.5 py-1.5 text-xs font-bold text-[#303839] transition hover:bg-[#F8F6F1] disabled:opacity-50 md:block"
+          className="hidden h-10 shrink-0 items-center whitespace-nowrap rounded-lg px-3 text-xs font-semibold text-[#303839]/70 transition-colors hover:bg-[#303839]/5 hover:text-[#303839] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] disabled:opacity-40 md:flex"
         >
           {savingDraft ? "Saving…" : "Save & Exit"}
         </button>
-        <h1 className="hidden min-w-0 truncate font-display text-lg text-[#303839] sm:block">{productTitle}</h1>
-        {activePageLabel && <span className="hidden shrink-0 rounded-full bg-[#F8F6F1] px-2.5 py-1 text-[10px] font-extrabold text-[#303839]/60 xl:inline">Page: {activePageLabel}</span>}
-        <span className="hidden h-5 w-px shrink-0 bg-[#303839]/15 lg:block" aria-hidden />
-        <span
-          className={`hidden items-center gap-1.5 whitespace-nowrap text-[11px] font-bold lg:flex ${
-            saveStatus === "error" ? "text-red-700" : "text-[#303839]/55"
-          }`}
-          aria-live="polite"
-        >
-          {saveStatus === "saved" && <span className="h-2 w-2 rounded-full bg-emerald-500" aria-hidden />}
-          {saveStatusLabel}
-        </span>
+        <span className="hidden h-6 w-px shrink-0 bg-[#303839]/10 md:block" aria-hidden />
+        <div className="hidden min-w-0 sm:block">
+          <h1 className="min-w-0 truncate font-display text-[19px] leading-tight text-[#303839]">{productTitle}</h1>
+          <div className="flex items-center gap-2 text-[11px] leading-tight">
+            {activePageLabel && <span className="shrink-0 font-semibold text-[#303839]/45">{activePageLabel}</span>}
+            {activePageLabel && (
+              <span className="hidden h-2.5 w-px shrink-0 bg-[#303839]/15 lg:block" aria-hidden />
+            )}
+            <span
+              className={`hidden items-center gap-1.5 whitespace-nowrap font-semibold lg:flex ${
+                saveStatus === "error" ? "text-red-600" : "text-[#303839]/45"
+              }`}
+              aria-live="polite"
+            >
+              {saveStatus === "saved" && <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" aria-hidden />}
+              {saveStatusLabel}
+            </span>
+          </div>
+        </div>
       </div>
 
-      {/* Centre tabs */}
-      <nav className="flex h-full shrink-0 items-stretch" aria-label="Customizer steps">
+      {/* Centre: segmented step control */}
+      <nav
+        className="flex shrink-0 items-center gap-0.5 rounded-full bg-[#F0EDED] p-1"
+        aria-label="Customizer steps"
+      >
         {STEPS.map((s) => {
           const active = step === s.id;
           const locked = s.id === "review" && !canEnterReview && !active;
@@ -141,27 +151,23 @@ export default function CustomerCustomizerHeader({
               type="button"
               onClick={() => onStepChange(s.id)}
               aria-current={active ? "step" : undefined}
-              className={`relative px-3 text-sm transition sm:px-5 ${
+              className={`rounded-full px-3.5 py-1.5 text-[13px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] sm:px-5 ${
                 active
-                  ? "font-bold text-[#303839]"
+                  ? "bg-white font-bold text-[#303839] shadow-[0_1px_3px_rgba(48,56,57,0.10)]"
                   : locked
                     ? "font-semibold text-[#303839]/30"
                     : "font-semibold text-[#303839]/55 hover:text-[#303839]"
               }`}
             >
               {s.label}
-              <span
-                aria-hidden
-                className={`absolute inset-x-3 bottom-0 h-[2px] transition sm:inset-x-5 ${active ? "bg-[#303839]" : "bg-transparent"}`}
-              />
             </button>
           );
         })}
       </nav>
 
-      {/* Right */}
-      <div className="flex flex-1 items-center justify-end gap-1 sm:gap-2">
-        <div className="hidden items-center sm:flex">
+      {/* Right: history, preview, help, primary action */}
+      <div className="flex flex-1 items-center justify-end gap-1.5">
+        <div className="hidden items-center gap-0.5 sm:flex">
           <IconButton label="Undo" onClick={onUndo} disabled={!canUndo}>
             {UndoIcon}
           </IconButton>
@@ -169,14 +175,15 @@ export default function CustomerCustomizerHeader({
             {RedoIcon}
           </IconButton>
         </div>
-        <span className="hidden h-5 w-px bg-[#303839]/15 sm:block" aria-hidden />
+        <span className="hidden h-6 w-px bg-[#303839]/10 sm:block" aria-hidden />
         <button
           type="button"
           onClick={onTogglePreview}
-          className={`hidden min-h-11 items-center gap-1.5 rounded-full px-3.5 py-1.5 text-xs font-bold transition sm:flex ${
+          aria-pressed={previewMode}
+          className={`hidden h-10 items-center gap-1.5 rounded-lg px-3 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] sm:flex ${
             previewMode
-              ? "bg-[#303839] text-white"
-              : "border border-[#303839]/15 text-[#303839] hover:bg-[#F8F6F1]"
+              ? "bg-[#303839] text-white hover:bg-[#414b4c]"
+              : "text-[#303839]/70 hover:bg-[#303839]/5 hover:text-[#303839]"
           }`}
         >
           {EyeIcon}
@@ -184,29 +191,43 @@ export default function CustomerCustomizerHeader({
         </button>
         {onHelp && (
           <div className="hidden lg:block">
-            <IconButton label="Help and keyboard shortcuts" onClick={onHelp}>?</IconButton>
+            <IconButton label="Help and keyboard shortcuts" onClick={onHelp}>
+              <span className="text-sm font-bold">?</span>
+            </IconButton>
           </div>
         )}
         <button
           type="button"
           onClick={onPrimary}
           disabled={primaryDisabled}
-          className="min-h-11 whitespace-nowrap rounded-full bg-[#303839] px-4 py-2 text-xs font-bold text-white transition hover:bg-[#434c4d] disabled:opacity-50 sm:px-5 sm:text-sm"
+          className="ml-0.5 flex h-10 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full bg-[#303839] px-4 text-xs font-bold text-white transition-colors hover:bg-[#414b4c] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] focus-visible:ring-offset-2 disabled:opacity-40 sm:px-5 sm:text-[13px]"
         >
           {primaryLabel}
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+            <path d="m9 6 6 6-6 6" />
+          </svg>
         </button>
       </div>
     </header>
 
-    <div className="relative z-40 flex h-12 shrink-0 items-center justify-between border-b border-[#303839]/10 bg-white px-3 sm:hidden">
-      <button
-        type="button"
-        onClick={onSaveExit}
-        disabled={savingDraft || !restoreReady}
-        className="min-h-11 rounded-full border border-[#303839]/15 px-3 py-1.5 text-xs font-bold text-[#303839] transition hover:bg-[#F8F6F1] disabled:opacity-50"
-      >
-        {savingDraft ? "Saving…" : "Save & Exit"}
-      </button>
+    {/* Mobile secondary bar: identity + actions that do not fit the main row */}
+    <div className="relative z-40 flex h-12 shrink-0 items-center justify-between gap-2 border-b border-[#303839]/8 bg-white px-3 sm:hidden">
+      <div className="flex min-w-0 items-center gap-2">
+        <button
+          type="button"
+          onClick={onSaveExit}
+          disabled={savingDraft || !restoreReady}
+          className="h-9 shrink-0 rounded-lg px-2.5 text-xs font-semibold text-[#303839]/70 transition-colors hover:bg-[#303839]/5 hover:text-[#303839] disabled:opacity-40"
+        >
+          {savingDraft ? "Saving…" : "Save & Exit"}
+        </button>
+        <span
+          className={`min-w-0 truncate text-[11px] font-semibold ${saveStatus === "error" ? "text-red-600" : "text-[#303839]/45"}`}
+          aria-live="polite"
+        >
+          {saveStatusLabel}
+        </span>
+      </div>
       <div className="flex items-center">
         <IconButton label="Undo" onClick={onUndo} disabled={!canUndo}>
           {UndoIcon}

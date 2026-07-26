@@ -91,7 +91,7 @@ export default function CustomerLayersPanel({ layers, selectedIds, selectedGridS
     const canReorder = !locked && !layer.customerInteractionDisabled
       && (layer.isUserLayer || (layer.customerEditable && layer.customerPermissions?.changeLayerOrder !== false));
     const selectedSurface = selected ? "border-[#303839] bg-[#303839] text-white" : "border-[#303839]/10 bg-white text-[#303839]";
-    const quietButton = selected ? "hover:bg-white/10" : "hover:bg-[#F8F6F1]";
+    const quietButton = selected ? "hover:bg-white/10" : "hover:bg-[#303839]/5";
     return (
       <div key={layer.id} className="grid gap-1.5">
         <article
@@ -134,7 +134,7 @@ export default function CustomerLayersPanel({ layers, selectedIds, selectedGridS
               }}
               className="flex min-h-11 min-w-0 flex-1 items-center gap-2 text-left"
             >
-              <span className={`grid h-9 w-9 shrink-0 place-items-center rounded-lg text-[8px] font-black ${selected ? "bg-white/12" : "bg-[#F8F6F1]"}`}>{typeLabel[layer.type] || "OB"}</span>
+              <span className={`grid h-9 w-9 shrink-0 place-items-center rounded-lg text-[8px] font-black ${selected ? "bg-white/12" : "bg-white"}`}>{typeLabel[layer.type] || "OB"}</span>
               <span className="min-w-0 flex-1">
                 {renaming === layer.id ? (
                   <input autoFocus value={name} onChange={(event) => setName(event.target.value)} onBlur={() => commit(layer)} onKeyDown={(event) => { if (event.key === "Enter") commit(layer); if (event.key === "Escape") setRenaming(null); }} onClick={(event) => event.stopPropagation()} className="h-9 w-full rounded-md bg-white px-2 text-xs text-[#303839]" aria-label="Layer name" />
@@ -153,8 +153,8 @@ export default function CustomerLayersPanel({ layers, selectedIds, selectedGridS
           </div>
         </article>
         {!isCollapsed && layer.type === "grid" && (layer.slots || []).map((slot: any, index: number) => (
-          <button key={slot.id} type="button" aria-pressed={selectedGridSlotId === slot.id} onClick={() => { onSelectionChange(layer.id, false); onGridSlotSelect?.(layer.id, slot.id); }} className={`ml-7 flex min-h-11 items-center gap-2 rounded-lg border px-3 text-left text-[10px] font-bold ${selectedGridSlotId === slot.id ? "border-[#D4AF37] bg-[#F8F6F1] text-[#303839]" : "border-[#303839]/8 bg-white text-[#303839]/60"}`} style={{ marginLeft: 28 + depth * 14 }}>
-            <span className="grid h-7 w-7 place-items-center rounded-md bg-[#F8F6F1]">{index + 1}</span>
+          <button key={slot.id} type="button" aria-pressed={selectedGridSlotId === slot.id} onClick={() => { onSelectionChange(layer.id, false); onGridSlotSelect?.(layer.id, slot.id); }} className={`ml-7 flex min-h-11 items-center gap-2 rounded-lg border px-3 text-left text-[10px] font-bold ${selectedGridSlotId === slot.id ? "border-[#D4AF37] bg-white text-[#303839]" : "border-[#303839]/8 bg-white text-[#303839]/60"}`} style={{ marginLeft: 28 + depth * 14 }}>
+            <span className="grid h-7 w-7 place-items-center rounded-md bg-white">{index + 1}</span>
             <span>{slot.src || slot.assetId ? `Photo slot ${index + 1}` : `Empty slot ${index + 1}`}</span>
           </button>
         ))}
@@ -165,7 +165,7 @@ export default function CustomerLayersPanel({ layers, selectedIds, selectedGridS
 
   const roots = byParent.get("") || [];
   return (
-    <div className="grid gap-3 p-3" aria-label="Customer layers">
+    <div className="grid gap-3 p-4" aria-label="Customer layers">
       <div>
         <label htmlFor="customer-layer-search" className="mb-1.5 block text-[10px] font-extrabold uppercase tracking-[0.12em] text-[#303839]/50">Find a layer</label>
         <div className="relative">
@@ -176,12 +176,12 @@ export default function CustomerLayersPanel({ layers, selectedIds, selectedGridS
       </div>
       <div className="flex flex-wrap gap-1.5" role="toolbar" aria-label="Layer order">
         {orderActions.map(([action, label]) => (
-          <button key={action} type="button" disabled={!selectedIds.length} onClick={() => onArrange(action)} className="min-h-11 flex-1 rounded-lg border border-[#303839]/12 bg-white px-2 text-[10px] font-extrabold text-[#303839] transition hover:border-[#D4AF37] hover:bg-[#F8F6F1] disabled:opacity-35">{label}</button>
+          <button key={action} type="button" disabled={!selectedIds.length} onClick={() => onArrange(action)} className="min-h-11 flex-1 rounded-lg border border-[#303839]/12 bg-white px-2 text-[10px] font-extrabold text-[#303839] transition hover:border-[#D4AF37] hover:bg-[#303839]/5 disabled:opacity-35">{label}</button>
         ))}
       </div>
       <p className="text-[10px] leading-4 text-[#303839]/45">Drag unlocked layers to reorder. Double-click a customer layer name to rename it.</p>
       <div className="grid gap-1.5">{roots.map((layer) => renderLayer(layer))}</div>
-      {!visibleLayers.length && <p className="rounded-xl bg-[#F8F6F1] p-4 text-xs leading-5 text-[#303839]/55">{query ? "No customer-visible layers match this search." : "This template has no customer-visible layers on this page."}</p>}
+      {!visibleLayers.length && <p className="rounded-xl bg-white p-4 text-xs leading-5 text-[#303839]/55">{query ? "No customer-visible layers match this search." : "This template has no customer-visible layers on this page."}</p>}
     </div>
   );
 }

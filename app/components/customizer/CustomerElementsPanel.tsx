@@ -133,7 +133,7 @@ export default function CustomerElementsPanel({ onInsertElement, allowedElementI
           onClick={() => insert(element)}
           title={`Insert ${element.title}`}
           aria-label={`Insert ${element.title}`}
-          className="h-full w-full overflow-hidden rounded-lg border border-[#303839]/10 bg-white p-2 transition hover:border-[#D4AF37] hover:bg-[#F8F6F1] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#D4AF37]"
+          className="h-full w-full overflow-hidden rounded-lg border border-[#303839]/10 bg-white p-2 transition hover:border-[#D4AF37] hover:bg-[#303839]/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#D4AF37]"
         >
           <img src={element.url} alt={element.title} loading="lazy" draggable={false} className="h-full w-full object-contain transition group-hover:scale-105" />
         </button>
@@ -177,7 +177,7 @@ export default function CustomerElementsPanel({ onInsertElement, allowedElementI
   return (
     <div className="flex h-full flex-col gap-3 p-4">
       {adminMode && (
-        <div className="rounded-xl border border-[#D4AF37]/35 bg-[#F8F6F1] p-2.5">
+        <div className="rounded-xl border border-[#D4AF37]/35 bg-white p-2.5">
           <div className="flex items-center gap-2">
             <button type="button" disabled={uploading} onClick={() => fileRef.current?.click()} className="min-h-11 flex-1 rounded-lg bg-[#303839] px-3 text-xs font-extrabold text-white transition hover:bg-[#434c4d] disabled:cursor-not-allowed disabled:opacity-50">
               {uploading ? `Uploading ${uploadProgress}%` : "Upload to library"}
@@ -214,7 +214,7 @@ export default function CustomerElementsPanel({ onInsertElement, allowedElementI
               setPage(1);
             }}
             className={`shrink-0 rounded-full px-3 py-1 text-xs font-bold transition ${
-              !category ? "bg-[#303839] text-white" : "bg-[#F8F6F1] text-[#303839] hover:bg-[#ECE9E1]"
+              !category ? "bg-[#303839] text-white" : "bg-white text-[#303839] hover:bg-[#ECE9E1]"
             }`}
           >
             All
@@ -230,7 +230,7 @@ export default function CustomerElementsPanel({ onInsertElement, allowedElementI
                 setPage(1);
               }}
               className={`shrink-0 rounded-full px-3 py-1 text-xs font-bold transition ${
-                category === cat.id ? "bg-[#303839] text-white" : "bg-[#F8F6F1] text-[#303839] hover:bg-[#ECE9E1]"
+                category === cat.id ? "bg-[#303839] text-white" : "bg-white text-[#303839] hover:bg-[#ECE9E1]"
               }`}
             >
               {cat.name}
@@ -262,7 +262,7 @@ export default function CustomerElementsPanel({ onInsertElement, allowedElementI
       {loading && page === 1 ? (
         <div className="grid grid-cols-3 gap-2">
           {Array.from({ length: 9 }).map((_, index) => (
-            <div key={index} className="aspect-square animate-pulse rounded-lg bg-[#F8F6F1]" aria-hidden />
+            <div key={index} className="aspect-square animate-pulse rounded-lg bg-white" aria-hidden />
           ))}
         </div>
       ) : elements.length === 0 ? (
@@ -277,7 +277,7 @@ export default function CustomerElementsPanel({ onInsertElement, allowedElementI
         <button
           type="button"
           onClick={() => setPage((current) => current + 1)}
-          className="rounded-full border border-[#303839]/15 px-4 py-1.5 text-xs font-bold text-[#303839] hover:bg-[#F8F6F1]"
+          className="rounded-full border border-[#303839]/15 px-4 py-1.5 text-xs font-bold text-[#303839] hover:bg-[#303839]/5"
         >
           Load more
         </button>

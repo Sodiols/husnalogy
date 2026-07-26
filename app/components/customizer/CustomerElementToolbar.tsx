@@ -26,7 +26,7 @@ export default function CustomerElementToolbar({ layer, onPatch, onDuplicate, on
 
       {layer.tintColor !== undefined && layer.tintColor !== "" && (
         <label
-          className="relative grid h-8 w-8 shrink-0 cursor-pointer place-items-center rounded-md border border-[#303839]/12 hover:bg-[#F8F6F1]"
+          className="relative grid h-8 w-8 shrink-0 cursor-pointer place-items-center rounded-md border border-[#303839]/12 hover:bg-[#303839]/5"
           title="Element colour"
         >
           <span className="sr-only">Element colour</span>
@@ -41,7 +41,7 @@ export default function CustomerElementToolbar({ layer, onPatch, onDuplicate, on
         </label>
       )}
 
-      <EditableNumericStepper label="Element opacity" value={Math.round((layer.opacity === undefined ? 1 : Number(layer.opacity)) * 100)} minimum={10} maximum={100} step={5} largeStep={25} allowNegative={false} allowDecimal={false} formatValue={(value) => `${Math.round(value)}%`} onCommit={(value) => onPatch({ opacity: value / 100 }, "element-opacity")} showLabel className="h-12 w-32 shrink-0 rounded-lg bg-[#F8F6F1] px-1" />
+      <EditableNumericStepper label="Element opacity" value={Math.round((layer.opacity === undefined ? 1 : Number(layer.opacity)) * 100)} minimum={10} maximum={100} step={5} largeStep={25} allowNegative={false} allowDecimal={false} formatValue={(value) => `${Math.round(value)}%`} onCommit={(value) => onPatch({ opacity: value / 100 }, "element-opacity")} showLabel className="h-12 w-32 shrink-0 rounded-lg bg-white px-1" />
 
       <button
         type="button"
@@ -49,7 +49,7 @@ export default function CustomerElementToolbar({ layer, onPatch, onDuplicate, on
         aria-pressed={Boolean(layer.flipX)}
         onClick={() => onPatch({ flipX: !layer.flipX })}
         className={`grid h-8 w-8 shrink-0 place-items-center rounded-md transition ${
-          layer.flipX ? "bg-[#303839] text-white" : "text-[#303839] hover:bg-[#F8F6F1]"
+          layer.flipX ? "bg-[#303839] text-white" : "text-[#303839] hover:bg-[#303839]/5"
         }`}
       >
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden>
@@ -62,7 +62,7 @@ export default function CustomerElementToolbar({ layer, onPatch, onDuplicate, on
         aria-pressed={Boolean(layer.flipY)}
         onClick={() => onPatch({ flipY: !layer.flipY })}
         className={`grid h-8 w-8 shrink-0 place-items-center rounded-md transition ${
-          layer.flipY ? "bg-[#303839] text-white" : "text-[#303839] hover:bg-[#F8F6F1]"
+          layer.flipY ? "bg-[#303839] text-white" : "text-[#303839] hover:bg-[#303839]/5"
         }`}
       >
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden>
@@ -76,7 +76,7 @@ export default function CustomerElementToolbar({ layer, onPatch, onDuplicate, on
         type="button"
         aria-label="Duplicate element"
         onClick={onDuplicate}
-        className="grid h-8 w-8 shrink-0 place-items-center rounded-md text-[#303839] hover:bg-[#F8F6F1]"
+        className="grid h-8 w-8 shrink-0 place-items-center rounded-md text-[#303839] hover:bg-[#303839]/5"
       >
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" aria-hidden>
           <rect x="9" y="9" width="12" height="12" rx="2" />

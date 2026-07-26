@@ -102,8 +102,8 @@ export default function CustomerToolRail({ tools, activeTool, onSelect, orientat
       aria-orientation={vertical ? "vertical" : "horizontal"}
       className={
         vertical
-          ? "flex w-[68px] shrink-0 flex-col items-stretch gap-1 border-r border-[#303839]/10 bg-white py-2"
-          : "flex w-full items-stretch gap-1 overflow-x-auto border-t border-[#303839]/10 bg-white px-1 py-1 [scrollbar-width:none]"
+          ? "flex w-[76px] shrink-0 flex-col items-stretch gap-0.5 overflow-y-auto border-r border-[#303839]/8 bg-white py-2 [scrollbar-width:none]"
+          : "flex w-full items-stretch gap-1 overflow-x-auto border-t border-[#303839]/8 bg-white px-2 py-1.5 [scrollbar-width:none]"
       }
     >
       {tools.map((tool) => {
@@ -115,14 +115,21 @@ export default function CustomerToolRail({ tools, activeTool, onSelect, orientat
             aria-label={tool.label}
             aria-pressed={active}
             onClick={() => onSelect(tool.id)}
-            className={`flex flex-col items-center gap-1 rounded-lg px-1 py-2.5 text-[10px] font-bold transition ${
+            className={`group relative flex flex-col items-center justify-center gap-1.5 rounded-xl text-[10px] font-semibold leading-none transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] ${
               active
-                ? "bg-[#F8F6F1] text-[#303839]"
-                : "text-[#303839]/55 hover:bg-[#F8F6F1] hover:text-[#303839]"
-            } ${vertical ? "mx-1.5" : "min-w-[68px] flex-1"}`}
+                ? "bg-[#F0EDED] text-[#303839]"
+                : "text-[#303839]/50 hover:bg-[#303839]/5 hover:text-[#303839]"
+            } ${vertical ? "mx-2 min-h-[60px] px-1 py-2.5" : "min-h-[56px] min-w-[68px] flex-1 px-1 py-2"}`}
           >
-            <span className={active ? "text-[#303839]" : ""}>{RAIL_ICONS[tool.id]}</span>
-            {tool.label}
+            {/* Selected marker: a quiet accent rule, no glow */}
+            {active && vertical && (
+              <span className="absolute left-[-8px] top-1/2 h-6 w-[3px] -translate-y-1/2 rounded-full bg-[#D4AF37]" aria-hidden />
+            )}
+            {active && !vertical && (
+              <span className="absolute inset-x-3 top-[-6px] h-[3px] rounded-full bg-[#D4AF37]" aria-hidden />
+            )}
+            <span className={active ? "text-[#303839]" : "text-current"}>{RAIL_ICONS[tool.id]}</span>
+            <span className="text-center">{tool.label}</span>
           </button>
         );
       })}

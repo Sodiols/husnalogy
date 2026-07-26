@@ -110,7 +110,7 @@ function PhotoLibrary({ onPick, refreshKey }: { onPick: (asset: LibraryAsset) =>
       {loading ? (
         <div className="mt-2 grid grid-cols-4 gap-1.5">
           {Array.from({ length: 4 }).map((_, index) => (
-            <div key={index} className="aspect-square animate-pulse rounded-md bg-[#F8F6F1]" aria-hidden />
+            <div key={index} className="aspect-square animate-pulse rounded-md bg-white" aria-hidden />
           ))}
         </div>
       ) : assets.length === 0 ? (
@@ -133,7 +133,7 @@ function PhotoLibrary({ onPick, refreshKey }: { onPick: (asset: LibraryAsset) =>
                   }}
                   title={`Use ${asset.fileName}${asset.width ? ` (${asset.width}×${asset.height}px${quality.label ? ` · ${quality.label}` : ""})` : ""}`}
                   aria-label={`Use photo ${asset.fileName}`}
-                  className="block aspect-square w-full overflow-hidden rounded-md border border-[#303839]/10 bg-[#F8F6F1] transition hover:border-[#D4AF37] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#D4AF37]"
+                  className="block aspect-square w-full overflow-hidden rounded-md border border-[#303839]/10 bg-white transition hover:border-[#D4AF37] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#D4AF37]"
                 >
                   <img src={asset.thumbnailUrl || asset.url} alt={asset.fileName} loading="lazy" draggable={false} className="h-full w-full object-cover" />
                 </button>
@@ -216,7 +216,7 @@ function PhotoCard({ field, layer, value, error, busyGlobal, onChange, onUploadP
       </p>
 
       {!url ? (
-        <label className="mt-2 flex h-28 cursor-pointer flex-col items-center justify-center gap-1 rounded-md border border-dashed border-[#303839]/25 bg-white text-xs font-bold text-[#303839]/60 transition hover:bg-[#F8F6F1]">
+        <label className="mt-2 flex h-28 cursor-pointer flex-col items-center justify-center gap-1 rounded-md border border-dashed border-[#303839]/25 bg-white text-xs font-bold text-[#303839]/60 transition hover:bg-[#303839]/5">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
             <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
             <path d="m17 8-5-5-5 5M12 3v12" />
@@ -236,12 +236,12 @@ function PhotoCard({ field, layer, value, error, busyGlobal, onChange, onUploadP
       ) : (
         <div className="mt-2">
           <div className="flex items-center gap-3">
-            <div className="h-16 w-16 shrink-0 overflow-hidden rounded-md border border-[#303839]/10 bg-[#F8F6F1]">
+            <div className="h-16 w-16 shrink-0 overflow-hidden rounded-md border border-[#303839]/10 bg-white">
               <img src={url} alt={field.label} className="h-full w-full object-cover" draggable={false} />
             </div>
             <div className="grid gap-1.5">
               {allowReplace && (
-                <label className="cursor-pointer rounded-full border border-[#303839]/15 bg-white px-3 py-1 text-center text-xs font-bold text-[#303839] hover:bg-[#F8F6F1]">
+                <label className="cursor-pointer rounded-full border border-[#303839]/15 bg-white px-3 py-1 text-center text-xs font-bold text-[#303839] hover:bg-[#303839]/5">
                   {busy ? progressText || "Uploading…" : "Replace photo"}
                   <input
                     type="file"
@@ -267,14 +267,14 @@ function PhotoCard({ field, layer, value, error, busyGlobal, onChange, onUploadP
 
           {allowZoom && (
             <div className="mt-3">
-              <EditableNumericStepper label={`Zoom ${field.label}`} value={Math.round((Number(value?.zoom) || 1) * 100)} minimum={100} maximum={300} step={5} largeStep={25} allowNegative={false} allowDecimal={false} formatValue={(next) => `${Math.round(next)}%`} onCommit={(next) => patch({ zoom: next / 100 })} showLabel className="h-12 w-full rounded-lg bg-[#F8F6F1] px-1" />
+              <EditableNumericStepper label={`Zoom ${field.label}`} value={Math.round((Number(value?.zoom) || 1) * 100)} minimum={100} maximum={300} step={5} largeStep={25} allowNegative={false} allowDecimal={false} formatValue={(next) => `${Math.round(next)}%`} onCommit={(next) => patch({ zoom: next / 100 })} showLabel className="h-12 w-full rounded-lg bg-white px-1" />
             </div>
           )}
 
           {allowReposition && (
             <div className="mt-2 grid grid-cols-2 gap-2">
-              <EditableNumericStepper label={`${field.label} X position`} value={Number(value?.offsetX) || 0} minimum={-10000} maximum={10000} step={1} largeStep={10} allowNegative allowDecimal={false} onCommit={(offsetX) => patch({ offsetX })} showLabel className="h-12 w-full rounded-lg bg-[#F8F6F1] px-1" />
-              <EditableNumericStepper label={`${field.label} Y position`} value={Number(value?.offsetY) || 0} minimum={-10000} maximum={10000} step={1} largeStep={10} allowNegative allowDecimal={false} onCommit={(offsetY) => patch({ offsetY })} showLabel className="h-12 w-full rounded-lg bg-[#F8F6F1] px-1" />
+              <EditableNumericStepper label={`${field.label} X position`} value={Number(value?.offsetX) || 0} minimum={-10000} maximum={10000} step={1} largeStep={10} allowNegative allowDecimal={false} onCommit={(offsetX) => patch({ offsetX })} showLabel className="h-12 w-full rounded-lg bg-white px-1" />
+              <EditableNumericStepper label={`${field.label} Y position`} value={Number(value?.offsetY) || 0} minimum={-10000} maximum={10000} step={1} largeStep={10} allowNegative allowDecimal={false} onCommit={(offsetY) => patch({ offsetY })} showLabel className="h-12 w-full rounded-lg bg-white px-1" />
             </div>
           )}
 
@@ -293,7 +293,7 @@ function PhotoCard({ field, layer, value, error, busyGlobal, onChange, onUploadP
                     type="button"
                     aria-label={btn.label}
                     onClick={() => nudge(btn.dx, btn.dy)}
-                    className="grid h-8 w-8 place-items-center rounded-md border border-[#303839]/12 text-[#303839] hover:bg-[#F8F6F1]"
+                    className="grid h-8 w-8 place-items-center rounded-md border border-[#303839]/12 text-[#303839] hover:bg-[#303839]/5"
                   >
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                       <path d={btn.d} />

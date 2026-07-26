@@ -145,7 +145,7 @@ function ActionButton({
       type="button"
       onClick={onClick}
       disabled={disabled}
-      className="flex min-h-11 cursor-pointer items-center gap-2 rounded-xl border border-[#303839]/10 bg-white px-3 text-left text-[11px] font-bold text-[#303839] transition-colors hover:border-[#303839]/20 hover:bg-[#F8F6F1] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] disabled:cursor-not-allowed disabled:bg-white disabled:text-[#303839]/30"
+      className="flex min-h-11 cursor-pointer items-center gap-2 rounded-xl border border-[#303839]/10 bg-white px-3 text-left text-[11px] font-bold text-[#303839] transition-colors hover:border-[#303839]/20 hover:bg-[#303839]/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] disabled:cursor-not-allowed disabled:bg-white disabled:text-[#303839]/30"
     >
       <svg
         width="16"
@@ -201,7 +201,7 @@ export default function CustomerSelectionPanel({
     <section
       data-customer-selection-panel
       aria-label="Selected item controls"
-      className="border-b border-[#303839]/10 bg-[#F8F6F1] px-4 py-4"
+      className="border-b border-[#303839]/10 bg-white px-4 py-4"
     >
       <div className="flex items-center justify-between gap-3">
         <div className="min-w-0">
@@ -489,7 +489,7 @@ export default function CustomerSelectionPanel({
                 key={item.action}
                 type="button"
                 onClick={() => onAlign(item.action)}
-                className="min-h-11 cursor-pointer rounded-xl border border-[#303839]/10 bg-white px-2 text-[10px] font-bold text-[#303839] transition-colors hover:bg-[#F8F6F1] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37]"
+                className="min-h-11 cursor-pointer rounded-xl border border-[#303839]/10 bg-white px-2 text-[10px] font-bold text-[#303839] transition-colors hover:bg-[#303839]/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37]"
               >
                 {item.label}
               </button>
@@ -500,14 +500,14 @@ export default function CustomerSelectionPanel({
               <button
                 type="button"
                 onClick={() => onAlign("distributeHorizontal")}
-                className="min-h-11 cursor-pointer rounded-xl border border-[#303839]/10 bg-white px-2 text-[10px] font-bold text-[#303839] hover:bg-[#F8F6F1] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37]"
+                className="min-h-11 cursor-pointer rounded-xl border border-[#303839]/10 bg-white px-2 text-[10px] font-bold text-[#303839] hover:bg-[#303839]/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37]"
               >
                 Distribute across
               </button>
               <button
                 type="button"
                 onClick={() => onAlign("distributeVertical")}
-                className="min-h-11 cursor-pointer rounded-xl border border-[#303839]/10 bg-white px-2 text-[10px] font-bold text-[#303839] hover:bg-[#F8F6F1] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37]"
+                className="min-h-11 cursor-pointer rounded-xl border border-[#303839]/10 bg-white px-2 text-[10px] font-bold text-[#303839] hover:bg-[#303839]/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37]"
               >
                 Distribute down
               </button>
@@ -521,7 +521,7 @@ export default function CustomerSelectionPanel({
           <button
             type="button"
             onClick={onGroup}
-            className="min-h-11 flex-1 cursor-pointer rounded-xl border border-[#303839]/10 bg-white px-3 text-xs font-bold text-[#303839] hover:bg-[#F8F6F1] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37]"
+            className="min-h-11 flex-1 cursor-pointer rounded-xl border border-[#303839]/10 bg-white px-3 text-xs font-bold text-[#303839] hover:bg-[#303839]/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37]"
           >
             Group
           </button>
@@ -530,7 +530,7 @@ export default function CustomerSelectionPanel({
           <button
             type="button"
             onClick={onUngroup}
-            className="min-h-11 flex-1 cursor-pointer rounded-xl border border-[#303839]/10 bg-white px-3 text-xs font-bold text-[#303839] hover:bg-[#F8F6F1] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37]"
+            className="min-h-11 flex-1 cursor-pointer rounded-xl border border-[#303839]/10 bg-white px-3 text-xs font-bold text-[#303839] hover:bg-[#303839]/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37]"
           >
             Ungroup
           </button>
@@ -538,7 +538,7 @@ export default function CustomerSelectionPanel({
         <button
           type="button"
           onClick={onDuplicate}
-          className="min-h-11 flex-1 cursor-pointer rounded-xl border border-[#303839]/10 bg-white px-3 text-xs font-bold text-[#303839] hover:bg-[#F8F6F1] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37]"
+          className="min-h-11 flex-1 cursor-pointer rounded-xl border border-[#303839]/10 bg-white px-3 text-xs font-bold text-[#303839] hover:bg-[#303839]/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37]"
         >
           Duplicate
         </button>

@@ -2075,7 +2075,7 @@ export default function PersonalizeClient({ product, template }: { product: any;
   );
 
   return (
-    <div data-customizer-root className="fixed inset-0 z-[100] flex flex-col bg-[#F8F6F1] text-[#303839]">
+    <div data-customizer-root className="fixed inset-0 z-[100] flex flex-col bg-[#F0EDED] text-[#303839]">
       <CustomerCustomizerHeader
         productTitle={product.title}
         activePageLabel={(template.pages || []).find((page: any) => page.id === activePage)?.label || activePage}
@@ -2144,14 +2144,16 @@ export default function PersonalizeClient({ product, template }: { product: any;
 
             {/* Left settings panel (desktop) */}
             {showPanels && isDesktop && (
-              <aside className="hidden w-[340px] shrink-0 flex-col overflow-y-auto border-r border-[#303839]/10 bg-white lg:flex">
-                <h2 className="border-b border-[#303839]/8 px-4 py-3 font-display text-xl text-[#303839]">{panelTitle}</h2>
-                <div className="min-h-0 flex-1 overflow-y-auto">{panelBody}</div>
+              <aside className="hidden w-[340px] shrink-0 flex-col overflow-hidden border-r border-[#303839]/8 bg-white lg:flex">
+                <div className="shrink-0 px-4 pb-2 pt-4">
+                  <h2 className="font-display text-[22px] leading-tight text-[#303839]">{panelTitle}</h2>
+                </div>
+                <div className="min-h-0 flex-1 overflow-y-auto [scrollbar-color:rgba(48,56,57,0.18)_transparent] [scrollbar-width:thin]">{panelBody}</div>
               </aside>
             )}
 
             {/* Central workspace */}
-            <main className="relative flex min-h-0 min-w-0 flex-1 flex-col" data-customizer-protected>
+            <main className="relative flex min-h-0 min-w-0 flex-1 flex-col bg-[#F0EDED]" data-customizer-protected>
               {(showTextToolbar || showElementToolbar || showImageToolbar || showGridToolbar) && (
                 <div
                   data-customer-toolbar-dock
@@ -2248,7 +2250,7 @@ export default function PersonalizeClient({ product, template }: { product: any;
                 {(productPreviewEditingEnabled || splitViewEnabled) && !previewMode && (
                   <div className="absolute right-3 top-3 z-30 flex rounded-xl border border-[#303839]/12 bg-white p-1 shadow-[0_8px_24px_rgba(48,56,57,0.12)] xl:hidden" role="group" aria-label="Workspace view">
                     {(["print", ...(productPreviewEditingEnabled ? ["product"] : []), ...(splitViewEnabled ? ["split"] : [])] as string[]).map((mode) => (
-                      <button key={mode} type="button" aria-pressed={workspaceMode === mode} onClick={() => setWorkspaceMode(mode as any)} className={`min-h-10 rounded-lg px-3 text-[10px] font-extrabold capitalize ${workspaceMode === mode ? "bg-[#303839] text-white" : "text-[#303839]/60 hover:bg-[#F8F6F1]"}`}>{mode === "print" ? "Print Canvas" : mode === "product" ? "Product Preview" : "Split View"}</button>
+                      <button key={mode} type="button" aria-pressed={workspaceMode === mode} onClick={() => setWorkspaceMode(mode as any)} className={`min-h-10 rounded-lg px-3 text-[10px] font-extrabold capitalize ${workspaceMode === mode ? "bg-[#303839] text-white" : "text-[#303839]/60 hover:bg-[#303839]/5"}`}>{mode === "print" ? "Print Canvas" : mode === "product" ? "Product Preview" : "Split View"}</button>
                     ))}
                   </div>
                 )}
@@ -2263,10 +2265,10 @@ export default function PersonalizeClient({ product, template }: { product: any;
               <div className="pointer-events-none absolute inset-x-0 bottom-3 z-30 flex items-end justify-center gap-2 px-3">
                 <div className="pointer-events-auto flex max-w-full items-center gap-2 overflow-x-auto rounded-full no-scrollbar">
                   {enabledPages.length > 1 && (
-                    <div className="hidden min-h-11 items-center rounded-full border border-[#303839]/12 bg-white px-1 shadow-[0_4px_18px_rgba(48,56,57,0.10)] md:flex" role="group" aria-label="Page navigation">
-                      <button type="button" aria-label="Previous page" disabled={pageIndex <= 0} onClick={() => onActivePageChange(enabledPages[Math.max(0, pageIndex - 1)].id)} className="grid h-10 w-10 place-items-center rounded-full text-[#303839] hover:bg-[#F8F6F1] disabled:opacity-25">‹</button>
-                      <span className="min-w-14 text-center text-[10px] font-extrabold tabular-nums text-[#303839]/60">{pageIndex + 1} / {enabledPages.length}</span>
-                      <button type="button" aria-label="Next page" disabled={pageIndex >= enabledPages.length - 1} onClick={() => onActivePageChange(enabledPages[Math.min(enabledPages.length - 1, pageIndex + 1)].id)} className="grid h-10 w-10 place-items-center rounded-full text-[#303839] hover:bg-[#F8F6F1] disabled:opacity-25">›</button>
+                    <div className="hidden min-h-11 items-center rounded-full border border-[#303839]/8 bg-white px-1 shadow-[0_2px_12px_rgba(48,56,57,0.08)] md:flex" role="group" aria-label="Page navigation">
+                      <button type="button" aria-label="Previous page" disabled={pageIndex <= 0} onClick={() => onActivePageChange(enabledPages[Math.max(0, pageIndex - 1)].id)} className="grid h-9 w-9 place-items-center rounded-full text-[#303839]/70 transition-colors hover:bg-[#303839]/5 hover:text-[#303839] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] disabled:opacity-25">‹</button>
+                      <span className="min-w-14 text-center text-[11px] font-bold tabular-nums text-[#303839]/50">{pageIndex + 1} / {enabledPages.length}</span>
+                      <button type="button" aria-label="Next page" disabled={pageIndex >= enabledPages.length - 1} onClick={() => onActivePageChange(enabledPages[Math.min(enabledPages.length - 1, pageIndex + 1)].id)} className="grid h-9 w-9 place-items-center rounded-full text-[#303839]/70 transition-colors hover:bg-[#303839]/5 hover:text-[#303839] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] disabled:opacity-25">›</button>
                     </div>
                   )}
                   <CustomizerZoomControls
@@ -2275,9 +2277,9 @@ export default function PersonalizeClient({ product, template }: { product: any;
                     onFit={() => setViewZoom(1)}
                   />
                   {(productPreviewEditingEnabled || splitViewEnabled) && !previewMode && (
-                    <div className="hidden min-h-11 items-center rounded-full border border-[#303839]/12 bg-white p-1 shadow-[0_4px_18px_rgba(48,56,57,0.10)] xl:flex" role="group" aria-label="Canvas view">
+                    <div className="hidden min-h-11 items-center gap-0.5 rounded-full border border-[#303839]/8 bg-white p-1 shadow-[0_2px_12px_rgba(48,56,57,0.08)] xl:flex" role="group" aria-label="Canvas view">
                       {(["print", ...(productPreviewEditingEnabled ? ["product"] : []), ...(splitViewEnabled ? ["split"] : [])] as string[]).map((mode) => (
-                        <button key={mode} type="button" aria-pressed={workspaceMode === mode} onClick={() => setWorkspaceMode(mode as any)} className={`min-h-9 rounded-full px-3 text-[10px] font-extrabold ${workspaceMode === mode ? "bg-[#303839] text-white" : "text-[#303839]/55 hover:bg-[#F8F6F1]"}`}>{mode === "print" ? "Print Canvas" : mode === "product" ? "Product Preview" : "Split View"}</button>
+                        <button key={mode} type="button" aria-pressed={workspaceMode === mode} onClick={() => setWorkspaceMode(mode as any)} className={`min-h-9 rounded-full px-3.5 text-[11px] font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] ${workspaceMode === mode ? "bg-[#303839] text-white" : "text-[#303839]/50 hover:bg-[#303839]/5 hover:text-[#303839]"}`}>{mode === "print" ? "Print Canvas" : mode === "product" ? "Product Preview" : "Split View"}</button>
                       ))}
                     </div>
                   )}
@@ -2302,7 +2304,8 @@ export default function PersonalizeClient({ product, template }: { product: any;
             </main>
 
             {/* Right page thumbnails (desktop) */}
-            <aside className="hidden w-[128px] shrink-0 overflow-y-auto border-l border-[#303839]/10 bg-white p-3 lg:block" data-customizer-protected>
+            <aside className="hidden w-[132px] shrink-0 overflow-y-auto border-l border-[#303839]/8 bg-white px-3 py-4 [scrollbar-color:rgba(48,56,57,0.18)_transparent] [scrollbar-width:thin] lg:block" data-customizer-protected>
+              <p className="mb-3 px-0.5 text-[10px] font-bold uppercase tracking-[0.12em] text-[#303839]/40">Pages</p>
               <CustomizerPageThumbnails
                 template={template}
                 values={values}
@@ -2319,7 +2322,7 @@ export default function PersonalizeClient({ product, template }: { product: any;
       {/* Mobile: horizontal thumbnails + bottom tool rail + slide-up panel */}
       {step !== "review" && !previewMode && !isDesktop && (
         <div className="lg:hidden">
-          <div className="overflow-x-auto border-t border-[#303839]/10 bg-white px-3 py-2 no-scrollbar" data-customizer-protected>
+          <div className="overflow-x-auto border-t border-[#303839]/8 bg-white px-3 py-2.5 no-scrollbar" data-customizer-protected>
             <CustomizerPageThumbnails
               template={template}
               values={values}
@@ -2346,14 +2349,18 @@ export default function PersonalizeClient({ product, template }: { product: any;
             }}
           />
           {mobilePanelOpen && (
-            <div className="fixed inset-x-0 bottom-0 z-50 max-h-[68vh] overflow-hidden rounded-t-2xl border-t border-[#303839]/12 bg-white shadow-[0_-12px_40px_rgba(48,56,57,0.18)]">
-              <div className="flex items-center justify-between border-b border-[#303839]/8 px-4 py-2.5">
-                <h2 className="font-display text-lg text-[#303839]">{panelTitle}</h2>
+            <div className="fixed inset-x-0 bottom-0 z-50 max-h-[68vh] overflow-hidden rounded-t-2xl border-t border-[#303839]/10 bg-white shadow-[0_-8px_32px_rgba(48,56,57,0.14)]">
+              {/* Drag affordance */}
+              <div className="flex justify-center pt-2" aria-hidden>
+                <span className="h-1 w-9 rounded-full bg-[#303839]/15" />
+              </div>
+              <div className="flex items-center justify-between gap-3 px-5 pb-3 pt-2">
+                <h2 className="min-w-0 truncate font-display text-xl text-[#303839]">{panelTitle}</h2>
                 <button
                   type="button"
                   aria-label="Close panel"
                   onClick={() => setMobilePanelOpen(false)}
-                  className="grid h-8 w-8 place-items-center rounded-full text-[#303839]/60 hover:bg-[#F8F6F1]"
+                  className="grid h-9 w-9 shrink-0 place-items-center rounded-lg text-[#303839]/50 transition-colors hover:bg-[#303839]/5 hover:text-[#303839] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37]"
                 >
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden>
                     <path d="M18 6 6 18M6 6l12 12" />

@@ -75,7 +75,7 @@ export default function CustomerMockupPreview({ template, values, editorState, c
         </div>
         {loading && <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-[#D4AF37]" aria-label="Updating preview" />}
       </div>
-      <div className="relative aspect-[4/3] overflow-hidden bg-[#F8F6F1]">
+      <div className="relative aspect-[4/3] overflow-hidden bg-white">
         {serverOutput ? (
           <img src={serverOutput.signedUrl} alt={`${view.name || "Product"} mockup`} className="absolute inset-0 h-full w-full object-contain" />
         ) : (
@@ -98,7 +98,7 @@ export default function CustomerMockupPreview({ template, values, editorState, c
       )}
       {config.views.length > 1 && (
         <div className="flex gap-1 overflow-x-auto p-2">
-          {config.views.map((item: any) => <button key={item.id} type="button" onClick={() => setViewId(item.id)} className={`min-h-9 whitespace-nowrap rounded-full px-3 text-[10px] font-bold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] ${item.id === view.id ? "bg-[#303839] text-white" : "bg-[#F8F6F1] text-[#303839]"}`}>{item.name}</button>)}
+          {config.views.map((item: any) => <button key={item.id} type="button" onClick={() => setViewId(item.id)} className={`min-h-9 whitespace-nowrap rounded-full px-3 text-[10px] font-bold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] ${item.id === view.id ? "bg-[#303839] text-white" : "bg-white text-[#303839]"}`}>{item.name}</button>)}
         </div>
       )}
     </aside>

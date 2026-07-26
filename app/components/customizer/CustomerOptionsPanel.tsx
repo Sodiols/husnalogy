@@ -67,10 +67,10 @@ function OptionButton({ option, active, onClick, currency, showImage = false, co
       type="button"
       onClick={onClick}
       aria-pressed={active}
-      className={`flex w-full items-center gap-3 rounded-lg border px-3 text-left transition ${compact ? "py-2" : "py-2.5"} ${
+      className={`flex w-full items-center gap-3 rounded-lg border px-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] ${compact ? "py-2" : "py-2.5"} ${
         active
           ? "border-[#303839] bg-[#303839] text-white"
-          : "border-[#303839]/12 bg-white text-[#303839] hover:bg-[#F8F6F1]"
+          : "border-[#303839]/10 bg-white text-[#303839] hover:border-[#303839]/25 hover:bg-[#303839]/5"
       }`}
     >
       {showImage && option.image && (
@@ -82,15 +82,20 @@ function OptionButton({ option, active, onClick, currency, showImage = false, co
           <Badge text={option.badge} />
         </span>
         {option.description && (
-          <span className={`mt-0.5 block text-xs ${active ? "text-white/70" : "text-[#303839]/55"}`}>
+          <span className={`mt-0.5 block text-xs leading-snug ${active ? "text-white/70" : "text-[#303839]/50"}`}>
             {option.description}
           </span>
         )}
       </span>
       {option.surcharge > 0 && (
-        <span className={`shrink-0 text-xs font-bold ${active ? "text-white/85" : "text-[#303839]/60"}`}>
+        <span className={`shrink-0 text-xs font-bold tabular-nums ${active ? "text-white/85" : "text-[#303839]/55"}`}>
           {formatCurrencySurcharge(option.surcharge, currency)}
         </span>
+      )}
+      {active && (
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="shrink-0" aria-hidden>
+          <path d="m20 6-11 11-5-5" />
+        </svg>
       )}
     </button>
   );
@@ -115,7 +120,7 @@ function OptionGroup({ title, options, value, onChange, currency, showImage = fa
   if (corner) {
     return (
       <div>
-        <h4 className="mb-2 text-xs font-extrabold uppercase tracking-wide text-[#303839]">{title}</h4>
+        <h4 className="mb-2.5 text-[11px] font-bold uppercase tracking-[0.11em] text-[#303839]/45">{title}</h4>
         <div className="grid grid-cols-3 gap-2">
           {options.map((option) => (
             <button
@@ -123,10 +128,10 @@ function OptionGroup({ title, options, value, onChange, currency, showImage = fa
               type="button"
               onClick={() => onChange(localizedCartValue(option, currency))}
               aria-pressed={isActive(option)}
-              className={`flex flex-col items-center gap-1.5 rounded-lg border px-2 py-2.5 transition ${
+              className={`flex flex-col items-center gap-1.5 rounded-lg border px-2 py-2.5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] ${
                 isActive(option)
                   ? "border-[#303839] bg-[#303839] text-white"
-                  : "border-[#303839]/12 bg-white text-[#303839] hover:bg-[#F8F6F1]"
+                  : "border-[#303839]/10 bg-white text-[#303839] hover:border-[#303839]/25 hover:bg-[#303839]/5"
               }`}
             >
               <CornerPreview option={option} />
@@ -200,7 +205,7 @@ export default function CustomerOptionsPanel({
   }, [product.quantityOptions]);
 
   return (
-    <div className="grid gap-6 p-4">
+    <div className="grid gap-7 px-4 pb-4 pt-1">
       <OptionGroup title="Choose Your Format" options={formatOptions} value={options.format} onChange={(v) => onOptionChange("format", v)} currency={currency} />
       <OptionGroup title="Size" options={sizeOptions} value={options.size} onChange={(v) => onOptionChange("size", v)} currency={currency} />
       <OptionGroup title="Envelopes" options={envelopeOptions} value={options.envelope} onChange={(v) => onOptionChange("envelope", v)} currency={currency} showImage />
@@ -220,10 +225,10 @@ export default function CustomerOptionsPanel({
                 type="button"
                 aria-pressed={active}
                 onClick={() => onQuantityChange(Number(q) || 1)}
-                className={`min-w-[56px] rounded-lg border px-3 py-2 text-sm font-bold transition ${
+                className={`min-w-[56px] rounded-lg border px-3 py-2 text-sm font-bold tabular-nums transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] ${
                   active
                     ? "border-[#303839] bg-[#303839] text-white"
-                    : "border-[#303839]/12 bg-white text-[#303839] hover:bg-[#F8F6F1]"
+                    : "border-[#303839]/10 bg-white text-[#303839] hover:border-[#303839]/25 hover:bg-[#303839]/5"
                 }`}
               >
                 {q}
@@ -240,23 +245,25 @@ export default function CustomerOptionsPanel({
           role="switch"
           aria-checked={Boolean(options.logo)}
           onClick={() => onOptionChange("logo", !options.logo)}
-          className={`flex w-full items-center justify-between rounded-lg border px-3 py-3 text-sm transition ${
-            options.logo ? "border-[#303839] bg-[#303839] text-white" : "border-[#303839]/12 bg-white text-[#303839] hover:bg-[#F8F6F1]"
+          className={`flex w-full items-center justify-between gap-3 rounded-lg border px-3 py-3 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] ${
+            options.logo ? "border-[#303839] bg-[#303839] text-white" : "border-[#303839]/10 bg-white text-[#303839] hover:border-[#303839]/25 hover:bg-[#303839]/5"
           }`}
         >
-          <span className="font-bold">Add subtle logo to back of card</span>
-          <span className={`relative h-6 w-11 rounded-full transition ${options.logo ? "bg-white" : "bg-[#303839]/25"}`} aria-hidden>
-            <span className={`absolute top-1 h-4 w-4 rounded-full transition ${options.logo ? "left-6 bg-[#303839]" : "left-1 bg-white"}`} />
+          <span className="text-left font-semibold">Add subtle logo to back of card</span>
+          <span className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${options.logo ? "bg-white" : "bg-[#303839]/20"}`} aria-hidden>
+            <span className={`absolute top-1 h-4 w-4 rounded-full transition-all ${options.logo ? "left-6 bg-[#303839]" : "left-1 bg-white"}`} />
           </span>
         </button>
       </div>
 
-      <div className="sticky bottom-0 -mx-4 -mb-4 border-t border-[#303839]/10 bg-white px-4 py-3">
-        <div className="flex items-center justify-between text-sm">
-          <span className="text-[#303839]/60">
+      <div className="sticky bottom-0 -mx-4 -mb-4 border-t border-[#303839]/8 bg-white px-4 py-3.5">
+        <div className="flex items-baseline justify-between gap-3">
+          <span className="text-xs font-medium text-[#303839]/50 tabular-nums">
             {quantity} × {formatCurrency(unitPrice, currency)}
           </span>
-          <span className="font-extrabold text-[#303839]">{formatCurrency(unitPrice * quantity, currency)}</span>
+          <span className="font-display text-[22px] leading-none text-[#303839] tabular-nums">
+            {formatCurrency(unitPrice * quantity, currency)}
+          </span>
         </div>
       </div>
     </div>
