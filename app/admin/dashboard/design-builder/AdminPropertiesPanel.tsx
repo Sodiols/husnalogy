@@ -7,6 +7,7 @@ import { useRef, useState } from "react";
 import { getConnectedField, uploadBuilderImage } from "./builder-utils";
 import { customerEditablePermissionBundle } from "@/lib/customizer";
 import EditableNumericStepper from "@/app/components/customizer/EditableNumericStepper";
+import { getTextAutoSizeMode } from "@/lib/customizer/v2/text-layout";
 
 const controlClass = "h-11 w-full rounded-xl border border-[#303839]/12 bg-white px-3 text-sm text-[#303839] outline-none transition-colors hover:border-[#303839]/25 focus:border-[#D4AF37] focus:ring-2 focus:ring-[#D4AF37]/20";
 
@@ -271,19 +272,25 @@ export default function AdminPropertiesPanel({
           </div>
           <div className="grid grid-cols-2 gap-2">
             <div>
-              <Lbl>Fit mode</Lbl>
+              <Lbl>Text sizing</Lbl>
               <Sel
-                ariaLabel="Text fit mode"
-                value={style.fitMode || "fixed"}
-                onChange={(v: string) => onStylePatch(layer.id, { fitMode: v })}
+                ariaLabel="Text sizing"
+                value={getTextAutoSizeMode(style)}
+                // fitMode is kept in sync so the layout engine and every legacy
+                // path keep behaving exactly as before.
+                onChange={(v: string) => onStylePatch(layer.id, {
+                  autoSizeMode: v,
+                  fitMode: v === "height" ? "auto-height" : v === "shrink" ? "shrink" : "fixed",
+                })}
                 options={[
-                  { value: "fixed", label: "Fixed size" },
+                  { value: "width", label: "Auto width (single line)" },
+                  { value: "fixed", label: "Fixed width" },
+                  { value: "height", label: "Auto height" },
                   { value: "shrink", label: "Shrink to fit" },
-                  { value: "auto-height", label: "Auto height" },
                 ]}
               />
             </div>
-            {style.fitMode === "shrink" && (
+            {getTextAutoSizeMode(style) === "shrink" && (
               <div>
                 <Lbl>Min font size</Lbl>
                 <Num ariaLabel="Minimum font size" value={style.minFontSize || Math.max(8, Math.round((style.fontSize || 48) * 0.4))} min={4} onChange={(v: number) => onStylePatch(layer.id, { minFontSize: Math.max(4, v) })} />

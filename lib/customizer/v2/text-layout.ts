@@ -301,6 +301,200 @@ export function getTextResizeConstraints(input: TextLayoutInput, measure: Measur
   };
 }
 
+/* --------------------------------------------------------- auto sizing --
+ * A text layer's box can either be exactly what was stored, or derived from
+ * the measured content. Resolution is deliberately EXPLICIT-ONLY: a layer
+ * auto-widths if and only if it carries `autoSizeMode: "width"`.
+ *
+ * That guarantee is what keeps completed orders safe. Historical order
+ * snapshots were written before this field existed, so they carry no
+ * autoSizeMode, fall through to the stored box, and render byte-for-byte as
+ * they did when ordered. Eligible live templates are migrated separately and
+ * persistently (see migrateTextAutoSizing), never inferred at render time.
+ */
+
+export const AUTO_SIZE_MODES = ["fixed", "width", "height", "shrink"] as const;
+export type AutoSizeMode = (typeof AUTO_SIZE_MODES)[number];
+
+export function getTextAutoSizeMode(style: Record<string, any> | null | undefined): AutoSizeMode {
+  const explicit = String(style?.autoSizeMode || "");
+  if ((AUTO_SIZE_MODES as ReadonlyArray<string>).includes(explicit)) return explicit as AutoSizeMode;
+  // No explicit mode: fall back to the legacy fitMode behaviour unchanged.
+  const fitMode = String(style?.fitMode || "fixed");
+  if (fitMode === "shrink") return "shrink";
+  if (fitMode === "auto-height") return "height";
+  return "fixed";
+}
+
+// Auto width only ever applies to genuine single-line text.
+export function isAutoWidthText(style: Record<string, any> | null | undefined): boolean {
+  return !style?.multiline && getTextAutoSizeMode(style) === "width";
+}
+
+export type ResolvedTextBox = {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  autoWidth: boolean;
+  /** True when the content wanted more room than the safe area allows. */
+  clampedBySafeArea: boolean;
+};
+
+export type ResolveTextBoxInput = {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  text: string;
+  fontFamily: string;
+  fontSize: number;
+  fontWeight?: string;
+  fontStyle?: "normal" | "italic";
+  letterSpacing?: number;
+  lineHeight?: number;
+  uppercase?: boolean;
+  multiline?: boolean;
+  textAlign?: "left" | "center" | "right";
+  verticalAlign?: "top" | "middle" | "bottom";
+  autoSizeMode?: AutoSizeMode | string;
+  fitMode?: string;
+};
+
+export type SafeBounds = { left: number; top: number; right: number; bottom: number };
+
+// Breathing room so italic overhang and side bearings are never clipped.
+function autoWidthPadding(fontSize: number): number {
+  return Math.max(2, Math.ceil(fontSize * 0.12));
+}
+
+// Widest the box may become before it would cross the safe area, honouring the
+// anchor implied by the alignment.
+export function availableTextWidth(
+  x: number,
+  storedWidth: number,
+  textAlign: "left" | "center" | "right",
+  safe: SafeBounds,
+): number {
+  if (textAlign === "left") {
+    const left = x - storedWidth / 2;
+    return Math.max(1, safe.right - left);
+  }
+  if (textAlign === "right") {
+    const right = x + storedWidth / 2;
+    return Math.max(1, right - safe.left);
+  }
+  // Centred text grows both ways, so the tighter side governs.
+  return Math.max(1, 2 * Math.min(x - safe.left, safe.right - x));
+}
+
+/**
+ * The box a text layer should actually occupy.
+ *
+ * For auto-width layers the width comes from the measured content (never the
+ * stored width, which may be stale), the height follows the font metrics, and
+ * the box is re-anchored so the alignment edge stays put: centred text grows
+ * evenly, left-aligned text grows rightwards, right-aligned text leftwards.
+ * Everything else is returned untouched.
+ */
+export function resolveTextBox(
+  input: ResolveTextBoxInput,
+  measure: MeasureFn,
+  safeBounds?: SafeBounds | null,
+): ResolvedTextBox {
+  const stored: ResolvedTextBox = {
+    x: input.x,
+    y: input.y,
+    width: input.width,
+    height: input.height,
+    autoWidth: false,
+    clampedBySafeArea: false,
+  };
+  if (!isAutoWidthText(input)) return stored;
+
+  const fontSize = Math.max(4, Number(input.fontSize) || 16);
+  const box = getSingleLineTextBox(
+    {
+      text: input.text,
+      fontFamily: input.fontFamily,
+      fontSize,
+      fontWeight: input.fontWeight,
+      fontStyle: input.fontStyle,
+      letterSpacing: input.letterSpacing,
+      lineHeight: input.lineHeight,
+      uppercase: input.uppercase,
+    },
+    measure,
+  );
+
+  const align = input.textAlign || "center";
+  let width = box.width + autoWidthPadding(fontSize);
+  let clampedBySafeArea = false;
+
+  if (safeBounds) {
+    const available = availableTextWidth(input.x, input.width, align, safeBounds);
+    if (width > available) {
+      width = available;
+      clampedBySafeArea = true;
+    }
+  }
+  width = Math.max(1, Math.round(width));
+  const height = Math.max(1, box.height);
+
+  // Re-anchor so the aligned edge does not drift as the text grows. x stays
+  // exact: rounding it after rounding the width would shift the anchored edge
+  // by half a pixel on odd widths.
+  let x = input.x;
+  if (align === "left") x = input.x - input.width / 2 + width / 2;
+  else if (align === "right") x = input.x + input.width / 2 - width / 2;
+
+  // Same for the vertical edge when the height tightens around the glyphs.
+  const vAlign = input.verticalAlign || "middle";
+  let y = input.y;
+  if (vAlign === "top") y = input.y - input.height / 2 + height / 2;
+  else if (vAlign === "bottom") y = input.y + input.height / 2 - height / 2;
+
+  return { x, y, width, height, autoWidth: true, clampedBySafeArea };
+}
+
+/**
+ * Whether a legacy text layer should be migrated to auto width.
+ *
+ * Deliberately narrow: only a single-line text layer BOUND TO A CUSTOMER FIELD
+ * (Bride, Groom, Couple Names, Venue, Date, …) qualifies — that binding is what
+ * makes its length vary with customer input, which is exactly what auto width
+ * is for. Note this is a different axis from `customerEditable`, which governs
+ * whether the customer may drag and restyle the layer on the canvas; a Bride
+ * field is still typed by the customer with canvas manipulation switched off.
+ *
+ * Paragraph and multiline text, text the admin intentionally set to shrink or
+ * auto-height, and decorative text with no field binding are all left exactly
+ * as they are, so no historical design is reflowed wholesale.
+ */
+export function shouldMigrateToAutoWidth(layer: Record<string, any> | null | undefined): boolean {
+  if (!layer || layer.type !== "text") return false;
+  const style = layer.textStyle || {};
+  // Never override a decision that was already made explicitly.
+  if (String(style.autoSizeMode || "")) return false;
+  if (style.multiline) return false;
+  // "shrink" / "auto-height" are intentional admin choices.
+  if (String(style.fitMode || "fixed") !== "fixed") return false;
+  // Must be driven by customer input rather than being decorative.
+  return Boolean(layer.fieldId);
+}
+
+// Stamps autoSizeMode onto eligible layers. Pure: returns a new layer array
+// only when something actually changed.
+export function migrateTextAutoSizing<T extends Record<string, any>>(layers: T[]): T[] {
+  let changed = false;
+  const next = layers.map((layer) => {
+    if (!shouldMigrateToAutoWidth(layer)) return layer;
+    changed = true;
+    return { ...layer, textStyle: { ...(layer.textStyle || {}), autoSizeMode: "width" } };
+  });
+  return changed ? next : layers;
+}
+
 export type SingleLineTextBox = {
   width: number;
   height: number;

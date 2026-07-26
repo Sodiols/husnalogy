@@ -14,7 +14,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { getLegacyMaskPath, getMaskPath } from "@/lib/customizer/v2/masks";
 import { getGridSlotRect, normalizeGridSlot } from "@/lib/customizer/v2/grids";
-import { layoutText, createCanvasMeasure, fallbackMeasure, type MeasureFn } from "@/lib/customizer/v2/text-layout";
+import { layoutText, createCanvasMeasure, fallbackMeasure, resolveTextBox, type MeasureFn } from "@/lib/customizer/v2/text-layout";
 import { hasImageFilters, imageFilterSvgPrimitives } from "@/lib/customizer/v2/image-filters";
 import { normalizeQRCodeStyle, qrModuleRects } from "@/lib/customizer/v2/qr";
 import {
@@ -70,7 +70,7 @@ function useFontsReady(): boolean {
   return ready;
 }
 
-function TextLayer({ layer, field, values, fontsReady, idPrefix }: any) {
+function TextLayer({ layer, field, values, fontsReady, idPrefix, safeBounds }: any) {
   const style = layer.textStyle || {};
   const text = resolveLayerText(layer, field, values);
   const fontSize = Number(style.fontSize) || 48;
@@ -78,13 +78,43 @@ function TextLayer({ layer, field, values, fontsReady, idPrefix }: any) {
   const isPlaceholder =
     field && (values[field.id] === undefined || values[field.id] === "" || values[field.id] === null) && !field.defaultValue;
 
+  // Auto-width layers take their box from the measured content, not the stored
+  // width (which goes stale as soon as the customer types a longer name).
+  const box = useMemo(
+    () =>
+      resolveTextBox(
+        {
+          x: layer.x,
+          y: layer.y,
+          width: layer.width || 0,
+          height: layer.height || 0,
+          text: String(text),
+          fontFamily: style.fontFamily || "Cormorant Garamond",
+          fontSize,
+          fontWeight: style.fontWeight || "400",
+          fontStyle: style.fontStyle === "italic" ? "italic" : "normal",
+          letterSpacing: Number(style.letterSpacing) || 0,
+          lineHeight: Number(style.lineHeight) || 1.15,
+          uppercase: Boolean(style.uppercase),
+          multiline: Boolean(style.multiline),
+          textAlign: style.textAlign || "center",
+          autoSizeMode: style.autoSizeMode,
+          fitMode: style.fitMode,
+        },
+        getMeasure(),
+        safeBounds,
+      ),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [text, layer.x, layer.y, layer.width, layer.height, JSON.stringify(style), JSON.stringify(safeBounds), fontsReady],
+  );
+
   const layout = useMemo(
     () =>
       layoutText(
         {
           text: String(text),
-          width: layer.width || 0,
-          height: layer.height || 0,
+          width: box.width,
+          height: box.height,
           fontFamily: style.fontFamily || "Cormorant Garamond",
           fontSize,
           minFontSize: Number(style.minFontSize) || undefined,
@@ -95,24 +125,29 @@ function TextLayer({ layer, field, values, fontsReady, idPrefix }: any) {
           textAlign: style.textAlign || "center",
           verticalAlign: style.verticalAlign || "middle",
           multiline: Boolean(style.multiline),
-          fitMode: style.fitMode === "shrink" ? "shrink" : style.fitMode === "auto-height" ? "auto-height" : "fixed",
+          // Once auto width has hit the safe-area limit, fall back to the
+          // configured behaviour: wrap when multiline is allowed, otherwise
+          // shrink. Below that limit the font size is never touched.
+          fitMode: box.clampedBySafeArea && !style.multiline
+            ? "shrink"
+            : style.fitMode === "shrink" ? "shrink" : style.fitMode === "auto-height" ? "auto-height" : "fixed",
           maxLines: Number(layer.maxLines) > 0 ? Number(layer.maxLines) : undefined,
         },
         getMeasure(),
       ),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [text, layer.width, layer.height, JSON.stringify(style), fontsReady],
+    [text, box.width, box.height, box.clampedBySafeArea, JSON.stringify(style), fontsReady],
   );
 
-  const boxLeft = layer.x - layer.width / 2;
-  const boxTop = layer.y - layer.height / 2;
+  const boxLeft = box.x - box.width / 2;
+  const boxTop = box.y - box.height / 2;
   const clipId = `${idPrefix}-text-clip-${String(layer.id).replace(/[^a-z0-9_-]/gi, "-")}`;
 
   return (
-    <g transform={layer.rotation ? `rotate(${layer.rotation} ${layer.x} ${layer.y})` : undefined}>
+    <g transform={layer.rotation ? `rotate(${layer.rotation} ${box.x} ${box.y})` : undefined}>
       <defs>
         <clipPath id={clipId}>
-          <rect x={boxLeft} y={boxTop} width={layer.width} height={layer.height} />
+          <rect x={boxLeft} y={boxTop} width={box.width} height={box.height} />
         </clipPath>
       </defs>
       <text
@@ -403,6 +438,17 @@ export default function CustomizerPreview({
   const bg = background || activePage?.backgroundImage || "";
   const idPrefix = `cz-${activePage?.id || "page"}`;
 
+  // Auto-width text may grow only up to the safe area.
+  const safeBounds = useMemo(
+    () => ({
+      left: Number(safe.left) || 0,
+      top: Number(safe.top) || 0,
+      right: width - (Number(safe.right) || 0),
+      bottom: height - (Number(safe.bottom) || 0),
+    }),
+    [safe.left, safe.top, safe.right, safe.bottom, width, height],
+  );
+
   const resolvedShowSafe = showSafeArea ?? template?.settings?.showSafeArea;
   const resolvedShowBleed = showBleed ?? template?.settings?.showBleed;
 
@@ -440,7 +486,7 @@ export default function CustomizerPreview({
             <QRCodeLayer layer={layer} />
           ) : layer.type === "group" ? null
           : layer.type === "text" ? (
-            <TextLayer layer={layer} field={field} values={values} fontsReady={fontsReady} idPrefix={idPrefix} />
+            <TextLayer layer={layer} field={field} values={values} fontsReady={fontsReady} idPrefix={idPrefix} safeBounds={safeBounds} />
           ) : (
             null
           );

@@ -3,6 +3,7 @@ import { createId, nowIso } from "@/lib/core/id";
 import { getProductCollections } from "@/lib/collections/store";
 import { createServiceRoleClient } from "@/lib/supabase/server";
 import { normalizeCustomizerTemplate, templateFromRow } from "@/lib/customizer";
+import { migrateTextAutoSizing } from "@/lib/customizer/v2/text-layout";
 import { saveCustomizerTemplate } from "@/lib/customizer/store";
 import {
   clampString,
@@ -583,7 +584,13 @@ function productFromRow(row: any = {}) {
   const customizerTemplate = templateRow
     ? templateFromRow(templateRow)
     : data.customizerTemplate
-      ? normalizeCustomizerTemplate(data.customizerTemplate)
+      ? (() => {
+          // The product.data fallback copy needs the same auto-width migration
+          // that templateFromRow applies, or the customer editor and the admin
+          // editor would disagree about the same template.
+          const normalized = normalizeCustomizerTemplate(data.customizerTemplate);
+          return { ...normalized, layers: migrateTextAutoSizing(normalized.layers || []) };
+        })()
       : undefined;
 
   const product = normalizeProduct(

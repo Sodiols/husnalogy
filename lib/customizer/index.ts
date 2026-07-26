@@ -13,6 +13,7 @@ import { listFonts } from "@/lib/customizer/v2/fonts";
 import { normalizeGridSlot } from "@/lib/customizer/v2/grids";
 import { normalizeImageFilters } from "@/lib/customizer/v2/image-filters";
 import { normalizeQRCodeStyle } from "@/lib/customizer/v2/qr";
+import { migrateTextAutoSizing } from "@/lib/customizer/v2/text-layout";
 
 export const CUSTOMIZER_ENGINES = new Set(["svg"]);
 export const CUSTOMIZER_ORIENTATIONS = new Set(["portrait", "landscape", "square"]);
@@ -73,6 +74,7 @@ export const CUSTOMIZER_MASK_SHAPES = new Set([
 ]);
 export const CUSTOMIZER_FIT_MODES = new Set(["cover", "contain"]);
 export const CUSTOMIZER_TEXT_ALIGN = new Set(["left", "center", "right"]);
+export const CUSTOMIZER_AUTO_SIZE_MODES = new Set(["fixed", "width", "height", "shrink"]);
 
 export const DEFAULT_SAFE_AREA = { top: 90, right: 90, bottom: 90, left: 90 };
 export const DEFAULT_BLEED = { top: 45, right: 45, bottom: 45, left: 45 };
@@ -271,6 +273,12 @@ function normalizeTextStyle(input: any = {}): any {
         : cleanString(input.fitMode) === "auto-height"
           ? "auto-height"
           : "fixed",
+    // Text sizing mode. Persisted only when explicitly set: an absent value is
+    // what tells the renderers to keep using the stored box, which is how
+    // historical order snapshots stay byte-identical.
+    ...(CUSTOMIZER_AUTO_SIZE_MODES.has(cleanString(input.autoSizeMode))
+      ? { autoSizeMode: cleanString(input.autoSizeMode) }
+      : {}),
     ...(input.minFontSize !== undefined ? { minFontSize: toPositiveInt(input.minFontSize, 8) } : {}),
   };
 }
@@ -528,6 +536,10 @@ export function normalizeUserLayer(input: any = {}): any | null {
       verticalAlign: ["top", "middle", "bottom"].includes(cleanString(input.textStyle?.verticalAlign)) ? cleanString(input.textStyle?.verticalAlign) : "middle",
       uppercase: normalizeBoolean(input.textStyle?.uppercase),
       multiline: normalizeBoolean(input.textStyle?.multiline),
+      // Customer-added text is single-line personalization by definition, so it
+      // grows with what is typed. Multiline text keeps a fixed box and wraps.
+      autoSizeMode: cleanString(input.textStyle?.autoSizeMode)
+        || (normalizeBoolean(input.textStyle?.multiline) ? "fixed" : "width"),
     },
   };
 }
@@ -971,10 +983,7 @@ export function shouldBumpTemplateVersion(existing: any, next: any): boolean {
 
 export function templateFromRow(row: any = {}): any {
   if (!row || typeof row !== "object") return null;
-  return {
-    id: row.id,
-    productId: row.product_id,
-    ...normalizeCustomizerTemplate({
+  const normalized = normalizeCustomizerTemplate({
       enabled: row.enabled,
       version: row.version,
       engine: row.engine,
@@ -994,7 +1003,17 @@ export function templateFromRow(row: any = {}): any {
       guides: row.settings?.guides,
       mockupTemplates: row.settings?.mockupTemplates,
       settings: row.settings,
-    }),
+  });
+  return {
+    id: row.id,
+    productId: row.product_id,
+    ...normalized,
+    // Legacy customer-editable single-line personalization fields adopt auto
+    // width on load, so a longer name grows the box instead of overflowing.
+    // Only eligible layers are stamped (see shouldMigrateToAutoWidth), and the
+    // change persists on the next save. Order snapshots never pass through
+    // here, so completed orders keep rendering exactly as they were ordered.
+    layers: migrateTextAutoSizing(normalized.layers || []),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };

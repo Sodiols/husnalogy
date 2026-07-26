@@ -14,7 +14,7 @@ import {
   type EditorState,
 } from "@/app/components/customizer/customizer-utils";
 import { getLegacyMaskPath, getMaskPath } from "./masks";
-import { layoutText, fallbackMeasure, type MeasureFn } from "./text-layout";
+import { layoutText, fallbackMeasure, resolveTextBox, type MeasureFn, type SafeBounds } from "./text-layout";
 import { getGridSlotRect, normalizeGridSlot } from "./grids";
 import { hasImageFilters, imageFilterSvgPrimitives } from "./image-filters";
 import { normalizeQRCodeStyle, qrModuleRects } from "./qr";
@@ -79,7 +79,7 @@ export function collectPageImageUrls(
   return [...urls];
 }
 
-function renderTextLayer(layer: any, field: any, values: Record<string, any>, measure: MeasureFn, mode: string): string {
+function renderTextLayer(layer: any, field: any, values: Record<string, any>, measure: MeasureFn, mode: string, safeBounds?: SafeBounds | null): string {
   const style = layer.textStyle || {};
   const text = resolveLayerText(layer, field, values);
   const isPlaceholder =
@@ -89,11 +89,37 @@ function renderTextLayer(layer: any, field: any, values: Record<string, any>, me
   if (mode === "print" && isPlaceholder) return "";
   if (!String(text).trim()) return "";
 
+  // Same resolver the browser renderer uses, so on-screen and print output
+  // agree. Layers without an explicit autoSizeMode keep their stored box, which
+  // is what keeps historical order snapshots rendering exactly as ordered.
+  const box = resolveTextBox(
+    {
+      x: layer.x,
+      y: layer.y,
+      width: layer.width || 0,
+      height: layer.height || 0,
+      text: String(text),
+      fontFamily: style.fontFamily || "Cormorant Garamond",
+      fontSize: Number(style.fontSize) || 48,
+      fontWeight: style.fontWeight || "400",
+      fontStyle: style.fontStyle === "italic" ? "italic" : "normal",
+      letterSpacing: Number(style.letterSpacing) || 0,
+      lineHeight: Number(style.lineHeight) || 1.15,
+      uppercase: Boolean(style.uppercase),
+      multiline: Boolean(style.multiline),
+      textAlign: style.textAlign || "center",
+      autoSizeMode: style.autoSizeMode,
+      fitMode: style.fitMode,
+    },
+    measure,
+    safeBounds,
+  );
+
   const layout = layoutText(
     {
       text: String(text),
-      width: layer.width || 0,
-      height: layer.height || 0,
+      width: box.width,
+      height: box.height,
       fontFamily: style.fontFamily || "Cormorant Garamond",
       fontSize: Number(style.fontSize) || 48,
       minFontSize: Number(style.minFontSize) || undefined,
@@ -104,16 +130,18 @@ function renderTextLayer(layer: any, field: any, values: Record<string, any>, me
       textAlign: style.textAlign || "center",
       verticalAlign: style.verticalAlign || "middle",
       multiline: Boolean(style.multiline),
-      fitMode: style.fitMode === "shrink" ? "shrink" : style.fitMode === "auto-height" ? "auto-height" : "fixed",
+      fitMode: box.clampedBySafeArea && !style.multiline
+        ? "shrink"
+        : style.fitMode === "shrink" ? "shrink" : style.fitMode === "auto-height" ? "auto-height" : "fixed",
       maxLines: Number(layer.maxLines) > 0 ? Number(layer.maxLines) : undefined,
     },
     measure,
   );
 
-  const boxLeft = layer.x - layer.width / 2;
-  const boxTop = layer.y - layer.height / 2;
+  const boxLeft = box.x - box.width / 2;
+  const boxTop = box.y - box.height / 2;
   const fill = isPlaceholder ? "#9aa0a1" : style.color || "#303839";
-  const rotate = layer.rotation ? ` transform="rotate(${layer.rotation} ${layer.x} ${layer.y})"` : "";
+  const rotate = layer.rotation ? ` transform="rotate(${layer.rotation} ${box.x} ${box.y})"` : "";
   const clipId = `text-clip-${String(layer.id).replace(/[^a-z0-9_-]/gi, "-")}`;
 
   const spans = layout.lines
@@ -121,7 +149,7 @@ function renderTextLayer(layer: any, field: any, values: Record<string, any>, me
     .join("");
 
   return (
-    `<g${rotate}><defs><clipPath id="${clipId}"><rect x="${boxLeft}" y="${boxTop}" width="${layer.width}" height="${layer.height}"/></clipPath></defs>` +
+    `<g${rotate}><defs><clipPath id="${clipId}"><rect x="${boxLeft}" y="${boxTop}" width="${box.width}" height="${box.height}"/></clipPath></defs>` +
     `<text clip-path="url(#${clipId})" text-anchor="${layout.anchor}" dominant-baseline="middle"` +
     ` font-family="${esc(style.fontFamily || "Cormorant Garamond")}"` +
     ` font-size="${layout.fontSize}"` +
@@ -329,6 +357,15 @@ export function buildPageSvg(options: SvgBuildOptions): string {
   const totalW = pageWidth + bleed.left + bleed.right;
   const totalH = pageHeight + bleed.top + bleed.bottom;
 
+  // Auto-width text may grow only up to the safe area.
+  const safe = template?.safeArea || {};
+  const safeBounds: SafeBounds = {
+    left: Number(safe.left) || 0,
+    top: Number(safe.top) || 0,
+    right: pageWidth - (Number(safe.right) || 0),
+    bottom: pageHeight - (Number(safe.bottom) || 0),
+  };
+
   const page = getPageById(template, pageId);
   const layers = getEffectiveLayersForPage(template, pageId, editorState || undefined);
   const idPrefix = `srv-${pageId}`;
@@ -359,7 +396,7 @@ export function buildPageSvg(options: SvgBuildOptions): string {
     else if (layer.type === "background") inner = renderBackgroundLayer(layer, hrefMap);
     else if (layer.type === "qrCode") inner = renderQRCodeLayer(layer);
     else if (layer.type === "group") continue;
-    else if (layer.type === "text") inner = renderTextLayer(layer, field, values, measure, mode);
+    else if (layer.type === "text") inner = renderTextLayer(layer, field, values, measure, mode, safeBounds);
     else throw new Error(`UNSUPPORTED_LAYER: ${String(layer.type)}`);
     if (!inner) continue;
     const opacity = layer.opacity === undefined ? 1 : Number(layer.opacity);

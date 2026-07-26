@@ -22,12 +22,13 @@ import {
 import { layersInsideSelection, selectionBounds } from "@/lib/customizer/v2/customer-actions";
 import {
   createCanvasMeasure,
-  getSingleLineTextBox,
   getTextResizeConstraints,
   isSingleLineAutoSizeText,
   layoutText,
+  resolveTextBox,
   scaleSingleLineText,
   type MeasureFn,
+  type SafeBounds,
 } from "@/lib/customizer/v2/text-layout";
 
 const HANDLES: Array<{ id: string; cx: number; cy: number; cursor: string }> = [
@@ -145,30 +146,44 @@ export default function CustomizerWorkspace({
 
   const layers = getEffectiveLayersForPage(template, pageId, editorState);
 
-  const singleLineInteractionLayer = (layer: any) => {
+  // Auto-width text may grow only up to the safe area.
+  const safeBounds: SafeBounds = {
+    left: Number(template?.safeArea?.left) || 0,
+    top: Number(template?.safeArea?.top) || 0,
+    right: canvasW - (Number(template?.safeArea?.right) || 0),
+    bottom: canvasH - (Number(template?.safeArea?.bottom) || 0),
+  };
+
+  // Shared with the renderers via resolveTextBox, so the customer's selection
+  // box and handles always sit exactly on the rendered glyphs.
+  const resolveLayerBox = (layer: any) => {
     const style = layer?.textStyle || {};
-    if (layer?.type !== "text" || !isSingleLineAutoSizeText(style)) return layer;
+    if (layer?.type !== "text") return layer;
     const field = layer.fieldId ? getFieldById(template, layer.fieldId) : null;
     const text = resolveLayerText(layer, field, values);
-    const box = getSingleLineTextBox({
+    const box = resolveTextBox({
+      x: layer.x,
+      y: layer.y,
+      width: layer.width,
+      height: layer.height,
       text: String(text),
       fontFamily: style.fontFamily || "Cormorant Garamond",
       fontSize: Number(style.fontSize) || 48,
-      minFontSize: Number(style.minFontSize) || undefined,
       fontWeight: style.fontWeight || "400",
       fontStyle: style.fontStyle === "italic" ? "italic" : "normal",
       letterSpacing: Number(style.letterSpacing) || 0,
       lineHeight: Number(style.lineHeight) || 1.15,
       uppercase: Boolean(style.uppercase),
-    }, textMeasureRef.current!);
-    const left = layer.x - layer.width / 2;
-    const top = layer.y - layer.height / 2;
-    const textAlign = style.textAlign || "center";
-    const verticalAlign = style.verticalAlign || "middle";
-    const x = textAlign === "left" ? left + box.width / 2 : textAlign === "right" ? left + layer.width - box.width / 2 : layer.x;
-    const y = verticalAlign === "top" ? top + box.height / 2 : verticalAlign === "bottom" ? top + layer.height - box.height / 2 : layer.y;
-    return { ...layer, x, y, width: box.width, height: box.height, resolvedText: String(text) };
+      multiline: Boolean(style.multiline),
+      textAlign: style.textAlign || "center",
+      verticalAlign: style.verticalAlign || "middle",
+      autoSizeMode: style.autoSizeMode,
+      fitMode: style.fitMode,
+    }, textMeasureRef.current!, safeBounds);
+    if (!box.autoWidth) return { ...layer, resolvedText: String(text) };
+    return { ...layer, x: box.x, y: box.y, width: box.width, height: box.height, resolvedText: String(text), autoWidthClamped: box.clampedBySafeArea };
   };
+  const singleLineInteractionLayer = resolveLayerBox;
 
   const constrainTextSize = (layer: any, requestedWidth: number, requestedHeight: number) => {
     if (layer?.type !== "text") return { width: requestedWidth, height: requestedHeight };
@@ -198,15 +213,20 @@ export default function CustomizerWorkspace({
     return { width: Math.ceil(width), height: Math.ceil(height) };
   };
 
+  // Never warn just because the stored width is smaller than the typed text —
+  // an auto-width box simply grows. Only a genuine safe-area or vertical
+  // overflow, after expansion, is a real problem worth telling the customer.
   const textOverflowForLayer = (layer: any) => {
     if (layer?.type !== "text") return false;
     const style = layer.textStyle || {};
     const field = layer.fieldId ? getFieldById(template, layer.fieldId) : null;
     const text = resolveLayerText(layer, field, values);
+    const resolved = resolveLayerBox(layer);
+    if (resolved.autoWidthClamped === false) return false;
     const layout = layoutText({
       text: String(text),
-      width: layer.width,
-      height: layer.height,
+      width: resolved.width,
+      height: resolved.height,
       fontFamily: style.fontFamily || "Cormorant Garamond",
       fontSize: Number(style.fontSize) || 48,
       minFontSize: Number(style.minFontSize) || undefined,
@@ -215,7 +235,9 @@ export default function CustomizerWorkspace({
       letterSpacing: Number(style.letterSpacing) || 0,
       lineHeight: Number(style.lineHeight) || 1.15,
       multiline: Boolean(style.multiline),
-      fitMode: style.fitMode === "shrink" ? "shrink" : style.fitMode === "auto-height" ? "auto-height" : "fixed",
+      fitMode: resolved.autoWidthClamped && !style.multiline
+        ? "shrink"
+        : style.fitMode === "shrink" ? "shrink" : style.fitMode === "auto-height" ? "auto-height" : "fixed",
     }, textMeasureRef.current!);
     return layout.overflowWidth || layout.overflowHeight || layout.truncatedLines;
   };
