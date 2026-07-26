@@ -32,6 +32,7 @@ import AdminUploadsPanel, { type AdminUploadAsset } from "./AdminUploadsPanel";
 import CustomerElementsPanel, { type LibraryElement } from "@/app/components/customizer/CustomerElementsPanel";
 import { createGridSlots } from "@/lib/customizer/v2/grids";
 import { createCanvasMeasure, getTextResizeConstraints, isSingleLineAutoSizeText } from "@/lib/customizer/v2/text-layout";
+import { formatCustomizerVersion, nextCustomizerVersion, type CustomizerUpdateType } from "@/lib/customizer/public-version";
 import {
   addLayer,
   addPage,
@@ -143,9 +144,10 @@ export default function AdminDesignBuilder({
   const setZoom = (next: number) => setViewport((current) => ({ ...current, zoom: next }));
   const setPan = (pan: { panX: number; panY: number }) => setViewport((current) => ({ ...current, ...pan }));
   const resetViewport = () => setViewport(fitViewport(1));
-  const [rightPanel, setRightPanel] = useState<"pages" | "layers">("pages");
   const [snapEnabled, setSnapEnabled] = useState(true);
   const [publishCheck, setPublishCheck] = useState<{ errors: string[]; warnings: string[] } | null>(null);
+  const [updateType, setUpdateType] = useState<CustomizerUpdateType>("minor");
+  const [updateNotes, setUpdateNotes] = useState("");
   const [dirtySinceSave, setDirtySinceSave] = useState(false);
 
   /* ----- history (deep-cloned snapshots, refs keep handlers stable) ----- */
@@ -454,11 +456,18 @@ export default function AdminDesignBuilder({
 
   const requestPublish = () => {
     const result = validateCustomizerTemplateDetailed(tRef.current);
+    setUpdateType("minor");
     setPublishCheck(result);
   };
 
   const [publishNotice, setPublishNotice] = useState("");
   const [versions, setVersions] = useState<any[]>([]);
+  const currentPublished = versions[0] || null;
+  const currentPublicVersion = currentPublished
+    ? { major: currentPublished.major, revision: currentPublished.revision }
+    : { major: 2, revision: 0 };
+  const currentDisplayVersion = currentPublished?.display || formatCustomizerVersion(currentPublicVersion);
+  const nextPublicVersion = nextCustomizerVersion(currentPublicVersion, updateType);
 
   const loadVersions = async () => {
     if (!product?.id) return;
@@ -472,9 +481,9 @@ export default function AdminDesignBuilder({
   };
 
   useEffect(() => {
-    if (studioOpen && tab === "settings") loadVersions();
+    if (studioOpen) loadVersions();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [studioOpen, tab]);
+  }, [studioOpen]);
 
   /* ----- enable gate + launch card ----- */
   if (!t.enabled) {
@@ -512,11 +521,12 @@ export default function AdminDesignBuilder({
         const res = await fetch(`/api/admin/customizer/templates/${encodeURIComponent(product.id)}/publish`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({}),
+          body: JSON.stringify({ updateType, notes: updateNotes }),
         });
         const data = await res.json().catch(() => ({}));
         if (res.ok && data.ok) {
-          setPublishNotice(`Published as version ${data.version?.version}.`);
+          setPublishNotice(`Published as Version ${data.version?.display}.`);
+          setUpdateNotes("");
           loadVersions();
         } else {
           setPublishNotice(data?.errors?.[0] || data?.error || "Saved, but the version snapshot failed.");
@@ -560,7 +570,7 @@ export default function AdminDesignBuilder({
             <p className="text-[11px] font-extrabold uppercase tracking-[0.16em] text-[#D4AF37]">Husnalogy Design Studio</p>
             <p className="mt-1 font-display text-2xl text-[#303839]">{settings.templateName || productName || "Product template"}</p>
             <p className="mt-1 text-xs font-semibold text-[#303839]/55">
-              {enabledPages.length} page{enabledPages.length === 1 ? "" : "s"} · {layerCount} layer{layerCount === 1 ? "" : "s"} · {fieldCount} customer field{fieldCount === 1 ? "" : "s"} · v{t.version || 1}
+              {enabledPages.length} page{enabledPages.length === 1 ? "" : "s"} · {layerCount} layer{layerCount === 1 ? "" : "s"} · {fieldCount} customer field{fieldCount === 1 ? "" : "s"} · V{currentDisplayVersion}
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -610,6 +620,7 @@ export default function AdminDesignBuilder({
         productName={productName}
         statusChips={statusChips}
         saveStatusLabel={saving ? "Saving…" : ""}
+        publicVersion={currentDisplayVersion}
         tab={tab}
         onTabChange={setTab}
         canUndo={undoStack.current.length > 0}
@@ -619,7 +630,7 @@ export default function AdminDesignBuilder({
         onBack={() => setStudioOpen(false)}
         onSaveDraft={saveDraft}
         onPublish={requestPublish}
-        publishLabel={isPublished ? "Update Published" : "Publish"}
+        publishLabel="Publish Changes"
         saving={saving}
       />
 
@@ -655,36 +666,63 @@ export default function AdminDesignBuilder({
               onAddBackground={addBackground}
               onAddGuide={addGuide}
               onPan={() => setActiveTool((current) => current === "pan" ? "select" : "pan")}
-              onOpenPanel={setRightPanel}
+              // Pages now live permanently in the left sidebar, so the rail
+              // button brings that section into view rather than swapping panels.
+              onOpenPanel={() => {
+                document.getElementById("admin-pages-section")?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+              }}
             />
 
-            <aside className="w-[clamp(320px,20vw,360px)] shrink-0 overflow-y-auto border-r border-[#303839]/10 bg-white [scrollbar-color:rgba(48,56,57,0.22)_transparent] [scrollbar-width:thin] max-lg:absolute max-lg:inset-x-0 max-lg:bottom-0 max-lg:z-40 max-lg:max-h-[48%] max-lg:w-full max-lg:rounded-t-2xl max-lg:border-r-0 max-lg:border-t max-lg:shadow-[0_-12px_32px_rgba(48,56,57,0.12)]">
-              {activeTool === "uploads" ? (
-                <AdminUploadsPanel onInsertAsset={addImageFromAdminAsset} currentAssetIds={currentAssetIds} />
-              ) : activeTool === "elements" ? (
-                <div className="h-full overflow-y-auto">
-                  <div className="border-b border-[#303839]/10 bg-[#F8F6F1] px-4 py-3">
-                    <p className="text-[10px] font-extrabold uppercase tracking-[0.14em] text-[#D4AF37]">Elements library</p>
-                    <p className="mt-1 text-xs text-[#303839]/55">Choose an approved element to add it to this page.</p>
-                  </div>
-                  <CustomerElementsPanel onInsertElement={addElement} adminMode />
+            {/* Left workspace sidebar: layers over pages, sharing the tool
+                rail's dark surface so the editor reads as one unit. */}
+            <aside className="flex w-[clamp(168px,16vw,280px)] shrink-0 flex-col border-r border-white/8 bg-[#2A3132]">
+              <div className="flex min-h-0 flex-1 flex-col">
+                <p className="shrink-0 px-4 pb-2 pt-4 text-[10px] font-bold uppercase tracking-[0.14em] text-white/35">Layers</p>
+                <div className="min-h-0 flex-1 overflow-y-auto [scrollbar-color:rgba(255,255,255,0.18)_transparent] [scrollbar-width:thin]" data-admin-dark-panel>
+                  <AdminLayersPanel
+                    template={t}
+                    pageId={activePage}
+                    selectedLayerId={selectedLayerId}
+                    onSelect={setSelectedLayerId}
+                    onLayerPatch={onLayerPatch}
+                    onReorder={onReorder}
+                    onDuplicate={onDuplicate}
+                    onRemove={onRemove}
+                  />
                 </div>
-              ) : <AdminPropertiesPanel
-                template={t}
-                layer={selectedLayer}
-                onLayerPatch={onLayerPatch}
-                onStylePatch={onStylePatch}
-                onFieldPatch={onFieldPatch}
-                onToggleCustomerEditable={onToggleCustomerEditable}
-                onDuplicate={onDuplicate}
-                onRemove={onRemove}
-                onReorder={onReorder}
-                onBringToFront={(id: string) => commit(bringLayerToFront(t, id))}
-                onSendToBack={(id: string) => commit(sendLayerToBack(t, id))}
-              />}
+              </div>
+              <div id="admin-pages-section" className="flex max-h-[42%] min-h-0 shrink-0 flex-col border-t border-white/8">
+                <p className="shrink-0 px-4 pb-2 pt-3 text-[10px] font-bold uppercase tracking-[0.14em] text-white/35">Pages</p>
+                <div className="min-h-0 flex-1 overflow-y-auto [scrollbar-color:rgba(255,255,255,0.18)_transparent] [scrollbar-width:thin]" data-admin-dark-panel>
+                  <AdminPagesPanel
+                    template={t}
+                    activePage={activePage}
+                    onSelectPage={(pageId: string) => {
+                      setActivePage(pageId);
+                      setSelectedLayerId(null);
+                    }}
+                    onAddPage={handleAddPage}
+                    onDuplicatePage={handleDuplicatePage}
+                    onRenamePage={(pageId: string, label: string) => commit(renamePage(t, pageId, label))}
+                    onMovePage={(pageId: string, dir: "up" | "down") => commit(movePage(t, pageId, dir))}
+                    onDeletePage={handleDeletePage}
+                    onPatchPage={(pageId: string, patch: any) => commit(patchPage(t, pageId, patch))}
+                  />
+                </div>
+              </div>
             </aside>
 
-            <main className="relative min-h-0 min-w-[420px] flex-1 bg-[radial-gradient(circle_at_center,rgba(248,246,241,0.88),transparent_58%)]">
+            <main className="relative min-h-0 min-w-[420px] flex-1 bg-[#F0EDED]">
+              {/* Page position, mirroring the customer editor's canvas label. */}
+              {selectedLayerIds.length === 0 && (
+                <p className="pointer-events-none absolute inset-x-0 top-3 z-20 text-center text-[11px] font-semibold text-[#303839]/40">
+                  {(() => {
+                    const index = enabledPages.findIndex((page: any) => page.id === activePage);
+                    const current = enabledPages[index];
+                    return `Page ${index + 1} of ${enabledPages.length}${current?.label ? ` · ${current.label}` : ""}`;
+                  })()}
+                </p>
+              )}
               {selectedLayerIds.length > 0 && (
                 <div className="pointer-events-none absolute inset-x-0 top-3 z-30 flex justify-center px-3">
                   <AdminContextToolbar
@@ -737,84 +775,73 @@ export default function AdminDesignBuilder({
                     onFit={resetViewport}
                     onActualSize={resetViewport}
                   />
-                  <button
-                    type="button"
-                    aria-pressed={snapEnabled}
-                    onClick={() => setSnapEnabled((v) => !v)}
-                    className={`rounded-full border px-3 py-1.5 text-[11px] font-bold shadow-[0_4px_18px_rgba(48,56,57,0.10)] ${
-                      snapEnabled ? "border-[#303839] bg-[#303839] text-white" : "border-[#303839]/12 bg-white text-[#303839]/60"
-                    }`}
+                  {/* One segmented group instead of three separate pills. */}
+                  <div
+                    role="group"
+                    aria-label="Canvas guides"
+                    className="flex min-h-11 items-center gap-0.5 rounded-full border border-[#303839]/8 bg-white p-1 shadow-[0_2px_12px_rgba(48,56,57,0.08)]"
                   >
-                    Snap
-                  </button>
-                  <button
-                    type="button"
-                    aria-pressed={Boolean(settings.showSafeArea)}
-                    onClick={() => commit({ ...t, settings: { ...settings, showSafeArea: !settings.showSafeArea } })}
-                    className={`rounded-full border px-3 py-1.5 text-[11px] font-bold shadow-[0_4px_18px_rgba(48,56,57,0.10)] ${
-                      settings.showSafeArea ? "border-[#303839] bg-[#303839] text-white" : "border-[#303839]/12 bg-white text-[#303839]/60"
-                    }`}
-                  >
-                    Safe area
-                  </button>
-                  <button
-                    type="button"
-                    aria-pressed={Boolean(settings.showBleed)}
-                    onClick={() => commit({ ...t, settings: { ...settings, showBleed: !settings.showBleed } })}
-                    className={`rounded-full border px-3 py-1.5 text-[11px] font-bold shadow-[0_4px_18px_rgba(48,56,57,0.10)] ${
-                      settings.showBleed ? "border-[#303839] bg-[#303839] text-white" : "border-[#303839]/12 bg-white text-[#303839]/60"
-                    }`}
-                  >
-                    Bleed
-                  </button>
+                    <button
+                      type="button"
+                      aria-pressed={snapEnabled}
+                      onClick={() => setSnapEnabled((v) => !v)}
+                      className={`min-h-9 rounded-full px-3.5 text-[11px] font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] ${
+                        snapEnabled ? "bg-[#303839] text-white" : "text-[#303839]/50 hover:bg-[#F8F6F1] hover:text-[#303839]"
+                      }`}
+                    >
+                      Snap
+                    </button>
+                    <button
+                      type="button"
+                      aria-pressed={Boolean(settings.showSafeArea)}
+                      onClick={() => commit({ ...t, settings: { ...settings, showSafeArea: !settings.showSafeArea } })}
+                      className={`min-h-9 rounded-full px-3.5 text-[11px] font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] ${
+                        settings.showSafeArea ? "bg-[#303839] text-white" : "text-[#303839]/50 hover:bg-[#F8F6F1] hover:text-[#303839]"
+                      }`}
+                    >
+                      Safe area
+                    </button>
+                    <button
+                      type="button"
+                      aria-pressed={Boolean(settings.showBleed)}
+                      onClick={() => commit({ ...t, settings: { ...settings, showBleed: !settings.showBleed } })}
+                      className={`min-h-9 rounded-full px-3.5 text-[11px] font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] ${
+                        settings.showBleed ? "bg-[#303839] text-white" : "text-[#303839]/50 hover:bg-[#F8F6F1] hover:text-[#303839]"
+                      }`}
+                    >
+                      Bleed
+                    </button>
+                  </div>
                 </div>
               </div>
             </main>
 
-            <aside className="flex w-[clamp(220px,15vw,310px)] shrink-0 flex-col border-l border-[#303839]/10 bg-white shadow-[-8px_0_24px_rgba(48,56,57,0.035)]">
-              <div className="flex shrink-0 gap-1 border-b border-[#303839]/10 bg-[#F8F6F1]/70 p-1.5">
-                {(["pages", "layers"] as const).map((panel) => (
-                  <button
-                    key={panel}
-                    type="button"
-                    onClick={() => setRightPanel(panel)}
-                    aria-pressed={rightPanel === panel}
-                    className={`flex-1 rounded-md px-2 py-2 text-xs font-bold capitalize transition ${
-                      rightPanel === panel ? "bg-[#303839] text-white shadow-sm" : "text-[#303839]/50 hover:bg-white hover:text-[#303839]"
-                    }`}
-                  >
-                    {panel}
-                  </button>
-                ))}
-              </div>
-              <div className="min-h-0 flex-1 overflow-y-auto">
-                {rightPanel === "pages" ? (
-                  <AdminPagesPanel
-                    template={t}
-                    activePage={activePage}
-                    onSelectPage={(pageId: string) => {
-                      setActivePage(pageId);
-                      setSelectedLayerId(null);
-                    }}
-                    onAddPage={handleAddPage}
-                    onDuplicatePage={handleDuplicatePage}
-                    onRenamePage={(pageId: string, label: string) => commit(renamePage(t, pageId, label))}
-                    onMovePage={(pageId: string, dir: "up" | "down") => commit(movePage(t, pageId, dir))}
-                    onDeletePage={handleDeletePage}
-                    onPatchPage={(pageId: string, patch: any) => commit(patchPage(t, pageId, patch))}
-                  />
-                ) : (
-                  <AdminLayersPanel
-                    template={t}
-                    pageId={activePage}
-                    selectedLayerId={selectedLayerId}
-                    onSelect={setSelectedLayerId}
-                    onLayerPatch={onLayerPatch}
-                    onReorder={onReorder}
-                    onDuplicate={onDuplicate}
-                    onRemove={onRemove}
-                  />
-                )}
+            {/* Right inspector: the configuration surface for the selection. */}
+            <aside className="flex w-[clamp(300px,21vw,360px)] shrink-0 flex-col border-l border-[#303839]/8 bg-white max-lg:absolute max-lg:inset-x-0 max-lg:bottom-0 max-lg:z-40 max-lg:max-h-[48%] max-lg:w-full max-lg:rounded-t-2xl max-lg:border-l-0 max-lg:border-t max-lg:shadow-[0_-8px_32px_rgba(48,56,57,0.14)]">
+              <div className="min-h-0 flex-1 overflow-y-auto [scrollbar-color:rgba(48,56,57,0.18)_transparent] [scrollbar-width:thin]">
+                {activeTool === "uploads" ? (
+                  <AdminUploadsPanel onInsertAsset={addImageFromAdminAsset} currentAssetIds={currentAssetIds} />
+                ) : activeTool === "elements" ? (
+                  <div className="h-full overflow-y-auto">
+                    <div className="border-b border-[#303839]/8 px-4 py-3.5">
+                      <p className="font-display text-[19px] leading-tight text-[#303839]">Elements library</p>
+                      <p className="mt-0.5 text-xs text-[#303839]/50">Choose an approved element to add it to this page.</p>
+                    </div>
+                    <CustomerElementsPanel onInsertElement={addElement} adminMode />
+                  </div>
+                ) : <AdminPropertiesPanel
+                  template={t}
+                  layer={selectedLayer}
+                  onLayerPatch={onLayerPatch}
+                  onStylePatch={onStylePatch}
+                  onFieldPatch={onFieldPatch}
+                  onToggleCustomerEditable={onToggleCustomerEditable}
+                  onDuplicate={onDuplicate}
+                  onRemove={onRemove}
+                  onReorder={onReorder}
+                  onBringToFront={(id: string) => commit(bringLayerToFront(t, id))}
+                  onSendToBack={(id: string) => commit(sendLayerToBack(t, id))}
+                />}
               </div>
             </aside>
           </>
@@ -865,23 +892,42 @@ export default function AdminDesignBuilder({
               productName={productName}
               productId={product?.id}
               productType={product?.productType}
-              templateVersion={t.version}
+              templateVersion={currentDisplayVersion}
             />
             {/* Version history (spec §19) */}
             <div className="mx-auto w-full max-w-7xl px-4 pb-4 md:px-6 2xl:px-8">
               <section className="rounded-lg border border-[#303839]/10 bg-white p-4">
-                <h4 className="text-[11px] font-extrabold uppercase tracking-wide text-[#303839]/70">Version history</h4>
+                <h4 className="text-[11px] font-extrabold uppercase tracking-wide text-[#303839]/70">Customizer publishing</h4>
                 <p className="mt-1 text-xs text-[#303839]/55">
                   Publishing freezes an immutable snapshot. Existing customer designs, cart items, and orders keep the
                   version they were created with; new customers always get the latest published version.
                 </p>
+                <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                  <div className="rounded-md bg-[#F8F6F1] p-3">
+                    <p className="text-[10px] font-bold uppercase tracking-wide text-[#303839]/50">Current Published Version</p>
+                    <p className="mt-1 font-display text-xl text-[#303839]">Version {currentDisplayVersion}</p>
+                  </div>
+                  <div className="rounded-md bg-[#F8F6F1] p-3">
+                    <p className="text-[10px] font-bold uppercase tracking-wide text-[#303839]/50">Draft Status</p>
+                    <p className="mt-1 text-sm font-bold text-[#303839]">{dirtySinceSave ? "Unpublished changes" : `Draft based on Version ${currentDisplayVersion}`}</p>
+                  </div>
+                  <div className="rounded-md bg-[#F8F6F1] p-3">
+                    <p className="text-[10px] font-bold uppercase tracking-wide text-[#303839]/50">Last Published</p>
+                    <p className="mt-1 text-sm font-bold text-[#303839]">{currentPublished?.createdAt ? new Date(currentPublished.createdAt).toLocaleString() : "Not published yet"}</p>
+                  </div>
+                </div>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <button type="button" onClick={requestPublish} className="rounded-md bg-[#303839] px-4 py-2 text-xs font-bold text-white">Publish Minor Update</button>
+                  <button type="button" onClick={() => { setUpdateType("major"); setPublishCheck(validateCustomizerTemplateDetailed(tRef.current)); }} className="rounded-md border border-[#303839]/15 px-4 py-2 text-xs font-bold text-[#303839]">Publish Major Update</button>
+                </div>
+                <h5 className="mt-5 text-[11px] font-extrabold uppercase tracking-wide text-[#303839]/70">Immutable version history</h5>
                 {versions.length === 0 ? (
-                  <p className="mt-3 text-sm text-[#303839]/50">No published versions yet — draft v{t.version || 1}.</p>
+                  <p className="mt-3 text-sm text-[#303839]/50">No published versions yet. Draft based on Version {currentDisplayVersion}.</p>
                 ) : (
                   <ul className="mt-3 grid gap-1.5">
                     {versions.map((version: any) => (
                       <li key={version.id} className="flex items-center justify-between rounded-md bg-[#F8F6F1] px-3 py-2 text-sm">
-                        <span className="font-bold text-[#303839]">Version {version.version}</span>
+                        <span className="font-bold text-[#303839]">Version {version.display}</span>
                         <span className="text-xs text-[#303839]/55">
                           {version.createdAt ? new Date(version.createdAt).toLocaleString() : ""}
                         </span>
@@ -910,11 +956,12 @@ export default function AdminDesignBuilder({
           <div
             role="dialog"
             aria-modal="true"
-            aria-label="Publish checks"
+            aria-label="Publish Changes"
             className="w-full max-w-lg rounded-lg bg-white p-5 shadow-2xl"
             onClick={(e) => e.stopPropagation()}
           >
-            <h3 className="font-display text-2xl text-[#303839]">Publish checks</h3>
+            <h3 className="font-display text-2xl text-[#303839]">Publish Changes</h3>
+            <p className="mt-1 text-sm text-[#303839]/60">Choose update type. Minor Update is selected by default.</p>
 
             {publishCheck.errors.length > 0 && (
               <div className="mt-3 rounded-md border border-red-200 bg-red-50 p-3">
@@ -942,13 +989,39 @@ export default function AdminDesignBuilder({
               <p className="mt-3 text-sm text-[#303839]/70">All checks passed. The template is ready to publish.</p>
             )}
 
+            {!publishCheck.errors.length && (
+              <div className="mt-4 grid gap-2">
+                {(["minor", "major"] as const).map((type) => {
+                  const next = nextCustomizerVersion(currentPublicVersion, type);
+                  return (
+                    <label key={type} className={`flex cursor-pointer items-center justify-between rounded-md border p-3 ${updateType === type ? "border-[#D4AF37] bg-[#D4AF37]/10" : "border-[#303839]/12"}`}>
+                      <span>
+                        <span className="block text-sm font-bold text-[#303839]">{type === "minor" ? "Minor Update" : "Major Update"}</span>
+                        <span className="text-xs text-[#303839]/55">{currentDisplayVersion} → {formatCustomizerVersion(next)}</span>
+                      </span>
+                      <input type="radio" name="customizer-update-type" checked={updateType === type} onChange={() => setUpdateType(type)} />
+                    </label>
+                  );
+                })}
+                {updateType === "major" && (
+                  <p className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+                    This will create Version {formatCustomizerVersion(nextPublicVersion)} and reset the minor revision sequence. Version {currentDisplayVersion} and all previous revisions will remain unchanged.
+                  </p>
+                )}
+                <label className="mt-1 text-xs font-bold text-[#303839]/70">
+                  Update Notes <span className="font-normal">(optional)</span>
+                  <textarea value={updateNotes} onChange={(event) => setUpdateNotes(event.target.value.slice(0, 2000))} rows={3} className="mt-1 w-full rounded-md border border-[#303839]/15 px-3 py-2 text-sm font-normal text-[#303839] outline-none focus:border-[#D4AF37]" placeholder="What changed in this update?" />
+                </label>
+              </div>
+            )}
+
             <div className="mt-4 flex justify-end gap-2">
               <button
                 type="button"
                 onClick={() => setPublishCheck(null)}
                 className="rounded-full border border-[#303839]/15 px-4 py-2 text-xs font-bold text-[#303839] hover:bg-[#F8F6F1]"
               >
-                Back to editing
+                Cancel
               </button>
               {!publishCheck.errors.length && (
                 <button
@@ -956,7 +1029,7 @@ export default function AdminDesignBuilder({
                   onClick={confirmPublish}
                   className="rounded-full bg-[#303839] px-5 py-2 text-xs font-bold text-white hover:bg-[#434c4d]"
                 >
-                  {publishCheck.warnings.length ? "Publish anyway" : isPublished ? "Update Published" : "Publish"}
+                  Publish
                 </button>
               )}
             </div>

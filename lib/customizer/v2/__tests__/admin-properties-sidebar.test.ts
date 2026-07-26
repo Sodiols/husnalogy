@@ -16,7 +16,9 @@ describe("admin properties sidebar contract", () => {
     expect(panel).not.toContain('<Section title="Arrange"');
     expect(panel).not.toContain('ariaLabel="X position"');
     expect(panel).not.toContain('ariaLabel="Opacity"');
-    expect(builder).toContain("w-[clamp(320px,20vw,360px)]");
+    // The inspector is a bounded-width sidebar (now on the right, per the
+    // editor redesign) that collapses to a bottom drawer on small screens.
+    expect(builder).toContain("w-[clamp(300px,21vw,360px)]");
     expect(builder).toContain("max-lg:bottom-0");
   });
 

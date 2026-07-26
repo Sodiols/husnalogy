@@ -47,8 +47,8 @@ function RailButton({ id, label, active = false, onClick, disabled = false, disa
       onClick={onClick}
       disabled={disabled}
       title={disabled && disabledHint ? disabledHint : label}
-      className={`mx-1.5 flex min-h-11 cursor-pointer flex-col items-center justify-center gap-1 rounded-lg px-1 py-2 text-[9.5px] font-bold transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] ${
-        active ? "bg-[#F8F6F1] text-[#303839] shadow-sm" : "text-white/70 hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-25"
+      className={`mx-1.5 flex min-h-[52px] cursor-pointer flex-col items-center justify-center gap-1 rounded-lg px-1 py-2 text-[9.5px] font-semibold leading-none transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] ${
+        active ? "bg-[#D4AF37] text-[#303839]" : "text-white/60 hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-25"
       }`}
     >
       {ICONS[id]}

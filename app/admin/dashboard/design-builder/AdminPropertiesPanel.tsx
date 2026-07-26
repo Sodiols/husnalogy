@@ -225,6 +225,12 @@ function PlaceholderImageControl({ layer, onLayerPatch }: any) {
   );
 }
 
+const INSPECTOR_TABS = [
+  { id: "design", label: "Design" },
+  { id: "settings", label: "Settings" },
+  { id: "advanced", label: "Advanced" },
+];
+
 export default function AdminPropertiesPanel({
   template,
   layer,
@@ -233,6 +239,9 @@ export default function AdminPropertiesPanel({
   onFieldPatch,
   onToggleCustomerEditable,
 }: any) {
+  // Declared before the early return so the hook order stays stable.
+  const [inspectorTab, setInspectorTab] = useState("design");
+
   if (!layer) {
     return (
       <div className="p-5 text-sm text-[#303839]/55">
@@ -246,13 +255,41 @@ export default function AdminPropertiesPanel({
   const style = layer?.textStyle || {};
 
   return (
-    <div className="grid gap-6 bg-white p-5">
-      <div>
-        <Lbl>Layer name</Lbl>
-        <Txt value={layer.name} onChange={(v: string) => onLayerPatch(layer.id, { name: v })} />
+    <div className="bg-white">
+      {/* Inspector tabs. Purely a routing layer over the existing sections —
+          every control below keeps its original handler. */}
+      <div className="sticky top-0 z-10 flex items-center gap-0.5 border-b border-[#303839]/8 bg-white px-3 pt-3">
+        {INSPECTOR_TABS.map((entry) => {
+          const active = inspectorTab === entry.id;
+          return (
+            <button
+              key={entry.id}
+              type="button"
+              onClick={() => setInspectorTab(entry.id)}
+              aria-current={active ? "true" : undefined}
+              className={`relative px-3 pb-2.5 text-[11px] font-bold uppercase tracking-[0.1em] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] ${
+                active ? "text-[#303839]" : "text-[#303839]/40 hover:text-[#303839]/70"
+              }`}
+            >
+              {entry.label}
+              <span
+                aria-hidden
+                className={`absolute inset-x-2 bottom-0 h-[2px] rounded-full ${active ? "bg-[#D4AF37]" : "bg-transparent"}`}
+              />
+            </button>
+          );
+        })}
       </div>
 
-      {layer.type === "text" && (
+    <div className="grid gap-6 p-5">
+      {inspectorTab === "design" && (
+        <div>
+          <Lbl>Layer name</Lbl>
+          <Txt value={layer.name} onChange={(v: string) => onLayerPatch(layer.id, { name: v })} />
+        </div>
+      )}
+
+      {inspectorTab === "design" && layer.type === "text" && (
         <Section title="Text">
           <div>
             <Lbl>Text content</Lbl>
@@ -304,7 +341,7 @@ export default function AdminPropertiesPanel({
         </Section>
       )}
 
-      {(layer.type === "image" || layer.type === "frame") && (
+      {inspectorTab === "design" && (layer.type === "image" || layer.type === "frame") && (
         <Section title="Image / photo area">
           <ImageSrcControl layer={layer} onLayerPatch={onLayerPatch} />
           <PlaceholderImageControl layer={layer} onLayerPatch={onLayerPatch} />
@@ -369,7 +406,7 @@ export default function AdminPropertiesPanel({
         </Section>
       )}
 
-      {(layer.type === "image" || layer.type === "frame") && (
+      {inspectorTab === "advanced" && (layer.type === "image" || layer.type === "frame") && (
         <Section title="Image crop defaults" collapsible defaultOpen={false}>
           <div className="grid grid-cols-2 gap-2">
             <div><Lbl>Crop zoom</Lbl><CarouselStepper ariaLabel="Image crop zoom" value={Math.round((Number(layer.imageTransform?.zoom) || 1) * 100)} min={100} max={800} step={5} onChange={(value: number) => onLayerPatch(layer.id, { imageTransform: { ...(layer.imageTransform || {}), zoom: value / 100 } })} /></div>
@@ -380,7 +417,7 @@ export default function AdminPropertiesPanel({
         </Section>
       )}
 
-      {(layer.type === "image" || layer.type === "frame") && (
+      {inspectorTab === "advanced" && (layer.type === "image" || layer.type === "frame") && (
         <Section title="Image filters" collapsible defaultOpen={false}>
           <div className="grid grid-cols-2 gap-2">
             {[
@@ -397,7 +434,7 @@ export default function AdminPropertiesPanel({
         </Section>
       )}
 
-      {layer.type === "grid" && (
+      {inspectorTab === "design" && layer.type === "grid" && (
         <Section title="Photo grid">
           <div className="grid grid-cols-2 gap-2">
             <div><Lbl>Columns</Lbl><CarouselStepper ariaLabel="Grid columns" value={layer.columns || 2} min={1} max={12} onChange={(value: number) => onLayerPatch(layer.id, { columns: value })} /></div>
@@ -427,7 +464,7 @@ export default function AdminPropertiesPanel({
         </Section>
       )}
 
-      {layer.type === "shape" && (
+      {inspectorTab === "design" && layer.type === "shape" && (
         <Section title={layer.shape === "line" ? "Line" : "Shape"}>
           {layer.shape !== "line" && <div className="grid grid-cols-2 gap-2">
             <label><Lbl>Fill</Lbl><input type="color" value={layer.fill || "#F8F6F1"} onChange={(event) => onLayerPatch(layer.id, { fill: event.target.value })} className="h-10 w-full rounded-lg border border-[#303839]/15" /></label>
@@ -446,14 +483,14 @@ export default function AdminPropertiesPanel({
         </Section>
       )}
 
-      {layer.type === "element" && (
+      {inspectorTab === "design" && layer.type === "element" && (
         <Section title="Element">
           <label><Lbl>Colour tint</Lbl><input type="color" value={layer.tintColor || "#303839"} onChange={(event) => onLayerPatch(layer.id, { tintColor: event.target.value })} className="h-10 w-full rounded-lg border border-[#303839]/15" /></label>
           <div className="flex gap-3"><Check checked={Boolean(layer.flipX)} onChange={(value: boolean) => onLayerPatch(layer.id, { flipX: value })} label="Flip horizontal" /><Check checked={Boolean(layer.flipY)} onChange={(value: boolean) => onLayerPatch(layer.id, { flipY: value })} label="Flip vertical" /></div>
         </Section>
       )}
 
-      {layer.type === "qrCode" && (
+      {inspectorTab === "design" && layer.type === "qrCode" && (
         <Section title="QR code">
           <label><Lbl>Destination</Lbl><Txt value={layer.value} placeholder="https://example.com" onChange={(value: string) => onLayerPatch(layer.id, { value })} /></label>
           <div className="grid grid-cols-2 gap-2">
@@ -466,7 +503,7 @@ export default function AdminPropertiesPanel({
         </Section>
       )}
 
-      {layer.type === "background" && (
+      {inspectorTab === "design" && layer.type === "background" && (
         <Section title="Background">
           <label><Lbl>Background colour</Lbl><input type="color" value={layer.color || "#ffffff"} onChange={(event) => onLayerPatch(layer.id, { color: event.target.value })} className="h-10 w-full rounded-lg border border-[#303839]/15" /></label>
           <ImageSrcControl layer={layer} onLayerPatch={onLayerPatch} />
@@ -474,14 +511,14 @@ export default function AdminPropertiesPanel({
         </Section>
       )}
 
-      {layer.type === "group" && (
+      {inspectorTab === "advanced" && layer.type === "group" && (
         <Section title="Group behaviour" collapsible defaultOpen={false}>
           <div><Lbl>Customer selection</Lbl><Sel ariaLabel="Group customer selection" value={layer.childSelection || "children"} onChange={(value: string) => onLayerPatch(layer.id, { childSelection: value })} options={[{ value: "group", label: "Whole group" }, { value: "children", label: "Editable children" }, { value: "none", label: "Not selectable" }]} /></div>
           <Check checked={Boolean(layer.allowCustomerUngroup)} onChange={(value: boolean) => onLayerPatch(layer.id, { allowCustomerUngroup: value })} label="Allow customer to ungroup" />
         </Section>
       )}
 
-      {(
+      {inspectorTab === "settings" && (
         <Section title="Customer access" subtle>
           <Check
             checked={layer.customerEditable}
@@ -533,6 +570,14 @@ export default function AdminPropertiesPanel({
           )}
         </Section>
       )}
+
+      {inspectorTab === "advanced" && !["image", "frame", "group"].includes(layer.type) && (
+        <p className="text-xs leading-relaxed text-[#303839]/45">
+          This layer type has no advanced settings. Crop defaults and filters appear here for
+          images and photo areas, and grouping behaviour for groups.
+        </p>
+      )}
+    </div>
     </div>
   );
 }

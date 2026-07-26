@@ -60,7 +60,7 @@ export default function AdminPagesPanel({
               aria-pressed={active}
               className={`block w-full text-left transition ${disabled ? "opacity-45" : ""}`}
             >
-              <div className={`overflow-hidden rounded-md border-2 bg-white ${active ? "border-[#303839]" : "border-[#303839]/12 hover:border-[#303839]/35"}`}>
+              <div className={`overflow-hidden rounded-lg border-2 bg-white transition-colors ${active ? "border-[#D4AF37]" : "border-white/12 hover:border-white/30"}`}>
                 <CustomizerPreview template={template} values={{}} page={page.id} showSafeArea={false} showBleed={false} />
               </div>
             </button>
@@ -77,11 +77,11 @@ export default function AdminPagesPanel({
                     if (e.key === "Escape") setRenamingId(null);
                   }}
                   list="cz-page-label-presets"
-                  className="w-full rounded border border-[#303839]/20 bg-white px-1 py-0.5 text-xs text-[#303839] outline-none"
+                  className="w-full rounded border border-white/20 bg-white/10 px-1 py-0.5 text-xs text-white outline-none focus:border-[#D4AF37]"
                   aria-label="Page name"
                 />
               ) : (
-                <span className={`truncate text-[11px] font-bold ${active ? "text-[#303839]" : "text-[#303839]/55"}`}>
+                <span className={`truncate text-[11px] font-medium ${active ? "text-white" : "text-white/50"}`}>
                   {page.label}
                   {disabled ? " · off" : ""}
                 </span>
@@ -90,7 +90,7 @@ export default function AdminPagesPanel({
                 type="button"
                 aria-label={`Page actions for ${page.label}`}
                 onClick={() => setMenuFor(menuFor === page.id ? null : page.id)}
-                className="grid h-6 w-6 shrink-0 place-items-center rounded text-[#303839]/50 hover:bg-[#F8F6F1] hover:text-[#303839]"
+                className="grid h-6 w-6 shrink-0 place-items-center rounded text-white/45 transition-colors hover:bg-white/10 hover:text-white"
               >
                 ⋯
               </button>
@@ -172,7 +172,7 @@ export default function AdminPagesPanel({
       <button
         type="button"
         onClick={onAddPage}
-        className="flex items-center justify-center gap-1.5 rounded-md border border-dashed border-[#303839]/25 px-2 py-3 text-xs font-bold text-[#303839]/60 transition hover:bg-[#F8F6F1] hover:text-[#303839]"
+        className="flex items-center justify-center gap-1.5 rounded-lg border border-dashed border-white/20 px-2 py-3 text-xs font-semibold text-white/50 transition-colors hover:border-white/35 hover:bg-white/[0.06] hover:text-white"
       >
         + Add page
       </button>

@@ -33,14 +33,14 @@ export default function AdminLayersPanel({
   };
 
   return (
-    <div className="grid gap-1 p-2">
+    <div className="grid gap-0.5 px-2 pb-2">
       {layers.map((layer: any, index: number) => {
         const selected = layer.id === selectedLayerId;
         return (
           <div
             key={layer.id}
-            className={`group flex items-center gap-1.5 rounded-md border px-2 py-1.5 transition ${
-              selected ? "border-[#303839] bg-[#303839] text-white" : "border-[#303839]/10 bg-white text-[#303839] hover:bg-[#F8F6F1]"
+            className={`group flex items-center gap-1.5 rounded-lg px-2 py-1.5 transition-colors ${
+              selected ? "bg-white/[0.14] text-white" : "text-white/65 hover:bg-white/[0.07] hover:text-white"
             }`}
           >
             <button
@@ -64,14 +64,14 @@ export default function AdminLayersPanel({
                     if (e.key === "Escape") setRenamingId(null);
                   }}
                   onClick={(e) => e.stopPropagation()}
-                  className="w-full rounded border border-[#303839]/20 bg-white px-1 py-0.5 text-xs text-[#303839] outline-none"
+                  className="w-full rounded border border-white/20 bg-white/10 px-1 py-0.5 text-xs text-white outline-none focus:border-[#D4AF37]"
                   aria-label="Layer name"
                 />
               ) : (
-                <span className="truncate text-xs font-semibold">{layer.name}</span>
+                <span className="truncate text-xs font-medium">{layer.name}</span>
               )}
               {layer.customerEditable && !renamingId && (
-                <span className={`shrink-0 rounded px-1 text-[8px] font-extrabold uppercase ${selected ? "bg-white/20" : "bg-[#D4AF37]/20 text-[#8a701d]"}`}>
+                <span className="shrink-0 rounded px-1 text-[8px] font-bold uppercase text-[#D4AF37]">
                   Edit
                 </span>
               )}
@@ -136,7 +136,7 @@ export default function AdminLayersPanel({
           </div>
         );
       })}
-      {!layers.length && <p className="px-2 py-3 text-xs text-[#303839]/50">No layers on this page yet. Add one from the tool rail.</p>}
+      {!layers.length && <p className="px-2 py-3 text-xs leading-relaxed text-white/35">No layers on this page yet. Add one from the tool rail.</p>}
     </div>
   );
 }
