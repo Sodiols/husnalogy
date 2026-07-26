@@ -12,3 +12,10 @@ codex-dev-server*.log
 test-results/
 playwright-report/
 .customizer-e2e.json
+
+# Explorer duplicates ("Copy of x", "x - Copy") — these slipped a whole
+# built .next tree into the repo once already.
+* - Copy/
+* - Copy (*)/
+Copy of *
+

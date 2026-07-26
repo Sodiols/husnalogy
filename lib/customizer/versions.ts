@@ -143,22 +143,6 @@ export async function getTemplateVersion(templateId: string, version: number): P
   return versionFromRow({ ...data, document: hydratedDocument });
 }
 
-export async function getLatestTemplateVersion(templateId: string): Promise<TemplateVersionRow | null> {
-  if (!templateId) return null;
-  const supabase = createServiceRoleClient();
-  const { data, error } = await supabase
-    .from("customizer_template_versions")
-    .select("*")
-    .eq("template_id", templateId)
-    .order("version", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  if (error) throw error;
-  if (!data) return null;
-  const hydratedDocument = await hydrateAdminAssetUrls(data.document, supabase);
-  return versionFromRow({ ...data, document: hydratedDocument });
-}
-
 // The trusted template a customization must be validated and rendered
 // against: its exact published version snapshot when one exists, otherwise
 // the live template row (legacy templates published before versioning).

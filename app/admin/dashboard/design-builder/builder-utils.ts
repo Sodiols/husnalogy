@@ -1,13 +1,7 @@
 "use client";
 
 import { customerEditablePermissionBundle } from "@/lib/customizer";
-import { createGridSlots } from "@/lib/customizer/v2/grids";
-import {
-  getDescendantIds,
-  groupLayers as createPersistentGroup,
-  transformGroupChildren,
-  ungroupLayers as removePersistentGroup,
-} from "@/lib/customizer/v2/groups";
+import { getDescendantIds, transformGroupChildren } from "@/lib/customizer/v2/groups";
 
 // Shared helpers for the admin visual Design Builder. Pure functions that take a
 // template and return a new template — the builder owns undo/redo on top.
@@ -143,40 +137,6 @@ export function newShapeLayer(template: any, pageId: string, shape = "rectangle"
     lineStartCap: "none",
     lineEndCap: "none",
     points: shape === "polygon" ? [{ x: 0.5, y: 0 }, { x: 1, y: 0.38 }, { x: 0.82, y: 1 }, { x: 0.18, y: 1 }, { x: 0, y: 0.38 }] : [],
-  };
-}
-
-export function newGridLayer(template: any, pageId: string, columns = 2, rows = 2) {
-  const cx = Math.round((template?.canvasWidthPx || 1500) / 2);
-  const cy = Math.round((template?.canvasHeightPx || 2100) / 2);
-  return {
-    id: genId("grid"),
-    name: "Photo grid",
-    page: pageId,
-    type: "grid",
-    columns,
-    rows,
-    slots: createGridSlots(columns, rows),
-    x: cx,
-    y: cy,
-    width: Math.round((template?.canvasWidthPx || 1500) * 0.72),
-    height: Math.round((template?.canvasHeightPx || 2100) * 0.48),
-    rotation: 0,
-    zIndex: nextZIndex(template, pageId),
-    opacity: 1,
-    gap: 18,
-    padding: 0,
-    cornerRadius: 0,
-    borderColor: "",
-    borderWidth: 0,
-    backgroundColor: "#F8F6F1",
-    hidden: false,
-    locked: false,
-    adminEditable: true,
-    customerEditable: true,
-    customerPermissions: customerEditablePermissionBundle(true),
-    groupId: "",
-    fieldId: "",
   };
 }
 
@@ -343,15 +303,6 @@ export function duplicateLayer(template: any, layerId: string) {
     customerEditable: false,
   };
   return { template: { ...template, layers: [...(template.layers || []), copy] }, newId: copy.id };
-}
-
-export function groupSelectedLayers(template: any, layerIds: string[]) {
-  const groupId = genId("group");
-  return { template: { ...template, layers: createPersistentGroup(template.layers || [], layerIds, groupId) }, groupId };
-}
-
-export function ungroupLayer(template: any, groupId: string) {
-  return { ...template, layers: removePersistentGroup(template.layers || [], groupId) };
 }
 
 // Move a layer up/down in stacking order within its page.

@@ -290,22 +290,6 @@ export function resolveLayerImage(layer: any, field: any, values: Record<string,
   return null;
 }
 
-export function resolveGridSlotImage(slot: any): ImageValue | null {
-  if (!slot) return null;
-  const transform = slot.transform || {};
-  const url = String(slot.src || "");
-  if (!url) return null;
-  return {
-    url,
-    zoom: Number(transform.zoom) > 0 ? Number(transform.zoom) : 1,
-    offsetX: Number(transform.offsetX) || 0,
-    offsetY: Number(transform.offsetY) || 0,
-    flipX: Boolean(transform.flipX),
-    flipY: Boolean(transform.flipY),
-    imageRotation: Number(transform.rotation) || 0,
-  };
-}
-
 // Part 15 customer validation.
 export function validateCustomerValues(
   template: any,

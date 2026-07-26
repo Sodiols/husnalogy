@@ -91,12 +91,6 @@ function initAuth() {
   authSubscription = subscription;
 }
 
-export function refreshAuthState() {
-  if (!initialized) return;
-  emit({ ...authState, authLoading: true });
-  loadUser();
-}
-
 export default function useAuth(initialUser: any = undefined) {
   // The module-level store above is a browser-only optimization: one shared
   // auth state per tab. But this same "use client" module also executes on

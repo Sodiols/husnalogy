@@ -32,15 +32,6 @@ export function getMainMockupImage(product) {
   );
 }
 
-export function withMainMockupImage(product) {
-  if (!product) return product;
-
-  return {
-    ...product,
-    image: getMainMockupImage(product),
-  };
-}
-
 /**
  * pinMockupImage
  * Forces the resolved product mockup onto `mainMockup` (the highest-priority

@@ -512,50 +512,6 @@ export function normalizeDocumentV2(input: Record<string, any>): { document: Cus
 // The "scene" is the flat, per-page, z-ordered list of effective layers that
 // interaction layers and renderers consume. The normalized document remains
 // the source of truth (spec §6) — scenes are always derived, never stored.
-export type SceneLayer = CustomizerLayer & { isUserLayer?: boolean };
-
-export type Scene = {
-  pageId: string;
-  width: number;
-  height: number;
-  backgroundColor: string;
-  backgroundImage?: string;
-  layers: SceneLayer[];
-};
-
-export function documentToScene(document: CustomizerDocument, pageId: string, editorState?: CustomerEditorState | null): Scene {
-  const page = document.pages.find((p) => p.id === pageId) || document.pages[0];
-  const overrides = editorState?.layerOverrides || {};
-  const layers: SceneLayer[] = document.layers
-    .filter((layer) => layer.pageId === page.id)
-    .map((layer) => applyOverrideV2(layer, overrides[layer.id]));
-
-  const userLayers: SceneLayer[] = (editorState?.userLayers || [])
-    .filter((raw) => raw && (raw as any).page === page.id)
-    .map((raw) => ({ ...(migrateLayerV1(raw as Record<string, any>, page.id) as CustomizerLayer), isUserLayer: true }));
-
-  return {
-    pageId: page.id,
-    width: page.widthPx,
-    height: page.heightPx,
-    backgroundColor: page.backgroundColor,
-    backgroundImage: page.backgroundImage,
-    layers: [...layers, ...userLayers].sort((a, b) => a.zIndex - b.zIndex),
-  };
-}
-
-// Write scene-level transform changes back into the document (admin editing).
-export function sceneToDocument(document: CustomizerDocument, scene: Scene): CustomizerDocument {
-  const byId = new Map(scene.layers.filter((l) => !l.isUserLayer).map((l) => [l.id, l]));
-  return {
-    ...document,
-    layers: document.layers.map((layer) => {
-      const updated = byId.get(layer.id);
-      return updated ? ({ ...layer, ...updated } as CustomizerLayer) : layer;
-    }),
-  };
-}
-
 export function applyOverrideV2(layer: CustomizerLayer, override?: LayerOverride): CustomizerLayer {
   if (!override) return layer;
   let next: CustomizerLayer = { ...layer };
@@ -661,26 +617,4 @@ export function resolveCustomerDocument(
   });
 
   return { ...document, layers: [...layers, ...userLayers] };
-}
-
-// Serializable render payload for the server pipeline: the resolved document
-// plus everything the renderer needs, nothing it must look up client-side.
-export function documentToRenderPayload(
-  document: CustomizerDocument,
-  values: Record<string, unknown>,
-  editorState: CustomerEditorState | null,
-  selectedOptions: Record<string, unknown> = {},
-): Record<string, unknown> {
-  const resolved = resolveCustomerDocument(document, values, editorState);
-  return {
-    schemaVersion: resolved.schemaVersion,
-    engineVersion: resolved.engineVersion,
-    templateId: resolved.templateId,
-    templateVersion: resolved.templateVersion,
-    document: resolved,
-    values,
-    editorState: editorState || { layerOverrides: {}, userLayers: [] },
-    selectedOptions,
-    generatedAt: new Date().toISOString(),
-  };
 }

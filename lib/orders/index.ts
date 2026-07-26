@@ -421,11 +421,6 @@ export async function getOrderRequests(filters: any = {}) {
   return readSupabaseOrders(filters);
 }
 
-export async function getOrderRequestById(id) {
-  const orders = await getOrderRequests();
-  return orders.find((order) => order.id === id) || null;
-}
-
 export async function getOrderRequestsForCustomer({ customerId, email }: any = {}) {
   const id = cleanString(customerId);
   const mail = cleanString(email).toLowerCase();

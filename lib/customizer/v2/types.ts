@@ -191,20 +191,6 @@ export type MaskShape =
   | { kind: "polygon"; points: Array<{ x: number; y: number }> } // normalized 0..1
   | { kind: "path"; d: string; viewBoxWidth: number; viewBoxHeight: number };
 
-export type MaskShapeKind = MaskShape["kind"];
-
-export const MASK_SHAPE_KINDS: ReadonlyArray<MaskShapeKind> = [
-  "rectangle",
-  "rounded",
-  "circle",
-  "oval",
-  "arch",
-  "arch-top",
-  "arch-bottom",
-  "polygon",
-  "path",
-];
-
 /* ------------------------------------------------------------------ layers */
 
 export type TextStyle = {
@@ -398,8 +384,6 @@ export type CustomizerLayer =
   | BackgroundLayer
   | QRCodeLayer;
 
-export type CustomizerLayerType = CustomizerLayer["type"];
-
 /* ------------------------------------------------------------------- pages */
 
 export type CustomizerPage = {
@@ -585,8 +569,6 @@ export type RenderJobType =
   | "print_png"
   | "print_pdf"
   | "mockup";
-
-export type RenderJobStatus = "queued" | "processing" | "retrying" | "completed" | "failed" | "cancelled";
 
 export type RenderOutput = {
   pageId: string;

@@ -52,13 +52,3 @@ export function getDisabledRenderFeature(
   }
   return null;
 }
-
-export function withCustomizerFeatureFlag(template: any, flag: CustomizerFeatureFlag, enabled: boolean): any {
-  return {
-    ...template,
-    settings: {
-      ...(template?.settings || {}),
-      featureFlags: { ...(template?.settings?.featureFlags || {}), [flag]: enabled },
-    },
-  };
-}

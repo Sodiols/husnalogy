@@ -765,11 +765,6 @@ export async function getActiveProducts(filters = {}) {
   return filterProducts(products.filter(isPubliclyListed), filters);
 }
 
-export async function getFeaturedProducts(limit) {
-  const products = await getActiveProducts({ featured: true });
-  return limit ? products.slice(0, limit) : products;
-}
-
 export async function getProductBySlug(slug, includeInactive = false) {
   const products = await getProducts();
   const product = products.find((item) => item.slug === slug);
@@ -812,32 +807,6 @@ export async function getOtherStyles(productOrSlug, limit = 12) {
     .slice(0, limit);
 }
 
-export async function getMatchingSuiteProducts(productOrSlug, limit = 16) {
-  const products = await getActiveProducts();
-  const currentProduct =
-    typeof productOrSlug === "string"
-      ? products.find((item) => item.slug === productOrSlug) || (await getProductBySlug(productOrSlug))
-      : productOrSlug;
-
-  if (!currentProduct) return [];
-
-  const suiteCollectionIds = getCollectionIdsForSection(currentProduct, "suite");
-  if (suiteCollectionIds.length) {
-    return products
-      .filter((item) => item.slug !== currentProduct.slug)
-      .filter((item) => hasAnyCollection(item, suiteCollectionIds))
-      .slice(0, limit);
-  }
-
-  const groupId = getComparable(currentProduct.suiteGroupId || currentProduct.suiteGroup);
-  if (!groupId) return [];
-
-  return products
-    .filter((item) => item.slug !== currentProduct.slug)
-    .filter((item) => getComparable(item.suiteGroupId || item.suiteGroup) === groupId)
-    .slice(0, limit);
-}
-
 export async function getRelatedProducts(productOrSlug, limit = 12) {
   const products = await getActiveProducts();
   const currentProduct =
@@ -857,12 +826,6 @@ export async function getRelatedProducts(productOrSlug, limit = 12) {
     })
     .map((item) => item.product)
     .slice(0, limit);
-}
-
-export async function getRelatedProductsByStyleGroup(productOrSlug, limit = 12) {
-  const otherStyles = await getOtherStyles(productOrSlug, limit);
-  if (otherStyles.length) return otherStyles;
-  return getRelatedProducts(productOrSlug, limit);
 }
 
 export function filterProducts(products: any, filters: any = {}) {

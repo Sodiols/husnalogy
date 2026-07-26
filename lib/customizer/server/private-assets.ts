@@ -163,7 +163,3 @@ export async function validatePrivateAssetOwnership(value: unknown, userId: stri
     }
   }
 }
-
-export function clearPrivateAssetUrlCache(): void {
-  signedUrlCache.clear();
-}

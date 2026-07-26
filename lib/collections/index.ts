@@ -611,10 +611,6 @@ export function getCollectionDefinition(slug) {
   };
 }
 
-export function getCollectionHref(slug) {
-  return `/collections/${slug}`;
-}
-
 export async function getCollectionSuite(slug) {
   const normalizedSlug = normalize(slug);
   const [collections, allProducts] = await Promise.all([

@@ -166,19 +166,10 @@ export const FONT_REGISTRY: FontRegistryEntry[] = [
 ];
 
 const byFamily = new Map(FONT_REGISTRY.map((f) => [f.cssFamily.toLowerCase(), f]));
-const byId = new Map(FONT_REGISTRY.map((f) => [f.id, f]));
 
 export function getFontByFamily(family: string | undefined | null): FontRegistryEntry | null {
   if (!family) return null;
   return byFamily.get(String(family).trim().toLowerCase()) || null;
-}
-
-export function getFontById(id: string): FontRegistryEntry | null {
-  return byId.get(id) || null;
-}
-
-export function isServerRenderableFont(family: string): boolean {
-  return Boolean(getFontByFamily(family)?.serverRenderable);
 }
 
 export function listFonts(options: { customerOnly?: boolean; adminOnly?: boolean } = {}): FontRegistryEntry[] {

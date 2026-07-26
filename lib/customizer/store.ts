@@ -59,10 +59,3 @@ export async function saveCustomizerTemplate(productId: string, template: any) {
   if (error) throw error;
   return hydrateAdminAssetUrls(templateFromRow(data), supabase);
 }
-
-export async function deleteCustomizerTemplate(productId: string) {
-  if (!productId) return;
-  const supabase = createServiceRoleClient();
-  const { error } = await supabase.from("product_customizer_templates").delete().eq("product_id", productId);
-  if (error) throw error;
-}

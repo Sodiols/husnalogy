@@ -182,25 +182,6 @@ export async function createOrderDesignSnapshots(order: OrderLike): Promise<numb
   return created;
 }
 
-export type OrderDesignSnapshotSummary = {
-  id: string;
-  orderId: string;
-  orderItemId: string | null;
-  customizationId: string | null;
-  productId: string;
-  productTitle: string;
-  quantity: number;
-  selectedOptions: Record<string, unknown>;
-  pricing: Record<string, unknown>;
-  templateVersion: number;
-  renderStatus: string;
-  preflight: Record<string, unknown>;
-  previewFiles: Record<string, unknown>;
-  printFiles: Record<string, unknown>;
-  integrityHash: string;
-  createdAt: string;
-};
-
 export async function getOrderDesignSnapshots(orderId: string, includeDocument = false) {
   const supabase = createServiceRoleClient();
   const columns = includeDocument

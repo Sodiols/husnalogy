@@ -483,11 +483,6 @@ export async function updateCartItem(user, cartItemId, patch: any = {}) {
   dispatchCommerceChange("cart");
 }
 
-export async function increaseCartQuantity(user, cartItemId, amount = 1) {
-  const current = (await getUserCart(user)).find((entry) => String(entry.id) === String(cartItemId));
-  await updateCartQuantity(user, cartItemId, Number(current?.quantity || 1) + amount);
-}
-
 export async function removeFromCart(user, cartItemId) {
   const userId = requireUser(user);
   const supabase = createClient();

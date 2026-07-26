@@ -21,11 +21,6 @@ export function hasImageFilters(input: Partial<ImageFilters> | Record<string, un
   return value.brightness !== 1 || value.contrast !== 1 || value.saturation !== 1 || value.grayscale > 0 || value.sepia > 0 || Boolean(value.tintColor && value.tintAmount > 0);
 }
 
-export function imageFilterCss(input: Partial<ImageFilters> | Record<string, unknown> | null | undefined): string {
-  const value = normalizeImageFilters(input);
-  return `brightness(${value.brightness}) contrast(${value.contrast}) saturate(${value.saturation}) grayscale(${value.grayscale}) sepia(${value.sepia})`;
-}
-
 export function imageFilterSvgPrimitives(input: Partial<ImageFilters> | Record<string, unknown> | null | undefined): string {
   const value = normalizeImageFilters(input);
   const slope = value.brightness * value.contrast;

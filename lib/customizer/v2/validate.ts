@@ -163,11 +163,6 @@ export const userLayerSchema = z
   })
   .passthrough();
 
-export const editorStateSchema = z.object({
-  layerOverrides: z.record(z.string().max(120), layerOverrideSchema).default({}),
-  userLayers: z.array(userLayerSchema).max(60).default([]),
-});
-
 export const imageValueSchema = z
   .object({
     bucket: z.string().max(120).optional(),
@@ -190,18 +185,6 @@ export const imageValueSchema = z
     height: finite.optional(),
   })
   .passthrough();
-
-export const customizationSubmitSchema = z.object({
-  customizationId: z.string().max(80).optional(),
-  productId: z.string().max(120),
-  templateId: z.string().max(80).optional(),
-  templateVersion: z.coerce.number().int().positive().optional(),
-  cartItemId: z.string().max(80).optional(),
-  status: z.enum(["draft", "in_cart", "ordered", "archived"]).optional(),
-  values: z.record(z.string().max(120), z.unknown()).default({}),
-  selectedOptions: z.record(z.string().max(120), z.unknown()).default({}),
-  editorState: editorStateSchema.optional(),
-});
 
 /* --------------------------------------------------------------- violation */
 

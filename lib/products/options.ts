@@ -81,11 +81,6 @@ export function optionValueFromLabel(label: string): string {
   );
 }
 
-export function formatSurcharge(surcharge: number): string {
-  if (!surcharge) return "";
-  return `+$${surcharge.toFixed(2)}`;
-}
-
 function cartValueFor(displayLabel: string, surcharge: number): string {
   if (!surcharge) return displayLabel;
   return `${displayLabel} +$${surcharge.toFixed(2)}`;
@@ -225,9 +220,3 @@ export function getSurchargeForSelection(selection: string, value: any): number 
   if (match) return match.surcharge;
   return parseSurchargeFromLabel(stored);
 }
-
-export const DEFAULT_FORMAT_OPTIONS: ProductOptionEntry[] = [
-  "Printed Flat Card",
-  "Prints + Instant Download",
-  "Instant Download",
-];
