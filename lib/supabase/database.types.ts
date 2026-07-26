@@ -151,6 +151,8 @@ export type Database = {
           template_id: string
           product_id: string | null
           version: number
+          major_version: number
+          minor_revision: number
           schema_version: number
           engine_version: string
           document: Json
@@ -164,6 +166,8 @@ export type Database = {
           template_id: string
           product_id?: string | null
           version: number
+          major_version?: number
+          minor_revision?: number
           schema_version?: number
           engine_version?: string
           document?: Json
@@ -177,6 +181,8 @@ export type Database = {
           template_id?: string
           product_id?: string | null
           version?: number
+          major_version?: number
+          minor_revision?: number
           schema_version?: number
           engine_version?: string
           document?: Json

@@ -11,14 +11,17 @@ export async function GET(_request: Request, { params }: any) {
   const { productId } = await params;
   try {
     const template = await getCustomizerTemplateByProductId(productId);
-    if (!template) return Response.json({ ok: true, versions: [], draftVersion: 0 });
+    if (!template) return Response.json({ ok: true, versions: [], currentPublishedVersion: null });
     const versions = await listTemplateVersions(template.id);
     return Response.json({
       ok: true,
-      draftVersion: template.version || 1,
+      currentPublishedVersion: versions[0]?.displayVersion || null,
       versions: versions.map((v) => ({
         id: v.id,
         version: v.version,
+        major: v.majorVersion,
+        revision: v.minorRevision,
+        display: v.displayVersion,
         notes: v.notes,
         publishedBy: v.publishedBy,
         createdAt: v.createdAt,

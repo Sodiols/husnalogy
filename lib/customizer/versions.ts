@@ -14,12 +14,19 @@ import { collectFontDependencies } from "@/lib/customizer/v2/fonts";
 import { CUSTOMIZER_ENGINE_VERSION, CUSTOMIZER_SCHEMA_VERSION } from "@/lib/customizer/v2/types";
 import type { CustomizerRow } from "@/lib/supabase/database.types";
 import { hydrateAdminAssetUrls, stripAdminAssetUrls } from "@/lib/customizer/server/admin-assets";
+import {
+  formatCustomizerVersion,
+  type CustomizerUpdateType,
+} from "@/lib/customizer/public-version";
 
 export type TemplateVersionRow = {
   id: string;
   templateId: string;
   productId: string;
   version: number;
+  majorVersion: number;
+  minorRevision: number;
+  displayVersion: string;
   schemaVersion: number;
   engineVersion: string;
   document: Record<string, unknown>;
@@ -32,11 +39,16 @@ export type TemplateVersionRow = {
 type TemplateVersionDatabaseRow = CustomizerRow<"customizer_template_versions">;
 
 function versionFromRow(row: Partial<TemplateVersionDatabaseRow>): TemplateVersionRow {
+  const majorVersion = Number(row.major_version) || 2;
+  const minorRevision = Math.max(0, Number(row.minor_revision) || 0);
   return {
     id: row.id || "",
     templateId: row.template_id || "",
     productId: row.product_id || "",
     version: Number(row.version) || 1,
+    majorVersion,
+    minorRevision,
+    displayVersion: formatCustomizerVersion({ major: majorVersion, revision: minorRevision }),
     schemaVersion: Number(row.schema_version) || 2,
     engineVersion: row.engine_version || "",
     document: (row.document && !Array.isArray(row.document) && typeof row.document === "object" ? row.document : {}) as Record<string, unknown>,
@@ -53,6 +65,7 @@ export async function publishTemplateVersion(
   productId: string,
   publishedBy: string | null = null,
   notes = "",
+  updateType: CustomizerUpdateType = "minor",
 ): Promise<
   | { ok: true; version: TemplateVersionRow; warnings: string[] }
   | { ok: false; errors: string[]; warnings: string[] }
@@ -72,42 +85,21 @@ export async function publishTemplateVersion(
 
   const supabase = createServiceRoleClient();
 
-  // Next version = one past the highest published version (independent of the
-  // draft's structural version counter, which may lag behind).
-  const { data: latest, error: latestError } = await supabase
-    .from("customizer_template_versions")
-    .select("version")
-    .eq("template_id", template.id)
-    .order("version", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  if (latestError) throw latestError;
-  const nextVersion = Math.max(Number(latest?.version) || 0, Number(template.version) || 0) + 1;
-
-  const { data, error } = await supabase
-    .from("customizer_template_versions")
-    .insert({
-      template_id: template.id,
-      product_id: productId,
-      version: nextVersion,
-      schema_version: CUSTOMIZER_SCHEMA_VERSION,
-      engine_version: CUSTOMIZER_ENGINE_VERSION,
-      document: { ...document, templateVersion: nextVersion },
-      font_dependencies: fonts.files,
-      published_by: publishedBy,
-      notes,
-    })
-    .select("*")
-    .single();
+  // The database transaction serializes publications per template, calculates
+  // both the internal snapshot sequence and public release identifier, inserts
+  // the immutable row, and updates the draft's internal snapshot reference.
+  const { data, error } = await (supabase.rpc as any)("publish_customizer_template_version", {
+    p_template_id: template.id,
+    p_product_id: productId,
+    p_update_type: updateType,
+    p_schema_version: CUSTOMIZER_SCHEMA_VERSION,
+    p_engine_version: CUSTOMIZER_ENGINE_VERSION,
+    p_document: document,
+    p_font_dependencies: fonts.files,
+    p_published_by: publishedBy,
+    p_notes: notes,
+  });
   if (error) throw error;
-
-  // The draft row's version now tracks the published version so new
-  // customizations record the right number.
-  const { error: bumpError } = await supabase
-    .from("product_customizer_templates")
-    .update({ version: nextVersion })
-    .eq("id", template.id);
-  if (bumpError) throw bumpError;
 
   return {
     ok: true,
@@ -121,7 +113,7 @@ export async function listTemplateVersions(templateId: string): Promise<Template
   const supabase = createServiceRoleClient();
   const { data, error } = await supabase
     .from("customizer_template_versions")
-    .select("id, template_id, product_id, version, schema_version, engine_version, published_by, notes, created_at, font_dependencies")
+    .select("id, template_id, product_id, version, major_version, minor_revision, schema_version, engine_version, published_by, notes, created_at, font_dependencies")
     .eq("template_id", templateId)
     .order("version", { ascending: false });
   if (error) throw error;

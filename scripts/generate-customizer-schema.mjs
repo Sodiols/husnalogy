@@ -10,6 +10,7 @@ const migrationNames = [
   "20260718120000_customizer_v2_customer_parity.sql",
   "20260719120000_customizer_v2_schema_consolidation.sql",
   "20260719180000_permanent_admin_asset_library.sql",
+  "20260726120000_customizer_public_versioning.sql",
 ];
 
 function read(relativePath) {
@@ -28,8 +29,8 @@ const preamble = `/* ===========================================================
 
    Application/document version: Husnalogy Customizer V2, schema v4,
    engine husnalogy-2.2.0.
-   Generated: 2026-07-19.
-   Latest included migration: 20260719180000_permanent_admin_asset_library.sql.
+   Generated: 2026-07-26.
+   Latest included migration: 20260726120000_customizer_public_versioning.sql.
 
    SAFE USE
    - Fresh Supabase project: YES, after the Husnalogy core ecommerce schema.

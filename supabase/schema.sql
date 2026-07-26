@@ -950,6 +950,8 @@ create table if not exists public.customizer_template_versions (
   template_id uuid not null references public.product_customizer_templates(id) on delete cascade,
   product_id text references public.products(id) on delete set null,
   version integer not null,
+  major_version integer not null default 2,
+  minor_revision integer not null default 0,
   schema_version integer not null default 2,
   engine_version text not null default 'husnalogy-2.0.0',
   -- Complete immutable CustomizerDocument snapshot: canvas, pages, fields,

@@ -3,7 +3,6 @@ import { createServiceRoleClient } from "@/lib/supabase/server";
 import {
   normalizeCustomizerTemplate,
   prepareCustomizerTemplateForSave,
-  shouldBumpTemplateVersion,
   templateFromRow,
   templateToRow,
 } from "@/lib/customizer";
@@ -22,8 +21,8 @@ export async function getCustomizerTemplateByProductId(productId: string) {
   return data ? hydrateAdminAssetUrls(templateFromRow(data), supabase) : null;
 }
 
-// Upsert a product's template, bumping the version when the editable structure
-// changed (Part 13). One row per product (product_id is unique).
+// Upsert a product's mutable draft. Draft saves and autosaves never create or
+// advertise a new published version.
 export async function saveCustomizerTemplate(productId: string, template: any) {
   if (!productId) return null;
   const supabase = createServiceRoleClient();
@@ -41,9 +40,7 @@ export async function saveCustomizerTemplate(productId: string, template: any) {
   const next = normalizeCustomizerTemplate(prepareCustomizerTemplateForSave(template), existing || {});
 
   if (existing) {
-    next.version = shouldBumpTemplateVersion(existing, next)
-      ? Number(existing.version || 1) + 1
-      : Number(existing.version || 1);
+    next.version = Number(existing.version || 1);
   } else {
     next.version = 1;
   }
