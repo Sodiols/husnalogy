@@ -3,6 +3,7 @@ import { createId, nowIso } from "@/lib/core/id";
 import { getProductCollections } from "@/lib/collections/store";
 import { createServiceRoleClient } from "@/lib/supabase/server";
 import { normalizeCustomizerTemplate, templateFromRow } from "@/lib/customizer";
+import { hydrateAdminAssetUrls } from "@/lib/customizer/server/admin-assets";
 import { migrateTextAutoSizing } from "@/lib/customizer/v2/text-layout";
 import { saveCustomizerTemplate } from "@/lib/customizer/store";
 import {
@@ -772,6 +773,27 @@ export async function getActiveProducts(filters = {}) {
   return filterProducts(products.filter(isPubliclyListed), filters);
 }
 
+/**
+ * Restore delivery URLs for admin-uploaded customizer assets.
+ *
+ * Saving a template strips the ephemeral url/src keys (they are short-lived
+ * signed URLs, never permanent data), leaving only assetId + storage paths.
+ * Anything that RENDERS a template therefore has to sign fresh URLs again, or
+ * image layers come back with no `src` and fall through to the dashed
+ * placeholder. `lib/customizer/store.ts` already does this on its own load
+ * path; the product path did not, which is why saved uploads rendered as
+ * placeholders once the builder was reopened.
+ *
+ * Deliberately not applied to the public product listing: cards render from
+ * product.images, so signing every template's assets there would be wasted
+ * work on the hottest page.
+ */
+export async function hydrateProductCustomizerAssets(input) {
+  if (!input) return input;
+  const supabase = createServiceRoleClient();
+  return hydrateAdminAssetUrls(input, supabase);
+}
+
 export async function getProductBySlug(slug, includeInactive = false) {
   const products = await getProducts();
   const product = products.find((item) => item.slug === slug);
@@ -781,7 +803,7 @@ export async function getProductBySlug(slug, includeInactive = false) {
   // "hidden" visibility is admin-only even when the product status is active.
   if (!includeInactive && (product.status !== "active" || (product.visibility || "public") === "hidden")) return null;
 
-  return product;
+  return product.customizerTemplate ? hydrateProductCustomizerAssets(product) : product;
 }
 
 export async function getOtherStyles(productOrSlug, limit = 12) {
