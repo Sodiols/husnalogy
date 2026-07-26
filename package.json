@@ -1,0 +1,50 @@
+{
+  "name": "husnalogy-nextjs",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev -H 0.0.0.0",
+    "build": "npm run validate:fonts && next build",
+    "validate:fonts": "node scripts/validate-customizer-fonts.mjs",
+    "validate:customizer:database": "node scripts/validate-customizer-database.mjs",
+    "generate:customizer:schema": "node scripts/generate-customizer-schema.mjs",
+    "generate:customizer:types": "node scripts/generate-customizer-types.mjs",
+    "audit:customizer": "node scripts/audit-customizer-files.mjs",
+    "lint": "eslint .",
+    "start": "next start",
+    "test": "vitest run",
+    "test:e2e": "playwright test",
+    "test:e2e:public": "playwright test e2e/public-build-smoke.spec.ts",
+    "seed:customizer:test": "node scripts/seed-customizer-test.mjs",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@resvg/resvg-js": "^2.6.2",
+    "@supabase/ssr": "^0.8.0",
+    "@supabase/supabase-js": "^2.57.4",
+    "@tailwindcss/postcss": "4.3.0",
+    "next": "16.2.7",
+    "openai": "6.42.0",
+    "opentype.js": "^2.0.0",
+    "pdf-lib": "^1.17.1",
+    "qrcode": "^1.5.4",
+    "react": "19.2.4",
+    "react-dom": "19.2.4",
+    "sharp": "^0.35.3",
+    "tailwindcss": "4.3.0",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.61.1",
+    "@types/node": "25.9.3",
+    "@types/qrcode": "^1.5.6",
+    "@types/react": "19.2.17",
+    "eslint": "^9.39.5",
+    "eslint-config-next": "^16.2.7",
+    "typescript": "6.0.3",
+    "vitest": "^4.1.10"
+  },
+  "overrides": {
+    "postcss": "^8.5.10"
+  }
+}
