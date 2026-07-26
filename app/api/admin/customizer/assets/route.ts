@@ -6,6 +6,46 @@ import { createServiceRoleClient } from "@/lib/supabase/server";
 import { sniffImageType, sanitizeSvg, detectTintable, safeFileName } from "@/lib/customizer/v2/uploads";
 import { categoryFromRow, folderFromRow } from "@/lib/customizer/assets";
 import { ADMIN_ASSET_BUCKET, signAdminAssetRow, signAdminAssetRows } from "@/lib/customizer/server/admin-assets";
+import { assertVariantsDecodable, buildRasterVariants, storedVariantIsUsable } from "@/lib/customizer/server/asset-variants";
+
+/**
+ * Regenerate the editor and thumbnail files for an asset whose stored variants
+ * cannot be decoded, reusing the bytes the administrator just uploaded.
+ * Returns the refreshed row, or null when repair was not possible — in which
+ * case the caller keeps the existing row and the resolver falls back to the
+ * original file.
+ */
+async function repairAssetVariants(supabase: any, row: any, source: Buffer, mime: string) {
+  if (mime === "image/svg+xml") return null;
+  try {
+    const variants = await buildRasterVariants(source);
+    const bucket = row.bucket || ADMIN_ASSET_BUCKET;
+    const editorPath = row.editor_path || `assets/${row.id}/editor/editor.webp`;
+    const thumbnailPath = row.thumbnail_path || `assets/${row.id}/thumbnail/thumbnail.webp`;
+
+    for (const [storagePath, data] of [
+      [editorPath, variants.editorBuffer],
+      [thumbnailPath, variants.thumbnailBuffer],
+    ] as Array<[string, Buffer]>) {
+      const { error } = await supabase.storage.from(bucket).upload(storagePath, data, {
+        contentType: "image/webp",
+        upsert: true,
+        cacheControl: "31536000",
+      });
+      if (error) return null;
+    }
+
+    const { data: updated } = await supabase
+      .from("customizer_assets")
+      .update({ editor_path: editorPath, thumbnail_path: thumbnailPath, width: variants.width, height: variants.height })
+      .eq("id", row.id)
+      .select("*")
+      .single();
+    return updated || null;
+  } catch {
+    return null;
+  }
+}
 
 const MAX_SIZE = 25 * 1024 * 1024;
 const MAX_DIMENSION = 12_000;
@@ -150,6 +190,10 @@ export async function POST(request: Request) {
         .resize(THUMB_MAX_PX, THUMB_MAX_PX, { fit: "inside", withoutEnlargement: true })
         .webp({ quality: 80 })
         .toBuffer();
+      // Decode what was just produced. Storage will happily accept and serve
+      // corrupt bytes with a 200, so generation "succeeding" is not evidence
+      // the browser will be able to display the result.
+      await assertVariantsDecodable(editorBuffer, thumbnailBuffer);
     }
   } catch {
     return Response.json({ ok: false, error: "This file could not be safely decoded or optimized." }, { status: 400 });
@@ -187,6 +231,20 @@ export async function POST(request: Request) {
         .single();
       if (updated) reusable = updated;
     }
+
+    // Reusing the record must not mean reusing broken files. An asset can point
+    // at objects that exist but hold undecodable bytes (written by an earlier
+    // build); without this check, re-uploading the same file returns the same
+    // broken variants forever and the image can never repair itself.
+    const [editorUsable, thumbnailUsable] = await Promise.all([
+      storedVariantIsUsable(supabase, reusable.bucket || ADMIN_ASSET_BUCKET, reusable.editor_path),
+      storedVariantIsUsable(supabase, reusable.bucket || ADMIN_ASSET_BUCKET, reusable.thumbnail_path),
+    ]);
+    if (!editorUsable || !thumbnailUsable) {
+      const repaired = await repairAssetVariants(supabase, reusable, buffer, sniffed.mime);
+      if (repaired) reusable = repaired;
+    }
+
     const asset = await signAdminAssetRow(supabase, reusable);
     return Response.json({ ok: true, duplicate: true, asset, message: `This file already exists as “${asset.title}”.` });
   }

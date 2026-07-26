@@ -101,6 +101,8 @@ describe("permanent administrator asset references", () => {
     const hydrated: any = await hydrateAdminAssetUrls({ assetId: row.id, originalPath: row.path }, supabase);
     expect(hydrated.src).toContain("https://fresh.test/assets/a/editor/editor.webp");
     expect(hydrated.thumbnailUrl).toContain("https://fresh.test/assets/a/thumbnail/thumbnail.webp");
-    expect(signCount).toBe(2);
+    // original + editor + thumbnail: the original is signed too, so the canvas
+    // can fall back to full quality when an editor variant is unusable.
+    expect(signCount).toBe(3);
   });
 });

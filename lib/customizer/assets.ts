@@ -1,6 +1,9 @@
 // Shared mapping for customizer_assets rows (elements library).
 
-export function assetFromRow(row: any, urls: { url?: string; editorUrl?: string; thumbnailUrl?: string; expiresAt?: string } = {}) {
+export function assetFromRow(
+  row: any,
+  urls: { url?: string; originalUrl?: string; editorUrl?: string; thumbnailUrl?: string; expiresAt?: string } = {},
+) {
   return {
     id: row.id,
     categoryId: row.category_id || "",
@@ -18,6 +21,9 @@ export function assetFromRow(row: any, urls: { url?: string; editorUrl?: string;
     thumbnailPath: row.thumbnail_path || row.editor_path || row.path,
     url: urls.editorUrl || urls.url || "",
     editorUrl: urls.editorUrl || urls.url || "",
+    // Full-quality source, kept separate so the canvas can fall back to it when
+    // an editor variant is missing or unusable.
+    originalUrl: urls.originalUrl || urls.url || urls.editorUrl || "",
     thumbnailUrl: urls.thumbnailUrl || urls.editorUrl || urls.url || "",
     expiresAt: urls.expiresAt || "",
     mimeType: row.mime_type,

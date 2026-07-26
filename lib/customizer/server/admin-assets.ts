@@ -34,17 +34,25 @@ export function stripAdminAssetUrls<T>(value: T): T {
 }
 
 export async function signAdminAssetRow(supabase: any, row: any, ttlSeconds = ADMIN_ASSET_URL_TTL_SECONDS) {
+  const bucket = row.bucket || ADMIN_ASSET_BUCKET;
   const editorPath = row.editor_path || row.path;
   const thumbnailPath = row.thumbnail_path || editorPath;
-  const [editor, thumbnail] = await Promise.all([
-    supabase.storage.from(row.bucket || ADMIN_ASSET_BUCKET).createSignedUrl(editorPath, ttlSeconds),
-    supabase.storage.from(row.bucket || ADMIN_ASSET_BUCKET).createSignedUrl(thumbnailPath, ttlSeconds),
+  const [original, editor, thumbnail] = await Promise.all([
+    supabase.storage.from(bucket).createSignedUrl(row.path, ttlSeconds),
+    supabase.storage.from(bucket).createSignedUrl(editorPath, ttlSeconds),
+    supabase.storage.from(bucket).createSignedUrl(thumbnailPath, ttlSeconds),
   ]);
-  if (editor.error || !editor.data?.signedUrl) throw new Error("Could not sign administrator asset.");
+  // The original is the fallback for both variants: it is always full quality,
+  // whereas falling back to the 480px thumbnail would render a blurry canvas.
+  const originalUrl = original.data?.signedUrl || "";
+  const editorUrl = editor.data?.signedUrl || originalUrl;
+  if (!editorUrl) throw new Error("Could not sign administrator asset.");
   const expiresAt = new Date(Date.now() + ttlSeconds * 1000).toISOString();
   return assetFromRow(row, {
-    editorUrl: editor.data.signedUrl,
-    thumbnailUrl: thumbnail.data?.signedUrl || editor.data.signedUrl,
+    url: originalUrl,
+    originalUrl,
+    editorUrl,
+    thumbnailUrl: thumbnail.data?.signedUrl || editorUrl,
     expiresAt,
   });
 }
