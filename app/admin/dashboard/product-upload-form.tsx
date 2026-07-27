@@ -116,10 +116,12 @@ const VISIBILITY_OPTIONS = [
   { value: "direct", label: "Direct only", helper: "Reachable only through its direct link" },
 ];
 
+// "Hidden" was removed as a selectable status: Draft already means "saved in
+// admin, not on the website", and Product Visibility covers admin-only access.
+// Existing products stored as hidden keep that status until it is changed.
 const STATUS_OPTIONS = [
   { value: "draft", label: "Draft", helper: "Saved in admin, not visible on the website" },
   { value: "active", label: "Active", helper: "Published and visible on the website" },
-  { value: "hidden", label: "Hidden", helper: "Stored in admin, hidden from the website" },
 ];
 
 const CURRENCY_OPTIONS = [...SUPPORTED_CURRENCIES];
@@ -1066,7 +1068,10 @@ function LivePreview({ form, collections }) {
       : "Stock Out"
     : "";
 
-  const statusLabel = STATUS_OPTIONS.find((option) => option.value === form.status)?.label || "Draft";
+  // "Hidden" is no longer selectable, but products saved that way before must
+  // still report their real status rather than falling back to "Draft".
+  const statusLabel = STATUS_OPTIONS.find((option) => option.value === form.status)?.label
+    || (form.status === "hidden" ? "Hidden" : "Draft");
   const visibilityLabel = VISIBILITY_OPTIONS.find((option) => option.value === form.visibility)?.label || "Public";
 
   return (
@@ -1796,7 +1801,7 @@ export default function ProductUploadForm({ product = null, onSaved, onClose }) 
             <div className="grid gap-6">
               <div>
                 <FieldLabel label="Product Status" required />
-                <div className="mt-2 grid gap-2 sm:grid-cols-3">
+                <div className="mt-2 grid gap-2 sm:grid-cols-2">
                   {STATUS_OPTIONS.map((option) => (
                     <button
                       key={option.value}
