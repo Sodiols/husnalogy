@@ -1,56 +1,93 @@
 import { createHash, randomUUID } from "node:crypto";
-import sharp from "sharp";
 import { z } from "zod";
 import { requireAdmin } from "@/lib/auth/admin-server";
 import { createServiceRoleClient } from "@/lib/supabase/server";
 import { sniffImageType, sanitizeSvg, detectTintable, safeFileName } from "@/lib/customizer/v2/uploads";
 import { categoryFromRow, folderFromRow } from "@/lib/customizer/assets";
 import { ADMIN_ASSET_BUCKET, signAdminAssetRow, signAdminAssetRows } from "@/lib/customizer/server/admin-assets";
-import { assertVariantsDecodable, buildRasterVariants, storedVariantIsUsable } from "@/lib/customizer/server/asset-variants";
+import {
+  buildRasterVariants,
+  buildSvgVariants,
+  inspectStoredVariant,
+  variantStoragePath,
+  VARIANT_GENERATION_VERSION,
+  type AssetVariants,
+} from "@/lib/customizer/server/asset-variants";
+
+/** Variant metadata recorded alongside the row for diagnostics and repair. */
+function variantMetadata(variants: AssetVariants, previous: Record<string, any> = {}) {
+  return {
+    ...previous,
+    optimized: true,
+    sourceWidth: variants.width,
+    sourceHeight: variants.height,
+    editorWidth: variants.editorWidth,
+    editorHeight: variants.editorHeight,
+    editorFormat: variants.editorMime,
+    thumbnailWidth: variants.thumbnailWidth,
+    thumbnailHeight: variants.thumbnailHeight,
+    thumbnailFormat: "image/webp",
+    variantGenerationVersion: VARIANT_GENERATION_VERSION,
+    variantGeneratedAt: new Date().toISOString(),
+  };
+}
 
 /**
- * Regenerate the editor and thumbnail files for an asset whose stored variants
- * cannot be decoded, reusing the bytes the administrator just uploaded.
- * Returns the refreshed row, or null when repair was not possible — in which
- * case the caller keeps the existing row and the resolver falls back to the
- * original file.
+ * Rebuild the editor and thumbnail files for an asset whose stored variants are
+ * missing, undecodable or too small for their purpose.
+ *
+ * Variants are written to content-addressed paths, so a repair produces new
+ * URLs rather than rewriting bytes behind a year-long cache header. The original
+ * is never touched. Returns the refreshed row, or null when repair was not
+ * possible — the caller then keeps the existing row and the resolver falls back
+ * to the original file.
  */
 async function repairAssetVariants(supabase: any, row: any, source: Buffer, mime: string) {
-  if (mime === "image/svg+xml") return null;
+  const bucket = row.bucket || ADMIN_ASSET_BUCKET;
   try {
-    const variants = await buildRasterVariants(source);
-    const bucket = row.bucket || ADMIN_ASSET_BUCKET;
-    const editorPath = row.editor_path || `assets/${row.id}/editor/editor.webp`;
-    const thumbnailPath = row.thumbnail_path || `assets/${row.id}/thumbnail/thumbnail.webp`;
+    const variants = mime === "image/svg+xml" ? await buildSvgVariants(source) : await buildRasterVariants(source);
+    const editorPath = variantStoragePath(row.id, "editor", variants.editorBuffer, variants.editorExtension);
+    const thumbnailPath = variantStoragePath(row.id, "thumbnail", variants.thumbnailBuffer);
 
-    for (const [storagePath, data] of [
-      [editorPath, variants.editorBuffer],
-      [thumbnailPath, variants.thumbnailBuffer],
-    ] as Array<[string, Buffer]>) {
+    for (const [storagePath, data, contentType] of [
+      [editorPath, variants.editorBuffer, variants.editorMime],
+      [thumbnailPath, variants.thumbnailBuffer, "image/webp"],
+    ] as Array<[string, Buffer, string]>) {
       const { error } = await supabase.storage.from(bucket).upload(storagePath, data, {
-        contentType: "image/webp",
+        contentType,
         upsert: true,
         cacheControl: "31536000",
       });
-      if (error) return null;
+      if (error) {
+        console.error(`Asset variant repair failed to upload [asset=${row.id}] [path=${storagePath}]:`, error.message);
+        return null;
+      }
     }
 
-    const { data: updated } = await supabase
+    const { data: updated, error: updateError } = await supabase
       .from("customizer_assets")
-      .update({ editor_path: editorPath, thumbnail_path: thumbnailPath, width: variants.width, height: variants.height })
+      .update({
+        editor_path: editorPath,
+        thumbnail_path: thumbnailPath,
+        width: variants.width,
+        height: variants.height,
+        metadata: variantMetadata(variants, row.metadata || {}),
+      })
       .eq("id", row.id)
       .select("*")
       .single();
+    if (updateError) {
+      console.error(`Asset variant repair failed to update record [asset=${row.id}]:`, updateError.message);
+      return null;
+    }
     return updated || null;
-  } catch {
+  } catch (cause) {
+    console.error(`Asset variant repair failed [asset=${row.id}]:`, (cause as Error).message);
     return null;
   }
 }
 
 const MAX_SIZE = 25 * 1024 * 1024;
-const MAX_DIMENSION = 12_000;
-const EDITOR_MAX_PX = 2400;
-const THUMB_MAX_PX = 480;
 
 const assetTypeSchema = z.enum(["image", "element", "svg", "frame", "background", "texture", "mockup", "overlay", "other"]);
 
@@ -149,55 +186,31 @@ export async function POST(request: Request) {
   const sniffed = sniffImageType(buffer, true);
   if (sniffed.ok === false) return Response.json({ ok: false, error: sniffed.error }, { status: 400 });
 
-  let width = 0;
-  let height = 0;
   let tintable = false;
-  let editorBuffer: Buffer;
-  let thumbnailBuffer: Buffer;
-  let editorMime = "image/webp";
-  let editorExtension = "webp";
+  let variants: AssetVariants;
 
+  // All variant generation goes through the shared module, so the upload path,
+  // the repair path and the repair script cannot drift apart.
   try {
     if (sniffed.mime === "image/svg+xml") {
       const sanitized = sanitizeSvg(buffer.toString("utf8"));
       if (sanitized.ok === false) return Response.json({ ok: false, error: sanitized.error }, { status: 400 });
       buffer = Buffer.from(sanitized.svg, "utf8");
       tintable = detectTintable(sanitized.svg);
-      const meta = await sharp(buffer, { limitInputPixels: MAX_DIMENSION * MAX_DIMENSION }).metadata();
-      width = meta.width || 0;
-      height = meta.height || 0;
-      editorBuffer = buffer;
-      editorMime = "image/svg+xml";
-      editorExtension = "svg";
-      thumbnailBuffer = await sharp(buffer, { limitInputPixels: MAX_DIMENSION * MAX_DIMENSION })
-        .resize(THUMB_MAX_PX, THUMB_MAX_PX, { fit: "inside", withoutEnlargement: true })
-        .webp({ quality: 82 })
-        .toBuffer();
+      variants = await buildSvgVariants(buffer);
     } else {
-      const meta = await sharp(buffer, { limitInputPixels: MAX_DIMENSION * MAX_DIMENSION }).metadata();
-      width = meta.width || 0;
-      height = meta.height || 0;
-      if (!width || !height || width > MAX_DIMENSION || height > MAX_DIMENSION) {
-        return Response.json({ ok: false, error: `Images must be readable and no larger than ${MAX_DIMENSION}px per side.` }, { status: 400 });
-      }
-      editorBuffer = await sharp(buffer, { limitInputPixels: MAX_DIMENSION * MAX_DIMENSION })
-        .rotate()
-        .resize(EDITOR_MAX_PX, EDITOR_MAX_PX, { fit: "inside", withoutEnlargement: true })
-        .webp({ quality: 88 })
-        .toBuffer();
-      thumbnailBuffer = await sharp(buffer, { limitInputPixels: MAX_DIMENSION * MAX_DIMENSION })
-        .rotate()
-        .resize(THUMB_MAX_PX, THUMB_MAX_PX, { fit: "inside", withoutEnlargement: true })
-        .webp({ quality: 80 })
-        .toBuffer();
-      // Decode what was just produced. Storage will happily accept and serve
-      // corrupt bytes with a 200, so generation "succeeding" is not evidence
-      // the browser will be able to display the result.
-      await assertVariantsDecodable(editorBuffer, thumbnailBuffer);
+      variants = await buildRasterVariants(buffer);
     }
-  } catch {
-    return Response.json({ ok: false, error: "This file could not be safely decoded or optimized." }, { status: 400 });
+  } catch (cause) {
+    const message = (cause as Error).message || "";
+    const tooLarge = message.includes("no larger than");
+    return Response.json(
+      { ok: false, error: tooLarge ? message : "This file could not be safely decoded or optimized." },
+      { status: 400 },
+    );
   }
+
+  const { editorBuffer, thumbnailBuffer, editorMime, editorExtension, width, height } = variants;
 
   const checksum = createHash("sha256").update(buffer).digest("hex");
   const supabase = createServiceRoleClient();
@@ -232,15 +245,29 @@ export async function POST(request: Request) {
       if (updated) reusable = updated;
     }
 
-    // Reusing the record must not mean reusing broken files. An asset can point
-    // at objects that exist but hold undecodable bytes (written by an earlier
-    // build); without this check, re-uploading the same file returns the same
-    // broken variants forever and the image can never repair itself.
-    const [editorUsable, thumbnailUsable] = await Promise.all([
-      storedVariantIsUsable(supabase, reusable.bucket || ADMIN_ASSET_BUCKET, reusable.editor_path),
-      storedVariantIsUsable(supabase, reusable.bucket || ADMIN_ASSET_BUCKET, reusable.thumbnail_path),
+    // Reusing the record must not mean reusing bad files. A stored variant can
+    // exist and decode yet still be wrong: a legacy 480px editor for a 1254px
+    // original is exactly the blur this guards against. Judge each variant
+    // against the size it SHOULD be for this source, and rebuild if it falls
+    // short — otherwise a re-upload can never repair the asset.
+    const bucket = reusable.bucket || ADMIN_ASSET_BUCKET;
+    const vector = sniffed.mime === "image/svg+xml";
+    const [editor, thumbnail] = await Promise.all([
+      inspectStoredVariant({
+        supabase, bucket, storagePath: reusable.editor_path, variant: "editor",
+        sourceWidth: width, sourceHeight: height, vector,
+      }),
+      inspectStoredVariant({
+        supabase, bucket, storagePath: reusable.thumbnail_path, variant: "thumbnail",
+        sourceWidth: width, sourceHeight: height,
+      }),
     ]);
-    if (!editorUsable || !thumbnailUsable) {
+    if (!editor.ok || !thumbnail.ok) {
+      console.warn(
+        `Rebuilding customizer asset variants [asset=${reusable.id}] `
+        + `[editor=${editor.reason}${editor.width ? ` ${editor.width}x${editor.height}` : ""}] `
+        + `[thumbnail=${thumbnail.reason}${thumbnail.width ? ` ${thumbnail.width}x${thumbnail.height}` : ""}]`,
+      );
       const repaired = await repairAssetVariants(supabase, reusable, buffer, sniffed.mime);
       if (repaired) reusable = repaired;
     }
@@ -253,8 +280,10 @@ export async function POST(request: Request) {
   const cleanName = safeFileName(file.name, "asset");
   const basePath = `assets/${assetId}`;
   const originalPath = `${basePath}/original/${cleanName}`;
-  const editorPath = `${basePath}/editor/editor.${editorExtension}`;
-  const thumbnailPath = `${basePath}/thumbnail/thumbnail.webp`;
+  // Content-addressed so a later repair lands on a new URL instead of trying to
+  // replace bytes behind a one-year cache header.
+  const editorPath = variantStoragePath(assetId, "editor", editorBuffer, editorExtension);
+  const thumbnailPath = variantStoragePath(assetId, "thumbnail", thumbnailBuffer);
   const uploads = [
     { path: originalPath, data: buffer, contentType: sniffed.mime },
     { path: editorPath, data: editorBuffer, contentType: editorMime },
@@ -303,7 +332,7 @@ export async function POST(request: Request) {
       status: "ready",
       checksum,
       usage_count: 0,
-      metadata: { optimized: true, originalMimeType: sniffed.mime },
+      metadata: variantMetadata(variants, { originalMimeType: sniffed.mime }),
       created_by: admin.admin?.id || null,
     })
     .select("*")

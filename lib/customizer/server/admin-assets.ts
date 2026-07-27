@@ -3,7 +3,7 @@ import { assetFromRow } from "@/lib/customizer/assets";
 export const ADMIN_ASSET_BUCKET = "customizer-elements";
 export const ADMIN_ASSET_URL_TTL_SECONDS = 60 * 60;
 
-const EPHEMERAL_ASSET_KEYS = new Set(["url", "src", "image", "backgroundImage", "placeholderImage", "thumbnail", "baseImageUrl", "signedUrl", "editorUrl", "thumbnailUrl", "expiresAt"]);
+const EPHEMERAL_ASSET_KEYS = new Set(["url", "src", "image", "backgroundImage", "placeholderImage", "thumbnail", "baseImageUrl", "signedUrl", "editorUrl", "originalUrl", "thumbnailUrl", "expiresAt"]);
 
 function adminAssetIdentity(value: any): { key: string; id: string } | null {
   if (!value || typeof value !== "object") return null;
@@ -107,6 +107,9 @@ export async function hydrateAdminAssetUrls<T>(value: T, supabase: any, ttlSecon
           thumbnailPath: asset.thumbnailPath,
           src: asset.editorUrl,
           url: asset.editorUrl,
+          // Carried so the canvas can retry at full quality if the editor
+          // variant turns out to be unusable, without touching the thumbnail.
+          originalUrl: asset.originalUrl,
           thumbnailUrl: asset.thumbnailUrl,
           expiresAt: asset.expiresAt,
           [displayKey]: asset.editorUrl,

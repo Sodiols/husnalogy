@@ -667,8 +667,13 @@ export type BuilderAsset = {
   id: string;
   title: string;
   assetType?: string;
+  /** Ambiguous legacy field; prefer the explicit variants below. */
   url: string;
+  /** Full-quality source. Canvas fallback and high-quality render source. */
+  originalUrl?: string;
+  /** Interactive canvas source (max ~2400px). */
   editorUrl?: string;
+  /** Library tiles only — never a canvas source. */
   thumbnailUrl?: string;
   bucket: string;
   originalPath: string;
@@ -697,7 +702,10 @@ export function newImageLayerFromAdminAsset(template: any, pageId: string, asset
     height = maxHeight;
     width = height * ratio;
   }
-  const previewUrl = asset.editorUrl || asset.url;
+  // Canvas source priority: editor variant, then the full-quality original.
+  // Never the thumbnail — a 480px tile stretched across the artboard is the
+  // blur this ordering exists to prevent.
+  const previewUrl = asset.editorUrl || asset.originalUrl || asset.url;
   return {
     ...newImageLayer(template, pageId, previewUrl),
     name: asset.title || asset.originalFilename || "Uploaded image",

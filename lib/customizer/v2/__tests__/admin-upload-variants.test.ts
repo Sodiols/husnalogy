@@ -2,11 +2,21 @@ import sharp from "sharp";
 import { describe, expect, it } from "vitest";
 import {
   assertVariantsDecodable,
+  buildRasterVariants,
   decodeImage,
+  expectedVariantSize,
+  inspectVariantBuffer,
   isDecodableImage,
+  orientedDimensions,
   storedVariantIsUsable,
+  variantStoragePath,
 } from "../../server/asset-variants";
 import { signAdminAssetRow } from "../../server/admin-assets";
+
+/** Minimal Supabase storage stub that returns fixed bytes for any download. */
+function storageOf(bytes: Buffer): any {
+  return { storage: { from: () => ({ download: async () => ({ data: { arrayBuffer: async () => bytes }, error: null }) }) } };
+}
 
 /**
  * Functional cover for the uploaded-image variants: this runs the SAME Sharp
@@ -161,28 +171,158 @@ describe("corrupt bytes are detected, not published", () => {
     await expect(assertVariantsDecodable(await corruptedWebp(), thumbnail)).rejects.toThrow(/editor image could not be decoded/i);
   });
 
-  it("reports a stored variant as unusable when its bytes are corrupt", async () => {
-    const bad = await corruptedWebp();
-    const supabase: any = {
-      storage: { from: () => ({ download: async () => ({ data: { arrayBuffer: async () => bad }, error: null }) }) },
-    };
-    expect(await storedVariantIsUsable(supabase, "customizer-elements", "assets/a/editor/editor.webp")).toBe(false);
+  it("reports a stored variant as unusable when its bytes are corrupt (CASE F)", async () => {
+    expect(await storedVariantIsUsable({
+      supabase: storageOf(await corruptedWebp()), bucket: "customizer-elements",
+      storagePath: "assets/a/editor/editor.webp", variant: "editor", sourceWidth: 300, sourceHeight: 300,
+    })).toBe(false);
   });
 
   it("reports a healthy stored variant as usable", async () => {
     const { editor } = await buildVariants(await makeSourcePng(300));
-    const supabase: any = {
-      storage: { from: () => ({ download: async () => ({ data: { arrayBuffer: async () => editor }, error: null }) }) },
-    };
-    expect(await storedVariantIsUsable(supabase, "customizer-elements", "assets/a/editor/editor.webp")).toBe(true);
+    expect(await storedVariantIsUsable({
+      supabase: storageOf(editor), bucket: "customizer-elements",
+      storagePath: "assets/a/editor/editor.webp", variant: "editor", sourceWidth: 300, sourceHeight: 300,
+    })).toBe(true);
   });
 
-  it("reports a missing object as unusable", async () => {
-    const supabase: any = {
+  it("reports a missing object as unusable (CASE G)", async () => {
+    const missing: any = {
       storage: { from: () => ({ download: async () => ({ data: null, error: { message: "not found" } }) }) },
     };
-    expect(await storedVariantIsUsable(supabase, "customizer-elements", "assets/a/editor/editor.webp")).toBe(false);
-    expect(await storedVariantIsUsable(supabase, "customizer-elements", null)).toBe(false);
+    expect(await storedVariantIsUsable({
+      supabase: missing, bucket: "customizer-elements",
+      storagePath: "assets/a/editor/editor.webp", variant: "editor", sourceWidth: 300, sourceHeight: 300,
+    })).toBe(false);
+    expect(await storedVariantIsUsable({
+      supabase: missing, bucket: "customizer-elements", storagePath: null, variant: "editor",
+    })).toBe(false);
+  });
+});
+
+/* ------------------------------------------------------------------------ *
+ * Resolution-aware validation. A variant that merely decodes is not enough:
+ * a legacy 480px editor for a 1254px original decodes perfectly and is the
+ * direct cause of the blurred canvas.
+ * ------------------------------------------------------------------------ */
+
+describe("expected variant geometry", () => {
+  it("scales down to the bound and keeps the ratio", () => {
+    expect(expectedVariantSize(5000, 3000, 2400)).toEqual({ width: 2400, height: 1440 });
+  });
+
+  it("never enlarges a small original (CASE E, §11)", () => {
+    expect(expectedVariantSize(400, 300, 2400)).toEqual({ width: 400, height: 300 });
+    expect(expectedVariantSize(1254, 1254, 2400)).toEqual({ width: 1254, height: 1254 });
+  });
+
+  it("uses the thumbnail bound for thumbnails", () => {
+    expect(expectedVariantSize(1254, 1254, 480)).toEqual({ width: 480, height: 480 });
+    expect(expectedVariantSize(5000, 3000, 480)).toEqual({ width: 480, height: 288 });
+  });
+});
+
+describe("editor variant size validation", () => {
+  const inspect = async (source: [number, number], variantSize: [number, number], kind: "editor" | "thumbnail" = "editor") => {
+    const bytes = await sharp({
+      create: { width: variantSize[0], height: variantSize[1], channels: 3, background: { r: 10, g: 120, b: 200 } },
+    }).webp().toBuffer();
+    return inspectVariantBuffer(bytes, kind, source[0], source[1]);
+  };
+
+  it("CASE A — 480x480 editor for a 1254x1254 original is INVALID", async () => {
+    const result = await inspect([1254, 1254], [480, 480]);
+    expect(result.ok).toBe(false);
+    expect(result.reason).toBe("too-small");
+    expect(result.expectedWidth).toBe(1254);
+  });
+
+  it("CASE B — 1254x1254 editor for a 1254x1254 original is VALID", async () => {
+    expect((await inspect([1254, 1254], [1254, 1254])).ok).toBe(true);
+  });
+
+  it("CASE C — 2400x1440 editor for a 5000x3000 original is VALID", async () => {
+    expect((await inspect([5000, 3000], [2400, 1440])).ok).toBe(true);
+  });
+
+  it("CASE D — 480x288 editor for a 5000x3000 original is INVALID", async () => {
+    const result = await inspect([5000, 3000], [480, 288]);
+    expect(result.ok).toBe(false);
+    expect(result.reason).toBe("too-small");
+  });
+
+  it("CASE E — 400x300 editor for a 400x300 original is VALID", async () => {
+    expect((await inspect([400, 300], [400, 300])).ok).toBe(true);
+  });
+
+  it("CASE H — a 480px thumbnail is valid AS a thumbnail, but not as an editor", async () => {
+    expect((await inspect([1254, 1254], [480, 480], "thumbnail")).ok).toBe(true);
+    expect((await inspect([1254, 1254], [480, 480], "editor")).ok).toBe(false);
+  });
+
+  it("tolerates a pixel of codec rounding", async () => {
+    expect((await inspect([1254, 1254], [1253, 1253])).ok).toBe(true);
+  });
+
+  it("falls back to decodability when source dimensions are unknown", async () => {
+    expect((await inspect([0, 0], [480, 480])).ok).toBe(true);
+  });
+});
+
+describe("CASE K — SVG editor variants stay vector", () => {
+  it("accepts an svg editor variant without applying raster size rules", async () => {
+    const svg = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64"><rect width="64" height="64"/></svg>');
+    expect(await storedVariantIsUsable({
+      supabase: storageOf(svg), bucket: "customizer-elements",
+      storagePath: "assets/a/editor/editor.svg", variant: "editor",
+      sourceWidth: 4000, sourceHeight: 4000, vector: true,
+    })).toBe(true);
+  });
+});
+
+describe("CASE M — repaired variants get a cache-safe path", () => {
+  it("derives the path from the content, so new bytes mean a new URL", async () => {
+    const { editor } = await buildVariants(await makeSourcePng(300));
+    const other = await buildVariants(await makeSourcePng(400));
+    const before = variantStoragePath("asset-1", "editor", editor);
+    const after = variantStoragePath("asset-1", "editor", other.editor);
+
+    expect(before).not.toBe(after);
+    expect(before).toMatch(/^assets\/asset-1\/editor\/editor-[0-9a-f]{16}\.webp$/);
+    // Identical bytes stay stable, so healthy assets are not churned.
+    expect(variantStoragePath("asset-1", "editor", editor)).toBe(before);
+  });
+
+  it("keeps the extension for vector editor variants", () => {
+    const svg = Buffer.from("<svg/>");
+    expect(variantStoragePath("asset-1", "editor", svg, "svg")).toMatch(/editor-[0-9a-f]{16}\.svg$/);
+  });
+});
+
+describe("CASE L — EXIF orientation", () => {
+  it("reports dimensions after rotation so the aspect ratio is right", async () => {
+    // orientation 6 means "rotate 90 CW": stored 400x200, displayed 200x400.
+    const rotated = await sharp({
+      create: { width: 400, height: 200, channels: 3, background: { r: 0, g: 0, b: 0 } },
+    })
+      .withMetadata({ orientation: 6 })
+      .jpeg()
+      .toBuffer();
+
+    expect(await orientedDimensions(rotated)).toEqual({ width: 200, height: 400 });
+
+    // And the generated variant matches that orientation.
+    const variants = await buildRasterVariants(rotated);
+    expect(variants.width).toBe(200);
+    expect(variants.height).toBe(400);
+    expect(variants.editorHeight).toBeGreaterThan(variants.editorWidth);
+  });
+
+  it("leaves unrotated images alone", async () => {
+    const plain = await sharp({
+      create: { width: 400, height: 200, channels: 3, background: { r: 0, g: 0, b: 0 } },
+    }).jpeg().toBuffer();
+    expect(await orientedDimensions(plain)).toEqual({ width: 400, height: 200 });
   });
 });
 

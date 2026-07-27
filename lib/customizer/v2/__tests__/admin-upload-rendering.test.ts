@@ -173,16 +173,24 @@ describe("every render path signs its own URLs", () => {
 
 describe("upload generates usable variants", () => {
   const route = read("app/api/admin/customizer/assets/route.ts");
+  // Generation now lives in one shared module so the upload route, the repair
+  // path and the repair script cannot drift apart.
+  const variants = read("lib/customizer/server/asset-variants.ts");
 
   it("builds an editor variant large enough to edit against", () => {
-    expect(route).toContain("EDITOR_MAX_PX = 2400");
+    expect(variants).toContain("ASSET_EDITOR_MAX_PX = 2400");
     // Never upscale a small original.
-    expect(route).toContain("withoutEnlargement: true");
+    expect(variants).toContain("withoutEnlargement: true");
   });
 
   it("keeps the thumbnail small but separate from the editor variant", () => {
-    expect(route).toContain("THUMB_MAX_PX = 480");
-    expect(route).toContain("thumbnail.webp");
+    expect(variants).toContain("ASSET_THUMB_MAX_PX = 480");
+    expect(variants).toContain('`assets/${assetId}/${variant}/${variant}-${contentHash(buffer)}.${extension}`');
+  });
+
+  it("has no second copy of the Sharp pipeline in the route", () => {
+    expect(route).not.toContain("from \"sharp\"");
+    expect(route).toContain("buildRasterVariants");
   });
 
   it("rolls back storage when the record cannot be written", () => {

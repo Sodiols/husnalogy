@@ -249,6 +249,38 @@ function ElementLayer({ layer, idPrefix }: any) {
 
 function ImageLayer({ layer, field, values, idPrefix }: any) {
   const image = resolveLayerImage(layer, field, values);
+
+  // Defensive only — the server pipeline is the real guarantee. If an editor
+  // variant turns out to be far smaller than the box it must fill (a legacy
+  // thumbnail-sized editor), fall back to the full-quality original once.
+  // Never falls back to the thumbnail, and never loops.
+  // Declared before any early return so the hook order stays stable.
+  const sourceUrl = String(image?.url || "");
+  const fallbackUrl = String(layer.originalUrl || "");
+  const [downgraded, setDowngraded] = useState(false);
+  useEffect(() => setDowngraded(false), [sourceUrl, fallbackUrl]);
+  useEffect(() => {
+    if (downgraded || !sourceUrl || !fallbackUrl || fallbackUrl === sourceUrl) return;
+    if (typeof window === "undefined" || typeof window.Image === "undefined") return;
+    let cancelled = false;
+    const probe = new window.Image();
+    probe.crossOrigin = "anonymous";
+    probe.onload = () => {
+      // Half the required resolution is an unambiguous variant problem, so
+      // healthy images never trigger a second request.
+      if (!cancelled && probe.naturalWidth > 0 && probe.naturalWidth < layer.width / 2) {
+        console.warn(
+          "Customizer image variant is too small for its layer "
+          + `[layer=${layer.id}] [natural=${probe.naturalWidth}x${probe.naturalHeight}] `
+          + `[required=${Math.round(layer.width)}] — falling back to the original.`,
+        );
+        setDowngraded(true);
+      }
+    };
+    probe.src = sourceUrl;
+    return () => { cancelled = true; };
+  }, [sourceUrl, fallbackUrl, downgraded, layer.width, layer.id]);
+
   const frameX = layer.x - layer.width / 2;
   const frameY = layer.y - layer.height / 2;
   const clipId = `${idPrefix}-clip-${layer.id}`;
@@ -284,6 +316,8 @@ function ImageLayer({ layer, field, values, idPrefix }: any) {
     );
   }
 
+  const imageHref = downgraded && fallbackUrl ? fallbackUrl : String(image.url);
+
   const zoom = Number(image.zoom) > 0 ? Number(image.zoom) : 1;
   const drawW = layer.width * zoom;
   const drawH = layer.height * zoom;
@@ -312,7 +346,7 @@ function ImageLayer({ layer, field, values, idPrefix }: any) {
       <g clipPath={`url(#${clipId})`}>
         <g transform={innerTransforms.join(" ") || undefined}>
           <image
-            href={image.url}
+            href={imageHref}
             x={drawX}
             y={drawY}
             width={drawW}
