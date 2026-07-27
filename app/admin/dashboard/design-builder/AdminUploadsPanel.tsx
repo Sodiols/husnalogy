@@ -224,9 +224,9 @@ export default function AdminUploadsPanel({ onInsertAsset, currentAssetIds = [] 
           <button type="button" onClick={() => uploadFile(retryFile)} className="mt-2 min-h-11 w-full rounded-xl border border-red-200 text-xs font-extrabold text-red-700 transition-colors hover:bg-red-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500">Retry {retryFile.name}</button>
         )}
         <label className="relative mt-3 block">
-          <span className="pointer-events-none absolute inset-y-0 left-3 grid place-items-center text-[#303839]/45"><SearchIcon /></span>
+          <span className="pointer-events-none absolute inset-y-0 right-3 grid place-items-center text-[#303839]/45"><SearchIcon /></span>
           <span className="sr-only">Search previously uploaded images</span>
-          <input type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search uploads" className="min-h-11 w-full rounded-xl border border-[#303839]/12 bg-[#F8F6F1] pl-10 pr-3 text-sm font-semibold text-[#303839] outline-none transition-colors placeholder:text-[#303839]/40 focus:border-[#D4AF37] focus:bg-white focus:ring-2 focus:ring-[#D4AF37]/20" />
+          <input type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search uploads" className="min-h-11 w-full rounded-xl border border-[#303839]/12 bg-[#F8F6F1] pl-3 pr-10 text-sm font-semibold text-[#303839] outline-none transition-colors placeholder:text-[#303839]/40 focus:border-[#D4AF37] focus:bg-white focus:ring-2 focus:ring-[#D4AF37]/20" />
         </label>
       </div>
 
