@@ -14,7 +14,6 @@ import {
   getTextResizeConstraints,
   isSingleLineAutoSizeText,
   layoutText,
-  resolveTextBox,
   scaleSingleLineText,
   type MeasureFn,
   type SafeBounds,
@@ -32,7 +31,16 @@ import {
   type PanBounds,
   type PanGesture,
 } from "@/lib/customizer/v2/viewport-pan";
-import { layersForPage } from "./builder-utils";
+import {
+  clientPointToDocument,
+  fullyEnclosedLayerIds,
+  pointInsideTransformedLayer,
+  pointerExceededDragThreshold,
+  resolveLayerSelectionGeometry,
+  selectionBounds,
+} from "@/lib/customizer/v2/selection-geometry";
+import { isEmptyText } from "@/lib/customizer/v2/text-editing";
+import { layersForPage, selectableLayersForPage } from "./builder-utils";
 
 const HANDLES: Array<{ id: string; cx: number; cy: number; cursor: string }> = [
   { id: "nw", cx: 0, cy: 0, cursor: "nwse-resize" },
@@ -57,9 +65,16 @@ export default function AdminCanvas({
   selectedLayerId,
   selectedLayerIds = [],
   onSelect,
+  onSelectionChange,
   onLayerChange,
   onLayersChange,
   onBeginChange,
+  onTextPlace,
+  onTextEditStart,
+  onTextDraftChange,
+  onTextDiscard,
+  onEditingTextChange,
+  onExitTextTool,
   onTextCommit,
   zoom = 1,
   panX = 0,
@@ -71,17 +86,29 @@ export default function AdminCanvas({
   activeTool = "select",
   guides: savedGuides = [],
   onGuideChange,
+  editingGroupId = null,
+  onEnterGroup,
+  onExitGroup,
 }: any) {
   const wrapRef = useRef<HTMLDivElement>(null);
+  const surfaceRef = useRef<HTMLDivElement>(null);
   const [containerWidth, setContainerWidth] = useState(0);
   const [containerHeight, setContainerHeight] = useState(0);
   const dragRef = useRef<any>(null);
   const [guides, setGuides] = useState<Guide[]>([]);
   const [selectedGuideId, setSelectedGuideId] = useState<string | null>(null);
   const [editingTextId, setEditingTextId] = useState<string | null>(null);
+  const newTextIdsRef = useRef(new Set<string>());
   const panRef = useRef<PanGesture | null>(null);
   const [isPanning, setIsPanning] = useState(false);
   const [spacePanActive, setSpacePanActive] = useState(false);
+  const [selectionBox, setSelectionBox] = useState<null | {
+    startX: number;
+    startY: number;
+    x: number;
+    y: number;
+    additive: boolean;
+  }>(null);
   const textMeasureRef = useRef<MeasureFn | null>(null);
   if (!textMeasureRef.current) textMeasureRef.current = createCanvasMeasure();
 
@@ -118,6 +145,7 @@ export default function AdminCanvas({
   };
 
   const layers = layersForPage(template, pageId);
+  const selectableLayers = selectableLayersForPage(template, pageId, editingGroupId);
 
   // Auto-width text may grow only up to the safe area.
   const safeBounds: SafeBounds = {
@@ -130,31 +158,13 @@ export default function AdminCanvas({
   // The SAME resolver the renderers use, so the selection box, handles and the
   // rendered glyphs share one geometry — there is no second sizing calculation.
   const resolveLayerBox = (layer: any) => {
-    const style = layer?.textStyle || {};
-    if (layer?.type !== "text") return layer;
     const field = layer.fieldId ? getFieldById(template, layer.fieldId) : null;
     const text = resolveLayerText(layer, field, values);
-    const box = resolveTextBox({
-      x: layer.x,
-      y: layer.y,
-      width: layer.width,
-      height: layer.height,
+    return resolveLayerSelectionGeometry(layer, {
       text: String(text),
-      fontFamily: style.fontFamily || "Cormorant Garamond",
-      fontSize: Number(style.fontSize) || 48,
-      fontWeight: style.fontWeight || "400",
-      fontStyle: style.fontStyle === "italic" ? "italic" : "normal",
-      letterSpacing: Number(style.letterSpacing) || 0,
-      lineHeight: Number(style.lineHeight) || 1.15,
-      uppercase: Boolean(style.uppercase),
-      multiline: Boolean(style.multiline),
-      textAlign: style.textAlign || "center",
-      verticalAlign: style.verticalAlign || "middle",
-      autoSizeMode: style.autoSizeMode,
-      fitMode: style.fitMode,
-    }, textMeasureRef.current!, safeBounds);
-    if (!box.autoWidth) return { ...layer, resolvedText: String(text) };
-    return { ...layer, x: box.x, y: box.y, width: box.width, height: box.height, resolvedText: String(text), autoWidthClamped: box.clampedBySafeArea };
+      measure: textMeasureRef.current!,
+      safeBounds,
+    });
   };
   const singleLineInteractionLayer = resolveLayerBox;
 
@@ -217,21 +227,22 @@ export default function AdminCanvas({
   };
 
   // Snap targets: page centre, page edges, safe-area edges, other layer centres.
-  const buildSnapTargets = (excludeId: string) => {
+  const buildSnapTargets = (excludeIds: string | string[]) => {
+    const excluded = new Set(Array.isArray(excludeIds) ? excludeIds : [excludeIds]);
     const safe = template?.safeArea || {};
     const xs = [canvasW / 2, 0, canvasW, Number(safe.left || 0), canvasW - Number(safe.right || 0)];
     const ys = [canvasH / 2, 0, canvasH, Number(safe.top || 0), canvasH - Number(safe.bottom || 0)];
     layers.forEach((l: any) => {
-      if (l.id === excludeId || l.hidden) return;
+      if (excluded.has(l.id) || l.hidden) return;
       xs.push(l.x);
       ys.push(l.y);
     });
     return { xs, ys };
   };
 
-  const applySnap = (x: number, y: number, excludeId: string) => {
+  const applySnap = (x: number, y: number, excludeIds: string | string[]) => {
     if (!snapEnabled) return { x, y, guides: [] as Guide[] };
-    const { xs, ys } = buildSnapTargets(excludeId);
+    const { xs, ys } = buildSnapTargets(excludeIds);
     let outX = x;
     let outY = y;
     const activeGuides: Guide[] = [];
@@ -261,24 +272,71 @@ export default function AdminCanvas({
     : selectedLayerId
       ? [selectedLayerId]
       : [];
+  const resolvedSelectableLayers = selectableLayers.map((layer: any) => resolveLayerBox(layer));
+  const multiBounds = selectionIds.length > 1
+    ? selectionBounds(resolvedSelectableLayers, selectionIds)
+    : null;
+  const multiCanMove =
+    selectionIds.length > 1 &&
+    selectionIds.every((id) => {
+      const target = selectableLayers.find((layer: any) => layer.id === id);
+      return Boolean(target && !target.locked && target.adminEditable !== false);
+    });
+
+  const beginTextEditing = (layerId: string, created = false) => {
+    if (editingTextId === layerId) return;
+    if (created) newTextIdsRef.current.add(layerId);
+    else onTextEditStart?.(layerId);
+    setEditingTextId(layerId);
+    onEditingTextChange?.(layerId);
+  };
+
+  const finishTextEditing = (layerId: string, text: string) => {
+    const created = newTextIdsRef.current.delete(layerId);
+    setEditingTextId(null);
+    onEditingTextChange?.(null);
+    if (created && isEmptyText(text)) {
+      onTextDiscard?.(layerId);
+      return;
+    }
+    onTextCommit?.(layerId, text);
+  };
 
   const onLayerPointerDown = (e: React.PointerEvent, layer: any) => {
     // Let the workspace pan instead — no stopPropagation, no selection change.
     if (panOwnsPointer(e)) return;
     e.stopPropagation();
-    onSelect(layer.id, e.shiftKey);
+    if (editingTextId && editingTextId !== layer.id) return;
+    if (activeTool === "text") {
+      onSelect(layer.id, false);
+      if (layer.type === "text" && !layer.locked && layer.adminEditable !== false) {
+        beginTextEditing(layer.id);
+      }
+      return;
+    }
+    if (editingGroupId && String(layer.groupId || "") !== editingGroupId) onExitGroup?.(false);
+    const additive = e.shiftKey || e.ctrlKey || e.metaKey;
+    onSelect(layer.id, additive);
+    // Additive clicks are selection toggles, never accidental drags.
+    if (additive) return;
     if (layer.locked || layer.adminEditable === false) return;
-    (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
 
     // Dragging a layer that is part of a multi-selection moves the whole
     // selection together (spec §7).
-    const groupIds = selectionIds.includes(layer.id) && selectionIds.length > 1 && !e.shiftKey ? selectionIds : [layer.id];
+    const groupIds = selectionIds.includes(layer.id) && selectionIds.length > 1 ? selectionIds : [layer.id];
+    const selectedTargets = groupIds
+      .map((id) => layers.find((candidate: any) => candidate.id === id))
+      .filter(Boolean);
+    // A multi-selection is one logical command: never move an allowed subset.
+    if (
+      selectedTargets.length !== groupIds.length ||
+      selectedTargets.some((target: any) => target.locked || target.adminEditable === false)
+    ) return;
+
+    (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
     const startPositions: Record<string, { x: number; y: number }> = {};
-    for (const id of groupIds) {
-      const target = layers.find((l: any) => l.id === id);
-      if (target && !target.locked && target.adminEditable !== false) {
-        startPositions[id] = { x: target.x, y: target.y };
-      }
+    for (const target of selectedTargets) {
+      startPositions[target.id] = { x: target.x, y: target.y };
     }
 
     dragRef.current = {
@@ -289,7 +347,81 @@ export default function AdminCanvas({
       startX: layer.x,
       startY: layer.y,
       startPositions,
+      excludeIds: groupIds,
     };
+  };
+
+  const onMultiSelectionPointerDown = (e: React.PointerEvent) => {
+    if (panOwnsPointer(e) || !multiBounds || e.button !== 0) return;
+    e.stopPropagation();
+    const additive = e.shiftKey || e.ctrlKey || e.metaKey;
+    if (additive) {
+      const rect = surfaceRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      const point = clientPointToDocument(e.clientX, e.clientY, rect, displayW, displayH, scale);
+      const hit = resolvedSelectableLayers
+        .filter((layer: any) => selectionIds.includes(layer.id) && pointInsideTransformedLayer(point.x, point.y, layer))
+        .at(-1);
+      if (hit) onSelect(hit.id, true);
+      return;
+    }
+    if (!multiCanMove) return;
+    (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
+    const startPositions: Record<string, { x: number; y: number }> = {};
+    for (const id of selectionIds) {
+      const target = selectableLayers.find((layer: any) => layer.id === id);
+      if (target) startPositions[id] = { x: target.x, y: target.y };
+    }
+    dragRef.current = {
+      mode: "move-multi",
+      layerId: selectionIds[0],
+      startClientX: e.clientX,
+      startClientY: e.clientY,
+      startX: multiBounds.x,
+      startY: multiBounds.y,
+      startPositions,
+      excludeIds: selectionIds,
+    };
+  };
+
+  const beginSurfaceInteraction = (event: React.PointerEvent) => {
+    if (panOwnsPointer(event) || event.button !== 0 || editingTextId) return;
+    if (event.target !== surfaceRef.current) return;
+    const rect = surfaceRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const point = clientPointToDocument(event.clientX, event.clientY, rect, displayW, displayH, scale);
+    if (activeTool === "text") {
+      dragRef.current = {
+        mode: "text-placement",
+        startClientX: event.clientX,
+        startClientY: event.clientY,
+        x: point.x,
+        y: point.y,
+        moved: false,
+      };
+      (event.currentTarget as HTMLElement).setPointerCapture?.(event.pointerId);
+      return;
+    }
+    if (activeTool !== "select") return;
+    if (editingGroupId) {
+      const group = layers.find((layer: any) => layer.id === editingGroupId);
+      const resolvedGroup = group ? resolveLayerBox(group) : null;
+      if (!resolvedGroup || !pointInsideTransformedLayer(point.x, point.y, resolvedGroup)) onExitGroup?.(false);
+    }
+    const additive = event.shiftKey || event.ctrlKey || event.metaKey;
+    dragRef.current = {
+      mode: "marquee",
+      startClientX: event.clientX,
+      startClientY: event.clientY,
+      startX: point.x,
+      startY: point.y,
+      x: point.x,
+      y: point.y,
+      additive,
+      originalSelection: selectionIds.slice(),
+      began: false,
+    };
+    (event.currentTarget as HTMLElement).setPointerCapture?.(event.pointerId);
   };
 
   const onHandlePointerDown = (e: React.PointerEvent, layer: any, handle: string) => {
@@ -329,12 +461,43 @@ export default function AdminCanvas({
   const onPointerMove = (e: React.PointerEvent) => {
     const drag = dragRef.current;
     if (!drag) return;
+    if (drag.mode === "text-placement") {
+      if (pointerExceededDragThreshold(drag.startClientX, drag.startClientY, e.clientX, e.clientY)) {
+        drag.moved = true;
+      }
+      return;
+    }
+    if (drag.mode === "marquee") {
+      const rect = surfaceRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      const point = clientPointToDocument(e.clientX, e.clientY, rect, displayW, displayH, scale);
+      drag.x = point.x;
+      drag.y = point.y;
+      if (
+        !drag.began &&
+        !pointerExceededDragThreshold(drag.startClientX, drag.startClientY, e.clientX, e.clientY)
+      ) return;
+      drag.began = true;
+      setSelectionBox({
+        startX: drag.startX,
+        startY: drag.startY,
+        x: drag.x,
+        y: drag.y,
+        additive: drag.additive,
+      });
+      return;
+    }
     if (drag.mode === "guide") {
       const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
       const position = drag.axis === "vertical" ? (e.clientX - rect.left) / scale : (e.clientY - rect.top) / scale;
       onGuideChange?.(drag.guideId, { position: Math.round(Math.max(0, drag.axis === "vertical" ? Math.min(canvasW, position) : Math.min(canvasH, position))) });
       return;
     }
+    if (
+      (drag.mode === "move" || drag.mode === "move-multi") &&
+      !drag.began &&
+      !pointerExceededDragThreshold(drag.startClientX, drag.startClientY, e.clientX, e.clientY)
+    ) return;
     if (!drag.began) {
       drag.began = true;
       onBeginChange?.();
@@ -402,7 +565,7 @@ export default function AdminCanvas({
 
     if (drag.mode === "move-multi") {
       // Snap the grabbed layer; the rest follow with the same delta.
-      const snapped = applySnap(drag.startX + dx, drag.startY + dy, drag.layerId);
+      const snapped = applySnap(drag.startX + dx, drag.startY + dy, drag.excludeIds || drag.layerId);
       setGuides(snapped.guides);
       const effectiveDx = snapped.x - drag.startX;
       const effectiveDy = snapped.y - drag.startY;
@@ -457,9 +620,37 @@ export default function AdminCanvas({
     onLayerChange(drag.layerId, { x: Math.round(nl + w / 2), y: Math.round(nt + h / 2), width: w, height: h });
   };
 
-  const endDrag = () => {
+  const endDrag = (cancelled = false) => {
+    const drag = dragRef.current;
+    if (drag?.mode === "text-placement" && !cancelled && !drag.moved) {
+      const layerId = onTextPlace?.({ x: drag.x, y: drag.y });
+      if (layerId) {
+        onSelect(layerId, false);
+        beginTextEditing(layerId, true);
+      }
+    }
+    if (drag?.mode === "marquee" && !cancelled) {
+      if (!drag.began) {
+        if (!drag.additive) onSelectionChange?.([]);
+      } else {
+        const found = fullyEnclosedLayerIds(
+        {
+            left: drag.startX,
+            top: drag.startY,
+            right: drag.x,
+            bottom: drag.y,
+        },
+        resolvedSelectableLayers,
+      );
+        const next = drag.additive
+          ? Array.from(new Set([...(drag.originalSelection || []), ...found]))
+        : found;
+        onSelectionChange?.(next);
+      }
+    }
     dragRef.current = null;
     setGuides([]);
+    setSelectionBox(null);
   };
 
   const onGuidePointerDown = (event: React.PointerEvent, guide: any) => {
@@ -591,6 +782,7 @@ export default function AdminCanvas({
       }}
     >
       <div
+        ref={surfaceRef}
         data-canvas-surface
         className="relative shrink-0 bg-white shadow-[0_10px_40px_rgba(48,56,57,0.12)]"
         style={{
@@ -600,16 +792,15 @@ export default function AdminCanvas({
           // outlines, handles and the inline editor all move together and stay
           // aligned, because they all live inside this element.
           transform: `translate3d(${panX}px, ${panY}px, 0)`,
+          cursor: activeTool === "text" && !editingTextId ? "text" : undefined,
         }}
         onPointerMove={onPointerMove}
-        onPointerUp={endDrag}
-        onPointerLeave={endDrag}
-        onPointerDown={(event) => {
-          // Panning must never clear the selection: switch to Pan, move around,
-          // switch back, and the same layer is still selected.
-          if (panOwnsPointer(event)) return;
-          onSelect(null);
+        onPointerUp={() => endDrag(false)}
+        onPointerCancel={() => endDrag(true)}
+        onPointerLeave={(event) => {
+          if (!(event.currentTarget as HTMLElement).hasPointerCapture?.(event.pointerId)) endDrag(false);
         }}
+        onPointerDown={beginSurfaceInteraction}
       >
         {/* Base render (shared with the customer) */}
         <div className="pointer-events-none absolute inset-0">
@@ -633,6 +824,49 @@ export default function AdminCanvas({
               style={{ top: guide.at * scale }}
             />
           ),
+        )}
+
+        {/* Drag marquee and combined selection are editor-only DOM overlays.
+            Neither enters template state or the shared PNG/PDF renderer. */}
+        {selectionBox && (
+          <span
+            aria-hidden
+            data-admin-selection-marquee
+            className="pointer-events-none absolute z-50 border border-[#D4AF37] bg-[#D4AF37]/12 shadow-[0_0_0_1px_rgba(255,255,255,0.7)]"
+            style={{
+              left: Math.min(selectionBox.startX, selectionBox.x) * scale,
+              top: Math.min(selectionBox.startY, selectionBox.y) * scale,
+              width: Math.abs(selectionBox.x - selectionBox.startX) * scale,
+              height: Math.abs(selectionBox.y - selectionBox.startY) * scale,
+            }}
+          />
+        )}
+
+        {activeTool === "select" && multiBounds && (
+          <div
+            role="group"
+            aria-label={`${selectionIds.length} selected objects. Drag to move the selection.`}
+            aria-disabled={!multiCanMove}
+            data-admin-multi-selection
+            onPointerDown={onMultiSelectionPointerDown}
+            className={`absolute border-2 border-[#D4AF37] bg-transparent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] ${multiCanMove ? "cursor-move" : "cursor-not-allowed"}`}
+            style={{
+              left: multiBounds.left * scale,
+              top: multiBounds.top * scale,
+              width: multiBounds.width * scale,
+              height: multiBounds.height * scale,
+              touchAction: "none",
+              pointerEvents: overlayInert ? "none" : undefined,
+            }}
+          >
+            <span className="pointer-events-none absolute -top-7 left-0 whitespace-nowrap rounded-md bg-[#303839] px-2 py-1 text-[9px] font-extrabold uppercase tracking-[0.08em] text-white shadow-sm">
+              {selectionIds.length} selected
+            </span>
+            <span aria-hidden className="pointer-events-none absolute left-[-4px] top-[-4px] h-2 w-2 rounded-sm border border-[#D4AF37] bg-white" />
+            <span aria-hidden className="pointer-events-none absolute right-[-4px] top-[-4px] h-2 w-2 rounded-sm border border-[#D4AF37] bg-white" />
+            <span aria-hidden className="pointer-events-none absolute bottom-[-4px] left-[-4px] h-2 w-2 rounded-sm border border-[#D4AF37] bg-white" />
+            <span aria-hidden className="pointer-events-none absolute bottom-[-4px] right-[-4px] h-2 w-2 rounded-sm border border-[#D4AF37] bg-white" />
+          </div>
         )}
 
         {/* Saved template guides. They are editor-only and never enter the SVG renderer. */}
@@ -665,11 +899,10 @@ export default function AdminCanvas({
         })}
 
         {/* Interactive overlay */}
-        {activeTool !== "pan" && layers.map((layer: any) => {
-          if (layer.hidden) return null;
+        {activeTool !== "pan" && selectableLayers.map((layer: any) => {
           const inSelection = selectionIds.includes(layer.id);
-          const selected = layer.id === selectedLayerId; // primary: shows handles
-          const interactionLayer = selected ? singleLineInteractionLayer(layer) : layer;
+          const selected = selectionIds.length === 1 && layer.id === selectedLayerId;
+          const interactionLayer = layer.type === "text" ? singleLineInteractionLayer(layer) : layer;
           const boxLeft = (interactionLayer.x - interactionLayer.width / 2) * scale;
           const boxTop = (interactionLayer.y - interactionLayer.height / 2) * scale;
           const boxW = interactionLayer.width * scale;
@@ -687,13 +920,20 @@ export default function AdminCanvas({
               onDoubleClick={(event) => {
                 event.stopPropagation();
                 onSelect(layer.id);
-                if (layer.type === "text" && !layer.locked && layer.adminEditable !== false) setEditingTextId(layer.id);
+                if (layer.type === "group") onEnterGroup?.(layer.id);
+                else if (layer.type === "text" && !layer.locked && layer.adminEditable !== false) beginTextEditing(layer.id);
               }}
-              onKeyDown={(event) => {
-                if (event.key === "Enter" && layer.type === "text" && !layer.locked && layer.adminEditable !== false) {
+               onKeyDown={(event) => {
+                 if (event.key === "Enter" && layer.type === "group") {
+                   event.preventDefault();
+                   event.stopPropagation();
+                   onEnterGroup?.(layer.id);
+                   return;
+                 }
+                 if (event.key === "Enter" && layer.type === "text" && !layer.locked && layer.adminEditable !== false) {
                   event.preventDefault();
                   event.stopPropagation();
-                  setEditingTextId(layer.id);
+                  beginTextEditing(layer.id);
                 }
               }}
               style={{
@@ -704,11 +944,13 @@ export default function AdminCanvas({
                 height: boxH,
                 transform: layer.rotation ? `rotate(${layer.rotation}deg)` : undefined,
                 cursor: layer.locked ? "default" : "move",
-                outline: selected
-                  ? "2px solid #303839"
-                  : inSelection
-                    ? "2px solid #D4AF37"
-                    : "1px dashed rgba(48,56,57,0.22)",
+                 outline: editingTextId === layer.id
+                   ? "1px solid rgba(212,175,55,0.9)"
+                   : selected
+                   ? "2px solid #303839"
+                   : inSelection
+                     ? "1px solid transparent"
+                     : "1px dashed rgba(48,56,57,0.22)",
                 background: "transparent",
                 touchAction: "none",
                 // Space/middle-mouse pan keeps the selection visible but lets
@@ -722,21 +964,19 @@ export default function AdminCanvas({
                   multiline={Boolean(layer.textStyle?.multiline)}
                   scale={scale}
                   textStyle={layer.textStyle}
-                  onCommit={(text) => {
-                    setEditingTextId(null);
-                    onTextCommit?.(layer.id, text);
-                  }}
-                  onCancel={() => setEditingTextId(null)}
+                  onDraftChange={(text) => onTextDraftChange?.(layer.id, text)}
+                  onCommit={(text) => finishTextEditing(layer.id, text)}
+                  onEscape={() => onExitTextTool?.()}
                 />
               )}
-              {selected && (
+              {selected && editingTextId !== layer.id && (
                 <span className="pointer-events-none absolute -top-6 left-0 z-10 whitespace-nowrap rounded bg-[#303839] px-1.5 py-0.5 text-[9px] font-bold text-white">
                   {layer.locked ? "🔒 " : ""}
                   {layer.name} · {Math.round(layer.x)},{Math.round(layer.y)} · {Math.round(layer.width)}×{Math.round(layer.height)}
                   {layer.rotation ? ` · ${Math.round(layer.rotation)}°` : ""}
                 </span>
               )}
-              {selected && !layer.locked && (
+              {selected && !layer.locked && editingTextId !== layer.id && (
                 <>
                   {(singleLineTextScale ? SINGLE_LINE_TEXT_HANDLES : HANDLES).map((h) => (
                     <button
@@ -793,7 +1033,7 @@ export default function AdminCanvas({
               )}
               {textOverflow && (
                 <span className="pointer-events-none absolute left-0 top-full z-20 mt-2 whitespace-nowrap rounded-md border border-amber-300 bg-amber-50 px-2 py-1 text-[10px] font-bold text-amber-900 shadow-sm" role="status">
-                  Text does not fit inside this area.
+                  This text is too long for the available space. Reduce the text or use fewer lines.
                 </span>
               )}
             </div>

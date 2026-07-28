@@ -125,6 +125,36 @@ describe("server customization validation", () => {
     expect(result.violations.some((v) => v.code === "unknown-layer")).toBe(true);
   });
 
+  it("accepts a delete-permitted template layer as hidden but still rejects an unauthorized deletion", () => {
+    const deletableTemplate = {
+      ...template,
+      layers: template.layers.map((layer) =>
+        layer.id === "names_layer"
+          ? { ...layer, customerPermissions: { ...layer.customerPermissions, delete: true, hide: false } }
+          : layer,
+      ),
+    };
+    const removed = validateCustomerState(deletableTemplate, {
+      editorState: { layerOverrides: { names_layer: { hidden: true } }, userLayers: [] },
+    });
+    expect(removed.sanitizedEditorState.layerOverrides.names_layer.hidden).toBe(true);
+    expect(removed.violations.some((violation) => violation.code === "visibility-not-allowed")).toBe(false);
+
+    const lockedTemplate = {
+      ...deletableTemplate,
+      layers: deletableTemplate.layers.map((layer) =>
+        layer.id === "names_layer"
+          ? { ...layer, customerEditable: false, customerPermissions: { delete: false, hide: false } }
+          : layer,
+      ),
+    };
+    const rejected = validateCustomerState(lockedTemplate, {
+      editorState: { layerOverrides: { names_layer: { hidden: true } }, userLayers: [] },
+    });
+    expect(rejected.sanitizedEditorState.layerOverrides.names_layer).toBeUndefined();
+    expect(rejected.violations.some((violation) => violation.code === "visibility-not-allowed")).toBe(true);
+  });
+
   it("unlocks crop and flip controls when Customer editable is checked", () => {
     const result = validateCustomerState(template, {
       editorState: {

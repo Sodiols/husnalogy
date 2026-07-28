@@ -281,7 +281,10 @@ describe("AdminCanvas pan wiring", () => {
   });
 
   it("does not clear the selection when the pan gesture owns the pointer", () => {
-    expect(adminCanvas).toContain("if (panOwnsPointer(event)) return;\n          onSelect(null);");
+    expect(adminCanvas).toContain("if (panOwnsPointer(event) || event.button !== 0 || editingTextId) return;");
+    expect(adminCanvas).toContain('if (activeTool !== "select") return;');
+    expect(adminCanvas).toContain("originalSelection: selectionIds.slice()");
+    expect(adminCanvas).toContain("if (!drag.additive) onSelectionChange?.([])");
   });
 
   it("stands down layer, handle, rotation and guide gestures during pan", () => {

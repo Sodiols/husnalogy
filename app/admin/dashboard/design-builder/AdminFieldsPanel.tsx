@@ -11,6 +11,7 @@ import EditableNumericStepper from "@/app/components/customizer/EditableNumericS
 export default function AdminFieldsPanel({
   template,
   onFieldPatch,
+  onFieldReorder,
   onSelectLayer,
   onToggleRequired,
 }: any) {
@@ -59,7 +60,7 @@ export default function AdminFieldsPanel({
       <div className="grid gap-4 xl:grid-cols-2">
         {connected
           .filter((entry: any) => entry.layer)
-          .map(({ field, layer }: any) => (
+          .map(({ field, layer }: any, index: number, visible: any[]) => (
             <div key={field.id} className="rounded-lg border border-[#303839]/12 bg-white p-4">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="flex items-center gap-2">
@@ -70,13 +71,38 @@ export default function AdminFieldsPanel({
                     {field.id} · page: {layer.page}
                   </span>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => onSelectLayer(layer.id)}
-                  className="rounded-full border border-[#303839]/15 px-3 py-1 text-xs font-bold text-[#303839] hover:bg-[#F8F6F1]"
-                >
-                  Open layer →
-                </button>
+                <div className="flex items-center gap-1.5">
+                  {/* Display order in Easy Personalize (spec §5) — independent
+                      of layer z-order, only reorders template.fields. */}
+                  <div className="flex items-center rounded-full border border-[#303839]/15">
+                    <button
+                      type="button"
+                      aria-label="Move field up in Easy Personalize"
+                      disabled={index === 0}
+                      onClick={() => onFieldReorder(layer.id, "up")}
+                      className="grid h-7 w-7 place-items-center text-[#303839] disabled:cursor-not-allowed disabled:opacity-30 hover:enabled:bg-[#F8F6F1]"
+                    >
+                      ↑
+                    </button>
+                    <span className="h-4 w-px bg-[#303839]/15" />
+                    <button
+                      type="button"
+                      aria-label="Move field down in Easy Personalize"
+                      disabled={index === visible.length - 1}
+                      onClick={() => onFieldReorder(layer.id, "down")}
+                      className="grid h-7 w-7 place-items-center text-[#303839] disabled:cursor-not-allowed disabled:opacity-30 hover:enabled:bg-[#F8F6F1]"
+                    >
+                      ↓
+                    </button>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => onSelectLayer(layer.id)}
+                    className="rounded-full border border-[#303839]/15 px-3 py-1 text-xs font-bold text-[#303839] hover:bg-[#F8F6F1]"
+                  >
+                    Open layer →
+                  </button>
+                </div>
               </div>
 
               <div className="mt-3 grid gap-2.5 sm:grid-cols-2">

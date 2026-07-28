@@ -30,7 +30,8 @@ describe("customization template-version restore", () => {
   });
 
   it("does not allow layer-order actions for position-locked selections", () => {
-    expect(client).toContain("const canArrangeAll = selectedLayers.every");
+    expect(client).toContain("const canArrangeSelection =");
+    expect(client).toContain("if (!canArrangeSelection) return");
     expect(client).toContain("!layer.positionLocked");
     expect(client).toContain("getLayerPermissions(layer).changeLayerOrder");
   });

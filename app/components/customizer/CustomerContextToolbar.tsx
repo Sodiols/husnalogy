@@ -13,6 +13,7 @@ type Props = {
   layer: any;
   permissions: Record<string, boolean>;
   isUserLayer: boolean;
+  editingText?: boolean;
   onStyleChange: (patch: any, group?: string) => void;
   onEditText: () => void;
   onDuplicate?: () => void;
@@ -25,6 +26,7 @@ export default function CustomerContextToolbar({
   layer,
   permissions,
   isUserLayer,
+  editingText = false,
   onStyleChange,
   onEditText,
   onDuplicate,
@@ -81,7 +83,15 @@ export default function CustomerContextToolbar({
       role="toolbar"
       aria-label="Text formatting"
     >
-      {canEditContent && (
+      {editingText && (
+        <>
+          <span className="shrink-0 rounded-lg bg-[#303839] px-3 py-2 text-[10px] font-extrabold uppercase tracking-[0.11em] text-white">
+            Editing text
+          </span>
+          {divider}
+        </>
+      )}
+      {canEditContent && !editingText && (
         <>
           <button
             type="button"
@@ -189,9 +199,9 @@ export default function CustomerContextToolbar({
         <EditableNumericStepper label="Line height" value={lineHeight} minimum={0.7} maximum={3} step={0.1} largeStep={0.5} allowNegative={false} allowDecimal onCommit={(lineHeight) => onStyleChange({ lineHeight }, "line-height")} showLabel showStepButtons={false} className="h-10 w-[76px] shrink-0 px-1" inputClassName={numericInput} />
       )}
 
-      {(canDuplicate || canDelete) && divider}
+      {!editingText && (canDuplicate || canDelete) && divider}
 
-      {canDuplicate && onDuplicate && (
+      {!editingText && canDuplicate && onDuplicate && (
         <button
           type="button"
           aria-label="Duplicate text"
@@ -206,7 +216,7 @@ export default function CustomerContextToolbar({
         </button>
       )}
 
-      {canDelete && onDelete && (
+      {!editingText && canDelete && onDelete && (
         <button
           type="button"
           aria-label="Delete text"

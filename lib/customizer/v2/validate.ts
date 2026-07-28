@@ -106,6 +106,14 @@ export const layerOverrideSchema = z
     name: z.string().max(120).optional(),
     hidden: z.boolean().optional(),
     customerLocked: z.boolean().optional(),
+    // Spec §76/§98/§111: lets a template layer (e.g. an admin-authored "Bride
+    // Name" text object) join a customer-created group alongside the
+    // customer's own inserted objects. Null/"" clears membership (ungroup).
+    // A non-empty value is only ever honoured if it names a real "group"
+    // layer within THIS SAME submission's sanitized userLayers - never an
+    // admin template group (those live in template.layers and are never
+    // customer-writable) and never an arbitrary/forged id.
+    groupId: z.string().max(80).nullable().optional(),
     gridSlots: z
       .record(
         z.string().max(120),
@@ -350,6 +358,150 @@ export function validateCustomerState(
     sanitizedValues[fieldId] = text;
   }
 
+  /* ---- user layers ----
+   * Validated BEFORE layer overrides so a template layer's `groupId` override
+   * (below) can be checked against the real, sanitized set of customer group
+   * ids - never an unvalidated/forged one. */
+  const sanitizedUserLayers: any[] = [];
+  const customerObjectsByPage = new Map<string, number>();
+  const allowedCustomerPages = settingList(template, "allowedCustomerPages");
+  const maxCustomerObjectsPerPage = Math.max(0, Math.round(Number(template?.settings?.maxCustomerObjectsPerPage) || 0));
+  const submittedUserLayers = Array.isArray(submitted.editorState?.userLayers) ? submitted.editorState!.userLayers : [];
+  for (const raw of submittedUserLayers) {
+    const parsed = userLayerSchema.safeParse(raw);
+    if (!parsed.success) {
+      violations.push({ code: "invalid-user-layer", message: "A customer-added layer is invalid." });
+      continue;
+    }
+    const layer = parsed.data;
+    if (layer.type === "text" && !layer.textStyle?.multiline && /[\r\n]/.test(String(layer.text || ""))) {
+      violations.push({ code: "multiline-not-allowed", layerId: layer.id, message: "This text layer does not allow line breaks." });
+      layer.text = String(layer.text || "").replace(/[\r\n]+/g, " ");
+    }
+    if (!pageIds.has(layer.page)) {
+      violations.push({ code: "user-layer-bad-page", message: "A customer-added layer points at a missing page." });
+      continue;
+    }
+    if (allowedCustomerPages.length && !allowedCustomerPages.includes(layer.page)) {
+      violations.push({ code: "user-layer-page-not-allowed", message: "Customer-added objects are not allowed on this page." });
+      continue;
+    }
+    if (layer.type !== "group" && maxCustomerObjectsPerPage > 0) {
+      const count = customerObjectsByPage.get(layer.page) || 0;
+      if (count >= maxCustomerObjectsPerPage) {
+        violations.push({ code: "customer-object-count-limit", message: `This page allows at most ${maxCustomerObjectsPerPage} customer objects.` });
+        continue;
+      }
+    }
+    if (layer.type === "text" && !pageAllowsText(template, layer.page)) {
+      violations.push({
+        code: "user-text-not-allowed",
+        message: "Adding text is not enabled on this page.",
+      });
+      continue;
+    }
+    if (layer.type === "element" && !template?.settings?.allowCustomerElements) {
+      violations.push({ code: "user-element-not-allowed", message: "Adding elements is not enabled for this design." });
+      continue;
+    }
+    if (layer.type === "element" && !settingAllows(template, "allowedCustomerElementIds", (layer as any).assetId)) {
+      violations.push({ code: "user-element-not-allowed-by-template", message: "This decorative element is not allowed for this design." });
+      continue;
+    }
+    if (layer.type === "shape") {
+      const line = String((layer as any).shape) === "line";
+      if (line ? !template?.settings?.allowCustomerLines : !template?.settings?.allowCustomerShapes) {
+        violations.push({ code: line ? "user-line-not-allowed" : "user-shape-not-allowed", message: `Adding ${line ? "lines" : "shapes"} is not enabled for this design.` });
+        continue;
+      }
+      if (!line && !settingAllows(template, "allowedCustomerShapes", (layer as any).shape)) {
+        violations.push({ code: "user-shape-not-allowed-by-template", message: "This shape is not allowed for this design." });
+        continue;
+      }
+    }
+    if (layer.type === "frame" && !template?.settings?.allowCustomerFrames) {
+      violations.push({ code: "user-frame-not-allowed", message: "Adding frames is not enabled for this design." });
+      continue;
+    }
+    if (layer.type === "frame" && !settingAllows(template, "allowedCustomerFrameMasks", (layer as any).maskShape || (layer as any).mask?.kind)) {
+      violations.push({ code: "user-frame-not-allowed-by-template", message: "This frame shape is not allowed for this design." });
+      continue;
+    }
+    if (layer.type === "grid" && !template?.settings?.allowCustomerGrids) {
+      violations.push({ code: "user-grid-not-allowed", message: "Adding photo grids is not enabled for this design." });
+      continue;
+    }
+    if (layer.type === "grid" && !settingAllows(template, "allowedCustomerGridPresets", (layer as any).presetId)) {
+      violations.push({ code: "user-grid-not-allowed-by-template", message: "This photo-grid layout is not allowed for this design." });
+      continue;
+    }
+    if (layer.type === "qrCode") {
+      if (!template?.settings?.allowCustomerQRCodes) {
+        violations.push({ code: "user-qr-not-allowed", message: "Adding QR codes is not enabled for this design." });
+        continue;
+      }
+      if (!isValidQRValue((layer as any).value)) {
+        violations.push({ code: "invalid-qr-url", message: "The QR code destination is invalid." });
+        continue;
+      }
+    }
+    if (layer.type === "background" && !template?.settings?.allowCustomerBackground) {
+      violations.push({ code: "user-background-not-allowed", message: "Changing the background is not enabled for this design." });
+      continue;
+    }
+    if (layer.type === "group" && !template?.settings?.allowCustomerGrouping) {
+      violations.push({ code: "user-group-not-allowed", message: "Grouping is not enabled for this design." });
+      continue;
+    }
+    if (layer.type === "text" && layer.textStyle?.fontFamily && !CUSTOMER_FONT_FAMILIES.has(String(layer.textStyle.fontFamily))) {
+      violations.push({ code: "font-not-available", message: `Font "${layer.textStyle.fontFamily}" is not available.` });
+      layer.textStyle = { ...layer.textStyle, fontFamily: "Cormorant Garamond" };
+    }
+    if (layer.type === "text" && layer.textStyle?.fontFamily && !settingAllows(template, "allowedCustomerFonts", layer.textStyle.fontFamily)) {
+      violations.push({ code: "font-not-allowed-by-template", message: `Font "${layer.textStyle.fontFamily}" is not allowed for this design.` });
+      const fallback = settingList(template, "allowedCustomerFonts")[0] || "Cormorant Garamond";
+      layer.textStyle = { ...layer.textStyle, fontFamily: fallback };
+    }
+    const colourValues = layer.type === "text"
+      ? [layer.textStyle?.color]
+      : layer.type === "shape"
+        ? [String((layer as any).shape) === "line" ? undefined : (layer as any).fill, (layer as any).stroke]
+        : layer.type === "qrCode"
+          ? [(layer as any).foregroundColor, (layer as any).backgroundColor]
+          : layer.type === "frame" || layer.type === "image"
+            ? [(layer as any).borderColor, (layer as any).backgroundColor]
+            : layer.type === "grid"
+              ? [(layer as any).borderColor, (layer as any).backgroundColor]
+          : layer.type === "background"
+            ? [(layer as any).color]
+            : layer.type === "element"
+              ? [(layer as any).tintColor]
+              : [];
+    if (colourValues.some((colour) => colour && !settingAllows(template, "allowedCustomerColors", colour))) {
+      violations.push({ code: "color-not-allowed-by-template", message: "A customer object uses a colour that is not allowed for this design." });
+      continue;
+    }
+    const filters = (layer as any).filters;
+    if (filters && typeof filters === "object") {
+      const allowedFilters = settingList(template, "allowedCustomerImageFilters");
+      const usedFilters = Object.entries(filters).filter(([key, value]) => {
+        if (key === "brightness" || key === "contrast" || key === "saturation") return Number(value) !== 1;
+        if (key === "grayscale" || key === "sepia" || key === "tintAmount") return Number(value) > 0;
+        return key === "tintColor" && Number(filters.tintAmount) > 0;
+      });
+      if (allowedFilters.length && usedFilters.some(([key]) => !allowedFilters.includes(key) && !(allowedFilters.includes("tint") && (key === "tintColor" || key === "tintAmount")))) {
+        violations.push({ code: "filter-not-allowed-by-template", message: "A customer object uses an image filter that is not allowed for this design." });
+        continue;
+      }
+    }
+    Object.assign(layer, constrainCustomerTransform(template, layer.page, layer, layer, violations, layer.id));
+    if (layer.type !== "group" && maxCustomerObjectsPerPage > 0) customerObjectsByPage.set(layer.page, (customerObjectsByPage.get(layer.page) || 0) + 1);
+    sanitizedUserLayers.push(layer);
+  }
+  const validCustomerGroupIds = new Map(
+    sanitizedUserLayers.filter((entry) => entry.type === "group").map((entry) => [entry.id, entry.page]),
+  );
+
   /* ---- layer overrides ---- */
   const sanitizedOverrides: Record<string, any> = {};
   const submittedOverrides =
@@ -375,6 +527,23 @@ export function validateCustomerState(
     if (layer.customerInteractionDisabled) {
       violations.push({ code: "interaction-disabled", layerId, message: `Customer interaction with "${layer.name || layerId}" is disabled.` });
       continue;
+    }
+
+    if (override.groupId !== undefined) {
+      if (!permissions.group) {
+        violations.push({ code: "group-not-allowed", layerId, message: `Grouping "${layer.name || layerId}" is not allowed.` });
+      } else if (!override.groupId) {
+        clean.groupId = null;
+      } else {
+        const groupPage = validCustomerGroupIds.get(override.groupId);
+        if (groupPage === undefined) {
+          violations.push({ code: "invalid-group-target", layerId, message: `"${layer.name || layerId}" cannot be added to that group.` });
+        } else if (groupPage !== layer.page) {
+          violations.push({ code: "group-page-mismatch", layerId, message: `"${layer.name || layerId}" cannot be grouped across pages.` });
+        } else {
+          clean.groupId = override.groupId;
+        }
+      }
     }
 
     if (override.transform) {
@@ -535,7 +704,7 @@ export function validateCustomerState(
       else violations.push({ code: "rename-not-allowed", layerId, message: `Renaming "${layer.name || layerId}" is not allowed.` });
     }
     if (override.hidden !== undefined) {
-      if (permissions.hide) clean.hidden = override.hidden;
+      if (permissions.hide || (override.hidden === true && permissions.delete)) clean.hidden = override.hidden;
       else violations.push({ code: "visibility-not-allowed", layerId, message: `Changing visibility for "${layer.name || layerId}" is not allowed.` });
     }
     if (override.customerLocked !== undefined) {
@@ -583,144 +752,6 @@ export function validateCustomerState(
     }
 
     if (Object.keys(clean).length) sanitizedOverrides[layerId] = clean;
-  }
-
-  /* ---- user layers ---- */
-  const sanitizedUserLayers: any[] = [];
-  const customerObjectsByPage = new Map<string, number>();
-  const allowedCustomerPages = settingList(template, "allowedCustomerPages");
-  const maxCustomerObjectsPerPage = Math.max(0, Math.round(Number(template?.settings?.maxCustomerObjectsPerPage) || 0));
-  const submittedUserLayers = Array.isArray(submitted.editorState?.userLayers) ? submitted.editorState!.userLayers : [];
-  for (const raw of submittedUserLayers) {
-    const parsed = userLayerSchema.safeParse(raw);
-    if (!parsed.success) {
-      violations.push({ code: "invalid-user-layer", message: "A customer-added layer is invalid." });
-      continue;
-    }
-    const layer = parsed.data;
-    if (layer.type === "text" && !layer.textStyle?.multiline && /[\r\n]/.test(String(layer.text || ""))) {
-      violations.push({ code: "multiline-not-allowed", layerId: layer.id, message: "This text layer does not allow line breaks." });
-      layer.text = String(layer.text || "").replace(/[\r\n]+/g, " ");
-    }
-    if (!pageIds.has(layer.page)) {
-      violations.push({ code: "user-layer-bad-page", message: "A customer-added layer points at a missing page." });
-      continue;
-    }
-    if (allowedCustomerPages.length && !allowedCustomerPages.includes(layer.page)) {
-      violations.push({ code: "user-layer-page-not-allowed", message: "Customer-added objects are not allowed on this page." });
-      continue;
-    }
-    if (layer.type !== "group" && maxCustomerObjectsPerPage > 0) {
-      const count = customerObjectsByPage.get(layer.page) || 0;
-      if (count >= maxCustomerObjectsPerPage) {
-        violations.push({ code: "customer-object-count-limit", message: `This page allows at most ${maxCustomerObjectsPerPage} customer objects.` });
-        continue;
-      }
-    }
-    if (layer.type === "text" && !pageAllowsText(template, layer.page)) {
-      violations.push({
-        code: "user-text-not-allowed",
-        message: "Adding text is not enabled on this page.",
-      });
-      continue;
-    }
-    if (layer.type === "element" && !template?.settings?.allowCustomerElements) {
-      violations.push({ code: "user-element-not-allowed", message: "Adding elements is not enabled for this design." });
-      continue;
-    }
-    if (layer.type === "element" && !settingAllows(template, "allowedCustomerElementIds", (layer as any).assetId)) {
-      violations.push({ code: "user-element-not-allowed-by-template", message: "This decorative element is not allowed for this design." });
-      continue;
-    }
-    if (layer.type === "shape") {
-      const line = String((layer as any).shape) === "line";
-      if (line ? !template?.settings?.allowCustomerLines : !template?.settings?.allowCustomerShapes) {
-        violations.push({ code: line ? "user-line-not-allowed" : "user-shape-not-allowed", message: `Adding ${line ? "lines" : "shapes"} is not enabled for this design.` });
-        continue;
-      }
-      if (!line && !settingAllows(template, "allowedCustomerShapes", (layer as any).shape)) {
-        violations.push({ code: "user-shape-not-allowed-by-template", message: "This shape is not allowed for this design." });
-        continue;
-      }
-    }
-    if (layer.type === "frame" && !template?.settings?.allowCustomerFrames) {
-      violations.push({ code: "user-frame-not-allowed", message: "Adding frames is not enabled for this design." });
-      continue;
-    }
-    if (layer.type === "frame" && !settingAllows(template, "allowedCustomerFrameMasks", (layer as any).maskShape || (layer as any).mask?.kind)) {
-      violations.push({ code: "user-frame-not-allowed-by-template", message: "This frame shape is not allowed for this design." });
-      continue;
-    }
-    if (layer.type === "grid" && !template?.settings?.allowCustomerGrids) {
-      violations.push({ code: "user-grid-not-allowed", message: "Adding photo grids is not enabled for this design." });
-      continue;
-    }
-    if (layer.type === "grid" && !settingAllows(template, "allowedCustomerGridPresets", (layer as any).presetId)) {
-      violations.push({ code: "user-grid-not-allowed-by-template", message: "This photo-grid layout is not allowed for this design." });
-      continue;
-    }
-    if (layer.type === "qrCode") {
-      if (!template?.settings?.allowCustomerQRCodes) {
-        violations.push({ code: "user-qr-not-allowed", message: "Adding QR codes is not enabled for this design." });
-        continue;
-      }
-      if (!isValidQRValue((layer as any).value)) {
-        violations.push({ code: "invalid-qr-url", message: "The QR code destination is invalid." });
-        continue;
-      }
-    }
-    if (layer.type === "background" && !template?.settings?.allowCustomerBackground) {
-      violations.push({ code: "user-background-not-allowed", message: "Changing the background is not enabled for this design." });
-      continue;
-    }
-    if (layer.type === "group" && !template?.settings?.allowCustomerGrouping) {
-      violations.push({ code: "user-group-not-allowed", message: "Grouping is not enabled for this design." });
-      continue;
-    }
-    if (layer.type === "text" && layer.textStyle?.fontFamily && !CUSTOMER_FONT_FAMILIES.has(String(layer.textStyle.fontFamily))) {
-      violations.push({ code: "font-not-available", message: `Font "${layer.textStyle.fontFamily}" is not available.` });
-      layer.textStyle = { ...layer.textStyle, fontFamily: "Cormorant Garamond" };
-    }
-    if (layer.type === "text" && layer.textStyle?.fontFamily && !settingAllows(template, "allowedCustomerFonts", layer.textStyle.fontFamily)) {
-      violations.push({ code: "font-not-allowed-by-template", message: `Font "${layer.textStyle.fontFamily}" is not allowed for this design.` });
-      const fallback = settingList(template, "allowedCustomerFonts")[0] || "Cormorant Garamond";
-      layer.textStyle = { ...layer.textStyle, fontFamily: fallback };
-    }
-    const colourValues = layer.type === "text"
-      ? [layer.textStyle?.color]
-      : layer.type === "shape"
-        ? [String((layer as any).shape) === "line" ? undefined : (layer as any).fill, (layer as any).stroke]
-        : layer.type === "qrCode"
-          ? [(layer as any).foregroundColor, (layer as any).backgroundColor]
-          : layer.type === "frame" || layer.type === "image"
-            ? [(layer as any).borderColor, (layer as any).backgroundColor]
-            : layer.type === "grid"
-              ? [(layer as any).borderColor, (layer as any).backgroundColor]
-          : layer.type === "background"
-            ? [(layer as any).color]
-            : layer.type === "element"
-              ? [(layer as any).tintColor]
-              : [];
-    if (colourValues.some((colour) => colour && !settingAllows(template, "allowedCustomerColors", colour))) {
-      violations.push({ code: "color-not-allowed-by-template", message: "A customer object uses a colour that is not allowed for this design." });
-      continue;
-    }
-    const filters = (layer as any).filters;
-    if (filters && typeof filters === "object") {
-      const allowedFilters = settingList(template, "allowedCustomerImageFilters");
-      const usedFilters = Object.entries(filters).filter(([key, value]) => {
-        if (key === "brightness" || key === "contrast" || key === "saturation") return Number(value) !== 1;
-        if (key === "grayscale" || key === "sepia" || key === "tintAmount") return Number(value) > 0;
-        return key === "tintColor" && Number(filters.tintAmount) > 0;
-      });
-      if (allowedFilters.length && usedFilters.some(([key]) => !allowedFilters.includes(key) && !(allowedFilters.includes("tint") && (key === "tintColor" || key === "tintAmount")))) {
-        violations.push({ code: "filter-not-allowed-by-template", message: "A customer object uses an image filter that is not allowed for this design." });
-        continue;
-      }
-    }
-    Object.assign(layer, constrainCustomerTransform(template, layer.page, layer, layer, violations, layer.id));
-    if (layer.type !== "group" && maxCustomerObjectsPerPage > 0) customerObjectsByPage.set(layer.page, (customerObjectsByPage.get(layer.page) || 0) + 1);
-    sanitizedUserLayers.push(layer);
   }
 
   return {

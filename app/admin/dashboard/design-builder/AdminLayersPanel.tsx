@@ -17,13 +17,29 @@ export default function AdminLayersPanel({
   template,
   pageId,
   selectedLayerId,
+  selectedLayerIds = [],
+  editingGroupId = null,
   onSelect,
+  onEnterGroup,
   onLayerPatch,
   onReorder,
   onDuplicate,
   onRemove,
 }: any) {
   const layers = layersForPage(template, pageId).slice().reverse(); // top first
+  const byId = new Map<string, any>(layers.map((layer: any) => [layer.id, layer]));
+  const logicalSelectionId = (layer: any) => {
+    let current = layer;
+    const visited = new Set<string>();
+    while (current?.groupId && !visited.has(current.groupId)) {
+      if (editingGroupId && current.groupId === editingGroupId) return current.id;
+      visited.add(current.groupId);
+      const parent = byId.get(current.groupId);
+      if (!parent) break;
+      current = parent;
+    }
+    return current?.id || layer.id;
+  };
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
 
@@ -35,7 +51,10 @@ export default function AdminLayersPanel({
   return (
     <div className="grid gap-0.5 px-2 pb-2">
       {layers.map((layer: any, index: number) => {
-        const selected = layer.id === selectedLayerId;
+        const targetId = logicalSelectionId(layer);
+        const selected = selectedLayerIds.length
+          ? selectedLayerIds.includes(targetId)
+          : targetId === selectedLayerId;
         return (
           <div
             key={layer.id}
@@ -45,8 +64,12 @@ export default function AdminLayersPanel({
           >
             <button
               type="button"
-              onClick={() => onSelect(layer.id)}
+              onClick={(event) => onSelect(targetId, event.shiftKey || event.ctrlKey || event.metaKey)}
               onDoubleClick={() => {
+                if (layer.type === "group") {
+                  onEnterGroup?.(layer.id);
+                  return;
+                }
                 setRenamingId(layer.id);
                 setRenameValue(layer.name || "");
               }}

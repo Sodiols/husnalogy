@@ -15,6 +15,7 @@ type HistoryApi<T> = {
   record: (snapshot: T, group?: string) => void;
   undo: (current: T) => T | null;
   redo: (current: T) => T | null;
+  discardLast: () => void;
   reset: () => void;
   canUndo: boolean;
   canRedo: boolean;
@@ -67,6 +68,14 @@ export default function useCustomizerHistory<T>(limit = DEFAULT_LIMIT): HistoryA
     return next;
   }, []);
 
+  const discardLast = useCallback(() => {
+    if (!past.current.length) return;
+    past.current.pop();
+    future.current = [];
+    lastGroup.current = null;
+    bump();
+  }, []);
+
   const reset = useCallback(() => {
     past.current = [];
     future.current = [];
@@ -78,6 +87,7 @@ export default function useCustomizerHistory<T>(limit = DEFAULT_LIMIT): HistoryA
     record,
     undo,
     redo,
+    discardLast,
     reset,
     canUndo: past.current.length > 0,
     canRedo: future.current.length > 0,

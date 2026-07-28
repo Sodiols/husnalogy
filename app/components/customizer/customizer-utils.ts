@@ -52,6 +52,8 @@ export type EditorState = {
       hidden?: boolean;
       customerLocked?: boolean;
       gridSlots?: Record<string, { assetId?: string; ownerId?: string; src?: string; bucket?: string; path?: string; originalPath?: string; assetReference?: Record<string, unknown>; metadata?: Record<string, unknown>; transform?: ImageTransformOverride }>;
+      // Lets a template layer join a customer-created group (spec §76/§98/§111).
+      groupId?: string | null;
     }
   >;
   userLayers: any[];
@@ -152,6 +154,10 @@ export function applyLayerOverride(layer: any, override: any): any {
   if (override.name !== undefined) next.name = String(override.name).slice(0, 120);
   if (override.hidden !== undefined) next.hidden = Boolean(override.hidden);
   if (override.customerLocked !== undefined) next.customerLocked = Boolean(override.customerLocked);
+  // Lets a template layer join a customer-created group (spec §76/§98/§111).
+  // The group itself always lives in userLayers - this override only ever
+  // changes which group id a TEMPLATE layer points at.
+  if (override.groupId !== undefined) next.groupId = override.groupId || "";
   if (override.gridSlots && typeof override.gridSlots === "object" && layer.type === "grid") {
     next.slots = mergeGridSlotOverrides(Array.isArray(layer.slots) ? layer.slots : [], override.gridSlots);
   }

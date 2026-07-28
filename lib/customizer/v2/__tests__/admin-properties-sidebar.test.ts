@@ -39,7 +39,7 @@ describe("admin properties sidebar contract", () => {
     for (const canvas of [adminCanvas, customerCanvas]) {
       expect(canvas).toContain("getTextResizeConstraints");
       expect(canvas).toContain("<InlineCanvasTextEditor");
-      expect(canvas).toContain("Text does not fit inside this area.");
+      expect(canvas).toContain("This text is too long for the available space.");
     }
     expect(adminCanvas).toContain('id: "n"');
     expect(adminCanvas).toContain('id: "e"');

@@ -77,6 +77,10 @@ function TextLayer({ layer, field, values, fontsReady, idPrefix, safeBounds }: a
 
   const isPlaceholder =
     field && (values[field.id] === undefined || values[field.id] === "" || values[field.id] === null) && !field.defaultValue;
+  // SSR and the first client hydration pass must use the same deterministic
+  // fallback metrics. Once fonts are ready, switch both layout calculations
+  // to the real canvas measurer in one normal client re-render.
+  const measure = fontsReady ? getMeasure() : fallbackMeasure;
 
   // Auto-width layers take their box from the measured content, not the stored
   // width (which goes stale as soon as the customer types a longer name).
@@ -101,7 +105,7 @@ function TextLayer({ layer, field, values, fontsReady, idPrefix, safeBounds }: a
           autoSizeMode: style.autoSizeMode,
           fitMode: style.fitMode,
         },
-        getMeasure(),
+        measure,
         safeBounds,
       ),
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -133,7 +137,7 @@ function TextLayer({ layer, field, values, fontsReady, idPrefix, safeBounds }: a
             : style.fitMode === "shrink" ? "shrink" : style.fitMode === "auto-height" ? "auto-height" : "fixed",
           maxLines: Number(layer.maxLines) > 0 ? Number(layer.maxLines) : undefined,
         },
-        getMeasure(),
+        measure,
       ),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [text, box.width, box.height, box.clampedBySafeArea, JSON.stringify(style), fontsReady],

@@ -179,6 +179,10 @@ export default function CustomerSelectionPanel({
   onDelete,
   canDelete = false,
   canArrange = true,
+  canAlign = true,
+  canGroup = true,
+  canUngroup = true,
+  canDuplicate = true,
 }: any) {
   if (!layers?.length) return null;
 
@@ -480,6 +484,40 @@ export default function CustomerSelectionPanel({
         )}
       </div>
 
+      {layers.length >= 1 && (
+        <div className="mt-5 grid gap-3">
+          {/* Distinct from "Align selection" below (spec §29): this moves the
+              selection as one block relative to the CARD, not to each other. */}
+          <SectionTitle>Position on card</SectionTitle>
+          <div className="grid grid-cols-3 gap-2">
+            <button
+              type="button"
+              onClick={() => onAlign("centerOnCardHorizontal")}
+              disabled={!canAlign}
+              className="min-h-11 cursor-pointer rounded-xl border border-[#303839]/10 bg-white px-2 text-[10px] font-bold text-[#303839] transition-colors hover:bg-[#303839]/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              Centre Horizontally
+            </button>
+            <button
+              type="button"
+              onClick={() => onAlign("centerOnCardVertical")}
+              disabled={!canAlign}
+              className="min-h-11 cursor-pointer rounded-xl border border-[#303839]/10 bg-white px-2 text-[10px] font-bold text-[#303839] transition-colors hover:bg-[#303839]/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              Centre Vertically
+            </button>
+            <button
+              type="button"
+              onClick={() => onAlign("centerOnCard")}
+              disabled={!canAlign}
+              className="min-h-11 cursor-pointer rounded-xl border border-[#303839]/10 bg-white px-2 text-[10px] font-bold text-[#303839] transition-colors hover:bg-[#303839]/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              Centre on Card
+            </button>
+          </div>
+        </div>
+      )}
+
       {layers.length > 1 && (
         <div className="mt-5 grid gap-3">
           <SectionTitle>Align selection</SectionTitle>
@@ -489,7 +527,8 @@ export default function CustomerSelectionPanel({
                 key={item.action}
                 type="button"
                 onClick={() => onAlign(item.action)}
-                className="min-h-11 cursor-pointer rounded-xl border border-[#303839]/10 bg-white px-2 text-[10px] font-bold text-[#303839] transition-colors hover:bg-[#303839]/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37]"
+                disabled={!canAlign}
+                className="min-h-11 cursor-pointer rounded-xl border border-[#303839]/10 bg-white px-2 text-[10px] font-bold text-[#303839] transition-colors hover:bg-[#303839]/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] disabled:cursor-not-allowed disabled:opacity-40"
               >
                 {item.label}
               </button>
@@ -499,17 +538,35 @@ export default function CustomerSelectionPanel({
             <div className="grid grid-cols-2 gap-2">
               <button
                 type="button"
-                onClick={() => onAlign("distributeHorizontal")}
-                className="min-h-11 cursor-pointer rounded-xl border border-[#303839]/10 bg-white px-2 text-[10px] font-bold text-[#303839] hover:bg-[#303839]/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37]"
+                onClick={() => onAlign("distributeHorizontalCenters")}
+                disabled={!canAlign}
+                className="min-h-11 cursor-pointer rounded-xl border border-[#303839]/10 bg-white px-2 text-[10px] font-bold text-[#303839] hover:bg-[#303839]/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] disabled:cursor-not-allowed disabled:opacity-40"
               >
-                Distribute across
+                Distribute Horizontally
+              </button>
+              <button
+                type="button"
+                onClick={() => onAlign("distributeVerticalCenters")}
+                disabled={!canAlign}
+                className="min-h-11 cursor-pointer rounded-xl border border-[#303839]/10 bg-white px-2 text-[10px] font-bold text-[#303839] hover:bg-[#303839]/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                Distribute Vertically
+              </button>
+              <button
+                type="button"
+                onClick={() => onAlign("distributeHorizontal")}
+                disabled={!canAlign}
+                className="min-h-11 cursor-pointer rounded-xl border border-[#303839]/10 bg-white px-2 text-[10px] font-bold text-[#303839] hover:bg-[#303839]/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                Equal Horizontal Spacing
               </button>
               <button
                 type="button"
                 onClick={() => onAlign("distributeVertical")}
-                className="min-h-11 cursor-pointer rounded-xl border border-[#303839]/10 bg-white px-2 text-[10px] font-bold text-[#303839] hover:bg-[#303839]/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37]"
+                disabled={!canAlign}
+                className="min-h-11 cursor-pointer rounded-xl border border-[#303839]/10 bg-white px-2 text-[10px] font-bold text-[#303839] hover:bg-[#303839]/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] disabled:cursor-not-allowed disabled:opacity-40"
               >
-                Distribute down
+                Equal Vertical Spacing
               </button>
             </div>
           )}
@@ -521,7 +578,8 @@ export default function CustomerSelectionPanel({
           <button
             type="button"
             onClick={onGroup}
-            className="min-h-11 flex-1 cursor-pointer rounded-xl border border-[#303839]/10 bg-white px-3 text-xs font-bold text-[#303839] hover:bg-[#303839]/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37]"
+            disabled={!canGroup}
+            className="min-h-11 flex-1 cursor-pointer rounded-xl border border-[#303839]/10 bg-white px-3 text-xs font-bold text-[#303839] hover:bg-[#303839]/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] disabled:cursor-not-allowed disabled:opacity-40"
           >
             Group
           </button>
@@ -530,7 +588,8 @@ export default function CustomerSelectionPanel({
           <button
             type="button"
             onClick={onUngroup}
-            className="min-h-11 flex-1 cursor-pointer rounded-xl border border-[#303839]/10 bg-white px-3 text-xs font-bold text-[#303839] hover:bg-[#303839]/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37]"
+            disabled={!canUngroup}
+            className="min-h-11 flex-1 cursor-pointer rounded-xl border border-[#303839]/10 bg-white px-3 text-xs font-bold text-[#303839] hover:bg-[#303839]/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] disabled:cursor-not-allowed disabled:opacity-40"
           >
             Ungroup
           </button>
@@ -538,35 +597,35 @@ export default function CustomerSelectionPanel({
         <button
           type="button"
           onClick={onDuplicate}
-          className="min-h-11 flex-1 cursor-pointer rounded-xl border border-[#303839]/10 bg-white px-3 text-xs font-bold text-[#303839] hover:bg-[#303839]/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37]"
+          disabled={!canDuplicate}
+          className="min-h-11 flex-1 cursor-pointer rounded-xl border border-[#303839]/10 bg-white px-3 text-xs font-bold text-[#303839] hover:bg-[#303839]/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] disabled:cursor-not-allowed disabled:opacity-40"
         >
           Duplicate
         </button>
-        {canDelete && (
-          <button
-            type="button"
-            title="Delete"
-            aria-label={
-              layers.length === 1 ? "Delete selected object" : `Delete ${layers.length} selected objects`
-            }
-            onClick={onDelete}
-            className="grid h-11 w-11 shrink-0 cursor-pointer place-items-center rounded-xl border border-red-200 bg-white text-red-600 transition-colors hover:bg-red-50 hover:text-red-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400"
+        <button
+          type="button"
+          title="Delete"
+          aria-label={
+            layers.length === 1 ? "Delete selected object" : `Delete ${layers.length} selected objects`
+          }
+          onClick={onDelete}
+          disabled={!canDelete}
+          className="grid h-11 w-11 shrink-0 cursor-pointer place-items-center rounded-xl border border-red-200 bg-white text-red-600 transition-colors hover:bg-red-50 hover:text-red-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400 disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          <svg
+            width="17"
+            height="17"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden
           >
-            <svg
-              width="17"
-              height="17"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              aria-hidden
-            >
-              <path d="M3 6h18M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
-            </svg>
-          </button>
-        )}
+            <path d="M3 6h18M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+          </svg>
+        </button>
       </div>
     </section>
   );

@@ -14,6 +14,7 @@ import { normalizeGridSlot } from "@/lib/customizer/v2/grids";
 import { normalizeImageFilters } from "@/lib/customizer/v2/image-filters";
 import { normalizeQRCodeStyle } from "@/lib/customizer/v2/qr";
 import { migrateTextAutoSizing } from "@/lib/customizer/v2/text-layout";
+import { normalizeCanonicalText } from "@/lib/customizer/v2/text-editing";
 
 export const CUSTOMIZER_ENGINES = new Set(["svg"]);
 export const CUSTOMIZER_ORIENTATIONS = new Set(["portrait", "landscape", "square"]);
@@ -455,7 +456,7 @@ export function normalizeCustomizerLayer(input: any = {}): any {
     ...base,
     // The design text the admin typed. The customer's value overrides it only
     // when the layer is customer-editable and connected to a field.
-    text: clampString(input.text ?? "", 2000),
+    text: normalizeCanonicalText(input.text).slice(0, 2000),
     textStyle: normalizeTextStyle(input.textStyle),
   };
 }
@@ -513,7 +514,7 @@ export function normalizeUserLayer(input: any = {}): any | null {
     type: "text",
     name: clampString(input.name || "Customer text", 120),
     page: cleanString(input.page) || "front",
-    text: clampString(input.text ?? "", 500),
+    text: normalizeCanonicalText(input.text).slice(0, 500),
     x: toNumber(input.x, 0),
     y: toNumber(input.y, 0),
     width: toNumber(input.width, 600) || 600,
@@ -594,7 +595,14 @@ function normalizeLayerOverride(input: any = {}): any | null {
     if (Object.keys(imageTransform).length) out.imageTransform = imageTransform;
   }
   if (input.imageFilters && typeof input.imageFilters === "object") out.imageFilters = normalizeImageFilters(input.imageFilters);
-  if (input.properties && typeof input.properties === "object") out.properties = input.properties;
+  if (input.properties && typeof input.properties === "object") {
+    out.properties = {
+      ...input.properties,
+      ...(input.properties.text === undefined
+        ? {}
+        : { text: normalizeCanonicalText(input.properties.text).slice(0, 2000) }),
+    };
+  }
   if (input.name !== undefined) out.name = clampString(input.name, 120);
   if (input.hidden !== undefined) out.hidden = normalizeBoolean(input.hidden);
   if (input.customerLocked !== undefined) out.customerLocked = normalizeBoolean(input.customerLocked);

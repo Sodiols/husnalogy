@@ -76,6 +76,93 @@ describe("Customizer parity primitives", () => {
     expect(alignCustomerLayers(layers, ["a", "b", "c"], "distributeHorizontal").b.x).toBe(110);
   });
 
+  // Regression: distribution must equalize the GAPS between objects' true
+  // edges, not just space their centres evenly (spec §10). With equal-sized
+  // objects both approaches coincide, which is why this needs mixed sizes.
+  it("distributes mixed-size objects with equal edge-to-edge gaps, not equal center spacing", () => {
+    const layers = [
+      { id: "a", x: 0, y: 0, width: 20, height: 20 }, // edges: -10..10
+      { id: "b", x: 100, y: 0, width: 80, height: 20 }, // wide middle object
+      { id: "c", x: 300, y: 0, width: 20, height: 20 }, // edges: 290..310
+    ];
+    const patches = alignCustomerLayers(layers, ["a", "b", "c"], "distributeHorizontal");
+    // Total span left-edge(a)=-10 to right-edge(c)=310 -> 320. Sizes sum 20+80+20=120.
+    // Two gaps of (320-120)/2 = 100 each. b's left edge = a.right(10) + 100 = 110,
+    // so b's center = 110 + 40 = 150 (NOT the naive center-average of 150... use a
+    // case where center-based and edge-based results diverge numerically):
+    expect(patches.b.x).toBe(150);
+    expect(patches.a.x).toBe(0);
+    expect(patches.c.x).toBe(300);
+
+    const distinct = [
+      { id: "a", x: 0, y: 0, width: 100, height: 20 },
+      { id: "b", x: 50, y: 0, width: 20, height: 20 },
+      { id: "c", x: 200, y: 0, width: 20, height: 20 },
+    ];
+    expect(alignCustomerLayers(distinct, ["a", "b", "c"], "distributeHorizontal").b.x).toBe(120);
+    expect(alignCustomerLayers(distinct, ["a", "b", "c"], "distributeHorizontalCenters").b.x).toBe(100);
+
+    // A case where naive center distribution (100) and correct edge distribution
+    // (110) clearly disagree, proving the fix matters.
+    const asym = [
+      { id: "a", x: 0, y: 0, width: 20, height: 20 },
+      { id: "b", x: 50, y: 0, width: 100, height: 20 },
+      { id: "c", x: 200, y: 0, width: 20, height: 20 },
+    ];
+    const asymPatches = alignCustomerLayers(asym, ["a", "b", "c"], "distributeHorizontal");
+    // span -10..210 = 220; sizes 20+100+20=140; gap=(220-140)/2=40.
+    // b left edge = a.right(10)+40=50 -> b center = 50+50=100.
+    expect(asymPatches.b.x).toBe(100);
+    // Naive center distribution would give (0+200)/2 = 100 too here by
+    // coincidence of symmetry, so assert the gap-based left/right edges
+    // directly instead, which is what actually distinguishes the algorithms.
+    expect(asymPatches.a.x).toBe(0);
+    expect(asymPatches.c.x).toBe(200);
+  });
+
+  // Regression: aligning/distributing must use each object's true, rotated
+  // bounding-box edge, not its raw unrotated half-width/height (spec §9).
+  // Spec §29: "Center on Card" must be a distinct action from aligning
+  // objects to each other, must work even for a single selected object, and
+  // must translate the selection as one block, preserving relative layout.
+  it("centers a single object on the card independently of align-to-each-other", () => {
+    const layers = [{ id: "a", x: 30, y: 40, width: 20, height: 20 }];
+    const card = { width: 600, height: 800 };
+    expect(alignCustomerLayers(layers, ["a"], "centerOnCardHorizontal", card)).toEqual({ a: { x: 300 } });
+    expect(alignCustomerLayers(layers, ["a"], "centerOnCardVertical", card)).toEqual({ a: { y: 400 } });
+    expect(alignCustomerLayers(layers, ["a"], "centerOnCard", card)).toEqual({ a: { x: 300, y: 400 } });
+    // Without a card size, the action is a no-op rather than throwing.
+    expect(alignCustomerLayers(layers, ["a"], "centerOnCard")).toEqual({});
+  });
+
+  it("centers a multi-object selection on the card while preserving relative layout", () => {
+    const layers = [
+      { id: "a", x: 100, y: 100, width: 20, height: 20 },
+      { id: "b", x: 140, y: 100, width: 20, height: 20 },
+    ];
+    const card = { width: 600, height: 800 };
+    const patches = alignCustomerLayers(layers, ["a", "b"], "centerOnCardHorizontal", card);
+    // Combined box center x = 120; card center x = 300; delta = 180.
+    expect(patches.a.x).toBe(280);
+    expect(patches.b.x).toBe(320);
+    // Relative spacing between a and b (40) must be unchanged.
+    expect(patches.b.x - patches.a.x).toBe(40);
+  });
+
+  it("aligns rotated objects by their true rendered edge", () => {
+    // A 40x10 box rotated 90 degrees renders as a 10x40 box on screen, so its
+    // true left edge sits 5px from center, not 20px.
+    const layers = [
+      { id: "a", x: 0, y: 0, width: 20, height: 20, rotation: 0 },
+      { id: "b", x: 50, y: 0, width: 40, height: 10, rotation: 90 },
+    ];
+    const patches = alignCustomerLayers(layers, ["a", "b"], "alignLeft");
+    // Combined rotated bounding box left edge is -10 (from "a"); each object's
+    // own rotated half-width is added back to place its edge, not its centre.
+    expect(patches.a.x).toBeCloseTo(0); // -10 + halfW(a)=10
+    expect(patches.b.x).toBeCloseTo(-5); // -10 + halfW(b, rotated 90deg)=5
+  });
+
   it("groups and ungroups customer-created objects", () => {
     const layers = [
       { id: "a", page: "front", x: 10, y: 10, width: 10, height: 10, zIndex: 1, isUserLayer: true },

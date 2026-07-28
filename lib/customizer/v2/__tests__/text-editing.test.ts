@@ -1,0 +1,218 @@
+import { readFileSync } from "node:fs";
+import { describe, expect, it } from "vitest";
+import { newTextLayer } from "@/app/admin/dashboard/design-builder/builder-utils";
+import {
+  getTextPlacementStyle,
+  isEmptyText,
+  normalizeCanonicalText,
+  normalizeInlineText,
+  textPlacementGestureIsClick,
+} from "../text-editing";
+import { fallbackMeasure, layoutText, resolveTextBox } from "../text-layout";
+import { buildPageSvg } from "../svg";
+import { clientPointToDocument, resolveLayerSelectionGeometry } from "../selection-geometry";
+import { normalizeEditorState, normalizeUserLayer } from "@/lib/customizer";
+
+const template = {
+  canvasWidthPx: 1500,
+  canvasHeightPx: 2100,
+  pages: [{ id: "front", label: "Front", enabled: true, backgroundColor: "#fff" }],
+  fields: [],
+  layers: [],
+  safeArea: { top: 90, right: 90, bottom: 90, left: 90 },
+  settings: {},
+};
+
+describe("canonical inline text rules", () => {
+  it("normalizes browser and persisted newline variants without flattening multiline text", () => {
+    expect(normalizeCanonicalText("MADISON\r\n&\rKENNEDY")).toBe("MADISON\n&\nKENNEDY");
+    expect(normalizeInlineText("MADISON\r\n&\rKENNEDY", true)).toBe("MADISON\n&\nKENNEDY");
+    expect(normalizeInlineText("MADISON\r\n&\rKENNEDY", false)).toBe("MADISON & KENNEDY");
+    expect(isEmptyText(" \n \r\n")).toBe(true);
+  });
+
+  it("preserves leading, trailing, and internal newlines through saved editor-state normalization", () => {
+    const userLayer = normalizeUserLayer({
+      type: "text",
+      page: "front",
+      text: "\nMADISON\r\n&\nKENNEDY\n",
+      textStyle: { multiline: true },
+    });
+    expect(userLayer.text).toBe("\nMADISON\n&\nKENNEDY\n");
+
+    const state = normalizeEditorState({
+      layerOverrides: {
+        template_text: { properties: { text: "\nMADISON\r\n&\nKENNEDY\n" } },
+      },
+    });
+    expect(state.layerOverrides.template_text.properties.text).toBe("\nMADISON\n&\nKENNEDY\n");
+  });
+
+  it("preserves manual and repeated Enter breaks inside one multiline layout", () => {
+    const result = layoutText(
+      {
+        text: "MADISON\n&\n\nKENNEDY",
+        width: 800,
+        height: 400,
+        fontFamily: "Cormorant Garamond",
+        fontSize: 48,
+        multiline: true,
+        lineHeight: 1.25,
+      },
+      fallbackMeasure,
+    );
+    expect(result.lines.map((line) => line.text)).toEqual(["MADISON", "&", "", "KENNEDY"]);
+  });
+
+  it("collapses unauthorized newlines for a single-line layout", () => {
+    const result = layoutText(
+      {
+        text: "MADISON\n&\nKENNEDY",
+        width: 800,
+        height: 100,
+        fontFamily: "Cormorant Garamond",
+        fontSize: 48,
+        multiline: false,
+      },
+      fallbackMeasure,
+    );
+    expect(result.lines.map((line) => line.text)).toEqual(["MADISON & KENNEDY"]);
+  });
+});
+
+describe("click or tap text placement", () => {
+  it("uses a small screen-pixel drag threshold", () => {
+    expect(textPlacementGestureIsClick(100, 100, 103, 102)).toBe(true);
+    expect(textPlacementGestureIsClick(100, 100, 106, 100)).toBe(false);
+  });
+
+  it("converts zoomed and panned screen points back to document coordinates", () => {
+    const rect = { left: 240, top: 160, width: 750, height: 1050 };
+    const point = clientPointToDocument(615, 685, rect, 750, 1050, 0.5);
+    expect(point).toEqual({ x: 750, y: 1050 });
+  });
+
+  it("creates Admin text at the exact document point with an empty ephemeral editor value", () => {
+    const layer = newTextLayer(template, "front", { x: 321.5, y: 876.25, text: "", preset: "body" });
+    expect(layer.x).toBe(321.5);
+    expect(layer.y).toBe(876.25);
+    expect(layer.page).toBe("front");
+    expect(layer.text).toBe("");
+    expect(layer.textStyle.multiline).toBe(true);
+    expect(layer.textStyle.autoSizeMode).toBe("height");
+  });
+
+  it("keeps heading presets single-line while the default body preset is multiline", () => {
+    expect(getTextPlacementStyle("heading", 1500, 2100).multiline).toBe(false);
+    expect(getTextPlacementStyle("subheading", 1500, 2100).multiline).toBe(false);
+    expect(getTextPlacementStyle("body", 1500, 2100).multiline).toBe(true);
+  });
+});
+
+describe("resolved multiline bounds and rendering parity", () => {
+  it("auto-heights from manual line breaks without changing the configured width", () => {
+    const box = resolveTextBox(
+      {
+        x: 500,
+        y: 600,
+        width: 700,
+        height: 80,
+        text: "MADISON\n&\nKENNEDY",
+        fontFamily: "Cormorant Garamond",
+        fontSize: 50,
+        lineHeight: 1.2,
+        multiline: true,
+        autoSizeMode: "height",
+        textAlign: "center",
+      },
+      fallbackMeasure,
+    );
+    expect(box.width).toBe(700);
+    expect(box.height).toBe(180);
+    expect(box.x).toBe(500);
+    expect(box.y).toBe(600);
+  });
+
+  it("uses the auto-height result for selection and hit-test geometry", () => {
+    const resolved = resolveLayerSelectionGeometry(
+      {
+        id: "body",
+        type: "text",
+        x: 500,
+        y: 600,
+        width: 700,
+        height: 80,
+        text: "MADISON\n&\nKENNEDY",
+        textStyle: {
+          fontFamily: "Cormorant Garamond",
+          fontSize: 50,
+          lineHeight: 1.2,
+          multiline: true,
+          autoSizeMode: "height",
+        },
+      },
+      {
+        text: "MADISON\n&\nKENNEDY",
+        measure: fallbackMeasure,
+        safeBounds: { left: 0, top: 0, right: 1500, bottom: 2100 },
+      },
+    );
+    expect(resolved.height).toBe(180);
+    expect(resolved.width).toBe(700);
+  });
+
+  it("emits one SVG tspan per preserved manual line", () => {
+    const svg = buildPageSvg({
+      template: {
+        ...template,
+        layers: [
+          {
+            id: "multiline",
+            name: "Names",
+            page: "front",
+            type: "text",
+            text: "MADISON\n&\nKENNEDY",
+            x: 750,
+            y: 700,
+            width: 900,
+            height: 300,
+            zIndex: 1,
+            opacity: 1,
+            textStyle: {
+              fontFamily: "Cormorant Garamond",
+              fontSize: 72,
+              lineHeight: 1.2,
+              textAlign: "center",
+              multiline: true,
+            },
+          },
+        ],
+      },
+      values: {},
+      pageId: "front",
+      mode: "print",
+      measure: fallbackMeasure,
+    });
+    expect(svg.match(/<tspan /g)).toHaveLength(3);
+    expect(svg).toContain(">MADISON</tspan>");
+    expect(svg).toContain(">&amp;</tspan>");
+    expect(svg).toContain(">KENNEDY</tspan>");
+  });
+
+  it("wires both canvases to canonical live drafts, click placement, and empty-layer discard", () => {
+    const admin = readFileSync("app/admin/dashboard/design-builder/AdminCanvas.tsx", "utf8");
+    const customer = readFileSync("app/components/customizer/CustomizerWorkspace.tsx", "utf8");
+    const inline = readFileSync("app/components/customizer/InlineCanvasTextEditor.tsx", "utf8");
+    for (const source of [admin, customer]) {
+      expect(source).toContain('mode: "text-placement"');
+      expect(source).toContain("pointerExceededDragThreshold");
+      expect(source).toContain("onTextDraftChange");
+      expect(source).toContain("onTextDiscard");
+      expect(source).toContain("<InlineCanvasTextEditor");
+    }
+    expect(inline).toContain("setSelectionRange");
+    expect(inline).toContain('event.key === "Escape"');
+    expect(inline).toContain("onDraftChange?.(next)");
+    expect(inline).toContain("Done");
+  });
+});

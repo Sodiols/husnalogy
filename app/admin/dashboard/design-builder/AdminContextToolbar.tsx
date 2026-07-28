@@ -6,16 +6,22 @@ import TextAlignmentDropdown from "@/app/components/customizer/TextAlignmentDrop
 import ToolbarDropdown, {
   type ToolbarDropdownOption,
 } from "@/app/components/customizer/ToolbarDropdown";
-import type { AlignMode } from "./builder-utils";
+import type { AlignMode, DistributionMode, LayerArrangeMode } from "./builder-utils";
 
 type Props = {
   layer: any;
   selectedLayers?: any[];
   selectionCount: number;
+  editingText?: boolean;
+  canTransformSelection?: boolean;
   onStylePatch: (patch: Record<string, unknown>) => void;
   onAlign: (mode: AlignMode) => void;
-  onDistribute: (axis: "horizontal" | "vertical") => void;
+  onDistribute: (axis: "horizontal" | "vertical", mode: DistributionMode) => void;
   onMatchSize: (dimension: "width" | "height" | "both") => void;
+  onGroup: () => void;
+  onUngroup: () => void;
+  onDuplicate: () => void;
+  onLayerOrder: (action: LayerArrangeMode) => void;
   onDelete: () => void;
 };
 
@@ -117,28 +123,83 @@ const LAYER_ALIGN: Array<{ mode: AlignMode; label: string; d: string }> = [
   { mode: "bottom", label: "Align bottom", d: "M3 20h18M8 4h3v12H8zM14 8h3v8h-3z" },
 ];
 
-function LayoutToolbar({ selectionCount, onAlign, onDistribute, onMatchSize }: Pick<Props, "selectionCount" | "onAlign" | "onDistribute" | "onMatchSize">) {
+const CARD_ALIGN: Array<{ mode: AlignMode; label: string; text: string }> = [
+  { mode: "centerOnCardHorizontal", label: "Center on card horizontally", text: "Card H" },
+  { mode: "centerOnCardVertical", label: "Center on card vertically", text: "Card V" },
+  { mode: "centerOnCard", label: "Center on card", text: "Card" },
+];
+
+const LAYER_ORDER: Array<{ action: LayerArrangeMode; label: string; d: string }> = [
+  { action: "bringToFront", label: "Bring to front", d: "M8 8h10v10H8zM5 5h10v3M5 5v10h3" },
+  { action: "bringForward", label: "Bring forward", d: "M8 8h10v10H8zM5 5h10v7M5 5v10h7" },
+  { action: "sendBackward", label: "Send backward", d: "M6 6h10v10H6zM9 9h9v9H9z" },
+  { action: "sendToBack", label: "Send to back", d: "M6 6h10v10H6zM9 16v3h10V9h-3" },
+];
+
+function LayoutToolbar({
+  layer,
+  selectionCount,
+  canTransformSelection = true,
+  onAlign,
+  onDistribute,
+  onMatchSize,
+  onGroup,
+  onUngroup,
+  onLayerOrder,
+}: Pick<Props, "layer" | "selectionCount" | "canTransformSelection" | "onAlign" | "onDistribute" | "onMatchSize" | "onGroup" | "onUngroup" | "onLayerOrder">) {
   return (
     <>
       <span className="shrink-0 rounded-lg bg-[#303839] px-3 py-2 text-[10px] font-extrabold uppercase tracking-[0.12em] text-white">Layout</span>
       {LAYER_ALIGN.map((button) => (
-        <button key={button.mode} type="button" title={button.label} aria-label={button.label} onClick={() => onAlign(button.mode)} className={buttonClass}>
+        <button key={button.mode} type="button" title={button.label} aria-label={button.label} disabled={selectionCount < 2 || !canTransformSelection} onClick={() => onAlign(button.mode)} className={buttonClass}>
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" aria-hidden><path d={button.d} /></svg>
         </button>
       ))}
       <Divider />
-      <button type="button" title="Distribute horizontally" aria-label="Distribute horizontally" disabled={selectionCount < 3} onClick={() => onDistribute("horizontal")} className={buttonClass}>
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" aria-hidden><path d="M3 3v18M21 3v18M9 8h6v8H9z" /></svg>
-      </button>
-      <button type="button" title="Distribute vertically" aria-label="Distribute vertically" disabled={selectionCount < 3} onClick={() => onDistribute("vertical")} className={buttonClass}>
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" aria-hidden><path d="M3 3h18M3 21h18M8 9h8v6H8z" /></svg>
-      </button>
+      {CARD_ALIGN.map((button) => (
+        <button key={button.mode} type="button" title={button.label} aria-label={button.label} disabled={!canTransformSelection} onClick={() => onAlign(button.mode)} className={`${buttonClass} w-auto px-2 text-[9px] font-extrabold`}>
+          {button.text}
+        </button>
+      ))}
+      {selectionCount >= 3 && (
+        <>
+          <Divider />
+          <button type="button" title="Distribute horizontally by centers" aria-label="Distribute horizontally" disabled={!canTransformSelection} onClick={() => onDistribute("horizontal", "centers")} className={buttonClass}>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" aria-hidden><path d="M3 3v18M21 3v18M9 8h6v8H9z" /></svg>
+          </button>
+          <button type="button" title="Distribute vertically by centers" aria-label="Distribute vertically" disabled={!canTransformSelection} onClick={() => onDistribute("vertical", "centers")} className={buttonClass}>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" aria-hidden><path d="M3 3h18M3 21h18M8 9h8v6H8z" /></svg>
+          </button>
+          <button type="button" title="Equal horizontal spacing between object edges" aria-label="Equal horizontal spacing" disabled={!canTransformSelection} onClick={() => onDistribute("horizontal", "spacing")} className={`${buttonClass} w-auto px-2 text-[9px] font-extrabold`}>
+            Equal H
+          </button>
+          <button type="button" title="Equal vertical spacing between object edges" aria-label="Equal vertical spacing" disabled={!canTransformSelection} onClick={() => onDistribute("vertical", "spacing")} className={`${buttonClass} w-auto px-2 text-[9px] font-extrabold`}>
+            Equal V
+          </button>
+        </>
+      )}
       <Divider />
       {(["width", "height", "both"] as const).map((dimension) => (
-        <button key={dimension} type="button" title={`Match ${dimension}`} aria-label={`Match ${dimension}`} disabled={selectionCount < 2} onClick={() => onMatchSize(dimension)} className={`${buttonClass} w-auto px-2 text-[10px] font-extrabold`}>
+        <button key={dimension} type="button" title={`Match ${dimension}`} aria-label={`Match ${dimension}`} disabled={selectionCount < 2 || !canTransformSelection} onClick={() => onMatchSize(dimension)} className={`${buttonClass} w-auto px-2 text-[10px] font-extrabold`}>
           {dimension === "width" ? "W" : dimension === "height" ? "H" : "W+H"}
         </button>
       ))}
+      <Divider />
+      {LAYER_ORDER.map((button) => (
+        <button key={button.action} type="button" title={button.label} aria-label={button.label} onClick={() => onLayerOrder(button.action)} className={buttonClass}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d={button.d} /></svg>
+        </button>
+      ))}
+      <Divider />
+      {selectionCount > 1 ? (
+        <button type="button" title="Group selected objects" aria-label="Group" onClick={onGroup} className={`${buttonClass} w-auto px-2 text-[10px] font-extrabold`}>
+          Group
+        </button>
+      ) : layer?.type === "group" ? (
+        <button type="button" title="Ungroup selected group" aria-label="Ungroup" onClick={onUngroup} className={`${buttonClass} w-auto px-2 text-[10px] font-extrabold`}>
+          Ungroup
+        </button>
+      ) : null}
       {selectionCount > 1 && <span className="shrink-0 rounded-full bg-[#F8F6F1] px-2.5 py-1 text-[10px] font-bold text-[#303839]/65">{selectionCount} selected</span>}
     </>
   );
@@ -149,20 +210,57 @@ export default function AdminContextToolbar(props: Props) {
   const showTextControls = selectedLayers.length > 0 && selectedLayers.every((layer) => layer?.type === "text");
 
   return (
-    <div role="toolbar" aria-label={showTextControls ? "Text formatting" : "Align and distribute"} className="pointer-events-auto flex max-w-full items-center gap-0.5 overflow-x-auto rounded-2xl border border-[#303839]/12 bg-white px-2 py-1.5 shadow-[0_12px_36px_rgba(48,56,57,0.14)] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-      {showTextControls ? <TextToolbar layers={selectedLayers} onStylePatch={props.onStylePatch} /> : <LayoutToolbar selectionCount={props.selectionCount} onAlign={props.onAlign} onDistribute={props.onDistribute} onMatchSize={props.onMatchSize} />}
-      <Divider />
-      <button
-        type="button"
-        aria-label={`Delete ${props.selectionCount === 1 ? "selected layer" : `${props.selectionCount} selected layers`}`}
-        title="Delete selection"
-        onClick={props.onDelete}
-        className="grid h-11 w-11 shrink-0 cursor-pointer place-items-center rounded-xl text-red-600 transition-colors hover:bg-red-50 hover:text-red-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500"
-      >
-        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-          <path d="M3 6h18M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
-        </svg>
-      </button>
+    <div role="toolbar" aria-label="Selection formatting and layout" className="pointer-events-auto flex max-w-full items-center gap-0.5 overflow-x-auto rounded-2xl border border-[#303839]/12 bg-white px-2 py-1.5 shadow-[0_12px_36px_rgba(48,56,57,0.14)] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+      {showTextControls && (
+        <>
+          {props.editingText && (
+            <span className="shrink-0 rounded-lg bg-[#303839] px-3 py-2 text-[10px] font-extrabold uppercase tracking-[0.12em] text-white">
+              Editing text
+            </span>
+          )}
+          <TextToolbar layers={selectedLayers} onStylePatch={props.onStylePatch} />
+          {!props.editingText && <Divider />}
+        </>
+      )}
+      {!props.editingText && (
+        <>
+          <LayoutToolbar
+            layer={props.layer}
+            selectionCount={props.selectionCount}
+            canTransformSelection={props.canTransformSelection}
+            onAlign={props.onAlign}
+            onDistribute={props.onDistribute}
+            onMatchSize={props.onMatchSize}
+            onGroup={props.onGroup}
+            onUngroup={props.onUngroup}
+            onLayerOrder={props.onLayerOrder}
+          />
+          <Divider />
+          <button
+            type="button"
+            aria-label={`Duplicate ${props.selectionCount === 1 ? "selected layer" : `${props.selectionCount} selected layers`}`}
+            title="Duplicate selection"
+            onClick={props.onDuplicate}
+            className={buttonClass}
+          >
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <rect x="8" y="8" width="11" height="11" rx="1.5" />
+              <path d="M16 8V6.5A1.5 1.5 0 0 0 14.5 5h-9A1.5 1.5 0 0 0 4 6.5v9A1.5 1.5 0 0 0 5.5 17H8" />
+            </svg>
+          </button>
+          <button
+            type="button"
+            aria-label={`Delete ${props.selectionCount === 1 ? "selected layer" : `${props.selectionCount} selected layers`}`}
+            title="Delete selection"
+            onClick={props.onDelete}
+            className="grid h-11 w-11 shrink-0 cursor-pointer place-items-center rounded-xl text-red-600 transition-colors hover:bg-red-50 hover:text-red-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500"
+          >
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <path d="M3 6h18M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+            </svg>
+          </button>
+        </>
+      )}
     </div>
   );
 }

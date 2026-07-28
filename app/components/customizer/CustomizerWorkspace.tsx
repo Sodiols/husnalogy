@@ -6,7 +6,7 @@
 // the administrator made customer editable (plus the customer's own added
 // layers). Locked and decorative layers never receive pointer interaction.
 
-import { useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import CustomizerPreview from "./CustomizerPreview";
 import InlineCanvasTextEditor from "./InlineCanvasTextEditor";
 import { getGridSlotRect, normalizeGridSlot } from "@/lib/customizer/v2/grids";
@@ -19,17 +19,26 @@ import {
   resolveLayerText,
   type EditorState,
 } from "./customizer-utils";
-import { layersInsideSelection, selectionBounds } from "@/lib/customizer/v2/customer-actions";
 import {
   createCanvasMeasure,
+  fallbackMeasure,
   getTextResizeConstraints,
   isSingleLineAutoSizeText,
   layoutText,
-  resolveTextBox,
   scaleSingleLineText,
   type MeasureFn,
   type SafeBounds,
 } from "@/lib/customizer/v2/text-layout";
+import {
+  clientPointToDocument,
+  fullyEnclosedLayerIds,
+  pointInsideTransformedLayer,
+  pointerExceededDragThreshold,
+  resolveLayerSelectionGeometry,
+  selectionBounds,
+} from "@/lib/customizer/v2/selection-geometry";
+import { getDescendantIds } from "@/lib/customizer/v2/groups";
+import { isEmptyText } from "@/lib/customizer/v2/text-editing";
 
 const HANDLES: Array<{ id: string; cx: number; cy: number; cursor: string }> = [
   { id: "nw", cx: 0, cy: 0, cursor: "nwse-resize" },
@@ -67,6 +76,14 @@ type Props = {
   onGridSlotSelect?: (layerId: string, slotId: string) => void;
   onGridSlotAssetDrop?: (layerId: string, slotId: string, asset: any) => void;
   onElementDrop?: (element: any, position: { x: number; y: number }) => void;
+  textPlacementActive?: boolean;
+  onTextPlace?: (position: { x: number; y: number }) => string | null;
+  onTextEditStart?: (layerId: string) => void;
+  onTextDraftChange?: (layerId: string, text: string) => void;
+  onTextDiscard?: (layerId: string) => void;
+  onEditingTextChange?: (layerId: string | null) => void;
+  onExitTextTool?: () => void;
+  editTextRequest?: { layerId: string; requestId: number } | null;
   onTextCommit?: (layerId: string, text: string) => void;
   onImageLayerActivate?: (layerId: string) => void;
   previewMode?: boolean;
@@ -99,6 +116,14 @@ export default function CustomizerWorkspace({
   onGridSlotSelect,
   onGridSlotAssetDrop,
   onElementDrop,
+  textPlacementActive = false,
+  onTextPlace,
+  onTextEditStart,
+  onTextDraftChange,
+  onTextDiscard,
+  onEditingTextChange,
+  onExitTextTool,
+  editTextRequest,
   onTextCommit,
   onImageLayerActivate,
   previewMode = false,
@@ -114,14 +139,15 @@ export default function CustomizerWorkspace({
   const wrapRef = useRef<HTMLDivElement>(null);
   const surfaceRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<any>(null);
-  const textMeasureRef = useRef<MeasureFn | null>(null);
-  if (!textMeasureRef.current) textMeasureRef.current = createCanvasMeasure();
+  const textMeasureRef = useRef<MeasureFn>(fallbackMeasure);
+  const [, setTextMetricsRevision] = useState(0);
   const gestureRef = useRef<any>(null);
   const touchPointsRef = useRef(new Map<number, { x: number; y: number }>());
   const [containerWidth, setContainerWidth] = useState(0);
   const [guides, setGuides] = useState<Guide[]>([]);
   const [selectionBox, setSelectionBox] = useState<null | { startX: number; startY: number; x: number; y: number; additive: boolean }>(null);
   const [editingTextId, setEditingTextId] = useState<string | null>(null);
+  const newTextIdsRef = useRef(new Set<string>());
 
   const canvasW = template?.canvasWidthPx || 1500;
   const canvasH = template?.canvasHeightPx || 2100;
@@ -135,6 +161,19 @@ export default function CustomizerWorkspace({
     const ro = new ResizeObserver(update);
     ro.observe(el);
     return () => ro.disconnect();
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    const ready = (document as any).fonts?.ready || Promise.resolve();
+    Promise.resolve(ready).then(() => {
+      if (cancelled) return;
+      textMeasureRef.current = createCanvasMeasure();
+      setTextMetricsRevision((revision) => revision + 1);
+    });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const padding = embedded ? 0 : 32;
@@ -157,31 +196,13 @@ export default function CustomizerWorkspace({
   // Shared with the renderers via resolveTextBox, so the customer's selection
   // box and handles always sit exactly on the rendered glyphs.
   const resolveLayerBox = (layer: any) => {
-    const style = layer?.textStyle || {};
-    if (layer?.type !== "text") return layer;
     const field = layer.fieldId ? getFieldById(template, layer.fieldId) : null;
     const text = resolveLayerText(layer, field, values);
-    const box = resolveTextBox({
-      x: layer.x,
-      y: layer.y,
-      width: layer.width,
-      height: layer.height,
+    return resolveLayerSelectionGeometry(layer, {
       text: String(text),
-      fontFamily: style.fontFamily || "Cormorant Garamond",
-      fontSize: Number(style.fontSize) || 48,
-      fontWeight: style.fontWeight || "400",
-      fontStyle: style.fontStyle === "italic" ? "italic" : "normal",
-      letterSpacing: Number(style.letterSpacing) || 0,
-      lineHeight: Number(style.lineHeight) || 1.15,
-      uppercase: Boolean(style.uppercase),
-      multiline: Boolean(style.multiline),
-      textAlign: style.textAlign || "center",
-      verticalAlign: style.verticalAlign || "middle",
-      autoSizeMode: style.autoSizeMode,
-      fitMode: style.fitMode,
-    }, textMeasureRef.current!, safeBounds);
-    if (!box.autoWidth) return { ...layer, resolvedText: String(text) };
-    return { ...layer, x: box.x, y: box.y, width: box.width, height: box.height, resolvedText: String(text), autoWidthClamped: box.clampedBySafeArea };
+      measure: textMeasureRef.current,
+      safeBounds,
+    });
   };
   const singleLineInteractionLayer = resolveLayerBox;
 
@@ -204,9 +225,9 @@ export default function CustomizerWorkspace({
       multiline: Boolean(style.multiline),
       fitMode: style.fitMode === "shrink" ? "shrink" as const : style.fitMode === "auto-height" ? "auto-height" as const : "fixed" as const,
     };
-    let constraints = getTextResizeConstraints(input, textMeasureRef.current!);
+    let constraints = getTextResizeConstraints(input, textMeasureRef.current);
     const width = Math.max(constraints.minWidth, requestedWidth);
-    constraints = getTextResizeConstraints({ ...input, width }, textMeasureRef.current!);
+    constraints = getTextResizeConstraints({ ...input, width }, textMeasureRef.current);
     const height = style.fitMode === "auto-height"
       ? constraints.requiredHeight
       : Math.max(constraints.minHeight, requestedHeight);
@@ -238,7 +259,7 @@ export default function CustomizerWorkspace({
       fitMode: resolved.autoWidthClamped && !style.multiline
         ? "shrink"
         : style.fitMode === "shrink" ? "shrink" : style.fitMode === "auto-height" ? "auto-height" : "fixed",
-    }, textMeasureRef.current!);
+    }, textMeasureRef.current);
     return layout.overflowWidth || layout.overflowHeight || layout.truncatedLines;
   };
   const cropLayer = cropLayerId ? layers.find((layer: any) => layer.id === cropLayerId) : null;
@@ -252,6 +273,7 @@ export default function CustomizerWorkspace({
       : cropGridLayer
         ? []
       : layers
+        .filter((layer: any) => !layer.hidden)
         .filter((layer: any) => layer.isUserLayer || isLayerCustomerInteractive(layer))
         .filter((layer: any) => {
           if (layer.type === "group" && editingGroupId === layer.id) return false;
@@ -264,17 +286,71 @@ export default function CustomizerWorkspace({
 
   const activeSelection = selectedLayerIds?.length ? selectedLayerIds : selectedLayerId ? [selectedLayerId] : [];
 
+  const canEditTextLayer = (layer: any) =>
+    layer?.type === "text" && (layer.isUserLayer || Boolean(getLayerPermissions(layer).editContent));
+
+  const beginTextEditing = (layerId: string, created = false) => {
+    if (editingTextId === layerId) return;
+    if (created) newTextIdsRef.current.add(layerId);
+    else onTextEditStart?.(layerId);
+    setEditingTextId(layerId);
+    onEditingTextChange?.(layerId);
+  };
+
+  const finishTextEditing = (layerId: string, text: string) => {
+    const created = newTextIdsRef.current.delete(layerId);
+    setEditingTextId(null);
+    onEditingTextChange?.(null);
+    if (created && isEmptyText(text)) {
+      onTextDiscard?.(layerId);
+      return;
+    }
+    onTextCommit?.(layerId, text);
+  };
+
+  useEffect(() => {
+    if (!editTextRequest?.layerId) return;
+    const layer = layers.find((candidate: any) => candidate.id === editTextRequest.layerId);
+    if (canEditTextLayer(layer)) beginTextEditing(layer.id);
+    // requestId deliberately retriggers editing for the same selected layer.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editTextRequest?.requestId]);
+
+  useEffect(() => {
+    setEditingTextId(null);
+    onEditingTextChange?.(null);
+    // Canonical text is updated on every input event, so a page switch cannot
+    // lose the last character even if the browser skips blur during unmount.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pageId]);
+
   const isTransformLocked = (layer: any) => Boolean((layer.isUserLayer && layer.locked) || layer.customerLocked || layer.positionLocked || layer.customerInteractionDisabled);
-  const canMove = (layer: any) => !isTransformLocked(layer) && (layer.isUserLayer || getLayerPermissions(layer).move);
-  const canResize = (layer: any) => !isTransformLocked(layer) && (layer.isUserLayer || getLayerPermissions(layer).resize);
+  const logicalLayers = (layer: any) => layer?.type === "group"
+    ? layers.filter((candidate: any) => [layer.id, ...getDescendantIds(layers, layer.id)].includes(candidate.id))
+    : [layer];
+  const canMove = (layer: any) => logicalLayers(layer).every(
+    (candidate: any) => !isTransformLocked(candidate) && (candidate.isUserLayer || getLayerPermissions(candidate).move),
+  );
+  const canResize = (layer: any) => logicalLayers(layer).every(
+    (candidate: any) => !isTransformLocked(candidate) && (candidate.isUserLayer || getLayerPermissions(candidate).resize),
+  );
   const canScaleSingleLineText = (layer: any) =>
     canResize(layer) &&
     layer?.type === "text" &&
     isSingleLineAutoSizeText(layer.textStyle) &&
     (layer.isUserLayer || Boolean(getLayerPermissions(layer).changeFontSize));
-  const canRotate = (layer: any) => !isTransformLocked(layer) && (layer.isUserLayer || getLayerPermissions(layer).rotate);
+  const canRotate = (layer: any) => logicalLayers(layer).every(
+    (candidate: any) => !isTransformLocked(candidate) && (candidate.isUserLayer || getLayerPermissions(candidate).rotate),
+  );
   const selectedInteractiveLayers = interactiveLayers.filter((layer: any) => activeSelection.includes(layer.id));
-  const multiBounds = activeSelection.length > 1 ? selectionBounds(selectedInteractiveLayers, activeSelection) : null;
+  const resolvedInteractiveLayers = interactiveLayers.map((layer: any) => resolveLayerBox(layer));
+  const resolvedSelectedInteractiveLayers = resolvedInteractiveLayers.filter((layer: any) => activeSelection.includes(layer.id));
+  const multiBounds = activeSelection.length > 1 ? selectionBounds(resolvedSelectedInteractiveLayers, activeSelection) : null;
+  const multiCanMove = Boolean(
+    multiBounds &&
+    selectedInteractiveLayers.length === activeSelection.length &&
+    selectedInteractiveLayers.every((layer: any) => canMove(layer)),
+  );
   const multiCanResize = Boolean(multiBounds && selectedInteractiveLayers.length === activeSelection.length && selectedInteractiveLayers.every((layer: any) => canMove(layer) && canResize(layer)));
   const multiCanRotate = Boolean(multiBounds && selectedInteractiveLayers.length === activeSelection.length && selectedInteractiveLayers.every((layer: any) => canMove(layer) && canRotate(layer)));
 
@@ -322,14 +398,32 @@ export default function CustomizerWorkspace({
   const onLayerPointerDown = (e: React.PointerEvent, layer: any) => {
     if (gestureRef.current) return;
     e.stopPropagation();
+    if (editingTextId && editingTextId !== layer.id) return;
+    const wasOnlySelected = activeSelection.length === 1 && activeSelection[0] === layer.id;
+    if (textPlacementActive) {
+      if (onSelectionChange) onSelectionChange([layer.id]);
+      else onSelectLayer?.(layer.id);
+      if (canEditTextLayer(layer)) beginTextEditing(layer.id);
+      return;
+    }
+    if (e.pointerType === "touch" && wasOnlySelected && canEditTextLayer(layer)) {
+      beginTextEditing(layer.id);
+      return;
+    }
     const additive = e.shiftKey || e.ctrlKey || e.metaKey;
     const nextSelection = additive
       ? activeSelection.includes(layer.id) ? activeSelection.filter((id) => id !== layer.id) : [...activeSelection, layer.id]
       : activeSelection.includes(layer.id) && activeSelection.length > 1 ? activeSelection : [layer.id];
     if (onSelectionChange) onSelectionChange(nextSelection);
     else onSelectLayer?.(nextSelection[nextSelection.length - 1] || null);
-    if (!nextSelection.includes(layer.id)) return;
-    if (!canMove(layer)) return;
+    if (additive) return;
+    const selectedTargets = nextSelection
+      .map((id) => interactiveLayers.find((candidate: any) => candidate.id === id))
+      .filter(Boolean);
+    if (
+      selectedTargets.length !== nextSelection.length ||
+      selectedTargets.some((target: any) => !canMove(target))
+    ) return;
     (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
     dragRef.current = {
       mode: "move",
@@ -338,32 +432,73 @@ export default function CustomizerWorkspace({
       startClientY: e.clientY,
       startX: layer.x,
       startY: layer.y,
-      selected: nextSelection.filter((id) => {
-        const item = interactiveLayers.find((candidate: any) => candidate.id === id);
-        return item && canMove(item);
-      }).map((id) => {
-        const item = interactiveLayers.find((candidate: any) => candidate.id === id);
-        return { id, x: item.x, y: item.y };
-      }),
+      selected: selectedTargets.map((item: any) => ({ id: item.id, x: item.x, y: item.y })),
     };
   };
 
   const onSurfacePointerDown = (e: React.PointerEvent) => {
     if (gestureRef.current) return;
-    if (previewMode || cropLayer || cropGridLayer || e.button !== 0) return;
+    if (previewMode || cropLayer || cropGridLayer || editingTextId || e.button !== 0) return;
     if (e.target !== surfaceRef.current) return;
     const rect = surfaceRef.current?.getBoundingClientRect();
     if (!rect) return;
-    const x = (e.clientX - rect.left) / scale;
-    const y = (e.clientY - rect.top) / scale;
-    const additive = e.shiftKey || e.ctrlKey || e.metaKey;
-    if (!additive) {
-      if (onSelectionChange) onSelectionChange([]);
-      else onSelectLayer?.(null);
+    const point = clientPointToDocument(e.clientX, e.clientY, rect, displayW, displayH, scale, interactionRotation);
+    if (textPlacementActive) {
+      dragRef.current = {
+        mode: "text-placement",
+        startClientX: e.clientX,
+        startClientY: e.clientY,
+        x: point.x,
+        y: point.y,
+        moved: false,
+      };
+      (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
+      return;
     }
-    setSelectionBox({ startX: x, startY: y, x, y, additive });
-    dragRef.current = { mode: "marquee" };
+    const additive = e.shiftKey || e.ctrlKey || e.metaKey;
+    dragRef.current = {
+      mode: "marquee",
+      startClientX: e.clientX,
+      startClientY: e.clientY,
+      startX: point.x,
+      startY: point.y,
+      x: point.x,
+      y: point.y,
+      additive,
+      originalSelection: activeSelection.slice(),
+      began: false,
+    };
     (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
+  };
+
+  const onMultiSelectionPointerDown = (e: React.PointerEvent) => {
+    if (!multiBounds || e.button !== 0 || gestureRef.current) return;
+    e.stopPropagation();
+    const additive = e.shiftKey || e.ctrlKey || e.metaKey;
+    if (additive) {
+      const rect = surfaceRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      const point = clientPointToDocument(e.clientX, e.clientY, rect, displayW, displayH, scale, interactionRotation);
+      const hit = resolvedSelectedInteractiveLayers
+        .filter((layer: any) => pointInsideTransformedLayer(point.x, point.y, layer))
+        .at(-1);
+      if (!hit) return;
+      const next = activeSelection.filter((id) => id !== hit.id);
+      if (onSelectionChange) onSelectionChange(next);
+      else onSelectLayer?.(next[next.length - 1] || null);
+      return;
+    }
+    if (!multiCanMove) return;
+    (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
+    dragRef.current = {
+      mode: "move",
+      layerId: selectedInteractiveLayers[0].id,
+      startClientX: e.clientX,
+      startClientY: e.clientY,
+      startX: selectedInteractiveLayers[0].x,
+      startY: selectedInteractiveLayers[0].y,
+      selected: selectedInteractiveLayers.map((item: any) => ({ id: item.id, x: item.x, y: item.y })),
+    };
   };
 
   const onHandlePointerDown = (e: React.PointerEvent, layer: any, handle: string) => {
@@ -460,12 +595,37 @@ export default function CustomizerWorkspace({
   const onPointerMove = (e: React.PointerEvent) => {
     const drag = dragRef.current;
     if (!drag) return;
+    if (drag.mode === "text-placement") {
+      if (pointerExceededDragThreshold(drag.startClientX, drag.startClientY, e.clientX, e.clientY)) {
+        drag.moved = true;
+      }
+      return;
+    }
     if (drag.mode === "marquee") {
       const rect = surfaceRef.current?.getBoundingClientRect();
       if (!rect) return;
-      setSelectionBox((current) => current ? { ...current, x: (e.clientX - rect.left) / scale, y: (e.clientY - rect.top) / scale } : current);
+      const point = clientPointToDocument(e.clientX, e.clientY, rect, displayW, displayH, scale, interactionRotation);
+      drag.x = point.x;
+      drag.y = point.y;
+      if (
+        !drag.began &&
+        !pointerExceededDragThreshold(drag.startClientX, drag.startClientY, e.clientX, e.clientY)
+      ) return;
+      drag.began = true;
+      setSelectionBox({
+        startX: drag.startX,
+        startY: drag.startY,
+        x: drag.x,
+        y: drag.y,
+        additive: drag.additive,
+      });
       return;
     }
+    if (
+      drag.mode === "move" &&
+      !drag.began &&
+      !pointerExceededDragThreshold(drag.startClientX, drag.startClientY, e.clientX, e.clientY)
+    ) return;
     if (!drag.began) {
       drag.began = true;
       if (drag.mode === "crop-pan") onImageTransform?.(drag.layerId, {}, "start");
@@ -668,10 +828,29 @@ export default function CustomizerWorkspace({
     );
   };
 
-  const endDrag = () => {
-    if (dragRef.current?.mode === "marquee" && selectionBox) {
-      const found = layersInsideSelection({ left: selectionBox.startX, top: selectionBox.startY, right: selectionBox.x, bottom: selectionBox.y }, interactiveLayers);
-      const next = selectionBox.additive ? Array.from(new Set([...activeSelection, ...found])) : found;
+  const endDrag = (cancelled = false) => {
+    const drag = dragRef.current;
+    if (drag?.mode === "text-placement" && !cancelled && !drag.moved) {
+      const layerId = onTextPlace?.({ x: drag.x, y: drag.y });
+      if (layerId) {
+        if (onSelectionChange) onSelectionChange([layerId]);
+        else onSelectLayer?.(layerId);
+        beginTextEditing(layerId, true);
+      }
+    }
+    if (drag?.mode === "marquee" && !cancelled) {
+      let next: string[];
+      if (!drag.began) {
+        next = drag.additive ? drag.originalSelection || [] : [];
+      } else {
+        const found = fullyEnclosedLayerIds(
+          { left: drag.startX, top: drag.startY, right: drag.x, bottom: drag.y },
+          resolvedInteractiveLayers,
+        );
+        next = drag.additive
+          ? Array.from(new Set([...(drag.originalSelection || []), ...found]))
+          : found;
+      }
       if (onSelectionChange) onSelectionChange(next);
       else onSelectLayer?.(next[next.length - 1] || null);
     }
@@ -759,16 +938,23 @@ export default function CustomizerWorkspace({
       <div
         ref={surfaceRef}
         className="relative shrink-0 bg-white shadow-[0_10px_40px_rgba(48,56,57,0.12)]"
-        style={{ width: displayW, height: displayH, touchAction: "none" }}
+        style={{
+          width: displayW,
+          height: displayH,
+          touchAction: editingTextId ? "manipulation" : "none",
+          cursor: textPlacementActive && !editingTextId ? "text" : undefined,
+        }}
         onPointerDownCapture={onGesturePointerDown}
         onPointerMoveCapture={onGesturePointerMove}
         onPointerUpCapture={onGesturePointerUp}
         onPointerCancelCapture={onGesturePointerUp}
         onPointerMove={onPointerMove}
-        onPointerUp={endDrag}
-        onPointerLeave={endDrag}
+        onPointerUp={() => endDrag(false)}
+        onPointerLeave={(event) => {
+          if (!(event.currentTarget as HTMLElement).hasPointerCapture?.(event.pointerId)) endDrag(false);
+        }}
         onPointerDown={onSurfacePointerDown}
-        onPointerCancel={endDrag}
+        onPointerCancel={() => endDrag(true)}
         onDragOver={(event) => {
           if (event.dataTransfer.types.includes("application/x-husnalogy-element")) {
             event.preventDefault();
@@ -888,7 +1074,9 @@ export default function CustomizerWorkspace({
         {multiBounds && (
           <div
             aria-label={`${activeSelection.length} selected objects`}
-            className="pointer-events-none absolute z-[45] border-2 border-[#D4AF37]"
+            aria-disabled={!multiCanMove}
+            onPointerDown={onMultiSelectionPointerDown}
+            className={`absolute z-[45] border-2 border-[#D4AF37] ${multiCanMove ? "cursor-move" : "cursor-not-allowed"}`}
             style={{
               left: multiBounds.left * scale,
               top: multiBounds.top * scale,
@@ -937,7 +1125,7 @@ export default function CustomizerWorkspace({
           const singleLineAutoSize = isText && isSingleLineAutoSizeText(layer.textStyle);
           const singleLineTextScale = selected && activeSelection.length === 1 && canScaleSingleLineText(layer);
           const showResizeHandles = resizable && (!singleLineAutoSize || singleLineTextScale);
-          const interactionLayer = singleLineTextScale ? singleLineInteractionLayer(layer) : layer;
+          const interactionLayer = isText ? singleLineInteractionLayer(layer) : layer;
           const boxLeft = (interactionLayer.x - interactionLayer.width / 2) * scale;
           const boxTop = (interactionLayer.y - interactionLayer.height / 2) * scale;
           const boxW = interactionLayer.width * scale;
@@ -956,7 +1144,7 @@ export default function CustomizerWorkspace({
               onPointerDown={(e) => onLayerPointerDown(e, layer)}
               onDoubleClick={() => {
                 if (layer.type === "group") onEnterGroup?.(layer.id);
-                else if (canEditText) setEditingTextId(layer.id);
+                else if (canEditText) beginTextEditing(layer.id);
                 else if (isImage) onImageLayerActivate?.(layer.id);
               }}
               onKeyDown={(e) => {
@@ -967,7 +1155,7 @@ export default function CustomizerWorkspace({
                     return;
                   }
                   if (e.key === "Enter" && canEditText) {
-                    setEditingTextId(layer.id);
+                    beginTextEditing(layer.id);
                     return;
                   }
                   if (onSelectionChange) onSelectionChange([layer.id]);
@@ -982,9 +1170,13 @@ export default function CustomizerWorkspace({
                 height: boxH,
                 transform: layer.rotation ? `rotate(${layer.rotation}deg)` : undefined,
                 cursor: movable ? "move" : "pointer",
-                outline: selected ? "2px solid #D4AF37" : "1px solid transparent",
+                outline: editingTextId === layer.id
+                  ? "1px solid rgba(212,175,55,0.9)"
+                  : selected && activeSelection.length === 1
+                    ? "2px solid #D4AF37"
+                    : "1px solid transparent",
                 outlineOffset: 1,
-                touchAction: "none",
+                touchAction: editingTextId === layer.id ? "manipulation" : "none",
                 zIndex: 30,
               }}
             >
@@ -994,11 +1186,9 @@ export default function CustomizerWorkspace({
                   multiline={Boolean(layer.textStyle?.multiline)}
                   scale={scale}
                   textStyle={layer.textStyle}
-                  onCommit={(text) => {
-                    setEditingTextId(null);
-                    onTextCommit?.(layer.id, text);
-                  }}
-                  onCancel={() => setEditingTextId(null)}
+                  onDraftChange={(text) => onTextDraftChange?.(layer.id, text)}
+                  onCommit={(text) => finishTextEditing(layer.id, text)}
+                  onEscape={() => onExitTextTool?.()}
                 />
               )}
               {layer.type === "grid" && (layer.slots || []).map((rawSlot: any, index: number) => {
@@ -1042,7 +1232,7 @@ export default function CustomizerWorkspace({
                   />
                 );
               })}
-              {selected && activeSelection.length === 1 && showResizeHandles &&
+              {selected && editingTextId !== layer.id && activeSelection.length === 1 && showResizeHandles &&
                 (singleLineTextScale ? SINGLE_LINE_TEXT_HANDLES : HANDLES).map((h) => (
                   <button
                     type="button"
@@ -1065,7 +1255,7 @@ export default function CustomizerWorkspace({
                     />
                   </button>
                 ))}
-              {selected && activeSelection.length === 1 && rotatable && (
+              {selected && editingTextId !== layer.id && activeSelection.length === 1 && rotatable && (
                 <>
                   <span
                     onPointerDown={(e) => onRotatePointerDown(e, layer)}
@@ -1102,14 +1292,14 @@ export default function CustomizerWorkspace({
                   />
                 </>
               )}
-              {selected && Number(layer.rotation || 0) !== 0 && (
+              {selected && activeSelection.length === 1 && Number(layer.rotation || 0) !== 0 && (
                 <span className="pointer-events-none absolute -bottom-6 left-1/2 -translate-x-1/2 whitespace-nowrap rounded bg-[#303839] px-1.5 py-0.5 text-[9px] font-bold text-white">
                   {Math.round(layer.rotation)}°
                 </span>
               )}
               {textOverflow && (
                 <span className="pointer-events-none absolute left-0 top-full mt-2 whitespace-nowrap rounded-md border border-amber-300 bg-amber-50 px-2 py-1 text-[10px] font-bold text-amber-900 shadow-sm" role="status">
-                  Text does not fit inside this area.
+                  This text is too long for the available space. Reduce the text or use fewer lines.
                 </span>
               )}
             </div>

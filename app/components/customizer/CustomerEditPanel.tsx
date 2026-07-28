@@ -13,9 +13,17 @@ const inputClass =
 // Fields shown here are the ones connected to a visible, customer-editable
 // layer on an enabled page. Image fields are summarized with a link to the
 // Uploads panel where the full upload controls live.
+//
+// Display order (spec §5 "Display order in Easy Personalize") follows each
+// field's position in `template.fields`, which the admin controls with the
+// move up/down actions in AdminFieldsPanel — independent of layer z-order or
+// creation order, and shared by CustomerEditPanel, CustomerUploadsPanel, and
+// AdminCustomerPreview since they all call this same function.
 export function mapCustomerFields(template: any) {
   const enabledPageIds = new Set(getEnabledPages(template).map((p: any) => p.id));
-  const fieldById = new Map((template?.fields || []).map((f: any) => [f.id, f]));
+  const templateFields = template?.fields || [];
+  const fieldById = new Map(templateFields.map((f: any) => [f.id, f]));
+  const fieldOrder = new Map<string, number>(templateFields.map((f: any, index: number): [string, number] => [f.id, index]));
   const entries: Array<{ field: any; layer: any; page: string }> = [];
   const seen = new Set<string>();
 
@@ -32,6 +40,7 @@ export function mapCustomerFields(template: any) {
     entries.push({ field, layer, page: layer.page });
   });
 
+  entries.sort((a, b) => (fieldOrder.get(a.field.id) ?? 0) - (fieldOrder.get(b.field.id) ?? 0));
   return entries;
 }
 

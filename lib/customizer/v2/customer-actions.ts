@@ -1,27 +1,24 @@
-import { groupLayers, resolveGroupBounds, ungroupLayers } from "./groups";
+import { distributeAlongAxis, groupLayers, resolveGroupBounds, rotatedAxisHalfExtents, ungroupLayers } from "./groups";
+import {
+  fullyEnclosedLayerIds,
+  selectionBounds as resolveSelectionBounds,
+  type SelectionRect,
+} from "./selection-geometry";
 
-export type SelectionRect = { left: number; top: number; right: number; bottom: number };
 export type ArrangeAction = "bringForward" | "sendBackward" | "bringToFront" | "sendToBack";
-export type AlignAction = "alignLeft" | "alignCenter" | "alignRight" | "alignTop" | "alignMiddle" | "alignBottom" | "distributeHorizontal" | "distributeVertical";
-
-function bounds(layer: any): SelectionRect {
-  const halfW = Math.abs(Number(layer.width) || 0) / 2;
-  const halfH = Math.abs(Number(layer.height) || 0) / 2;
-  return { left: Number(layer.x) - halfW, top: Number(layer.y) - halfH, right: Number(layer.x) + halfW, bottom: Number(layer.y) + halfH };
-}
+export type AlignAction =
+  | "alignLeft" | "alignCenter" | "alignRight" | "alignTop" | "alignMiddle" | "alignBottom"
+  | "distributeHorizontal" | "distributeVertical"
+  | "distributeHorizontalCenters" | "distributeVerticalCenters"
+  | "centerOnCardHorizontal" | "centerOnCardVertical" | "centerOnCard";
+export type CardSize = { width: number; height: number };
+const CARD_ONLY_ACTIONS = new Set<AlignAction>(["centerOnCardHorizontal", "centerOnCardVertical", "centerOnCard"]);
 
 export function layersInsideSelection(rect: SelectionRect, layers: any[]): string[] {
-  const normalized = {
-    left: Math.min(rect.left, rect.right),
-    right: Math.max(rect.left, rect.right),
-    top: Math.min(rect.top, rect.bottom),
-    bottom: Math.max(rect.top, rect.bottom),
-  };
-  return layers.filter((layer) => {
-    if (layer.hidden || layer.customerInteractionDisabled) return false;
-    const box = bounds(layer);
-    return box.left >= normalized.left && box.right <= normalized.right && box.top >= normalized.top && box.bottom <= normalized.bottom;
-  }).map((layer) => layer.id);
+  return fullyEnclosedLayerIds(
+    rect,
+    layers.filter((layer) => !layer.customerInteractionDisabled),
+  );
 }
 
 export function arrangeLayers(layers: any[], selectedIds: string[], action: ArrangeAction): any[] {
@@ -138,38 +135,84 @@ export function removeCustomerLayers(layers: any[], selectedIds: string[]): any[
 }
 
 export function selectionBounds(layers: any[], selectedIds: string[]) {
-  return resolveGroupBounds(layers, selectedIds);
+  return resolveSelectionBounds(layers, selectedIds);
 }
 
-export function alignCustomerLayers(layers: any[], selectedIds: string[], action: AlignAction): Record<string, { x?: number; y?: number }> {
+// Distinct from aligning objects to EACH OTHER (spec §29): translates the
+// whole selection as one block onto the card, preserving relative layout.
+// Works for a single selected object too - "centre this one photo" is a
+// normal single-object action, unlike align-to-each-other which needs 2+.
+function centerSelectionOnCard(
+  selected: any[],
+  action: "centerOnCardHorizontal" | "centerOnCardVertical" | "centerOnCard",
+  card: CardSize,
+): Record<string, { x?: number; y?: number }> {
+  const box = resolveGroupBounds(selected);
+  if (!box) return {};
+  const deltaX = card.width / 2 - box.x;
+  const deltaY = card.height / 2 - box.y;
+  const patches: Record<string, { x?: number; y?: number }> = {};
+  for (const layer of selected) {
+    const patch: { x?: number; y?: number } = {};
+    if (action === "centerOnCardHorizontal" || action === "centerOnCard") patch.x = Number(layer.x) + deltaX;
+    if (action === "centerOnCardVertical" || action === "centerOnCard") patch.y = Number(layer.y) + deltaY;
+    patches[layer.id] = patch;
+  }
+  return patches;
+}
+
+export function alignCustomerLayers(
+  layers: any[],
+  selectedIds: string[],
+  action: AlignAction,
+  card?: CardSize,
+): Record<string, { x?: number; y?: number }> {
   const selected = layers.filter((layer) => selectedIds.includes(layer.id));
+  if (!selected.length) return {};
+  if (CARD_ONLY_ACTIONS.has(action)) {
+    if (!card || !(card.width > 0) || !(card.height > 0)) return {};
+    return centerSelectionOnCard(selected, action as "centerOnCardHorizontal" | "centerOnCardVertical" | "centerOnCard", card);
+  }
   if (selected.length < 2) return {};
   const box = resolveGroupBounds(selected);
   if (!box) return {};
   const patches: Record<string, { x?: number; y?: number }> = {};
 
-  if (action === "distributeHorizontal" || action === "distributeVertical") {
+  if (
+    action === "distributeHorizontal" ||
+    action === "distributeVertical" ||
+    action === "distributeHorizontalCenters" ||
+    action === "distributeVerticalCenters"
+  ) {
     if (selected.length < 3) return {};
-    const horizontal = action === "distributeHorizontal";
-    const sorted = selected.slice().sort((a, b) => Number(horizontal ? a.x : a.y) - Number(horizontal ? b.x : b.y));
-    const first = Number(horizontal ? sorted[0].x : sorted[0].y);
-    const last = Number(horizontal ? sorted[sorted.length - 1].x : sorted[sorted.length - 1].y);
-    const step = (last - first) / (sorted.length - 1);
-    sorted.forEach((layer, index) => {
-      patches[layer.id] = horizontal ? { x: first + step * index } : { y: first + step * index };
-    });
+    const axis =
+      action === "distributeHorizontal" || action === "distributeHorizontalCenters"
+        ? "x"
+        : "y";
+    const positions =
+      action === "distributeHorizontalCenters" || action === "distributeVerticalCenters"
+        ? (() => {
+            const sorted = selected.slice().sort((a, b) => Number(a[axis] || 0) - Number(b[axis] || 0));
+            const first = Number(sorted[0][axis] || 0);
+            const last = Number(sorted[sorted.length - 1][axis] || 0);
+            const step = (last - first) / (sorted.length - 1);
+            return sorted.map((layer, index) => ({ id: layer.id, center: first + step * index }));
+          })()
+        : distributeAlongAxis(selected, axis);
+    for (const position of positions) {
+      patches[position.id] = axis === "x" ? { x: position.center } : { y: position.center };
+    }
     return patches;
   }
 
   for (const layer of selected) {
-    const halfWidth = Math.abs(Number(layer.width) || 0) / 2;
-    const halfHeight = Math.abs(Number(layer.height) || 0) / 2;
-    if (action === "alignLeft") patches[layer.id] = { x: box.left + halfWidth };
+    const { halfW, halfH } = rotatedAxisHalfExtents(layer);
+    if (action === "alignLeft") patches[layer.id] = { x: box.left + halfW };
     if (action === "alignCenter") patches[layer.id] = { x: box.x };
-    if (action === "alignRight") patches[layer.id] = { x: box.right - halfWidth };
-    if (action === "alignTop") patches[layer.id] = { y: box.top + halfHeight };
+    if (action === "alignRight") patches[layer.id] = { x: box.right - halfW };
+    if (action === "alignTop") patches[layer.id] = { y: box.top + halfH };
     if (action === "alignMiddle") patches[layer.id] = { y: box.y };
-    if (action === "alignBottom") patches[layer.id] = { y: box.bottom - halfHeight };
+    if (action === "alignBottom") patches[layer.id] = { y: box.bottom - halfH };
   }
   return patches;
 }

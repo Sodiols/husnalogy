@@ -19,6 +19,7 @@ import { fitViewport, INITIAL_VIEWPORT, type ViewportState } from "@/lib/customi
 import AdminBuilderHeader from "./AdminBuilderHeader";
 import AdminContextToolbar from "./AdminContextToolbar";
 import AdminToolRail from "./AdminToolRail";
+import AdminTextToolPanel from "./AdminTextToolPanel";
 import AdminCanvas from "./AdminCanvas";
 import AdminPropertiesPanel from "./AdminPropertiesPanel";
 import AdminLayersPanel from "./AdminLayersPanel";
@@ -31,12 +32,17 @@ import AdminMockupEditor from "./AdminMockupEditor";
 import AdminUploadsPanel, { type AdminUploadAsset } from "./AdminUploadsPanel";
 import CustomerElementsPanel, { type LibraryElement } from "@/app/components/customizer/CustomerElementsPanel";
 import { createGridSlots } from "@/lib/customizer/v2/grids";
+import { groupLayers, ungroupLayers } from "@/lib/customizer/v2/groups";
 import { createCanvasMeasure, getTextResizeConstraints, isSingleLineAutoSizeText } from "@/lib/customizer/v2/text-layout";
+import { resolveLayerSelectionGeometry } from "@/lib/customizer/v2/selection-geometry";
+import { type TextPlacementPreset } from "@/lib/customizer/v2/text-editing";
+import { getFieldById, resolveLayerText } from "@/app/components/customizer/customizer-utils";
 import { formatCustomizerVersion, nextCustomizerVersion, type CustomizerUpdateType } from "@/lib/customizer/public-version";
 import {
   addLayer,
   addPage,
   alignLayers,
+  arrangeLayerSelection,
   bringLayerToFront,
   deletePage,
   distributeLayers,
@@ -44,9 +50,12 @@ import {
   duplicatePage,
   getEnabledBuilderPages,
   getLayer,
+  genId,
   layersForPage,
+  linkLayerToField,
   matchLayerSize,
   movePage,
+  moveConnectedField,
   moveLayers,
   newImageLayer,
   newBackgroundLayer,
@@ -59,12 +68,15 @@ import {
   removeLayer,
   renamePage,
   reorderLayer,
+  selectableLayersForPage,
   sendLayerToBack,
   setCustomerEditable,
   updateConnectedField,
   updateLayer,
   updateLayerStyle,
   type AlignMode,
+  type DistributionMode,
+  type LayerArrangeMode,
 } from "./builder-utils";
 
 const builderTextMeasure = createCanvasMeasure();
@@ -129,11 +141,14 @@ export default function AdminDesignBuilder({
   const t = template || {};
   const [studioOpen, setStudioOpen] = useState(false);
   const [activeTool, setActiveTool] = useState("select");
+  const [textPlacementPreset, setTextPlacementPreset] = useState<TextPlacementPreset>("body");
+  const [editingTextLayerId, setEditingTextLayerId] = useState<string | null>(null);
   const [tab, setTab] = useState("design");
   const [activePage, setActivePage] = useState(t.defaultPage || "front");
   // Multi-selection (spec §7): the LAST id is the primary layer (shows
   // handles + drives the properties panel).
   const [selectedLayerIds, setSelectedLayerIds] = useState<string[]>([]);
+  const [editingGroupId, setEditingGroupId] = useState<string | null>(null);
   const selectedLayerId = selectedLayerIds[selectedLayerIds.length - 1] || null;
   const setSelectedLayerId = (id: string | null) => setSelectedLayerIds(id ? [id] : []);
   // Editor viewport: zoom + pan travel together so Fit can reset both. This is
@@ -154,10 +169,18 @@ export default function AdminDesignBuilder({
   const clone = (obj: any) => (typeof structuredClone === "function" ? structuredClone(obj) : JSON.parse(JSON.stringify(obj)));
   const tRef = useRef(t);
   tRef.current = t;
+  const selectedLayerIdsRef = useRef(selectedLayerIds);
+  selectedLayerIdsRef.current = selectedLayerIds;
+  const activePageRef = useRef(activePage);
+  activePageRef.current = activePage;
+  const editingGroupIdRef = useRef(editingGroupId);
+  editingGroupIdRef.current = editingGroupId;
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
-  const undoStack = useRef<any[]>([]);
-  const redoStack = useRef<any[]>([]);
+  type BuilderHistoryEntry = { template: any; selectedLayerIds: string[]; activePage: string; editingGroupId: string | null };
+  const undoStack = useRef<BuilderHistoryEntry[]>([]);
+  const redoStack = useRef<BuilderHistoryEntry[]>([]);
+  const activeTextHistoryIdRef = useRef<string | null>(null);
   const [, forceTick] = useState(0);
   const bump = () => forceTick((x) => x + 1);
 
@@ -165,8 +188,14 @@ export default function AdminDesignBuilder({
     setDirtySinceSave(true);
     onChangeRef.current(next);
   };
+  const historyEntry = (): BuilderHistoryEntry => ({
+    template: clone(tRef.current),
+    selectedLayerIds: selectedLayerIdsRef.current.slice(),
+    activePage: activePageRef.current,
+    editingGroupId: editingGroupIdRef.current,
+  });
   const snapshot = () => {
-    undoStack.current.push(clone(tRef.current));
+    undoStack.current.push(historyEntry());
     if (undoStack.current.length > 60) undoStack.current.shift();
     redoStack.current = [];
     bump();
@@ -177,14 +206,22 @@ export default function AdminDesignBuilder({
   };
   const undo = () => {
     if (!undoStack.current.length) return;
-    redoStack.current.push(clone(tRef.current));
-    apply(undoStack.current.pop());
+    redoStack.current.push(historyEntry());
+    const entry = undoStack.current.pop()!;
+    apply(entry.template);
+    setActivePage(entry.activePage);
+    setEditingGroupId(entry.editingGroupId);
+    setSelectedLayerIds(entry.selectedLayerIds);
     bump();
   };
   const redo = () => {
     if (!redoStack.current.length) return;
-    undoStack.current.push(clone(tRef.current));
-    apply(redoStack.current.pop());
+    undoStack.current.push(historyEntry());
+    const entry = redoStack.current.pop()!;
+    apply(entry.template);
+    setActivePage(entry.activePage);
+    setEditingGroupId(entry.editingGroupId);
+    setSelectedLayerIds(entry.selectedLayerIds);
     bump();
   };
   const deleteSelectedLayers = (layerIds: string[] = selectedLayerIds) => {
@@ -193,6 +230,7 @@ export default function AdminDesignBuilder({
     let next = tRef.current;
     for (const id of ids) next = removeLayer(next, id);
     commit(next);
+    setEditingGroupId(null);
     setSelectedLayerIds([]);
   };
 
@@ -221,13 +259,23 @@ export default function AdminDesignBuilder({
           selectAllOnPage();
           return;
         }
-        if (k === "d" && selectedLayerId) {
+        if (k === "d" && selectedLayerIds.length) {
           e.preventDefault();
-          onDuplicate(selectedLayerId);
+          duplicateSelectedLayers();
           return;
         }
       }
       if (typing || tab !== "design") return;
+      if (e.key === "Escape" && activeTool === "text") {
+        e.preventDefault();
+        setActiveTool("select");
+        return;
+      }
+      if (e.key === "Escape" && editingGroupIdRef.current) {
+        e.preventDefault();
+        exitAdminGroup();
+        return;
+      }
       if ((e.key === "Delete" || e.key === "Backspace") && selectedLayerIds.length) {
         e.preventDefault();
         deleteSelectedLayers();
@@ -237,7 +285,7 @@ export default function AdminDesignBuilder({
         const layer = getLayer(tRef.current, id);
         return layer && !layer.locked && layer.adminEditable !== false;
       });
-      if (!movableIds.length) return;
+      if (!movableIds.length || movableIds.length !== selectedLayerIds.length) return;
       if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.key)) {
         e.preventDefault();
         const amount = e.shiftKey ? 40 : 8;
@@ -249,7 +297,20 @@ export default function AdminDesignBuilder({
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [studioOpen, tab, selectedLayerId, selectedLayerIds, activePage]);
+  }, [studioOpen, tab, selectedLayerId, selectedLayerIds, activePage, activeTool]);
+
+  // Front and Back are independent selection scopes. Any route into another
+  // page (page list, field jump, add/duplicate page) drops stale-side ids.
+  useEffect(() => {
+    const editingGroup = editingGroupId ? getLayer(tRef.current, editingGroupId) : null;
+    const scope = editingGroup?.page === activePage ? editingGroupId : null;
+    if (editingGroupId && !scope) setEditingGroupId(null);
+    const selectable = new Set(selectableLayersForPage(tRef.current, activePage, scope).map((layer: any) => layer.id));
+    setSelectedLayerIds((current) => {
+      const next = current.filter((id) => selectable.has(id));
+      return next.length === current.length && next.every((id, index) => id === current[index]) ? current : next;
+    });
+  }, [activePage, editingGroupId, t.layers]);
 
   // Lock page scroll while the studio overlay is open.
   useEffect(() => {
@@ -269,9 +330,21 @@ export default function AdminDesignBuilder({
 
   /* ----- tool actions ----- */
   const addText = () => {
-    const layer = newTextLayer(t, activePage);
-    commit(addLayer(t, layer));
+    setActiveTool("text");
+    setSelectedLayerId(null);
+  };
+  const placeText = (position: { x: number; y: number }) => {
+    const current = tRef.current;
+    const layer = newTextLayer(current, activePageRef.current, {
+      ...position,
+      text: "",
+      preset: textPlacementPreset,
+    });
+    snapshot();
+    apply(addLayer(current, layer));
+    activeTextHistoryIdRef.current = layer.id;
     setSelectedLayerId(layer.id);
+    return layer.id;
   };
   const addPhotoArea = () => {
     const layer = newImageLayer(t, activePage);
@@ -359,6 +432,8 @@ export default function AdminDesignBuilder({
   };
   const onStylePatch = (id: string, patch: any) => commit(constrainTextLayerBox(updateLayerStyle(t, id, patch), id));
   const onFieldPatch = (id: string, patch: any) => commit(updateConnectedField(t, id, patch));
+  const onFieldReorder = (id: string, direction: "up" | "down") => commit(moveConnectedField(t, id, direction));
+  const onLinkField = (id: string, targetFieldId: string) => commit(linkLayerToField(t, id, targetFieldId));
   const onToggleCustomerEditable = (id: string, v: boolean) => commit(setCustomerEditable(t, id, v));
   const onDuplicate = (id: string) => {
     const { template: nt, newId } = duplicateLayer(t, id);
@@ -376,10 +451,33 @@ export default function AdminDesignBuilder({
     if (textStyle && typeof textStyle === "object") next = updateLayerStyle(next, id, textStyle);
     apply(next);
   };
-  const onCanvasTextCommit = (id: string, text: string) => {
+  const onCanvasTextEditStart = (id: string) => {
+    if (activeTextHistoryIdRef.current === id) return;
+    snapshot();
+    activeTextHistoryIdRef.current = id;
+  };
+  const onCanvasTextDraftChange = (id: string, text: string) => {
     const current = getLayer(tRef.current, id);
     if (!current || String(current.text || "") === text) return;
-    commit(constrainTextLayerBox(updateLayer(tRef.current, id, { text }), id));
+    apply(constrainTextLayerBox(updateLayer(tRef.current, id, { text }), id));
+  };
+  const onCanvasTextCommit = (id: string, text: string) => {
+    const current = getLayer(tRef.current, id);
+    if (current && String(current.text || "") !== text) {
+      const next = constrainTextLayerBox(updateLayer(tRef.current, id, { text }), id);
+      if (activeTextHistoryIdRef.current === id) apply(next);
+      else commit(next);
+    }
+    if (activeTextHistoryIdRef.current === id) activeTextHistoryIdRef.current = null;
+  };
+  const onCanvasTextDiscard = (id: string) => {
+    if (activeTextHistoryIdRef.current !== id) return;
+    apply(removeLayer(tRef.current, id));
+    undoStack.current.pop();
+    redoStack.current = [];
+    activeTextHistoryIdRef.current = null;
+    setSelectedLayerIds([]);
+    bump();
   };
   const onCanvasLayersChange = (patches: Record<string, any>) => {
     let next = tRef.current;
@@ -393,8 +491,14 @@ export default function AdminDesignBuilder({
       setSelectedLayerIds([]);
       return;
     }
+    const target = getLayer(tRef.current, id);
+    if (editingGroupIdRef.current && String(target?.groupId || "") !== editingGroupIdRef.current) {
+      setEditingGroupId(null);
+    }
     if (!shiftKey) {
-      setSelectedLayerIds([id]);
+      // Clicking a member of an existing multi-selection keeps the selection
+      // intact so dragging that object moves the combined selection.
+      setSelectedLayerIds((current) => current.length > 1 && current.includes(id) ? current : [id]);
       return;
     }
     setSelectedLayerIds((current) =>
@@ -403,24 +507,102 @@ export default function AdminDesignBuilder({
   };
 
   const selectAllOnPage = () => {
-    setSelectedLayerIds(
-      layersForPage(tRef.current, activePage)
-        .filter((l: any) => !l.hidden)
-        .map((l: any) => l.id),
-    );
+    setEditingGroupId(null);
+    setSelectedLayerIds(selectableLayersForPage(tRef.current, activePage).map((layer: any) => layer.id));
+  };
+
+  const enterAdminGroup = (groupId: string) => {
+    const group = getLayer(tRef.current, groupId);
+    if (!group || group.type !== "group") return;
+    const children = selectableLayersForPage(tRef.current, activePage, groupId);
+    setEditingGroupId(groupId);
+    setSelectedLayerIds(children.length ? [children[0].id] : []);
+  };
+
+  const exitAdminGroup = (selectGroup = true) => {
+    const groupId = editingGroupIdRef.current;
+    if (!groupId) return;
+    setEditingGroupId(null);
+    if (selectGroup) setSelectedLayerIds([groupId]);
+  };
+
+  const canTransformSelection = (ids = selectedLayerIds) =>
+    ids.length > 0 &&
+    ids.every((id) => {
+      const layer = getLayer(tRef.current, id);
+      return Boolean(layer && !layer.locked && layer.adminEditable !== false);
+    });
+
+  const resolvedGeometryForSelection = (ids = selectedLayerIds) => {
+    const current = tRef.current;
+    const canvasWidth = Number(current?.canvasWidthPx) || 1500;
+    const canvasHeight = Number(current?.canvasHeightPx) || 2100;
+    const safeBounds = {
+      left: Number(current?.safeArea?.left) || 0,
+      top: Number(current?.safeArea?.top) || 0,
+      right: canvasWidth - (Number(current?.safeArea?.right) || 0),
+      bottom: canvasHeight - (Number(current?.safeArea?.bottom) || 0),
+    };
+    return ids.map((id) => getLayer(current, id)).filter(Boolean).map((layer: any) => {
+      const field = layer.fieldId ? getFieldById(current, layer.fieldId) : null;
+      return resolveLayerSelectionGeometry(layer, {
+        text: String(resolveLayerText(layer, field, {})),
+        measure: builderTextMeasure,
+        safeBounds,
+      });
+    });
   };
 
   const runAlign = (mode: AlignMode) => {
-    if (!selectedLayerIds.length) return;
-    commit(alignLayers(tRef.current, selectedLayerIds, mode));
+    const cardMode = mode === "centerOnCardHorizontal" || mode === "centerOnCardVertical" || mode === "centerOnCard";
+    if (!canTransformSelection() || (!cardMode && selectedLayerIds.length < 2)) return;
+    commit(alignLayers(tRef.current, selectedLayerIds, mode, resolvedGeometryForSelection()));
   };
-  const runDistribute = (axis: "horizontal" | "vertical") => {
-    if (selectedLayerIds.length < 3) return;
-    commit(distributeLayers(tRef.current, selectedLayerIds, axis));
+  const runDistribute = (axis: "horizontal" | "vertical", mode: DistributionMode = "spacing") => {
+    if (selectedLayerIds.length < 3 || !canTransformSelection()) return;
+    commit(distributeLayers(tRef.current, selectedLayerIds, axis, mode, resolvedGeometryForSelection()));
   };
   const runMatchSize = (dimension: "width" | "height" | "both") => {
     if (selectedLayerIds.length < 2) return;
     commit(matchLayerSize(tRef.current, selectedLayerIds, dimension));
+  };
+  const groupSelectedLayers = () => {
+    const ids = selectedLayerIds.filter((id) => getLayer(tRef.current, id)?.page === activePage);
+    if (ids.length < 2) return;
+    const groupId = genId("group");
+    const layers = groupLayers(tRef.current.layers || [], ids, groupId, "Group");
+    if (layers === tRef.current.layers) return;
+    commit({ ...tRef.current, layers });
+    setEditingGroupId(null);
+    setSelectedLayerIds([groupId]);
+  };
+  const ungroupSelectedLayer = () => {
+    if (selectedLayerIds.length !== 1) return;
+    const group = getLayer(tRef.current, selectedLayerIds[0]);
+    if (!group || group.type !== "group") return;
+    const childIds = (group.childIds || []).filter((id: string) => Boolean(getLayer(tRef.current, id)));
+    const layers = ungroupLayers(tRef.current.layers || [], group.id);
+    if (layers === tRef.current.layers) return;
+    commit({ ...tRef.current, layers });
+    setEditingGroupId(null);
+    setSelectedLayerIds(childIds);
+  };
+  const duplicateSelectedLayers = () => {
+    if (!selectedLayerIds.length) return;
+    let next = tRef.current;
+    const newIds: string[] = [];
+    for (const id of selectedLayerIds) {
+      const result = duplicateLayer(next, id);
+      next = result.template;
+      if (result.newId) newIds.push(result.newId);
+    }
+    if (!newIds.length) return;
+    commit(next);
+    setSelectedLayerIds(newIds);
+  };
+  const arrangeSelectedLayers = (action: LayerArrangeMode) => {
+    if (!selectedLayerIds.length) return;
+    commit(arrangeLayerSelection(tRef.current, selectedLayerIds, action));
   };
 
   /* ----- page actions ----- */
@@ -683,7 +865,10 @@ export default function AdminDesignBuilder({
                     template={t}
                     pageId={activePage}
                     selectedLayerId={selectedLayerId}
-                    onSelect={setSelectedLayerId}
+                    selectedLayerIds={selectedLayerIds}
+                    editingGroupId={editingGroupId}
+                    onSelect={onCanvasSelect}
+                    onEnterGroup={enterAdminGroup}
                     onLayerPatch={onLayerPatch}
                     onReorder={onReorder}
                     onDuplicate={onDuplicate}
@@ -729,10 +914,16 @@ export default function AdminDesignBuilder({
                     layer={selectedLayer}
                     selectedLayers={selectedLayers}
                     selectionCount={selectedLayerIds.length}
+                    editingText={editingTextLayerId === selectedLayerId}
+                    canTransformSelection={canTransformSelection()}
                     onStylePatch={onSelectedTextStylePatch}
                     onAlign={runAlign}
                     onDistribute={runDistribute}
                     onMatchSize={runMatchSize}
+                    onGroup={groupSelectedLayers}
+                    onUngroup={ungroupSelectedLayer}
+                    onDuplicate={duplicateSelectedLayers}
+                    onLayerOrder={arrangeSelectedLayers}
                     onDelete={() => deleteSelectedLayers()}
                   />
                 </div>
@@ -745,10 +936,20 @@ export default function AdminDesignBuilder({
                 selectedLayerId={selectedLayerId}
                 selectedLayerIds={selectedLayerIds}
                 onSelect={onCanvasSelect}
+                onSelectionChange={setSelectedLayerIds}
                 onBeginChange={snapshot}
                 onLayerChange={onCanvasLayerChange}
                 onLayersChange={onCanvasLayersChange}
+                onTextPlace={placeText}
+                onTextEditStart={onCanvasTextEditStart}
+                onTextDraftChange={onCanvasTextDraftChange}
+                onTextDiscard={onCanvasTextDiscard}
+                onEditingTextChange={setEditingTextLayerId}
+                onExitTextTool={() => setActiveTool("select")}
                 onTextCommit={onCanvasTextCommit}
+                editingGroupId={editingGroupId}
+                onEnterGroup={enterAdminGroup}
+                onExitGroup={exitAdminGroup}
                 zoom={zoom}
                 panX={viewport.panX}
                 panY={viewport.panY}
@@ -819,7 +1020,15 @@ export default function AdminDesignBuilder({
             {/* Right inspector: the configuration surface for the selection. */}
             <aside className="flex w-[clamp(300px,21vw,360px)] shrink-0 flex-col border-l border-[#303839]/8 bg-white max-lg:absolute max-lg:inset-x-0 max-lg:bottom-0 max-lg:z-40 max-lg:max-h-[48%] max-lg:w-full max-lg:rounded-t-2xl max-lg:border-l-0 max-lg:border-t max-lg:shadow-[0_-8px_32px_rgba(48,56,57,0.14)]">
               <div className="min-h-0 flex-1 overflow-y-auto [scrollbar-color:rgba(48,56,57,0.18)_transparent] [scrollbar-width:thin]">
-                {activeTool === "uploads" ? (
+                {activeTool === "text" && !selectedLayer ? (
+                  <AdminTextToolPanel
+                    preset={textPlacementPreset}
+                    onSelectPreset={(preset) => {
+                      setTextPlacementPreset(preset);
+                      setActiveTool("text");
+                    }}
+                  />
+                ) : activeTool === "uploads" ? (
                   <AdminUploadsPanel onInsertAsset={addImageFromAdminAsset} currentAssetIds={currentAssetIds} />
                 ) : activeTool === "elements" ? (
                   <div className="h-full overflow-y-auto">
@@ -835,6 +1044,7 @@ export default function AdminDesignBuilder({
                   onLayerPatch={onLayerPatch}
                   onStylePatch={onStylePatch}
                   onFieldPatch={onFieldPatch}
+                  onLinkField={onLinkField}
                   onToggleCustomerEditable={onToggleCustomerEditable}
                   onDuplicate={onDuplicate}
                   onRemove={onRemove}
@@ -852,6 +1062,7 @@ export default function AdminDesignBuilder({
             <AdminFieldsPanel
               template={t}
               onFieldPatch={onFieldPatch}
+              onFieldReorder={onFieldReorder}
               onToggleRequired={(layerId: string, required: boolean) => onFieldPatch(layerId, { required })}
               onSelectLayer={(layerId: string) => {
                 const layer = getLayer(t, layerId);

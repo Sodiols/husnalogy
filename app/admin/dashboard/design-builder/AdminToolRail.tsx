@@ -67,7 +67,7 @@ export default function AdminToolRail(props: Props) {
   return (
     <div className="relative flex w-[72px] shrink-0 flex-col gap-0.5 overflow-y-auto overflow-x-visible border-r border-white/10 bg-[#303839] py-2 2xl:w-24 2xl:py-3">
       <RailButton id="select" label="Select" active={props.activeTool === "select"} onClick={() => props.onSelectTool("select")} />
-      <RailButton id="text" label="Text" onClick={props.onAddText} />
+      <RailButton id="text" label="Text" active={props.activeTool === "text"} onClick={props.onAddText} />
       <RailButton id="image" label="Uploads" active={props.activeTool === "uploads"} onClick={() => props.onSelectTool("uploads")} />
       <RailButton id="photo" label="Frame" onClick={props.onAddPhotoArea} />
       <RailButton id="shape" label="Shape" active={menu === "shape"} onClick={() => setMenu((value) => value === "shape" ? null : "shape")} />

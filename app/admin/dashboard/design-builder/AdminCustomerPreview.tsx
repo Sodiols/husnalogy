@@ -30,6 +30,11 @@ import {
 import { getDefaultOptionCartValue } from "@/lib/products/options";
 import { getOptionsSurcharge } from "@/app/lib/customer-lists";
 import { uploadBuilderImage } from "./builder-utils";
+import {
+  getTextPlacementStyle,
+  normalizeInlineText,
+  type TextPlacementPreset,
+} from "@/lib/customizer/v2/text-editing";
 
 export default function AdminCustomerPreview({ template, product }: { template: any; product: any }) {
   const enabledPages = useMemo(() => getEnabledPages(template), [template]);
@@ -42,6 +47,9 @@ export default function AdminCustomerPreview({ template, product }: { template: 
   const [approved, setApproved] = useState(false);
   const [selectedLayerId, setSelectedLayerId] = useState<string | null>(null);
   const [activeTool, setActiveTool] = useState<CustomerTool>("edit");
+  const [textPlacementPreset, setTextPlacementPreset] = useState<TextPlacementPreset>("body");
+  const [editingTextLayerId, setEditingTextLayerId] = useState<string | null>(null);
+  const [editTextRequest, setEditTextRequest] = useState<{ layerId: string; requestId: number } | null>(null);
 
   const validation = useMemo(() => validateCustomerValues(template, values), [template, values]);
   const basePrice = Number(product?.salePrice ?? product?.price ?? 0);
@@ -156,20 +164,59 @@ export default function AdminCustomerPreview({ template, product }: { template: 
     });
   };
 
-  const addUserText = () => {
+  const addUserText = (position: { x: number; y: number }): string | null => {
     const canvasW = template?.canvasWidthPx || 1500;
+    const canvasH = template?.canvasHeightPx || 2100;
+    const style = getTextPlacementStyle(textPlacementPreset, canvasW, canvasH);
     const layer = normalizeUserLayer({
       page: activePage,
-      text: "Your text",
-      x: Math.round(canvasW / 2),
-      y: Math.round((template?.canvasHeightPx || 2100) / 2),
-      width: Math.round(canvasW * 0.6),
-      height: 100,
-      textStyle: { fontSize: Math.max(36, Math.round(canvasW / 24)) },
+      name: style.name,
+      text: "",
+      x: position.x,
+      y: position.y,
+      width: style.width,
+      height: style.height,
+      textStyle: {
+        fontSize: style.fontSize,
+        lineHeight: style.lineHeight,
+        letterSpacing: style.letterSpacing,
+        textAlign: style.textAlign,
+        multiline: style.multiline,
+        autoSizeMode: style.multiline ? "height" : "width",
+      },
     });
-    if (!layer) return;
+    if (!layer) return null;
     setEditorState((current) => ({ ...current, userLayers: [...current.userLayers, layer] }));
     setSelectedLayerId(layer.id);
+    return layer.id;
+  };
+
+  const updateCanvasText = (layerId: string, rawText: string) => {
+    const layer = effectiveLayers.find((item: any) => item.id === layerId);
+    if (!layer || layer.type !== "text") return;
+    const text = normalizeInlineText(rawText, Boolean(layer.textStyle?.multiline));
+    if (layer.isUserLayer) {
+      setEditorState((current) => ({
+        ...current,
+        userLayers: current.userLayers.map((item: any) => item.id === layerId ? { ...item, text } : item),
+      }));
+    } else if (layer.fieldId) {
+      setValues((current) => ({ ...current, [layer.fieldId]: text }));
+    } else {
+      setEditorState((current) => {
+        const existing = current.layerOverrides[layerId] || {};
+        return {
+          ...current,
+          layerOverrides: {
+            ...current.layerOverrides,
+            [layerId]: {
+              ...existing,
+              properties: { ...(existing.properties || {}), text },
+            },
+          },
+        };
+      });
+    }
   };
 
   const showTextToolbar =
@@ -195,14 +242,10 @@ export default function AdminCustomerPreview({ template, product }: { template: 
         activePage={activePage}
         userLayers={editorState.userLayers}
         selectedLayerId={selectedLayerId}
-        onAddText={addUserText}
+        selectedPreset={textPlacementPreset}
+        onSelectPreset={(preset) => setTextPlacementPreset(preset)}
         onSelectLayer={setSelectedLayerId}
-        onUpdateText={(layerId, text) =>
-          setEditorState((current) => ({
-            ...current,
-            userLayers: current.userLayers.map((item: any) => (item.id === layerId ? { ...item, text } : item)),
-          }))
-        }
+        onUpdateText={updateCanvasText}
         onDeleteLayer={(layerId) =>
           setEditorState((current) => ({
             ...current,
@@ -291,8 +334,9 @@ export default function AdminCustomerPreview({ template, product }: { template: 
                   layer={selectedLayer}
                   permissions={selectedPermissions}
                   isUserLayer={selectedIsUser}
+                  editingText={editingTextLayerId === selectedLayer.id}
                   onStyleChange={onStyleChange}
-                  onEditText={() => setActiveTool(selectedIsUser ? "addText" : "edit")}
+                  onEditText={() => setEditTextRequest((current) => ({ layerId: selectedLayer.id, requestId: (current?.requestId || 0) + 1 }))}
                   onDuplicate={undefined}
                   onDelete={
                     selectedIsUser
@@ -316,6 +360,17 @@ export default function AdminCustomerPreview({ template, product }: { template: 
               selectedLayerId={selectedLayerId}
               onSelectLayer={setSelectedLayerId}
               onLayerTransform={onLayerTransform}
+              textPlacementActive={activeTool === "addText" && pageAllowsCustomerText(template, activePage)}
+              onTextPlace={addUserText}
+              onTextDraftChange={updateCanvasText}
+              onTextCommit={updateCanvasText}
+              onTextDiscard={(layerId) => setEditorState((current) => ({
+                ...current,
+                userLayers: current.userLayers.filter((item: any) => item.id !== layerId),
+              }))}
+              onEditingTextChange={setEditingTextLayerId}
+              onExitTextTool={() => setActiveTool("edit")}
+              editTextRequest={editTextRequest}
               showWatermark={template?.settings?.protectedPreview !== false}
               showSafeArea={false}
               showBleed={false}

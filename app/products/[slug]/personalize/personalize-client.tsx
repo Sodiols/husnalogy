@@ -46,9 +46,15 @@ import useCustomizerHistory from "@/app/components/customizer/useCustomizerHisto
 import { isCustomizerFeatureEnabled } from "@/lib/customizer/v2/feature-flags";
 import { stripEphemeralAssetUrls } from "@/lib/customizer/v2/asset-references";
 import { createGridSlotsFromPreset, GRID_PRESETS } from "@/lib/customizer/v2/grids";
-import { alignCustomerLayers, arrangeLayers, groupCustomerLayers, removeCustomerLayers, reorderLayerByDrop, ungroupCustomerLayers, type AlignAction, type ArrangeAction } from "@/lib/customizer/v2/customer-actions";
-import { getDescendantIds, transformGroupChildren } from "@/lib/customizer/v2/groups";
+import { alignCustomerLayers, arrangeLayers, removeCustomerLayers, reorderLayerByDrop, type AlignAction, type ArrangeAction } from "@/lib/customizer/v2/customer-actions";
+import { getDescendantIds, groupLayers, transformGroupChildren, ungroupLayers } from "@/lib/customizer/v2/groups";
 import { createCanvasMeasure, getSingleLineTextBox, isSingleLineAutoSizeText } from "@/lib/customizer/v2/text-layout";
+import { resolveLayerSelectionGeometry } from "@/lib/customizer/v2/selection-geometry";
+import {
+  getTextPlacementStyle,
+  normalizeInlineText,
+  type TextPlacementPreset,
+} from "@/lib/customizer/v2/text-editing";
 import {
   buildInitialValues,
   buildRenderData,
@@ -57,6 +63,7 @@ import {
   getFieldById,
   getLayerPermissions,
   isImageValue,
+  isLayerCustomerInteractive,
   normalizeEditorState,
   normalizeUserLayer,
   pageAllowsCustomerText,
@@ -78,6 +85,14 @@ function firstOf(value: any, fallback = ""): string {
 const DRAFT_STORAGE_PREFIX = "husnalogy_customizer_draft";
 const GUEST_SESSION_KEY = "husnalogy_guest_session_id";
 const customerTextMeasure = createCanvasMeasure();
+
+// Easy Personalize (spec §1): the only tools a normal wedding customer needs
+// — their own details and photos, then product options. Everything else
+// (Add Text, Elements, Shapes, Lines, Frames, Grids, QR, Background, Layers)
+// is professional canvas authoring, gated behind an explicit "Advanced
+// Customize" switch so it never confronts someone who just wants to change a
+// name and a date.
+const EASY_PERSONALIZE_TOOL_IDS = new Set<CustomerTool>(["edit", "uploads", "options"]);
 
 function canUseStorage() {
   return typeof window !== "undefined" && Boolean(window.localStorage);
@@ -134,6 +149,9 @@ type HistorySnapshot = {
   editorState: EditorState;
   options: Record<string, any>;
   quantity: number;
+  activePage: string;
+  selectedLayerIds: string[];
+  editingGroupId: string | null;
 };
 
 export default function PersonalizeClient({ product, template }: { product: any; template: any }) {
@@ -197,6 +215,14 @@ export default function PersonalizeClient({ product, template }: { product: any;
   const [editingGroupId, setEditingGroupId] = useState<string | null>(null);
   const [selectedGridSlotId, setSelectedGridSlotId] = useState<string | null>(null);
   const [activeTool, setActiveTool] = useState<CustomerTool>("edit");
+  const [textPlacementPreset, setTextPlacementPreset] = useState<TextPlacementPreset>("body");
+  const [editingTextLayerId, setEditingTextLayerId] = useState<string | null>(null);
+  const [editTextRequest, setEditTextRequest] = useState<{ layerId: string; requestId: number } | null>(null);
+  // Easy Personalize vs Advanced Customize (spec §1/§2): a display-only
+  // toggle over the SAME values/editorState — never a second document. Easy
+  // mode simply narrows which tools are reachable so ordinary wedding
+  // customers never see professional design controls unless they ask for them.
+  const [customizeMode, setCustomizeMode] = useState<"easy" | "advanced">("easy");
   const [previewMode, setPreviewMode] = useState(false);
   const [workspaceMode, setWorkspaceMode] = useState<"print" | "product" | "split">("print");
   const [mobilePanelOpen, setMobilePanelOpen] = useState(false);
@@ -232,17 +258,22 @@ export default function PersonalizeClient({ product, template }: { product: any;
   const editorStateRef = useRef(editorState);
   const optionsRef = useRef(options);
   const activePageRef = useRef(activePage);
+  const selectedLayerIdsRef = useRef(selectedLayerIds);
+  const editingGroupIdRef = useRef(editingGroupId);
   const quantityRef = useRef(quantity);
   const customizationIdRef = useRef(customizationId);
   const cartItemIdRef = useRef(cartItemId);
   const dirtyRef = useRef(dirty);
   const changeVersionRef = useRef(0);
   const customerClipboardRef = useRef<any[]>([]);
+  const activeTextHistoryIdRef = useRef<string | null>(null);
 
   valuesRef.current = values;
   editorStateRef.current = editorState;
   optionsRef.current = options;
   activePageRef.current = activePage;
+  selectedLayerIdsRef.current = selectedLayerIds;
+  editingGroupIdRef.current = editingGroupId;
   quantityRef.current = quantity;
   customizationIdRef.current = customizationId;
   cartItemIdRef.current = cartItemId;
@@ -270,6 +301,16 @@ export default function PersonalizeClient({ product, template }: { product: any;
     [pageAllowsCustomerObjects, anyPageAllowsText, hasUploadFields, allowElements, customerShapesEnabled, customerLinesEnabled, customerFramesEnabled, customerGridsEnabled, qrEnabled, customerLayersEnabled, template?.settings?.allowCustomerBackground],
   );
 
+  const hasAdvancedTools = tools.some((tool) => !EASY_PERSONALIZE_TOOL_IDS.has(tool.id));
+  const visibleTools = useMemo(
+    () => (customizeMode === "easy" ? tools.filter((tool) => EASY_PERSONALIZE_TOOL_IDS.has(tool.id)) : tools),
+    [customizeMode, tools],
+  );
+  const setCustomizeModeSafely = (mode: "easy" | "advanced") => {
+    setCustomizeMode(mode);
+    if (mode === "easy" && !EASY_PERSONALIZE_TOOL_IDS.has(activeTool)) setActiveTool("edit");
+  };
+
   useEffect(() => {
     if (!selectedLayerId) {
       if (selectedLayerIds.length) setSelectedLayerIds([]);
@@ -294,6 +335,9 @@ export default function PersonalizeClient({ product, template }: { product: any;
     editorState: editorStateRef.current,
     options: optionsRef.current,
     quantity: quantityRef.current,
+    activePage: activePageRef.current,
+    selectedLayerIds: selectedLayerIdsRef.current.slice(),
+    editingGroupId: editingGroupIdRef.current,
   });
 
   const recordHistory = (group?: string) => history.record(snapshot(), group);
@@ -303,6 +347,10 @@ export default function PersonalizeClient({ product, template }: { product: any;
     setEditorState(state.editorState);
     setOptions(state.options as any);
     setQuantity(state.quantity);
+    setActivePage(state.activePage);
+    setEditingGroupId(state.editingGroupId);
+    setSelectedLayerIds(state.selectedLayerIds);
+    setSelectedLayerId(state.selectedLayerIds[state.selectedLayerIds.length - 1] || null);
     markDirty();
   };
 
@@ -323,6 +371,33 @@ export default function PersonalizeClient({ product, template }: { product: any;
     recordHistory(`field-${fieldId}`);
     markDirty();
     setValues((current) => ({ ...current, [fieldId]: value }));
+
+    // A new photo must never inherit the previous photo's crop/zoom/pan/flip.
+    // Frame geometry is untouched (values live separately from layerOverrides),
+    // but the persisted imageTransform override has to be cleared here or
+    // resolveLayerImage() will keep applying the old photo's dialed-in crop to
+    // whatever image now fills the frame.
+    const field = (template?.fields || []).find((f: any) => f.id === fieldId);
+    if (field && (field.type === "image" || field.type === "file")) {
+      const boundLayerIds = (template?.layers || [])
+        .filter((layer: any) => layer.fieldId === fieldId && (layer.type === "image" || layer.type === "frame"))
+        .map((layer: any) => layer.id);
+      if (boundLayerIds.length) {
+        patchEditorState((current) => {
+          const nextOverrides = { ...current.layerOverrides };
+          let changed = false;
+          for (const layerId of boundLayerIds) {
+            const existing = nextOverrides[layerId];
+            if (existing?.imageTransform) {
+              const { imageTransform: _drop, ...rest } = existing;
+              nextOverrides[layerId] = rest;
+              changed = true;
+            }
+          }
+          return changed ? { ...current, layerOverrides: nextOverrides } : current;
+        });
+      }
+    }
   };
 
   const onOptionChange = (key: string, value: any) => {
@@ -339,7 +414,11 @@ export default function PersonalizeClient({ product, template }: { product: any;
 
   const onActivePageChange = (pageId: string) => {
     setActivePage(pageId);
+    activeTextHistoryIdRef.current = null;
+    setEditingTextLayerId(null);
+    setSelectedLayerIds([]);
     setSelectedLayerId(null);
+    setEditingGroupId(null);
     setCropLayerId(null);
     cropBackupRef.current = null;
   };
@@ -418,32 +497,49 @@ export default function PersonalizeClient({ product, template }: { product: any;
     return next;
   };
 
-  const addUserTextLayer = () => {
-    if (!pageAllowsCustomerText(template, activePage) || !canAddCustomerObject()) return;
+  const addUserTextLayer = (
+    position: { x: number; y: number },
+    preset: TextPlacementPreset = textPlacementPreset,
+  ): string | null => {
+    if (!pageAllowsCustomerText(template, activePage) || !canAddCustomerObject()) return null;
     const canvasW = template?.canvasWidthPx || 1500;
     const canvasH = template?.canvasHeightPx || 2100;
-    const safe = template?.safeArea || {};
-    const safeLeft = Math.max(0, Number(safe.left) || 0);
-    const safeTop = Math.max(0, Number(safe.top) || 0);
-    const safeRight = Math.max(0, Number(safe.right) || 0);
-    const safeBottom = Math.max(0, Number(safe.bottom) || 0);
-    const safeWidth = Math.max(120, canvasW - safeLeft - safeRight);
-    const safeHeight = Math.max(80, canvasH - safeTop - safeBottom);
+    const style = getTextPlacementStyle(preset, canvasW, canvasH);
+    const maxZ = Math.max(
+      999,
+      ...editorStateRef.current.userLayers
+        .filter((item) => item.page === activePage)
+        .map((item) => Number(item.zIndex) || 0),
+    );
     const draft = {
       page: activePage,
-      text: "Your text",
-      x: Math.round(safeLeft + safeWidth / 2),
-      y: Math.round(safeTop + safeHeight / 2),
-      width: Math.round(safeWidth * 0.7),
-      height: Math.min(Math.round(canvasH * 0.08), Math.round(safeHeight * 0.2)),
-      textStyle: { fontFamily: allowedCustomerFonts[0], color: allowedCustomerColors[0], fontSize: Math.max(36, Math.round(canvasW / 24)), textAlign: "center", verticalAlign: "middle", lineHeight: 1.2 },
+      name: style.name,
+      text: "",
+      x: position.x,
+      y: position.y,
+      width: style.width,
+      height: style.height,
+      zIndex: maxZ + 1,
+      textStyle: {
+        fontFamily: allowedCustomerFonts[0] || "Cormorant Garamond",
+        color: allowedCustomerColors[0] || "#303839",
+        fontSize: style.fontSize,
+        textAlign: style.textAlign,
+        verticalAlign: "middle",
+        lineHeight: style.lineHeight,
+        letterSpacing: style.letterSpacing,
+        multiline: style.multiline,
+        autoSizeMode: style.multiline ? "height" : "width",
+      },
     };
     const layer = normalizeUserLayer(applyCustomerObjectLimits(draft, draft));
-    if (!layer) return;
+    if (!layer) return null;
     recordHistory();
+    activeTextHistoryIdRef.current = layer.id;
     patchEditorState((current) => ({ ...current, userLayers: [...current.userLayers, layer] }));
     setSelectedLayerId(layer.id);
     setActiveTool("addText");
+    return layer.id;
   };
 
   const addElementLayer = (element: LibraryElement, position?: { x: number; y: number }) => {
@@ -598,37 +694,164 @@ export default function PersonalizeClient({ product, template }: { product: any;
     () => effectiveLayers.filter((layer: any) => selectedLayerIds.includes(layer.id)),
     [effectiveLayers, selectedLayerIds],
   );
+  const selectedActionLayers = useMemo(() => {
+    const ids = new Set(selectedLayerIds);
+    for (const layer of selectedLayers) {
+      if (layer.type === "group") {
+        getDescendantIds(effectiveLayers, layer.id).forEach((id) => ids.add(id));
+      }
+    }
+    return effectiveLayers.filter((layer: any) => ids.has(layer.id));
+  }, [effectiveLayers, selectedLayerIds, selectedLayers]);
+  const customerSelectableLayers = useMemo(
+    () =>
+      effectiveLayers
+        .filter((layer: any) => !layer.hidden)
+        .filter((layer: any) => layer.isUserLayer || isLayerCustomerInteractive(layer))
+        .filter((layer: any) => {
+          if (layer.type === "group" && editingGroupId === layer.id) return false;
+          if (layer.groupId && layer.groupId !== editingGroupId) {
+            const parent = effectiveLayers.find((candidate: any) => candidate.id === layer.groupId);
+            if (parent && (parent.isUserLayer || isLayerCustomerInteractive(parent))) return false;
+          }
+          return true;
+        }),
+    [effectiveLayers, editingGroupId],
+  );
+  const resolvedSelectedLayers = useMemo(() => {
+    const safeBounds = {
+      left: Number(template?.safeArea?.left) || 0,
+      top: Number(template?.safeArea?.top) || 0,
+      right: (Number(template?.canvasWidthPx) || 1500) - (Number(template?.safeArea?.right) || 0),
+      bottom: (Number(template?.canvasHeightPx) || 2100) - (Number(template?.safeArea?.bottom) || 0),
+    };
+    return selectedLayers.map((layer: any) => {
+      const field = layer.fieldId ? getFieldById(template, layer.fieldId) : null;
+      return resolveLayerSelectionGeometry(layer, {
+        text: String(resolveLayerText(layer, field, values)),
+        measure: customerTextMeasure,
+        safeBounds,
+      });
+    });
+  }, [selectedLayers, template, values]);
+  const canMoveCustomerLayer = (layer: any) =>
+    !((layer.isUserLayer && layer.locked) || layer.customerLocked || layer.positionLocked || layer.customerInteractionDisabled) &&
+    (layer.isUserLayer || getLayerPermissions(layer).move);
+  const canMoveSelection =
+    selectedLayers.length === selectedLayerIds.length &&
+    selectedLayers.length > 0 &&
+    selectedActionLayers.every(canMoveCustomerLayer);
+  const canDuplicateSelection =
+    selectedLayers.length === selectedLayerIds.length &&
+    selectedLayers.length > 0 &&
+    selectedActionLayers.every((layer: any) => layer.isUserLayer || getLayerPermissions(layer).duplicate);
+  const canDeleteSelection =
+    selectedLayers.length === selectedLayerIds.length &&
+    selectedLayers.length > 0 &&
+    selectedActionLayers.every((layer: any) => layer.isUserLayer || getLayerPermissions(layer).delete);
+  const canArrangeSelection =
+    selectedLayers.length === selectedLayerIds.length &&
+    selectedLayers.length > 0 &&
+    selectedActionLayers.every(
+      (layer: any) =>
+        !layer.positionLocked &&
+        !layer.customerLocked &&
+        !(layer.isUserLayer && layer.locked) &&
+        !layer.customerInteractionDisabled &&
+        (layer.isUserLayer || getLayerPermissions(layer).changeLayerOrder),
+    );
+  const canGroupSelection =
+    customerGroupingEnabled &&
+    selectedLayers.length === selectedLayerIds.length &&
+    selectedLayers.length > 1 &&
+    selectedLayers.every(
+      (layer: any) =>
+        !layer.positionLocked &&
+        !layer.customerLocked &&
+        !(layer.isUserLayer && layer.locked) &&
+        !layer.customerInteractionDisabled &&
+        (layer.isUserLayer || getLayerPermissions(layer).group),
+    );
+  const canUngroupSelection =
+    selectedLayers.length === 1 &&
+    selectedLayers[0]?.type === "group" &&
+    (selectedLayers[0]?.isUserLayer || selectedLayers[0]?.allowCustomerUngroup);
   const selectedIsUser = Boolean(selectedLayer?.isUserLayer);
   const selectedPermissions = useMemo(
     () => (selectedLayer ? getLayerPermissions(selectedLayer) : {}),
     [selectedLayer],
   );
 
-  const onSelectionChange = (ids: string[]) => {
+  const applySelection = (ids: string[]) => {
     const permitted = multiselectEnabled ? ids : ids.slice(-1);
     setSelectedLayerIds(permitted);
     setSelectedLayerId(permitted[permitted.length - 1] || null);
     if (permitted.length > 1) setMobilePanelOpen(false);
   };
 
+  const onSelectionChange = (ids: string[], groupScope?: string | null) => {
+    const scope = groupScope === undefined ? editingGroupId : groupScope;
+    const selectable = new Set(
+      effectiveLayers
+        .filter((layer: any) => !layer.hidden)
+        .filter((layer: any) => layer.isUserLayer || isLayerCustomerInteractive(layer))
+        .filter((layer: any) => {
+          if (layer.type === "group" && scope === layer.id) return false;
+          if (layer.groupId && layer.groupId !== scope) {
+            const parent = effectiveLayers.find((candidate: any) => candidate.id === layer.groupId);
+            if (parent && (parent.isUserLayer || isLayerCustomerInteractive(parent))) return false;
+          }
+          return true;
+        })
+        .map((layer: any) => layer.id),
+    );
+    const sanitized = Array.from(new Set(ids.filter((id) => selectable.has(id))));
+    applySelection(sanitized);
+  };
+
+  const transformCustomerGroupState = (
+    current: EditorState,
+    groupId: string,
+    patch: Record<string, any>,
+  ): EditorState => {
+    const descendantIds = new Set([groupId, ...getDescendantIds(effectiveLayers, groupId)]);
+    const transformed = transformGroupChildren(effectiveLayers, groupId, patch);
+    const transformedById = new Map(transformed.map((layer: any) => [layer.id, layer]));
+    const transformKeys = ["x", "y", "width", "height", "rotation", "zIndex"] as const;
+    const pickTransform = (layer: any) =>
+      Object.fromEntries(transformKeys.filter((key) => layer?.[key] !== undefined).map((key) => [key, layer[key]]));
+
+    const userLayers = current.userLayers.map((layer) => {
+      if (!descendantIds.has(layer.id)) return layer;
+      const next = transformedById.get(layer.id);
+      return next ? { ...layer, ...pickTransform(next) } : layer;
+    });
+    const layerOverrides = { ...current.layerOverrides };
+    for (const layer of effectiveLayers) {
+      if (!descendantIds.has(layer.id) || layer.isUserLayer) continue;
+      const next = transformedById.get(layer.id);
+      if (!next) continue;
+      const existing = layerOverrides[layer.id] || {};
+      layerOverrides[layer.id] = {
+        ...existing,
+        transform: { ...(existing.transform || {}), ...pickTransform(next) },
+      };
+    }
+    return { ...current, userLayers, layerOverrides };
+  };
+
   const arrangeSelection = (action: ArrangeAction) => {
     if (!selectedLayerIds.length) return;
-    const canArrangeAll = selectedLayers.every(
-      (layer: any) =>
-        layer.isUserLayer ||
-        (!layer.positionLocked &&
-          !layer.customerInteractionDisabled &&
-          getLayerPermissions(layer).changeLayerOrder),
-    );
-    if (!canArrangeAll) return;
-    const arranged = arrangeLayers(effectiveLayers, selectedLayerIds, action);
+    if (!canArrangeSelection) return;
+    const actionIds = selectedActionLayers.map((layer: any) => layer.id);
+    const arranged = arrangeLayers(effectiveLayers, actionIds, action);
     const zById = new Map(arranged.map((layer: any) => [layer.id, Number(layer.zIndex) || 0]));
     recordHistory(`arrange-${action}`);
     patchEditorState((current) => ({
       ...current,
       userLayers: current.userLayers.map((layer) => zById.has(layer.id) ? { ...layer, zIndex: zById.get(layer.id) } : layer),
       layerOverrides: Object.fromEntries(Object.entries(current.layerOverrides).concat(
-        effectiveLayers.filter((layer: any) => !layer.isUserLayer && selectedLayerIds.includes(layer.id) && zById.has(layer.id)).map((layer: any) => {
+        effectiveLayers.filter((layer: any) => !layer.isUserLayer && actionIds.includes(layer.id) && zById.has(layer.id)).map((layer: any) => {
           const existing = current.layerOverrides[layer.id] || {};
           return [layer.id, { ...existing, transform: { ...(existing.transform || {}), zIndex: zById.get(layer.id) } }];
         }),
@@ -658,46 +881,110 @@ export default function PersonalizeClient({ product, template }: { product: any;
   };
 
   const alignSelection = (action: AlignAction) => {
-    const movable = selectedLayers.filter((layer: any) => !layer.locked && !layer.customerLocked && !layer.positionLocked && !layer.customerInteractionDisabled && (layer.isUserLayer || getLayerPermissions(layer).move));
-    const patches = alignCustomerLayers(movable, movable.map((layer: any) => layer.id), action);
+    if (!canMoveSelection) return;
+    const activePageEntry = (template?.pages || []).find((entry: any) => entry.id === activePage);
+    const card = {
+      width: Number(activePageEntry?.widthPx || template?.canvasWidthPx) || 1500,
+      height: Number(activePageEntry?.heightPx || template?.canvasHeightPx) || 2100,
+    };
+    const patches = alignCustomerLayers(resolvedSelectedLayers, selectedLayerIds, action, card);
     if (!Object.keys(patches).length) return;
     recordHistory(`align-${action}`);
     patchEditorState((current) => {
-      let userLayers = current.userLayers;
+      let nextState = current;
       for (const [layerId, transform] of Object.entries(patches)) {
-        const layer = movable.find((item: any) => item.id === layerId);
-        if (!layer?.isUserLayer) continue;
-        userLayers = layer.type === "group"
-          ? transformGroupChildren(userLayers, layerId, transform)
-          : userLayers.map((item) => item.id === layerId ? { ...item, ...transform } : item);
+        const layer = selectedLayers.find((item: any) => item.id === layerId);
+        const geometry = resolvedSelectedLayers.find((item: any) => item.id === layerId) || layer;
+        if (!layer) continue;
+        const translated = {
+          ...(transform.x === undefined ? {} : { x: Math.round(Number(layer.x) + Number(transform.x) - Number(geometry.x)) }),
+          ...(transform.y === undefined ? {} : { y: Math.round(Number(layer.y) + Number(transform.y) - Number(geometry.y)) }),
+        };
+        if (layer.type === "group") {
+          nextState = transformCustomerGroupState(nextState, layerId, translated);
+        } else if (layer.isUserLayer) {
+          nextState = {
+            ...nextState,
+            userLayers: nextState.userLayers.map((item) => item.id === layerId ? { ...item, ...translated } : item),
+          };
+        } else {
+          const existing = nextState.layerOverrides[layerId] || {};
+          nextState = {
+            ...nextState,
+            layerOverrides: {
+              ...nextState.layerOverrides,
+              [layerId]: { ...existing, transform: { ...(existing.transform || {}), ...translated } },
+            },
+          };
+        }
       }
-      const layerOverrides = { ...current.layerOverrides };
-      for (const [layerId, transform] of Object.entries(patches)) {
-        const layer = movable.find((item: any) => item.id === layerId);
-        if (!layer || layer.isUserLayer) continue;
-        const existing = layerOverrides[layerId] || {};
-        layerOverrides[layerId] = { ...existing, transform: { ...(existing.transform || {}), ...transform } };
-      }
-      return { ...current, userLayers, layerOverrides };
+      return nextState;
     });
   };
 
+  // Spec §76/§98/§111: a customer group can mix the customer's own inserted
+  // objects with pre-existing template objects the admin explicitly allowed
+  // to be grouped (e.g. selecting "Bride Name" + "&" + "Groom Name" and
+  // grouping them). The group container itself always lives in userLayers;
+  // a permitted TEMPLATE layer joins it via a server-validated `groupId`
+  // override rather than by mutating the trusted template.
   const groupSelection = () => {
-    if (!customerGroupingEnabled) return;
-    const userIds = selectedLayers.filter((layer: any) => layer.isUserLayer).map((layer: any) => layer.id);
-    if (userIds.length < 2 || userIds.length !== selectedLayerIds.length) return;
+    if (!canGroupSelection) return;
+    const eligible = selectedLayers.filter(
+      (layer: any) =>
+        !layer.positionLocked &&
+        !layer.customerLocked &&
+        !(layer.isUserLayer && layer.locked) &&
+        !layer.customerInteractionDisabled &&
+        (layer.isUserLayer || getLayerPermissions(layer).group),
+    );
+    if (eligible.length < 2 || eligible.length !== selectedLayerIds.length) return;
     const groupId = `customer_group_${Date.now().toString(36)}`;
+    const eligibleIds = eligible.map((layer: any) => layer.id);
+    const grouped = groupLayers(effectiveLayers, eligibleIds, groupId, "Customer group");
+    if (grouped === effectiveLayers) return; // rejected: cycle, mixed pages, etc.
+    const newGroup = grouped.find((layer: any) => layer.id === groupId);
+    if (!newGroup) return;
     recordHistory();
-    patchEditorState((current) => ({ ...current, userLayers: groupCustomerLayers(current.userLayers.map((layer) => ({ ...layer, isUserLayer: true })), userIds, groupId).map(({ isUserLayer: _isUserLayer, ...layer }) => layer) }));
-    onSelectionChange([groupId]);
+    patchEditorState((current) => {
+      const userLayerIds = new Set(eligible.filter((layer: any) => layer.isUserLayer).map((layer: any) => layer.id));
+      const templateLayerIds = eligible.filter((layer: any) => !layer.isUserLayer).map((layer: any) => layer.id);
+
+      const userLayers = current.userLayers.map((layer) => (userLayerIds.has(layer.id) ? { ...layer, groupId } : layer));
+      userLayers.push({ ...newGroup, isUserLayer: true, customerEditable: true, allowCustomerUngroup: true });
+
+      const layerOverrides = { ...current.layerOverrides };
+      for (const layerId of templateLayerIds) {
+        layerOverrides[layerId] = { ...(layerOverrides[layerId] || {}), groupId };
+      }
+
+      return { ...current, userLayers, layerOverrides };
+    });
+    applySelection([groupId]);
   };
 
   const ungroupSelection = () => {
     const group = selectedLayers.find((layer: any) => layer.type === "group");
-    if (!group || (!group.isUserLayer && !group.allowCustomerUngroup)) return;
-    const childIds = editorStateRef.current.userLayers.filter((layer) => layer.groupId === group.id).map((layer) => layer.id);
+    if (!canUngroupSelection || !group) return;
+    const children = effectiveLayers.filter((layer: any) => layer.groupId === group.id);
+    const childIds = children.map((layer: any) => layer.id);
+    const ungrouped = ungroupLayers(effectiveLayers, group.id);
+    if (ungrouped === effectiveLayers) return;
     recordHistory();
-    patchEditorState((current) => ({ ...current, userLayers: ungroupCustomerLayers(current.userLayers.map((layer) => ({ ...layer, isUserLayer: true })), group.id).map(({ isUserLayer: _isUserLayer, ...layer }) => layer) }));
+    const parentGroupId = group.groupId || "";
+    patchEditorState((current) => {
+      const templateChildIds = children.filter((layer: any) => !layer.isUserLayer).map((layer: any) => layer.id);
+      const userLayers = current.userLayers
+        .filter((layer) => layer.id !== group.id)
+        .map((layer) => (layer.groupId === group.id ? { ...layer, groupId: parentGroupId } : layer));
+
+      const layerOverrides = { ...current.layerOverrides };
+      for (const layerId of templateChildIds) {
+        layerOverrides[layerId] = { ...(layerOverrides[layerId] || {}), groupId: parentGroupId || null };
+      }
+
+      return { ...current, userLayers, layerOverrides };
+    });
     setEditingGroupId(null);
     onSelectionChange(childIds);
   };
@@ -706,7 +993,7 @@ export default function PersonalizeClient({ product, template }: { product: any;
     const children = effectiveLayers.filter((layer: any) => layer.groupId === groupId && !layer.hidden);
     if (!children.length) return;
     setEditingGroupId(groupId);
-    onSelectionChange([children[0].id]);
+    onSelectionChange([children[0].id], groupId);
   };
 
   const exitGroup = () => {
@@ -729,7 +1016,8 @@ export default function PersonalizeClient({ product, template }: { product: any;
   const toggleLayerLock = (layerId: string, customerLocked: boolean) => updateUserLayer(layerId, { locked: customerLocked }, `lock-${layerId}`);
 
   const duplicateSelection = () => {
-    const allowed = selectedLayers.filter((layer: any) => layer.isUserLayer || getLayerPermissions(layer).duplicate);
+    if (!canDuplicateSelection) return;
+    const allowed = selectedLayers;
     const expandedIds = new Set(allowed.map((layer: any) => layer.id));
     for (const layer of allowed) {
       if (layer.type === "group") getDescendantIds(effectiveLayers, layer.id).forEach((id) => expandedIds.add(id));
@@ -746,7 +1034,7 @@ export default function PersonalizeClient({ product, template }: { product: any;
     if (!copies.length) return;
     recordHistory();
     patchEditorState((current) => ({ ...current, userLayers: [...current.userLayers, ...copies] }));
-    onSelectionChange(allowed.map((layer: any) => idMap.get(layer.id)).filter(Boolean) as string[]);
+    applySelection(allowed.map((layer: any) => idMap.get(layer.id)).filter(Boolean) as string[]);
   };
 
   const duplicateLayer = (layerId: string) => {
@@ -760,14 +1048,25 @@ export default function PersonalizeClient({ product, template }: { product: any;
     const copies = preliminaries.map((copy: any, index: number) => ({ ...copy, groupId: idMap.get(sources[index]?.groupId) || "", ...(copy.type === "group" ? { childIds: (sources[index]?.childIds || []).map((id: string) => idMap.get(id)).filter(Boolean) } : {}) }));
     recordHistory();
     patchEditorState((current) => ({ ...current, userLayers: [...current.userLayers, ...copies] }));
-    onSelectionChange([idMap.get(source.id)!]);
+    applySelection([idMap.get(source.id)!]);
   };
 
   const deleteSelection = () => {
-    const removableIds = selectedLayers.filter((layer: any) => layer.isUserLayer).map((layer: any) => layer.id);
-    if (!removableIds.length) return;
+    if (!canDeleteSelection) return;
+    const removableIds = selectedActionLayers.filter((layer: any) => layer.isUserLayer).map((layer: any) => layer.id);
+    const hiddenTemplateIds = selectedActionLayers.filter((layer: any) => !layer.isUserLayer).map((layer: any) => layer.id);
     recordHistory();
-    patchEditorState((current) => ({ ...current, userLayers: removeCustomerLayers(current.userLayers, removableIds) }));
+    patchEditorState((current) => ({
+      ...current,
+      userLayers: removeCustomerLayers(current.userLayers, removableIds),
+      layerOverrides: hiddenTemplateIds.reduce(
+        (overrides, layerId) => ({
+          ...overrides,
+          [layerId]: { ...(overrides[layerId] || {}), hidden: true },
+        }),
+        current.layerOverrides,
+      ),
+    }));
     onSelectionChange([]);
   };
 
@@ -1109,19 +1408,34 @@ export default function PersonalizeClient({ product, template }: { product: any;
   const showSelectionPanel = !previewMode && step === "design" && selectedLayers.length > 0;
 
   const onSelectLayer = (layerId: string | null, additive = false) => {
-    const nextIds = !layerId ? [] : additive && multiselectEnabled
-      ? selectedLayerIds.includes(layerId) ? selectedLayerIds.filter((id) => id !== layerId) : [...selectedLayerIds, layerId]
-      : [layerId];
+    let targetId = layerId;
+    let targetLayer = targetId ? effectiveLayers.find((item: any) => item.id === targetId) : null;
+    const visited = new Set<string>();
+    while (targetLayer?.groupId && targetLayer.groupId !== editingGroupId && !visited.has(targetLayer.groupId)) {
+      visited.add(targetLayer.groupId);
+      const parent = effectiveLayers.find((item: any) => item.id === targetLayer.groupId);
+      if (!parent) break;
+      targetLayer = parent;
+      targetId = parent.id;
+    }
+    if (targetId && !customerSelectableLayers.some((layer: any) => layer.id === targetId)) return;
+    const nextIds = !targetId ? [] : additive && multiselectEnabled
+      ? selectedLayerIds.includes(targetId) ? selectedLayerIds.filter((id) => id !== targetId) : [...selectedLayerIds, targetId]
+      : [targetId];
     setSelectedLayerIds(nextIds);
     setSelectedLayerId(nextIds[nextIds.length - 1] || null);
-    if (!layerId) {
+    if (!targetId) {
       setSelectedGridSlotId(null);
       return;
     }
     if (nextIds.length > 1) return;
-    const layer = effectiveLayers.find((item: any) => item.id === layerId);
+    const layer = targetLayer;
     if (!layer) return;
     if (layer.isUserLayer) {
+      // Selecting a customer-inserted advanced object (added while in
+      // Advanced Customize) surfaces its real tool tab rather than leaving
+      // Easy mode's narrowed rail out of sync with the open panel.
+      setCustomizeMode("advanced");
       if (layer.type === "text") setActiveTool("addText");
       else if (layer.type === "element") setActiveTool("elements");
       else if (layer.type === "image" || layer.type === "frame" || layer.type === "grid") setActiveTool("uploads");
@@ -1154,11 +1468,13 @@ export default function PersonalizeClient({ product, template }: { product: any;
     const { textStyle: requestedTextStyle, ...transformPatch } = patch || {};
     if (layer.isUserLayer) {
       const constrainedPatch = applyCustomerObjectLimits(layer, transformPatch, layer.page || activePage);
+      if (layer.type === "group") {
+        setEditorState((current) => transformCustomerGroupState(current, layerId, constrainedPatch));
+        return;
+      }
       setEditorState((current) => ({
         ...current,
-        userLayers: layer.type === "group"
-          ? transformGroupChildren(current.userLayers, layerId, transformPatch)
-          : current.userLayers.map((item) => (item.id === layerId ? {
+        userLayers: current.userLayers.map((item) => (item.id === layerId ? {
               ...item,
               ...constrainedPatch,
               ...(requestedTextStyle ? { textStyle: { ...(item.textStyle || {}), ...requestedTextStyle } } : {}),
@@ -1286,31 +1602,74 @@ export default function PersonalizeClient({ product, template }: { product: any;
 
   const onEditTextAction = () => {
     if (!selectedLayer) return;
-    if (selectedIsUser) {
-      setActiveTool("addText");
-      setMobilePanelOpen(true);
-      return;
+    setEditTextRequest((current) => ({
+      layerId: selectedLayer.id,
+      requestId: (current?.requestId || 0) + 1,
+    }));
+    setMobilePanelOpen(false);
+  };
+
+  const onCanvasTextEditStart = (layerId: string) => {
+    if (activeTextHistoryIdRef.current === layerId) return;
+    recordHistory();
+    activeTextHistoryIdRef.current = layerId;
+  };
+
+  const onCanvasTextDraftChange = (layerId: string, rawText: string) => {
+    const layer = effectiveLayers.find((item: any) => item.id === layerId);
+    if (!layer || layer.type !== "text") return;
+    if (!layer.isUserLayer && !getLayerPermissions(layer).editContent) return;
+    const text = normalizeInlineText(rawText, Boolean(layer.textStyle?.multiline));
+    markDirty();
+    if (layer.isUserLayer) {
+      setEditorState((current) => ({
+        ...current,
+        userLayers: current.userLayers.map((item) => item.id === layerId ? { ...item, text } : item),
+      }));
+    } else if (layer.fieldId) {
+      setValues((current) => ({ ...current, [layer.fieldId]: text }));
+    } else {
+      setEditorState((current) => {
+        const existing = current.layerOverrides[layerId] || {};
+        return {
+          ...current,
+          layerOverrides: {
+            ...current.layerOverrides,
+            [layerId]: {
+              ...existing,
+              properties: { ...(existing.properties || {}), text },
+            },
+          },
+        };
+      });
     }
-    setActiveTool("edit");
-    setMobilePanelOpen(true);
-    // Re-trigger the field focus in the Edit panel.
-    const id = selectedLayer.id;
-    setSelectedLayerId(null);
-    window.setTimeout(() => setSelectedLayerId(id), 0);
   };
 
   const onCanvasTextCommit = (layerId: string, rawText: string) => {
     const layer = effectiveLayers.find((item: any) => item.id === layerId);
-    if (!layer || layer.type !== "text") return;
-    if (!layer.isUserLayer && !getLayerPermissions(layer).editContent) return;
-    const text = layer.textStyle?.multiline ? rawText : rawText.replace(/[\r\n]+/g, " ");
-    if (layer.isUserLayer) {
-      updateUserLayer(layerId, { text });
-    } else if (layer.fieldId) {
-      onFieldChange(layer.fieldId, text);
-    } else {
-      updateLayerOverride(layerId, "properties", { text });
+    if (layer) {
+      const currentText = String(resolveLayerText(
+        layer,
+        layer.fieldId ? getFieldById(template, layer.fieldId) : null,
+        valuesRef.current,
+      ));
+      const text = normalizeInlineText(rawText, Boolean(layer.textStyle?.multiline));
+      if (currentText !== text) onCanvasTextDraftChange(layerId, text);
     }
+    if (activeTextHistoryIdRef.current === layerId) activeTextHistoryIdRef.current = null;
+  };
+
+  const onCanvasTextDiscard = (layerId: string) => {
+    const layer = editorStateRef.current.userLayers.find((item) => item.id === layerId);
+    if (!layer || activeTextHistoryIdRef.current !== layerId) return;
+    patchEditorState((current) => ({
+      ...current,
+      userLayers: current.userLayers.filter((item) => item.id !== layerId),
+    }));
+    history.discardLast();
+    activeTextHistoryIdRef.current = null;
+    setSelectedLayerIds([]);
+    setSelectedLayerId(null);
   };
 
   const onDeleteSelected = () => {
@@ -1595,7 +1954,7 @@ export default function PersonalizeClient({ product, template }: { product: any;
         }
         if (key === "a") {
           event.preventDefault();
-          onSelectionChange(effectiveLayers.filter((layer: any) => layer.isUserLayer || (!layer.customerInteractionDisabled && layer.customerEditable && getLayerPermissions(layer).select)).map((layer: any) => layer.id));
+          onSelectionChange(customerSelectableLayers.map((layer: any) => layer.id));
           return;
         }
         if (key === "d") {
@@ -1605,7 +1964,7 @@ export default function PersonalizeClient({ product, template }: { product: any;
         }
         if (key === "c") {
           event.preventDefault();
-          customerClipboardRef.current = selectedLayers.map((layer: any) => structuredClone(layer));
+          if (canDuplicateSelection) customerClipboardRef.current = selectedLayers.map((layer: any) => structuredClone(layer));
           return;
         }
         if (key === "v" && customerClipboardRef.current.length) {
@@ -1613,7 +1972,7 @@ export default function PersonalizeClient({ product, template }: { product: any;
           const copies = customerClipboardRef.current.map((layer: any) => normalizeUserLayer({ ...layer, id: "", groupId: "", x: Number(layer.x || 0) + 32, y: Number(layer.y || 0) + 32 })).filter(Boolean);
           recordHistory();
           patchEditorState((current) => ({ ...current, userLayers: [...current.userLayers, ...copies] }));
-          onSelectionChange(copies.map((copy: any) => copy.id));
+          applySelection(copies.map((copy: any) => copy.id));
           return;
         }
         if (key === "g") {
@@ -1656,20 +2015,19 @@ export default function PersonalizeClient({ product, template }: { product: any;
         enterGroup(selectedLayers[0].id);
         return;
       }
-      if ((event.key === "Delete" || event.key === "Backspace") && selectedLayers.some((layer: any) => layer.isUserLayer)) {
+      if ((event.key === "Delete" || event.key === "Backspace") && canDeleteSelection) {
         event.preventDefault();
         deleteSelection();
         return;
       }
       if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(event.key) && selectedLayers.length) {
-        const movable = selectedLayers.filter((layer: any) => !(layer.isUserLayer && layer.locked) && !layer.positionLocked && !layer.customerLocked && !layer.customerInteractionDisabled && (layer.isUserLayer || getLayerPermissions(layer).move));
-        if (!movable.length) return;
+        if (!canMoveSelection) return;
         event.preventDefault();
         const amount = event.shiftKey ? 40 : 8;
         const dx = event.key === "ArrowLeft" ? -amount : event.key === "ArrowRight" ? amount : 0;
         const dy = event.key === "ArrowUp" ? -amount : event.key === "ArrowDown" ? amount : 0;
-        onLayerTransform(movable[0].id, {}, "start");
-        movable.forEach((layer: any) => onLayerTransform(layer.id, { x: (layer.x || 0) + dx, y: (layer.y || 0) + dy }, "move"));
+        onLayerTransform(selectedLayers[0].id, {}, "start");
+        selectedLayers.forEach((layer: any) => onLayerTransform(layer.id, { x: (layer.x || 0) + dx, y: (layer.y || 0) + dy }, "move"));
       }
     };
     window.addEventListener("keydown", onKey);
@@ -1948,9 +2306,21 @@ export default function PersonalizeClient({ product, template }: { product: any;
         activePage={activePage}
         userLayers={editorState.userLayers}
         selectedLayerId={selectedLayerId}
-        onAddText={addUserTextLayer}
+        selectedPreset={textPlacementPreset}
+        onSelectPreset={(preset) => {
+          setTextPlacementPreset(preset);
+          setActiveTool("addText");
+          if (!isDesktop) setMobilePanelOpen(false);
+        }}
         onSelectLayer={onSelectLayer}
-        onUpdateText={(layerId, text) => updateUserLayer(layerId, { text }, `usertext-${layerId}`)}
+        onUpdateText={(layerId, text) => {
+          const layer = editorStateRef.current.userLayers.find((item) => item.id === layerId);
+          updateUserLayer(
+            layerId,
+            { text: normalizeInlineText(text, Boolean(layer?.textStyle?.multiline)) },
+            `usertext-${layerId}`,
+          );
+        }}
         onDeleteLayer={deleteUserLayer}
       />
     ) : activeTool === "uploads" ? (
@@ -2025,14 +2395,12 @@ export default function PersonalizeClient({ product, template }: { product: any;
       onUngroup={ungroupSelection}
       onDuplicate={duplicateSelection}
       onDelete={deleteSelection}
-      canDelete={selectedLayers.some((layer: any) => layer.isUserLayer)}
-      canArrange={selectedLayers.every(
-        (layer: any) =>
-          layer.isUserLayer ||
-          (!layer.positionLocked &&
-            !layer.customerInteractionDisabled &&
-            getLayerPermissions(layer).changeLayerOrder),
-      )}
+      canDelete={canDeleteSelection}
+      canArrange={canArrangeSelection}
+      canAlign={canMoveSelection}
+      canGroup={canGroupSelection}
+      canUngroup={canUngroupSelection}
+      canDuplicate={canDuplicateSelection}
     />
   ) : null;
 
@@ -2056,6 +2424,14 @@ export default function PersonalizeClient({ product, template }: { product: any;
       onSelectLayer={previewMode ? undefined : onSelectLayer}
       onSelectionChange={previewMode ? undefined : onSelectionChange}
       onLayerTransform={onLayerTransform}
+      textPlacementActive={!previewMode && activeTool === "addText" && pageAllowsCustomerText(template, activePage)}
+      onTextPlace={(position) => addUserTextLayer(position)}
+      onTextEditStart={onCanvasTextEditStart}
+      onTextDraftChange={onCanvasTextDraftChange}
+      onTextDiscard={onCanvasTextDiscard}
+      onEditingTextChange={setEditingTextLayerId}
+      onExitTextTool={() => setActiveTool("edit")}
+      editTextRequest={editTextRequest}
       onTextCommit={onCanvasTextCommit}
       cropLayerId={previewMode ? null : cropLayerId}
       onImageTransform={onImageTransformChange}
@@ -2131,10 +2507,11 @@ export default function PersonalizeClient({ product, template }: { product: any;
             {showPanels && isDesktop && (
               <div className="hidden lg:block">
                 <CustomerToolRail
-                  tools={tools}
+                  tools={visibleTools}
                   activeTool={activeTool}
                   onSelect={(tool) => {
                     setActiveTool(tool);
+                    if (tool === "addText") setWorkspaceMode("print");
                     if (tool === "options") setStep("options");
                     else if (step === "options") setStep("design");
                   }}
@@ -2146,7 +2523,18 @@ export default function PersonalizeClient({ product, template }: { product: any;
             {showPanels && isDesktop && (
               <aside className="hidden w-[340px] shrink-0 flex-col overflow-hidden border-r border-[#303839]/8 bg-white lg:flex">
                 <div className="shrink-0 px-4 pb-2 pt-4">
-                  <h2 className="font-display text-[22px] leading-tight text-[#303839]">{panelTitle}</h2>
+                  <div className="flex items-center justify-between gap-2">
+                    <h2 className="font-display text-[22px] leading-tight text-[#303839]">{panelTitle}</h2>
+                    {hasAdvancedTools && (
+                      <button
+                        type="button"
+                        onClick={() => setCustomizeModeSafely(customizeMode === "easy" ? "advanced" : "easy")}
+                        className="shrink-0 rounded-full border border-[#303839]/15 px-3 py-1 text-[11px] font-bold text-[#303839] hover:bg-[#303839]/5"
+                      >
+                        {customizeMode === "easy" ? "Advanced Customize" : "Simple View"}
+                      </button>
+                    )}
+                  </div>
                 </div>
                 <div className="min-h-0 flex-1 overflow-y-auto [scrollbar-color:rgba(48,56,57,0.18)_transparent] [scrollbar-width:thin]">{panelBody}</div>
               </aside>
@@ -2164,6 +2552,7 @@ export default function PersonalizeClient({ product, template }: { product: any;
                       layer={selectedLayer}
                       permissions={selectedPermissions as Record<string, boolean>}
                       isUserLayer={selectedIsUser}
+                      editingText={editingTextLayerId === selectedLayer.id}
                       onStyleChange={onToolbarStyleChange}
                       onEditText={onEditTextAction}
                       onDuplicate={
@@ -2334,7 +2723,7 @@ export default function PersonalizeClient({ product, template }: { product: any;
             />
           </div>
           <CustomerToolRail
-            tools={tools}
+            tools={visibleTools}
             activeTool={mobilePanelOpen ? activeTool : null}
             orientation="horizontal"
             onSelect={(tool) => {
@@ -2343,6 +2732,7 @@ export default function PersonalizeClient({ product, template }: { product: any;
                 return;
               }
               setActiveTool(tool);
+              if (tool === "addText") setWorkspaceMode("print");
               setMobilePanelOpen(true);
               if (tool === "options") setStep("options");
               else if (step === "options") setStep("design");
@@ -2354,18 +2744,29 @@ export default function PersonalizeClient({ product, template }: { product: any;
               <div className="flex justify-center pt-2" aria-hidden>
                 <span className="h-1 w-9 rounded-full bg-[#303839]/15" />
               </div>
-              <div className="flex items-center justify-between gap-3 px-5 pb-3 pt-2">
+              <div className="flex items-center justify-between gap-2 px-5 pb-3 pt-2">
                 <h2 className="min-w-0 truncate font-display text-xl text-[#303839]">{panelTitle}</h2>
-                <button
-                  type="button"
-                  aria-label="Close panel"
-                  onClick={() => setMobilePanelOpen(false)}
-                  className="grid h-9 w-9 shrink-0 place-items-center rounded-lg text-[#303839]/50 transition-colors hover:bg-[#303839]/5 hover:text-[#303839] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37]"
-                >
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden>
-                    <path d="M18 6 6 18M6 6l12 12" />
-                  </svg>
-                </button>
+                <div className="flex shrink-0 items-center gap-2">
+                  {hasAdvancedTools && (
+                    <button
+                      type="button"
+                      onClick={() => setCustomizeModeSafely(customizeMode === "easy" ? "advanced" : "easy")}
+                      className="rounded-full border border-[#303839]/15 px-2.5 py-1 text-[10px] font-bold text-[#303839] hover:bg-[#303839]/5"
+                    >
+                      {customizeMode === "easy" ? "Advanced" : "Simple"}
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    aria-label="Close panel"
+                    onClick={() => setMobilePanelOpen(false)}
+                    className="grid h-9 w-9 shrink-0 place-items-center rounded-lg text-[#303839]/50 transition-colors hover:bg-[#303839]/5 hover:text-[#303839] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37]"
+                  >
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden>
+                      <path d="M18 6 6 18M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
               </div>
               <div className="max-h-[58vh] overflow-y-auto">{panelBody}</div>
             </div>

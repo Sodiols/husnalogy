@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { getAbsoluteTransform, getRelativeTransform, groupLayers, resolveGroupBounds, transformGroupChildren, ungroupLayers, validateGroupRelationships } from "../groups";
+import { alignLayers, distributeLayers } from "@/app/admin/dashboard/design-builder/builder-utils";
+import { distributeAlongAxis, getAbsoluteTransform, getRelativeTransform, groupLayers, resolveGroupBounds, rotatedAxisHalfExtents, transformGroupChildren, ungroupLayers, validateGroupRelationships } from "../groups";
 import { buildPageSvg } from "../svg";
 
 const layer = (id: string, x: number, y: number, width = 100, height = 80) => ({ id, name: id, page: "front", pageId: "front", type: "shape", shape: "rectangle", x, y, width, height, rotation: 0, opacity: 1, zIndex: 2, fill: "#303839", hidden: false });
@@ -45,6 +46,66 @@ describe("persistent grouping engine", () => {
     expect(bounds?.height).toBeCloseTo(100);
     const cyclic: any[] = [{ id: "g1", type: "group", groupId: "g2" }, { id: "g2", type: "group", groupId: "g1" }];
     expect(validateGroupRelationships(cyclic).map((issue) => issue.code)).toContain("INVALID_GROUP_CYCLE");
+  });
+
+  it("computes rotation-aware axis half-extents (spec §9)", () => {
+    expect(rotatedAxisHalfExtents({ width: 40, height: 10, rotation: 0 })).toEqual({ halfW: 20, halfH: 5 });
+    const rotated = rotatedAxisHalfExtents({ width: 40, height: 10, rotation: 90 });
+    expect(rotated.halfW).toBeCloseTo(5);
+    expect(rotated.halfH).toBeCloseTo(20);
+  });
+
+  it("distributes along an axis using true edge gaps, not centre spacing (spec §10)", () => {
+    const layers = [
+      { id: "a", x: 0, width: 20, height: 20 },
+      { id: "b", x: 50, width: 100, height: 20 },
+      { id: "c", x: 200, width: 20, height: 20 },
+    ];
+    const positions = distributeAlongAxis(layers, "x");
+    // span -10..210 (220), sizes 20+100+20=140, gap=(220-140)/2=40.
+    // b left edge = a.right(10)+40=50 -> centre 100.
+    expect(positions.find((p) => p.id === "b")?.center).toBeCloseTo(100);
+    expect(positions.find((p) => p.id === "a")?.center).toBeCloseTo(0);
+    expect(positions.find((p) => p.id === "c")?.center).toBeCloseTo(200);
+  });
+
+  it("wires the admin builder's align/distribute commands through the shared rotation-aware engine", () => {
+    const template: any = {
+      canvasWidthPx: 600,
+      canvasHeightPx: 600,
+      layers: [
+        { id: "a", page: "front", x: 0, y: 0, width: 20, height: 20, rotation: 0 },
+        { id: "b", page: "front", x: 50, y: 40, width: 100, height: 20, rotation: 0 },
+        { id: "c", page: "front", x: 200, y: 80, width: 20, height: 20, rotation: 0 },
+      ],
+    };
+    const distributed = distributeLayers(template, ["a", "b", "c"], "horizontal");
+    expect(distributed.layers.find((l: any) => l.id === "b").x).toBeCloseTo(100);
+
+    const aligned = alignLayers(template, ["a", "b", "c"], "left");
+    const left = Math.min(...template.layers.map((l: any) => l.x - l.width / 2));
+    expect(aligned.layers.find((l: any) => l.id === "b").x).toBe(Math.round(left + 50));
+  });
+
+  it("distinguishes 'centre on card' from 'align to each other' in the admin builder (spec §29)", () => {
+    const template: any = {
+      canvasWidthPx: 600,
+      canvasHeightPx: 800,
+      layers: [
+        { id: "a", page: "front", x: 100, y: 100, width: 20, height: 20, rotation: 0 },
+        { id: "b", page: "front", x: 140, y: 100, width: 20, height: 20, rotation: 0 },
+      ],
+    };
+    // Works for a single selected layer too, unlike align-to-each-other.
+    const single = alignLayers(template, ["a"], "centerOnCard");
+    expect(single.layers.find((l: any) => l.id === "a").x).toBe(300);
+    expect(single.layers.find((l: any) => l.id === "a").y).toBe(400);
+
+    // Multi-selection translates as one block, preserving relative spacing.
+    const multi = alignLayers(template, ["a", "b"], "centerOnCardHorizontal");
+    const ax = multi.layers.find((l: any) => l.id === "a").x;
+    const bx = multi.layers.find((l: any) => l.id === "b").x;
+    expect(bx - ax).toBe(40);
   });
 
   it("applies parent visibility and opacity while preserving child render order", () => {

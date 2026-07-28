@@ -237,6 +237,7 @@ export default function AdminPropertiesPanel({
   onLayerPatch,
   onStylePatch,
   onFieldPatch,
+  onLinkField,
   onToggleCustomerEditable,
 }: any) {
   // Declared before the early return so the hook order stays stable.
@@ -532,6 +533,34 @@ export default function AdminPropertiesPanel({
             <div className="grid gap-2 border-t border-[#303839]/10 pt-2">
               <div><Lbl>Field label (customer sees)</Lbl><Txt value={field.label} onChange={(v: string) => onFieldPatch(layer.id, { label: v })} /></div>
               <div><Lbl>Field key</Lbl><Txt value={field.id} onChange={(v: string) => onFieldPatch(layer.id, { key: v })} /></div>
+              {(() => {
+                // Linked wedding fields (spec §15): e.g. the couple's names
+                // repeated on Front and Back should update together. This
+                // links this layer to an EXISTING field instead of renaming
+                // its own - typing an existing key above only auto-suffixes
+                // to avoid a collision, it can never point at another field.
+                const compatible = (template?.fields || []).filter(
+                  (f: any) => f.id !== field.id && (f.type === "image") === (field.type === "image"),
+                );
+                if (!compatible.length) return null;
+                return (
+                  <div>
+                    <Lbl>Link to another field</Lbl>
+                    <Sel
+                      ariaLabel="Link to another field"
+                      value=""
+                      onChange={(value: string) => value && onLinkField(layer.id, value)}
+                      options={[
+                        { value: "", label: "— Use own field —" },
+                        ...compatible.map((f: any) => ({ value: f.id, label: f.label || f.id })),
+                      ]}
+                    />
+                    <p className="mt-1 text-[11px] leading-relaxed text-[#303839]/45">
+                      Sharing a field means the customer edits it once and every linked layer updates together.
+                    </p>
+                  </div>
+                );
+              })()}
               {layer.type === "text" && (
                 <div className="grid grid-cols-2 gap-2">
                   <div>

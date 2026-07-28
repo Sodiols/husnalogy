@@ -155,7 +155,8 @@ function layoutAtSize(
 }
 
 export function layoutText(input: TextLayoutInput, measure: MeasureFn): TextLayoutResult {
-  const rawText = input.uppercase ? String(input.text ?? "").toUpperCase() : String(input.text ?? "");
+  const canonicalText = String(input.text ?? "").replace(/\r\n?/g, "\n");
+  const rawText = input.uppercase ? canonicalText.toUpperCase() : canonicalText;
   const lineHeightMult = Number(input.lineHeight) > 0 ? Number(input.lineHeight) : 1.15;
   const minFontSize = Math.max(4, Number(input.minFontSize) || 8);
   const startSize = Math.max(minFontSize, Number(input.fontSize) || 16);
@@ -242,7 +243,8 @@ export type TextResizeConstraints = {
 // Text is never stretched: resizing changes the box, wrapping, or the resolved
 // shrink-to-fit font size.
 export function getTextResizeConstraints(input: TextLayoutInput, measure: MeasureFn): TextResizeConstraints {
-  const rawText = input.uppercase ? String(input.text ?? "").toUpperCase() : String(input.text ?? "");
+  const canonicalText = String(input.text ?? "").replace(/\r\n?/g, "\n");
+  const rawText = input.uppercase ? canonicalText.toUpperCase() : canonicalText;
   const multiline = input.multiline !== false;
   const lineHeight = Number(input.lineHeight) > 0 ? Number(input.lineHeight) : 1.15;
   const baseFontSize = Math.max(4, Number(input.fontSize) || 16);
@@ -410,7 +412,27 @@ export function resolveTextBox(
     autoWidth: false,
     clampedBySafeArea: false,
   };
-  if (!isAutoWidthText(input)) return stored;
+  const autoWidth = isAutoWidthText(input);
+  const autoHeight = getTextAutoSizeMode(input) === "height";
+  if (!autoWidth && !autoHeight) return stored;
+
+  if (autoHeight) {
+    const layout = layoutText(
+      {
+        ...input,
+        width: Math.max(1, input.width),
+        height: Number.MAX_SAFE_INTEGER,
+        fitMode: "fixed",
+      },
+      measure,
+    );
+    const height = Math.max(1, Math.ceil(layout.totalHeight));
+    const vAlign = input.verticalAlign || "middle";
+    let y = input.y;
+    if (vAlign === "top") y = input.y - input.height / 2 + height / 2;
+    else if (vAlign === "bottom") y = input.y + input.height / 2 - height / 2;
+    return { ...stored, y, height };
+  }
 
   const fontSize = Math.max(4, Number(input.fontSize) || 16);
   const box = getSingleLineTextBox(

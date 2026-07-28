@@ -41,6 +41,53 @@ export function resolveGroupBounds(layers: any[], layerIds?: string[]): Bounds |
   return { left, top, right, bottom, width, height, x: left + width / 2, y: top + height / 2 };
 }
 
+// Axis-aligned half-extent of a single (possibly rotated) layer's box. Used
+// by alignment and distribution so a rotated child's true rendered edge -
+// not its unrotated width/height - determines where it lands (spec §9/§10).
+export function rotatedAxisHalfExtents(layer: any): { halfW: number; halfH: number } {
+  const halfWidth = Math.abs(number(layer.width)) / 2;
+  const halfHeight = Math.abs(number(layer.height)) / 2;
+  const radians = (number(layer.rotation) * Math.PI) / 180;
+  const cos = Math.abs(Math.cos(radians));
+  const sin = Math.abs(Math.sin(radians));
+  return {
+    halfW: halfWidth * cos + halfHeight * sin,
+    halfH: halfWidth * sin + halfHeight * cos,
+  };
+}
+
+export type AxisPosition = { id: string; center: number };
+
+// Distributes 3+ layers so the GAPS between their true (rotation-aware) edges
+// are equal, not their centres. The first and last objects (by current
+// position) stay in place; only the interior objects move. This matches
+// standard design-tool "equal spacing" semantics (spec §10).
+export function distributeAlongAxis(layers: any[], axis: "x" | "y"): AxisPosition[] {
+  if (layers.length < 3) return layers.map((layer) => ({ id: layer.id, center: number(layer[axis]) }));
+  const sorted = layers.slice().sort((a, b) => number(a[axis]) - number(b[axis]));
+  const halfExtents = sorted.map((layer) => {
+    const { halfW, halfH } = rotatedAxisHalfExtents(layer);
+    return axis === "x" ? halfW : halfH;
+  });
+
+  const firstCenter = number(sorted[0][axis]);
+  const lastCenter = number(sorted[sorted.length - 1][axis]);
+  const spanStart = firstCenter - halfExtents[0];
+  const spanEnd = lastCenter + halfExtents[halfExtents.length - 1];
+  const totalSpan = spanEnd - spanStart;
+  const sumOfSizes = halfExtents.reduce((sum, half) => sum + half * 2, 0);
+  const gapCount = sorted.length - 1;
+  const gap = gapCount > 0 ? (totalSpan - sumOfSizes) / gapCount : 0;
+
+  let cursor = spanStart;
+  return sorted.map((layer, index) => {
+    const half = halfExtents[index];
+    const center = cursor + half;
+    cursor += half * 2 + gap;
+    return { id: layer.id, center };
+  });
+}
+
 export function getDescendantIds(layers: any[], groupId: string): string[] {
   const result: string[] = [];
   const queue = [groupId];

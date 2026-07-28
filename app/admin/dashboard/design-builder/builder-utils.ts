@@ -1,7 +1,9 @@
 "use client";
 
 import { customerEditablePermissionBundle } from "@/lib/customizer";
-import { getDescendantIds, transformGroupChildren } from "@/lib/customizer/v2/groups";
+import { distributeAlongAxis, getDescendantIds, rotatedAxisHalfExtents, transformGroupChildren } from "@/lib/customizer/v2/groups";
+import { fullyEnclosedLayerIds, type SelectionRect } from "@/lib/customizer/v2/selection-geometry";
+import { getTextPlacementStyle, type TextPlacementPreset } from "@/lib/customizer/v2/text-editing";
 
 // Shared helpers for the admin visual Design Builder. Pure functions that take a
 // template and return a new template — the builder owns undo/redo on top.
@@ -28,6 +30,36 @@ export function layersForPage(template: any, pageId: string): any[] {
     .sort((a: any, b: any) => Number(a.zIndex || 0) - Number(b.zIndex || 0));
 }
 
+// The admin selects logical top-level objects. Children remain individually
+// editable after Ungroup, but while grouped only the group container receives
+// canvas interaction. Hidden groups also hide their descendants from marquee
+// selection and Select All.
+export function selectableLayersForPage(template: any, pageId: string, editingGroupId: string | null = null): any[] {
+  const pageLayers = layersForPage(template, pageId);
+  const byId = new Map(pageLayers.map((layer: any) => [layer.id, layer]));
+  return pageLayers.filter((layer: any) => {
+    if (layer.hidden || layer.adminEditable === false) return false;
+    if (editingGroupId && layer.id === editingGroupId) return false;
+    let parentId = String(layer.groupId || "");
+    const visited = new Set<string>();
+    while (parentId && !visited.has(parentId)) {
+      visited.add(parentId);
+      const parent = byId.get(parentId);
+      if (!parent) break;
+      if (editingGroupId && parentId === editingGroupId) {
+        return String(layer.groupId || "") === editingGroupId;
+      }
+      // A valid ancestor means the ancestor is the logical selectable object.
+      return false;
+    }
+    return true;
+  });
+}
+
+export function fullyEnclosedLayerIdsForSelection(rect: SelectionRect, layers: any[]): string[] {
+  return fullyEnclosedLayerIds(rect, layers);
+}
+
 export function getLayer(template: any, layerId: string): any {
   return (template?.layers || []).find((l: any) => l.id === layerId) || null;
 }
@@ -44,20 +76,30 @@ function nextZIndex(template: any, pageId: string) {
 
 /* ---------- layer factories ---------- */
 
-export function newTextLayer(template: any, pageId: string) {
+export function newTextLayer(
+  template: any,
+  pageId: string,
+  options: { x?: number; y?: number; text?: string; preset?: TextPlacementPreset } = {},
+) {
   const cx = Math.round((template?.canvasWidthPx || 1500) / 2);
   const cy = Math.round((template?.canvasHeightPx || 2100) / 2);
+  const placed = Number.isFinite(options.x) && Number.isFinite(options.y);
+  const preset = getTextPlacementStyle(
+    options.preset || "body",
+    Number(template?.canvasWidthPx) || 1500,
+    Number(template?.canvasHeightPx) || 2100,
+  );
   return {
     id: genId("text"),
-    name: "Text",
+    name: placed ? preset.name : "Text",
     page: pageId,
     type: "text",
-    text: "Your text",
+    text: options.text ?? (placed ? "" : "Your text"),
     fieldId: "",
-    x: cx,
-    y: cy,
-    width: 1000,
-    height: 120,
+    x: placed ? Number(options.x) : cx,
+    y: placed ? Number(options.y) : cy,
+    width: placed ? preset.width : 1000,
+    height: placed ? preset.height : 120,
     rotation: 0,
     zIndex: nextZIndex(template, pageId),
     opacity: 1,
@@ -67,14 +109,17 @@ export function newTextLayer(template: any, pageId: string) {
     customerEditable: false,
     textStyle: {
       fontFamily: "Cormorant Garamond",
-      fontSize: 72,
+      fontSize: placed ? preset.fontSize : 72,
       fontWeight: "400",
       color: "#303839",
-      letterSpacing: 2,
-      lineHeight: 1.15,
-      textAlign: "center",
+      letterSpacing: placed ? preset.letterSpacing : 2,
+      lineHeight: placed ? preset.lineHeight : 1.15,
+      textAlign: placed ? preset.textAlign : "center",
+      verticalAlign: "middle",
       uppercase: false,
-      multiline: false,
+      multiline: placed ? preset.multiline : false,
+      autoSizeMode: placed ? (preset.multiline ? "height" : "width") : "fixed",
+      fitMode: placed && preset.multiline ? "auto-height" : "fixed",
     },
   };
 }
@@ -341,7 +386,18 @@ export function setCustomerEditable(template: any, layerId: string, editable: bo
   const customerPermissions = customerEditablePermissionBundle(editable);
 
   if (!editable) {
-    const fields = (template.fields || []).filter((f: any) => f.id !== layer.fieldId);
+    // Spec §15 "Linked Wedding Fields": several layers can share one fieldId
+    // (e.g. the couple's names repeated on Front and Back). Only delete the
+    // field definition once THIS is the last layer using it - otherwise
+    // turning off one linked instance would silently delete the shared field
+    // and orphan its siblings, losing their label/placeholder/config and any
+    // customer value already saved under that key.
+    const stillLinkedElsewhere = (template.layers || []).some(
+      (l: any) => l.id !== layerId && l.fieldId === layer.fieldId,
+    );
+    const fields = stillLinkedElsewhere
+      ? template.fields || []
+      : (template.fields || []).filter((f: any) => f.id !== layer.fieldId);
     return {
       ...template,
       fields,
@@ -448,6 +504,67 @@ export function updateConnectedField(template: any, layerId: string, patch: any)
   return { ...working, fields, layers };
 }
 
+// Link a layer to an EXISTING field (spec §15 "Linked Wedding Fields"): e.g.
+// the bride's name appears once on the Front and again on the Back, and the
+// customer should only have to type it once. `resolveLayerText`/
+// `resolveLayerImage` already key off `values[field.id]`, so any number of
+// layers sharing one fieldId automatically stay in sync - this just gives
+// the admin an explicit, safe way to create that link (typing an existing
+// key into "Field key" only renames-with-collision-suffix; it can never
+// point a layer at another layer's field).
+export function linkLayerToField(template: any, layerId: string, targetFieldId: string) {
+  const layer = getLayer(template, layerId);
+  if (!layer || !targetFieldId) return template;
+  if (layer.fieldId === targetFieldId) return template;
+  const targetField = (template.fields || []).find((f: any) => f.id === targetFieldId);
+  if (!targetField) return template;
+
+  const previousFieldId = layer.fieldId;
+  const customerPermissions = customerEditablePermissionBundle(true);
+  const layers = (template.layers || []).map((l: any) =>
+    l.id === layerId ? { ...l, customerEditable: true, customerPermissions, fieldId: targetFieldId } : l,
+  );
+
+  // Clean up the layer's previous field if nothing else still uses it, so it
+  // doesn't linger as an orphan flagged for removal on save.
+  const previousStillUsed = previousFieldId && layers.some((l: any) => l.id !== layerId && l.fieldId === previousFieldId);
+  const fields = previousStillUsed || !previousFieldId
+    ? template.fields || []
+    : (template.fields || []).filter((f: any) => f.id !== previousFieldId);
+
+  return { ...template, fields, layers };
+}
+
+// Reorder a field within `template.fields` (spec §5 "Display order in Easy
+// Personalize"). This is deliberately independent of layer z-order: moving a
+// field up or down only changes where it appears in the customer's Your
+// Details / Photos list, never anything on the canvas.
+//
+// Swaps are computed against the subsequence of fields actually connected to
+// a customer-editable layer (matching what AdminFieldsPanel and
+// mapCustomerFields display), so an orphan field sitting between two
+// connected ones can never silently absorb a swap and leave the visible
+// order unchanged.
+export function moveConnectedField(template: any, layerId: string, direction: "up" | "down") {
+  const layer = getLayer(template, layerId);
+  if (!layer?.fieldId) return template;
+  const fields = template.fields || [];
+  const layers = template.layers || [];
+  const connectedIds = fields
+    .map((f: any) => f.id)
+    .filter((id: string) => layers.some((l: any) => l.customerEditable && l.fieldId === id));
+
+  const pos = connectedIds.indexOf(layer.fieldId);
+  const targetPos = direction === "up" ? pos - 1 : pos + 1;
+  if (pos === -1 || targetPos < 0 || targetPos >= connectedIds.length) return template;
+
+  const currentIndex = fields.findIndex((f: any) => f.id === connectedIds[pos]);
+  const targetIndex = fields.findIndex((f: any) => f.id === connectedIds[targetPos]);
+  const reordered = fields.slice();
+  [reordered[currentIndex], reordered[targetIndex]] = [reordered[targetIndex], reordered[currentIndex]];
+  return { ...template, fields: reordered };
+}
+
 /* ---------- layer stacking (arrange) ---------- */
 
 // Renumber a page's layers to clean 1..n by their current stacking order.
@@ -476,16 +593,47 @@ export function sendLayerToBack(template: any, layerId: string) {
 
 /* ---------- alignment & distribution (spec §8) ---------- */
 
-export type AlignMode = "left" | "center" | "right" | "top" | "middle" | "bottom";
+export type AlignMode =
+  | "left" | "center" | "right" | "top" | "middle" | "bottom"
+  | "centerOnCardHorizontal" | "centerOnCardVertical" | "centerOnCard";
+
+const CARD_ONLY_MODES = new Set<AlignMode>(["centerOnCardHorizontal", "centerOnCardVertical", "centerOnCard"]);
 
 // Align layers. One layer aligns to the canvas; several align to their
-// combined bounding box.
-export function alignLayers(template: any, layerIds: string[], mode: AlignMode) {
-  const layers = layerIds.map((id) => getLayer(template, id)).filter(Boolean);
+// combined bounding box. The explicit "centerOnCard*" modes are distinct
+// from the above (spec §29): they translate the whole selection as one
+// block onto the canvas centre, preserving relative layout, regardless of
+// how many objects are selected - not to be confused with the single-layer
+// "align to canvas" behaviour above, which aligns objects to EACH OTHER's
+// combined bounds (or the canvas, only as a degenerate single-object case).
+export function alignLayers(template: any, layerIds: string[], mode: AlignMode, geometryLayers?: any[]) {
+  const geometryById = new Map((geometryLayers || []).map((layer: any) => [layer.id, layer]));
+  const layers = layerIds
+    .map((id) => geometryById.get(id) || getLayer(template, id))
+    .filter(Boolean);
   if (!layers.length) return template;
 
   const canvasW = Number(template.canvasWidthPx) || 1500;
   const canvasH = Number(template.canvasHeightPx) || 2100;
+
+  if (CARD_ONLY_MODES.has(mode)) {
+    const boxLeft = Math.min(...layers.map((l: any) => l.x - rotatedAxisHalfExtents(l).halfW));
+    const boxRight = Math.max(...layers.map((l: any) => l.x + rotatedAxisHalfExtents(l).halfW));
+    const boxTop = Math.min(...layers.map((l: any) => l.y - rotatedAxisHalfExtents(l).halfH));
+    const boxBottom = Math.max(...layers.map((l: any) => l.y + rotatedAxisHalfExtents(l).halfH));
+    const deltaX = canvasW / 2 - (boxLeft + boxRight) / 2;
+    const deltaY = canvasH / 2 - (boxTop + boxBottom) / 2;
+    let next = template;
+    for (const layer of layers) {
+      const patch: any = {};
+      const actual = getLayer(template, layer.id) || layer;
+      if (mode === "centerOnCardHorizontal" || mode === "centerOnCard") patch.x = Math.round(actual.x + deltaX);
+      if (mode === "centerOnCardVertical" || mode === "centerOnCard") patch.y = Math.round(actual.y + deltaY);
+      next = updateLayer(next, layer.id, patch);
+    }
+    return next;
+  }
+
   let left: number, right: number, top: number, bottom: number;
   if (layers.length === 1) {
     left = 0;
@@ -493,54 +641,131 @@ export function alignLayers(template: any, layerIds: string[], mode: AlignMode) 
     top = 0;
     bottom = canvasH;
   } else {
-    left = Math.min(...layers.map((l: any) => l.x - l.width / 2));
-    right = Math.max(...layers.map((l: any) => l.x + l.width / 2));
-    top = Math.min(...layers.map((l: any) => l.y - l.height / 2));
-    bottom = Math.max(...layers.map((l: any) => l.y + l.height / 2));
+    left = Math.min(...layers.map((l: any) => l.x - rotatedAxisHalfExtents(l).halfW));
+    right = Math.max(...layers.map((l: any) => l.x + rotatedAxisHalfExtents(l).halfW));
+    top = Math.min(...layers.map((l: any) => l.y - rotatedAxisHalfExtents(l).halfH));
+    bottom = Math.max(...layers.map((l: any) => l.y + rotatedAxisHalfExtents(l).halfH));
   }
 
   const patchFor = (layer: any) => {
+    const { halfW, halfH } = rotatedAxisHalfExtents(layer);
     switch (mode) {
       case "left":
-        return { x: Math.round(left + layer.width / 2) };
+        return { x: Math.round(left + halfW) };
       case "center":
         return { x: Math.round((left + right) / 2) };
       case "right":
-        return { x: Math.round(right - layer.width / 2) };
+        return { x: Math.round(right - halfW) };
       case "top":
-        return { y: Math.round(top + layer.height / 2) };
+        return { y: Math.round(top + halfH) };
       case "middle":
         return { y: Math.round((top + bottom) / 2) };
       case "bottom":
-        return { y: Math.round(bottom - layer.height / 2) };
+        return { y: Math.round(bottom - halfH) };
       default:
         return {};
     }
   };
 
-  const idSet = new Set(layerIds);
-  return {
-    ...template,
-    layers: (template.layers || []).map((l: any) => (idSet.has(l.id) ? { ...l, ...patchFor(l) } : l)),
-  };
+  let next = template;
+  for (const layer of layers) {
+    const geometryPatch = patchFor(layer);
+    const actual = getLayer(template, layer.id) || layer;
+    const patch = {
+      ...(geometryPatch.x === undefined ? {} : { x: Math.round(Number(actual.x) + Number(geometryPatch.x) - Number(layer.x)) }),
+      ...(geometryPatch.y === undefined ? {} : { y: Math.round(Number(actual.y) + Number(geometryPatch.y) - Number(layer.y)) }),
+    };
+    next = updateLayer(next, layer.id, patch);
+  }
+  return next;
 }
 
-// Distribute 3+ layers with equal spacing between their centres.
-export function distributeLayers(template: any, layerIds: string[], axis: "horizontal" | "vertical") {
-  const layers = layerIds.map((id) => getLayer(template, id)).filter(Boolean);
+// Distribute 3+ layers with equal spacing between their true (rotation-aware)
+// edges. The first and last objects (by position) stay in place; only the
+// interior objects move so gaps become equal (spec §10).
+export type DistributionMode = "centers" | "spacing";
+
+export function distributeLayers(
+  template: any,
+  layerIds: string[],
+  axis: "horizontal" | "vertical",
+  mode: DistributionMode = "spacing",
+  geometryLayers?: any[],
+) {
+  const geometryById = new Map((geometryLayers || []).map((layer: any) => [layer.id, layer]));
+  const layers = layerIds
+    .map((id) => geometryById.get(id) || getLayer(template, id))
+    .filter(Boolean);
   if (layers.length < 3) return template;
 
   const key = axis === "horizontal" ? "x" : "y";
-  const sorted = [...layers].sort((a: any, b: any) => a[key] - b[key]);
-  const first = sorted[0][key];
-  const last = sorted[sorted.length - 1][key];
-  const step = (last - first) / (sorted.length - 1);
+  const positions = mode === "centers"
+    ? (() => {
+        const sorted = layers.slice().sort((a: any, b: any) => Number(a[key] || 0) - Number(b[key] || 0));
+        const first = Number(sorted[0][key] || 0);
+        const last = Number(sorted[sorted.length - 1][key] || 0);
+        const step = (last - first) / (sorted.length - 1);
+        return new Map(sorted.map((layer: any, index: number) => [layer.id, Math.round(first + step * index)]));
+      })()
+    : new Map(distributeAlongAxis(layers, key).map((position) => [position.id, Math.round(position.center)]));
 
-  const positions = new Map(sorted.map((l: any, i: number) => [l.id, Math.round(first + step * i)]));
+  let next = template;
+  for (const id of layerIds) {
+    if (positions.has(id)) {
+      const geometry = geometryById.get(id) || getLayer(template, id);
+      const actual = getLayer(template, id);
+      if (geometry && actual) {
+        const delta = Number(positions.get(id)) - Number(geometry[key] || 0);
+        next = updateLayer(next, id, { [key]: Math.round(Number(actual[key] || 0) + delta) });
+      }
+    }
+  }
+  return next;
+}
+
+export type LayerArrangeMode = "bringToFront" | "bringForward" | "sendBackward" | "sendToBack";
+
+// Arrange the selected logical objects as a block. Descendants are expanded so
+// moving a group through the stack also moves its rendered children.
+export function arrangeLayerSelection(template: any, layerIds: string[], action: LayerArrangeMode) {
+  if (!layerIds.length) return template;
+  const first = getLayer(template, layerIds[0]);
+  if (!first) return template;
+  const pageId = first.page;
+  const ordered = layersForPage(template, pageId);
+  const selected = new Set<string>();
+  for (const id of layerIds) {
+    selected.add(id);
+    const layer = getLayer(template, id);
+    if (layer?.type === "group") {
+      for (const descendantId of getDescendantIds(template.layers || [], id)) selected.add(descendantId);
+    }
+  }
+  if (!selected.size) return template;
+
+  if (action === "bringToFront") {
+    ordered.splice(0, ordered.length, ...ordered.filter((layer) => !selected.has(layer.id)), ...ordered.filter((layer) => selected.has(layer.id)));
+  } else if (action === "sendToBack") {
+    ordered.splice(0, ordered.length, ...ordered.filter((layer) => selected.has(layer.id)), ...ordered.filter((layer) => !selected.has(layer.id)));
+  } else if (action === "bringForward") {
+    for (let index = ordered.length - 2; index >= 0; index -= 1) {
+      if (selected.has(ordered[index].id) && !selected.has(ordered[index + 1].id)) {
+        [ordered[index], ordered[index + 1]] = [ordered[index + 1], ordered[index]];
+      }
+    }
+  } else {
+    for (let index = 1; index < ordered.length; index += 1) {
+      if (selected.has(ordered[index].id) && !selected.has(ordered[index - 1].id)) {
+        [ordered[index - 1], ordered[index]] = [ordered[index], ordered[index - 1]];
+      }
+    }
+  }
+
+  const zById = new Map(ordered.map((layer, index) => [layer.id, index + 1]));
   return {
     ...template,
-    layers: (template.layers || []).map((l: any) =>
-      positions.has(l.id) ? { ...l, [key]: positions.get(l.id) } : l,
+    layers: (template.layers || []).map((layer: any) =>
+      layer.page === pageId && zById.has(layer.id) ? { ...layer, zIndex: zById.get(layer.id) } : layer,
     ),
   };
 }
@@ -550,17 +775,14 @@ export function matchLayerSize(template: any, layerIds: string[], dimension: "wi
   const layers = layerIds.map((id) => getLayer(template, id)).filter(Boolean);
   if (layers.length < 2) return template;
   const reference = layers[0];
-  const idSet = new Set(layerIds.slice(1));
-  return {
-    ...template,
-    layers: (template.layers || []).map((l: any) => {
-      if (!idSet.has(l.id)) return l;
-      const patch: any = {};
-      if (dimension === "width" || dimension === "both") patch.width = reference.width;
-      if (dimension === "height" || dimension === "both") patch.height = reference.height;
-      return { ...l, ...patch };
-    }),
-  };
+  let next = template;
+  for (const layer of layers.slice(1)) {
+    const patch: any = {};
+    if (dimension === "width" || dimension === "both") patch.width = reference.width;
+    if (dimension === "height" || dimension === "both") patch.height = reference.height;
+    next = updateLayer(next, layer.id, patch);
+  }
+  return next;
 }
 
 // Move several layers by the same delta (multiselect drag).
