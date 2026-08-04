@@ -4,12 +4,14 @@ import { getProductBySlug, getProducts } from "@/lib/products";
 import { createServiceRoleClient } from "@/lib/supabase/server";
 import { normalizeCurrency } from "@/lib/currency";
 import { calculateCustomizationPrice } from "@/lib/customizer/v2/pricing";
-import { createOrderDesignSnapshots } from "@/lib/customizer/order-snapshots";
-import { customizationFromRow } from "@/lib/customizer/customizations";
-import { getTrustedTemplateForCustomization } from "@/lib/customizer/versions";
-import { resolveCustomerDocument, templateToDocument } from "@/lib/customizer/v2/document";
-import { runPreflight } from "@/lib/customizer/v2/preflight";
-import { createServerMeasure } from "@/lib/customizer/v2/server/server-fonts";
+import {
+  finalizeOrderDesignSnapshots,
+  isOrderSnapshotError,
+  OrderSnapshotError,
+  prepareOrderDesignSnapshots,
+  recordCheckoutPreflightResults,
+  type PreparedOrderSnapshot,
+} from "@/lib/customizer/order-snapshots";
 
 const ORDER_STATUSES = new Set([
   "pending",
@@ -28,6 +30,36 @@ const ORDER_STATUSES = new Set([
 ]);
 
 const PAYMENT_STATUSES = new Set(["unpaid", "paid", "partially paid", "refunded", "cancelled"]);
+
+// Personalized production lifecycle (spec §39). Kept separate from
+// ORDER_STATUSES so render progress never overloads the customer-facing state.
+export const PRODUCTION_STATUSES = new Set([
+  "not_required",
+  "snapshot_pending",
+  "snapshot_ready",
+  "render_queued",
+  "rendering",
+  "render_ready",
+  "attention_required",
+  "failed",
+]);
+
+// Calm, customer-facing wording for the account order list (spec §40). Internal
+// error codes and technical render states are never shown to customers.
+export const CUSTOMER_PRODUCTION_LABELS: Record<string, string> = {
+  not_required: "",
+  snapshot_pending: "Design received",
+  snapshot_ready: "Design received",
+  render_queued: "Preparing production files",
+  rendering: "Preparing production files",
+  render_ready: "Design ready for production",
+  attention_required: "Design requires attention",
+  failed: "Design requires attention",
+};
+
+export function customerProductionStatusLabel(productionStatus: string): string {
+  return CUSTOMER_PRODUCTION_LABELS[cleanString(productionStatus)] ?? "";
+}
 
 function orderFromSupabaseRow(row: any = {}) {
   const metadata = row.metadata || {};
@@ -78,6 +110,7 @@ function orderFromSupabaseRow(row: any = {}) {
       address: row.address || metadata.address || {},
       customizationDetails: row.customization_details || metadata.customizationDetails || {},
       uploadedFiles: row.uploaded_files || metadata.uploadedFiles || {},
+      productionStatus: row.production_status || metadata.productionStatus || "not_required",
       createdAt: row.created_at,
       updatedAt: row.updated_at,
     },
@@ -85,84 +118,112 @@ function orderFromSupabaseRow(row: any = {}) {
   );
 }
 
-async function insertSupabaseOrder(order) {
+// The stable reference that ties an order item in this request to its prepared
+// snapshot. Never a client-supplied id: create_customized_order() maps it to
+// the real order_items.id it just inserted.
+function orderItemRef(_item: any, index: number) {
+  return `item_${index}`;
+}
+
+// Insert the order, its items and every required design snapshot in one
+// database transaction (spec §5). A partially created customized order is
+// impossible: the function either commits everything or raises, and a raise
+// inside the function rolls the whole statement back.
+async function insertSupabaseOrder(
+  order: any,
+  prepared: PreparedOrderSnapshot[],
+): Promise<{ order: any; reused: boolean; inserted: Array<Record<string, any>> }> {
   const supabase = createServiceRoleClient();
-  const { data, error } = await supabase
-    .from("orders")
-    .insert({
-      id: order.id,
-      customer_id: order.customerId || null,
-      customer_name: order.customerName,
-      customer_email: order.customerEmail,
-      customer_phone: order.customerPhone || null,
-      product_id: order.productId || null,
-      product_title: order.productTitle,
-      product_slug: order.productSlug || null,
-      subtotal: order.subtotal,
-      delivery_charge: order.deliveryCharge,
-      total: order.total,
-      payment_status: order.paymentStatus,
-      status: order.status,
-      message: order.message || null,
-      address: order.address || {},
-      customization_details: order.customizationDetails || {},
-      uploaded_files: order.uploadedFiles || {},
-      metadata: order,
-      created_at: order.createdAt,
-      updated_at: order.updatedAt,
-    })
-    .select("*")
-    .single();
 
-  if (error) throw error;
+  const orderPayload = {
+    id: order.id,
+    customer_id: order.customerId || null,
+    customer_name: order.customerName,
+    customer_email: order.customerEmail,
+    customer_phone: order.customerPhone || null,
+    product_id: order.productId || null,
+    product_title: order.productTitle,
+    product_slug: order.productSlug || null,
+    subtotal: order.subtotal,
+    delivery_charge: order.deliveryCharge,
+    total: order.total,
+    payment_status: order.paymentStatus,
+    status: order.status,
+    message: order.message || null,
+    address: order.address || {},
+    customization_details: order.customizationDetails || {},
+    uploaded_files: order.uploadedFiles || {},
+    metadata: order,
+    // Personalized orders start as snapshot_pending and are advanced by
+    // finalizeOrderDesignSnapshots once rendering is queued.
+    production_status: prepared.length ? "snapshot_pending" : "not_required",
+    idempotency_key: order.idempotencyKey || null,
+    created_at: order.createdAt,
+    updated_at: order.updatedAt,
+  };
 
-  if (order.items?.length) {
-    const { error: itemError } = await supabase.from("order_items").insert(
-      order.items.map((item) => ({
-        order_id: data.id,
-        product_id: item.productId || null,
-        product_slug: item.productSlug || null,
-        product_title: item.productTitle || "Order item",
-        product_image: item.image || null,
-        quantity: item.quantity,
-        unit_price: item.price,
-        line_total: item.finalPrice,
-        selected_options: item.selectedOptions || {},
-        customization_values: item.customizationValues || {},
-        uploaded_files: item.uploadedFiles || {},
-        preview_data: item.previewData || {},
-        metadata: item,
-      }))
+  const itemsPayload = (order.items || []).map((item: any, index: number) => ({
+    ref: orderItemRef(item, index),
+    product_id: item.productId || null,
+    product_slug: item.productSlug || null,
+    product_title: item.productTitle || "Order item",
+    product_image: item.image || null,
+    quantity: item.quantity,
+    unit_price: item.price,
+    line_total: item.finalPrice,
+    selected_options: item.selectedOptions || {},
+    customization_values: item.customizationValues || {},
+    uploaded_files: item.uploadedFiles || {},
+    preview_data: item.previewData || {},
+    metadata: item,
+  }));
+
+  const { data, error } = await (supabase.rpc as any)("create_customized_order", {
+    p_order: orderPayload,
+    p_items: itemsPayload,
+    p_snapshots: prepared.map((entry) => entry.row),
+  });
+
+  if (error) {
+    console.error(`[orders] Transactional insert failed for order ${order.id}:`, error);
+    throw new OrderSnapshotError(
+      prepared.length ? "ORDER_TRANSACTION_FAILED" : "SNAPSHOT_INSERT_FAILED",
+      `create_customized_order failed: ${error.message}`,
+      { cause: error },
     );
-
-    if (itemError) throw itemError;
   }
 
-  // Attach the order to any saved customizations and mark them ordered (Part 10).
-  // Best-effort: never block order creation on this bookkeeping.
+  const result = (data || {}) as Record<string, any>;
+  const inserted = Array.isArray(result.snapshots) ? result.snapshots : [];
+
+  // The transaction guarantees this, but an explicit check keeps the promise
+  // enforced in application code too: a successful customized order response
+  // is never returned without one snapshot per customized item.
+  if (!result.reused && inserted.length !== prepared.length) {
+    throw new OrderSnapshotError(
+      "SNAPSHOT_INSERT_FAILED",
+      `Expected ${prepared.length} snapshots but the transaction reported ${inserted.length}.`,
+    );
+  }
+
+  // Attach the order to any saved customizations and mark them ordered.
+  // Bookkeeping only — the permanent record is the snapshot, so a failure here
+  // never invalidates the committed order.
   const customizationIds = (order.items || [])
-    .map((item) => item.customizationId)
+    .map((item: any) => item.customizationId)
     .filter(Boolean);
   if (customizationIds.length) {
     try {
       await supabase
         .from("product_customizations")
-        .update({ status: "ordered", order_id: data.id, updated_at: nowIso() })
+        .update({ status: "ordered", order_id: order.id, updated_at: nowIso() })
         .in("id", customizationIds);
     } catch (updateError) {
       console.error("Could not mark customizations as ordered:", updateError);
     }
-
-    // Permanent order design snapshots (spec §22): freeze the complete
-    // resolved design so later template/product edits never affect the order.
-    try {
-      await createOrderDesignSnapshots(order);
-    } catch (snapshotError) {
-      console.error("Could not create order design snapshots:", snapshotError);
-    }
   }
 
-  return order;
+  return { order, reused: Boolean(result.reused), inserted };
 }
 
 async function readSupabaseOrders(filters: any = {}) {
@@ -299,6 +360,16 @@ function normalizeOrderRequest(input: any, existing: any = {}) {
     currency: normalizeCurrency(input.currency ?? existing.currency ?? items[0]?.currency),
     paymentStatus,
     status,
+    // Personalized production lifecycle (spec §39), deliberately separate from
+    // the customer-facing order status.
+    productionStatus: PRODUCTION_STATUSES.has(
+      cleanString(input.productionStatus ?? existing.productionStatus)
+    )
+      ? cleanString(input.productionStatus ?? existing.productionStatus)
+      : existing.productionStatus || "not_required",
+    // Lets a retried checkout submission resolve to the same order instead of
+    // creating a duplicate one.
+    idempotencyKey: clampString(input.idempotencyKey ?? existing.idempotencyKey, 200),
     message: clampString(input.message ?? existing.message, 5000),
     createdAt: existing.createdAt || input.createdAt || now,
     updatedAt: now,
@@ -352,41 +423,6 @@ async function applyTrustedPricing(order: any) {
   };
 }
 
-async function validateOrderCustomizations(order: any): Promise<Record<string, string>> {
-  const customizedItems = (order.items || []).filter((item: any) => item.customizationId);
-  if (!customizedItems.length) return {};
-  const supabase = createServiceRoleClient();
-  for (const item of customizedItems) {
-    const { data: row, error } = await supabase
-      .from("product_customizations")
-      .select("*")
-      .eq("id", item.customizationId)
-      .maybeSingle();
-    if (error || !row) return { customization: "A personalized design could not be found. Reopen it from your cart and save again." };
-    if (row.user_id && (!order.customerId || String(row.user_id) !== String(order.customerId))) {
-      return { customization: "A personalized design does not belong to this account." };
-    }
-    const customization = customizationFromRow(row);
-    const trusted = await getTrustedTemplateForCustomization(customization);
-    if (!trusted) return { customization: "A personalized design uses a template version that is no longer available." };
-    const { document } = templateToDocument(trusted.template);
-    const resolved = resolveCustomerDocument(document, customization.values || {}, customization.renderData?.editorState || null);
-    const preflight = runPreflight(resolved, { measure: createServerMeasure(), blockOnLowResolution: true });
-    if (preflight.blocking) {
-      const first = preflight.issues.find((issue) => issue.severity === "error");
-      return { customization: first?.message || "A personalized design has a problem that must be fixed before checkout." };
-    }
-    await supabase.from("customizer_preflight_results").insert({
-      customization_id: customization.id,
-      context: "checkout",
-      ok: preflight.ok,
-      blocking: preflight.blocking,
-      issues: preflight.issues,
-    });
-  }
-  return {};
-}
-
 export async function createOrderRequest(input) {
   const product = input.productSlug ? await getProductBySlug(input.productSlug) : null;
 
@@ -408,13 +444,74 @@ export async function createOrderRequest(input) {
 
   if (Object.keys(errors).length) return { ok: false, errors };
 
-  const customizationErrors = await validateOrderCustomizations(order);
-  if (Object.keys(customizationErrors).length) return { ok: false, errors: customizationErrors };
-
   const pricedOrder = await applyTrustedPricing(order);
 
-  await insertSupabaseOrder(pricedOrder);
-  return { ok: true, order: pricedOrder };
+  // Personalized items must have a complete, valid, immutable snapshot before
+  // the order is allowed to exist (spec §4). Ownership, the trusted template
+  // version, private assets, authoritative server preflight and trusted
+  // pricing are all resolved here — before anything is written.
+  let prepared: PreparedOrderSnapshot[] = [];
+  try {
+    const preparation = await prepareOrderDesignSnapshots({
+      items: pricedOrder.items || [],
+      customerId: pricedOrder.customerId,
+      itemRefFor: orderItemRef,
+    });
+    prepared = preparation.prepared;
+    // Audit trail for the checkout gate, kept even when the order is rejected.
+    await recordCheckoutPreflightResults(preparation.preflightResults);
+  } catch (error) {
+    if (isOrderSnapshotError(error)) {
+      console.error(
+        `[orders] Rejected checkout: ${error.code} for customization ${error.customizationId || "(unknown)"} — ${error.detail}`,
+        error,
+      );
+      return { ok: false, errors: { customization: error.customerMessage }, errorCode: error.code };
+    }
+    console.error("[orders] Rejected checkout: snapshot preparation failed unexpectedly.", error);
+    return {
+      ok: false,
+      errors: {
+        customization:
+          "A personalized design could not be prepared for production. Please reopen it, save it again, and retry checkout.",
+      },
+      errorCode: "SNAPSHOT_BUILD_FAILED",
+    };
+  }
+
+  let insertResult: Awaited<ReturnType<typeof insertSupabaseOrder>>;
+  try {
+    insertResult = await insertSupabaseOrder(pricedOrder, prepared);
+  } catch (error) {
+    if (isOrderSnapshotError(error)) {
+      console.error(`[orders] Order ${pricedOrder.id} was not created: ${error.code} — ${error.detail}`, error);
+      return { ok: false, errors: { order: error.customerMessage }, errorCode: error.code };
+    }
+    console.error(`[orders] Order ${pricedOrder.id} was not created.`, error);
+    throw error;
+  }
+
+  // A replayed submission (same idempotency key) already has its snapshots and
+  // render jobs; re-running finalization would only duplicate work.
+  if (!insertResult.reused && prepared.length) {
+    try {
+      await finalizeOrderDesignSnapshots({
+        orderId: pricedOrder.id,
+        prepared,
+        inserted: insertResult.inserted as any,
+      });
+    } catch (finalizeError) {
+      // The order and its snapshots are committed and valid. Queueing is
+      // asynchronous, so a failure here is recorded for admin attention rather
+      // than failing an order the customer has already completed.
+      console.error(
+        `[orders] Order ${pricedOrder.id} committed but production finalization failed.`,
+        finalizeError,
+      );
+    }
+  }
+
+  return { ok: true, order: pricedOrder, reused: insertResult.reused };
 }
 
 export async function getOrderRequests(filters: any = {}) {

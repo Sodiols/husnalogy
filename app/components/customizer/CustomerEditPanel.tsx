@@ -6,6 +6,7 @@
 
 import { useEffect, useRef } from "react";
 import { getEnabledPages, getImageUrl, getLayerPermissions, isValueEmpty } from "./customizer-utils";
+import { isMultilineTextField } from "@/lib/customizer/v2/text-editing";
 
 const inputClass =
   "w-full rounded-md border border-[#303839]/15 bg-white px-3 py-2.5 text-sm text-[#303839] outline-none transition focus:border-[#D4AF37]";
@@ -44,13 +45,15 @@ export function mapCustomerFields(template: any) {
   return entries;
 }
 
-function TextField({ field, value, error, onChange, onFocusField, inputRef, highlighted }: any) {
+function TextField({ field, layer, value, error, onChange, onFocusField, inputRef, highlighted }: any) {
   const count =
     field.maxLength && typeof value === "string" ? (
       <span className={`text-[11px] font-bold ${value.length > field.maxLength ? "text-red-700" : "text-[#303839]/45"}`}>
         {value.length}/{field.maxLength}
       </span>
     ) : null;
+
+  const multiline = isMultilineTextField(field, layer);
 
   const shared = {
     id: `cz-field-${field.id}`,
@@ -78,8 +81,16 @@ function TextField({ field, value, error, onChange, onFocusField, inputRef, high
         </label>
         {count}
       </div>
-      {field.type === "textarea" ? (
-        <textarea {...shared} className={`${inputClass} min-h-24`} />
+      {multiline ? (
+        <textarea
+          {...shared}
+          rows={field.type === "textarea" ? 4 : 2}
+          className={`${inputClass} min-h-24`}
+          // Enter inserts a line break here; it must not submit or blur.
+          onKeyDown={(event) => {
+            if (event.key === "Enter") event.stopPropagation();
+          }}
+        />
       ) : field.type === "select" ? (
         <select {...shared} className={inputClass}>
           <option value="">Select…</option>
@@ -238,6 +249,7 @@ export default function CustomerEditPanel({
                   <TextField
                     key={field.id}
                     field={field}
+                    layer={layer}
                     value={values[field.id]}
                     error={errors[field.id]}
                     highlighted={selectedLayerId === layer.id}

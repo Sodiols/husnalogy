@@ -40,14 +40,21 @@ export async function POST(request) {
     const trustedCustomerId = user?.uid || "";
     const trustedCustomerEmail = user?.email || cleanString(body.customerEmail).toLowerCase();
 
+    // Scope the idempotency key to the authenticated customer so one shopper
+    // can never replay (or collide with) another shopper's order.
+    const submittedKey = cleanString(body.idempotencyKey).slice(0, 120);
+    const idempotencyKey = submittedKey ? `${trustedCustomerId || trustedCustomerEmail}:${submittedKey}` : "";
+
     const result = await createOrderRequest({
       ...body,
       customerId: trustedCustomerId,
       customerEmail: trustedCustomerEmail,
       customerName: body.customerName || user?.name || "",
+      idempotencyKey,
     });
 
     if (!result.ok) {
+      // errorCode is for server logs and tests; customers see result.errors.
       return Response.json({ ok: false, errors: result.errors }, { status: 400 });
     }
 

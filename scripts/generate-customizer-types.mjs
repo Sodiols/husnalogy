@@ -100,11 +100,25 @@ for (const match of sql.matchAll(createPattern)) {
 const alterPattern = /alter\s+table\s+public\.([a-z_][a-z0-9_]*)\s+([\s\S]*?);/gi;
 for (const match of sql.matchAll(alterPattern)) {
   const table = match[1];
-  if (!tables.has(table) || !/\badd\s+column\s+if\s+not\s+exists\b/i.test(match[2])) continue;
+  if (!tables.has(table)) continue;
+  const columns = tables.get(table);
   for (const fragment of splitTopLevel(match[2])) {
-    if (!/^add\s+column\s+if\s+not\s+exists\b/i.test(fragment)) continue;
-    const column = parseColumn(fragment);
-    if (column) tables.get(table).set(column.name, column);
+    if (/^add\s+column\s+if\s+not\s+exists\b/i.test(fragment)) {
+      const column = parseColumn(fragment);
+      if (column) columns.set(column.name, column);
+      continue;
+    }
+    // A column added as nullable and tightened later (add column, backfill,
+    // set not null) must not be reported as nullable in the contract.
+    const alterColumn = fragment.match(/^alter\s+column\s+"?([a-z_][a-z0-9_]*)"?\s+(.+)$/is);
+    if (!alterColumn) continue;
+    const existing = columns.get(alterColumn[1]);
+    if (!existing) continue;
+    const action = alterColumn[2].replace(/\s+/g, " ").trim().toLowerCase();
+    if (action === "set not null") existing.nullable = false;
+    else if (action === "drop not null") existing.nullable = true;
+    else if (action.startsWith("set default")) existing.defaulted = true;
+    else if (action === "drop default") existing.defaulted = false;
   }
 }
 

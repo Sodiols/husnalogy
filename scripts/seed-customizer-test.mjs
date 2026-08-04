@@ -98,10 +98,15 @@ const pages = [
 ];
 const fields = [
   { id: "guest_name", label: "Guest name", type: "text", required: true, defaultValue: "Alex & Jordan", placeholder: "Names", customerVisible: true },
+  // Deliberately typed "text" while its layer sets multiline: true. This is
+  // the combination that used to render a single-line input in the form, so
+  // the acceptance suite always exercises the layer-driven multiline path.
+  { id: "message", label: "Message", type: "text", required: false, defaultValue: "With love\nand joy", placeholder: "Your message", customerVisible: true },
   { id: "upload_photo", label: "Feature photo", type: "image", required: false, defaultValue: "", customerVisible: true },
 ];
 const layers = [
   { id: "title_layer", name: "Guest name", page: "front", type: "text", fieldId: "guest_name", customerEditable: true, customerPermissions: permissions, text: "Alex & Jordan", x: 750, y: 260, width: 1100, height: 130, rotation: 0, zIndex: 10, opacity: 1, textStyle: { fontFamily: "Cormorant Garamond", fontSize: 72, fontWeight: 600, color: "#303839", textAlign: "center", lineHeight: 1.15, letterSpacing: 0 } },
+  { id: "message_layer", name: "Message", page: "back", type: "text", fieldId: "message", customerEditable: true, customerPermissions: permissions, text: "With love\nand joy", x: 750, y: 700, width: 1000, height: 420, rotation: 0, zIndex: 9, opacity: 1, textStyle: { fontFamily: "Cormorant Garamond", fontSize: 54, fontWeight: 400, color: "#303839", textAlign: "center", lineHeight: 1.3, letterSpacing: 0, multiline: true } },
   { id: "photo_layer", name: "Feature photo", page: "front", type: "image", fieldId: "upload_photo", customerEditable: true, customerPermissions: permissions, src: "", x: 750, y: 720, width: 900, height: 620, rotation: 0, zIndex: 11, opacity: 1 },
   { id: "grid_layer", name: "Photo grid", page: "front", type: "grid", customerEditable: true, customerPermissions: permissions, columns: 2, rows: 2, slots: gridSlots(), x: 750, y: 1420, width: 1080, height: 700, rotation: 0, zIndex: 12, opacity: 1, gap: 18, padding: 0, cornerRadius: 0, backgroundColor: "#ffffff" },
   { id: "back_text", name: "Back message", page: "back", type: "text", customerEditable: false, text: "Thank you", x: 750, y: 1050, width: 1000, height: 140, rotation: 0, zIndex: 10, opacity: 1, textStyle: { fontFamily: "Cormorant Garamond", fontSize: 70, fontWeight: 500, color: "#303839", textAlign: "center", lineHeight: 1.15, letterSpacing: 0 } },
@@ -128,12 +133,35 @@ if (uploadError) throw uploadError;
 const { data: asset, error: assetError } = await supabase.from("customer_asset_library").upsert({ user_id: customerA.id, bucket: "customer-uploads", path: assetPath, thumbnail_path: assetPath, editor_path: assetPath, file_name: "collection1.png", mime_type: "image/png", size_bytes: fixture.byteLength, width: 1200, height: 1200, checksum, status: "ready", metadata: { e2eSeed: true } }, { onConflict: "user_id,path" }).select("*").single();
 if (assetError) throw assetError;
 const assetReference = { version: 1, assetId: asset.id, ownerId: customerA.id, bucket: "customer-uploads", storagePath: assetPath, editorStoragePath: assetPath, thumbnailStoragePath: assetPath, originalFileName: "collection1.png", mimeType: "image/png", fileSize: fixture.byteLength, width: 1200, height: 1200, checksum, createdAt: asset.created_at };
-const values = { guest_name: "Seeded Guest", upload_photo: { assetReference, assetId: asset.id, ownerId: customerA.id, bucket: "customer-uploads", path: assetPath, originalPath: assetPath, fileName: "collection1.png", mimeType: "image/png", width: 1200, height: 1200 } };
+// The seeded message keeps a real line break so snapshot, render and restore
+// paths are always exercised with multiline customer text.
+const values = { guest_name: "Seeded Guest", message: "With love\nand joy", upload_photo: { assetReference, assetId: asset.id, ownerId: customerA.id, bucket: "customer-uploads", path: assetPath, originalPath: assetPath, fileName: "collection1.png", mimeType: "image/png", width: 1200, height: 1200 } };
 const editorState = { layerOverrides: { grid_layer: { gridSlots: { slot_1_1: { assetReference, assetId: asset.id, ownerId: customerA.id, bucket: "customer-uploads", path: assetPath, originalPath: assetPath, transform: { assetId: asset.id, zoom: 1, offsetX: 0, offsetY: 0, rotation: 0, flipX: false, flipY: false, cropX: 0, cropY: 0, cropWidth: 1, cropHeight: 1 } } } } }, userLayers: [{ id: "e2e_customer_qr", name: "Customer QR", page: "back", type: "qrCode", value: "https://husnalogy.com/e2e", foregroundColor: "#303839", backgroundColor: "#ffffff", errorCorrection: "H", margin: 4, moduleStyle: "square", required: true, x: 750, y: 1450, width: 300, height: 300, rotation: 0, zIndex: 20, opacity: 1, hidden: false, locked: false, groupId: "" }] };
 const { data: existingCustomization } = await supabase.from("product_customizations").select("id").eq("user_id", customerA.id).eq("product_id", productId).in("status", ["draft", "in_cart"]).order("updated_at", { ascending: false }).limit(1).maybeSingle();
 const customizationRow = { ...(existingCustomization?.id ? { id: existingCustomization.id } : {}), user_id: customerA.id, product_id: productId, template_id: template.id, template_version: 1, status: "draft", values, uploaded_files: { upload_photo: values.upload_photo }, selected_options: { quantity: 1 }, preview_images: {}, render_data: { editorState, activePage: "front" }, print_files: {}, asset_references: [assetReference], updated_at: new Date().toISOString() };
 const { data: customization, error: customizationError } = await supabase.from("product_customizations").upsert(customizationRow, { onConflict: "id" }).select("*").single();
 if (customizationError) throw customizationError;
+
+// A design owned by the *other* customer. The acceptance suite uses it to
+// prove one customer can never order another customer's saved design.
+const { data: existingCustomerBDraft } = await supabase.from("product_customizations").select("id").eq("user_id", customerB.id).eq("product_id", productId).in("status", ["draft", "in_cart"]).order("updated_at", { ascending: false }).limit(1).maybeSingle();
+const { data: customerBCustomization, error: customerBError } = await supabase.from("product_customizations").upsert({
+  ...(existingCustomerBDraft?.id ? { id: existingCustomerBDraft.id } : {}),
+  user_id: customerB.id,
+  product_id: productId,
+  template_id: template.id,
+  template_version: 1,
+  status: "draft",
+  values: { guest_name: "Customer B Guest", message: "Second customer\nsecond line" },
+  uploaded_files: {},
+  selected_options: { quantity: 1 },
+  preview_images: {},
+  render_data: { editorState: { layerOverrides: {}, userLayers: [] }, activePage: "front" },
+  print_files: {},
+  asset_references: [],
+  updated_at: new Date().toISOString(),
+}, { onConflict: "id" }).select("*").single();
+if (customerBError) throw customerBError;
 
 const flags = ["customizer_v2", "customizer_v2_grids", "customizer_v2_groups", "customizer_v2_mockups", "customizer_v2_perspective_mockups", "customizer_v2_server_rendering", "customizer_v2_print_pdf", "customizer_v2_customer_layers", "customizer_v2_customer_multiselect", "customizer_v2_customer_grouping", "customizer_v2_qr_codes", "customizer_v2_customer_shapes", "customizer_v2_customer_lines", "customizer_v2_customer_frames", "customizer_v2_customer_grids", "customizer_v2_image_filters", "customizer_v2_product_preview_editing", "customizer_v2_split_view"];
 const { error: flagError } = await supabase.from("customizer_feature_flags").upsert(flags.map((flag) => ({ product_id: productId, product_type: null, flag, enabled: true, scope: "product", scope_key: productId, environments: ["development", "preview", "production", "test"], rollout_percentage: 100, admin_only: false })), { onConflict: "scope,scope_key,flag" });
@@ -158,8 +186,16 @@ const manifest = {
   projectRef,
   seededAt: new Date().toISOString(),
   productId,
+  productSlug: slug,
   templateId: template.id,
+  templateVersion: 1,
   customizationAId: customization.id,
+  // Canonical alias used by the acceptance specs.
+  customizationId: customization.id,
+  customerBCustomizationId: customerBCustomization.id,
+  // The field whose linked layer allows multiple lines (spec §18 coverage).
+  multilineFieldLabel: "Message",
+  multilineFieldId: "message",
   customerAssetReference: assetReference,
   customerAId: customerA.id,
   customerBId: customerB.id,

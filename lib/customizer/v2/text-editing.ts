@@ -32,6 +32,26 @@ export function isEmptyText(value: unknown): boolean {
   return normalizeCanonicalText(value).trim().length === 0;
 }
 
+// Field types that can never hold a line break, whatever the linked layer says.
+const SINGLE_VALUE_FIELD_TYPES = new Set(["select", "checkbox", "number", "date", "time", "image", "file"]);
+
+// Whether a customer text field accepts line breaks (spec §18).
+//
+// Both the field type and the linked layer's textStyle.multiline are
+// authoritative: a field typed "text" whose layer allows multiple lines must
+// still offer a real multi-line control, otherwise pressing Enter in the form
+// could never produce the line break the layer is configured to render. Form
+// editing, inline canvas editing, persistence and preflight all read this one
+// answer, so they cannot disagree.
+export function isMultilineTextField(
+  field: { type?: string } | null | undefined,
+  layer?: { textStyle?: { multiline?: unknown } } | null,
+): boolean {
+  if (field?.type === "textarea") return true;
+  if (field?.type && SINGLE_VALUE_FIELD_TYPES.has(field.type)) return false;
+  return Boolean(layer?.textStyle?.multiline);
+}
+
 export function getTextPlacementStyle(
   preset: TextPlacementPreset,
   canvasWidth: number,

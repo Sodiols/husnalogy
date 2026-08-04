@@ -1,10 +1,10 @@
 # Customizer Dependency Map
 
-Generated: 2026-07-28T14:55:32.727Z
+Generated: 2026-08-04T10:37:45.148Z
 
 This inventory covers static imports, dynamic `import()`/`require()` calls, Next.js route entry points, package scripts, tests, migrations, Supabase functions, worker/configuration strings, and route URL references. A zero-import file is not automatically unused: framework and deployment entry points are retained explicitly.
 
-Files audited: 178
+Files audited: 184
 
 | File | Category | Static importers | Dynamic importers | Runtime/string references | Audit decision |
 | --- | --- | ---: | ---: | ---: | --- |
@@ -20,7 +20,7 @@ Files audited: 178
 | `app/admin/dashboard/design-builder/AdminProductOptionsPanel.tsx` | admin UI | 1 | 0 | 1 | KEEP: referenced |
 | `app/admin/dashboard/design-builder/AdminPropertiesPanel.tsx` | admin UI | 1 | 0 | 4 | KEEP: referenced |
 | `app/admin/dashboard/design-builder/AdminTemplateSettings.tsx` | admin UI | 1 | 0 | 1 | KEEP: referenced |
-| `app/admin/dashboard/design-builder/AdminTextToolPanel.tsx` | admin UI | 1 | 0 | 0 | KEEP: referenced |
+| `app/admin/dashboard/design-builder/AdminTextToolPanel.tsx` | admin UI | 1 | 0 | 1 | KEEP: referenced |
 | `app/admin/dashboard/design-builder/AdminToolRail.tsx` | admin UI | 1 | 0 | 5 | KEEP: referenced |
 | `app/admin/dashboard/design-builder/AdminUploadsPanel.tsx` | admin UI | 1 | 0 | 3 | KEEP: referenced |
 | `app/admin/dashboard/design-builder/builder-utils.ts` | admin UI | 17 | 0 | 8 | KEEP: referenced |
@@ -34,10 +34,12 @@ Files audited: 178
 | `app/api/admin/customizer/mockups/[productId]/publish/route.ts` | Next API route | 0 | 0 | 1 | KEEP: framework/script/test/migration entry point |
 | `app/api/admin/customizer/mockups/[productId]/route.ts` | Next API route | 0 | 0 | 1 | KEEP: framework/script/test/migration entry point |
 | `app/api/admin/customizer/orders/[orderId]/snapshots/route.ts` | Next API route | 0 | 0 | 1 | KEEP: framework/script/test/migration entry point |
-| `app/api/admin/customizer/render/process/route.ts` | Next API route | 0 | 0 | 2 | KEEP: framework/script/test/migration entry point |
-| `app/api/admin/customizer/render/retry/route.ts` | Next API route | 0 | 0 | 3 | KEEP: framework/script/test/migration entry point |
+| `app/api/admin/customizer/render/health/route.ts` | Next API route | 0 | 0 | 2 | KEEP: framework/script/test/migration entry point |
+| `app/api/admin/customizer/render/process/route.ts` | Next API route | 0 | 0 | 3 | KEEP: framework/script/test/migration entry point |
+| `app/api/admin/customizer/render/retry/route.ts` | Next API route | 0 | 0 | 5 | KEEP: framework/script/test/migration entry point |
 | `app/api/admin/customizer/templates/[productId]/publish/route.ts` | Next API route | 0 | 0 | 2 | KEEP: framework/script/test/migration entry point |
 | `app/api/admin/customizer/templates/[productId]/versions/route.ts` | Next API route | 0 | 0 | 1 | KEEP: framework/script/test/migration entry point |
+| `app/api/cron/customizer-render/route.ts` | Next API route | 0 | 0 | 3 | KEEP: framework/script/test/migration entry point |
 | `app/api/customizations/[id]/route.ts` | Next API route | 0 | 0 | 3 | KEEP: framework/script/test/migration entry point |
 | `app/api/customizations/route.ts` | Next API route | 0 | 0 | 9 | KEEP: framework/script/test/migration entry point |
 | `app/api/customizer/assets/[id]/route.ts` | Next API route | 0 | 0 | 1 | KEEP: framework/script/test/migration entry point |
@@ -82,30 +84,32 @@ Files audited: 178
 | `app/components/customizer/useCustomizerProtection.ts` | customer/shared UI | 1 | 0 | 2 | KEEP: referenced |
 | `app/products/[slug]/personalize/page.tsx` | Next route entry | 0 | 0 | 1 | KEEP: framework/script/test/migration entry point |
 | `app/products/[slug]/personalize/personalize-client.tsx` | support | 1 | 0 | 7 | KEEP: referenced |
-| `CUSTOMIZER_ADMIN_GUIDE.md` | documentation | 0 | 0 | 2 | KEEP: referenced |
-| `CUSTOMIZER_ARCHITECTURE.md` | documentation | 0 | 0 | 1 | KEEP: referenced |
-| `CUSTOMIZER_CLEANUP_REPORT.md` | documentation | 0 | 0 | 2 | KEEP: referenced |
-| `CUSTOMIZER_DATABASE.md` | documentation | 0 | 0 | 8 | KEEP: referenced |
-| `CUSTOMIZER_DEPENDENCY_MAP.md` | documentation | 0 | 0 | 3 | KEEP: referenced |
-| `CUSTOMIZER_DEPLOYMENT.md` | documentation | 0 | 0 | 3 | KEEP: referenced |
-| `CUSTOMIZER_ROLLBACK.md` | documentation | 0 | 0 | 4 | KEEP: referenced |
-| `docs/CUSTOMIZER_ADMIN_GUIDE.md` | documentation | 0 | 0 | 2 | KEEP: referenced |
+| `CUSTOMIZER_DATABASE.md` | documentation | 0 | 0 | 4 | KEEP: referenced |
+| `CUSTOMIZER_DEPENDENCY_MAP.md` | documentation | 0 | 0 | 1 | KEEP: referenced |
+| `docs/CUSTOMIZER_ADMIN_GUIDE.md` | documentation | 0 | 0 | 1 | KEEP: referenced |
 | `docs/CUSTOMIZER_V2_FINAL_VALIDATION_REPORT.md` | documentation | 0 | 0 | 1 | KEEP: referenced |
 | `docs/CUSTOMIZER_V2.md` | documentation | 0 | 0 | 1 | KEEP: referenced |
 | `e2e/customer-customizer.spec.ts` | test | 0 | 0 | 1 | KEEP: framework/script/test/migration entry point |
+| `e2e/customizer-multiline-and-storage.spec.ts` | test | 0 | 0 | 1 | KEEP: framework/script/test/migration entry point |
+| `lib/customizer/__tests__/guest-draft-storage.test.ts` | test | 0 | 0 | 1 | KEEP: framework/script/test/migration entry point |
+| `lib/customizer/__tests__/order-snapshot-integrity.test.ts` | test | 0 | 0 | 1 | KEEP: framework/script/test/migration entry point |
+| `lib/customizer/__tests__/render-order-freeze.test.ts` | test | 0 | 0 | 1 | KEEP: framework/script/test/migration entry point |
 | `lib/customizer/assets.ts` | engine/service | 7 | 0 | 7 | KEEP: referenced |
 | `lib/customizer/audit.ts` | engine/service | 2 | 0 | 4 | KEEP: referenced |
-| `lib/customizer/customizations.ts` | engine/service | 6 | 0 | 7 | KEEP: referenced |
-| `lib/customizer/index.ts` | engine/service | 16 | 1 | 6 | KEEP: referenced |
-| `lib/customizer/mockup-store.ts` | engine/service | 5 | 0 | 7 | KEEP: referenced |
+| `lib/customizer/customizations.ts` | engine/service | 5 | 0 | 6 | KEEP: referenced |
+| `lib/customizer/guest-draft-storage.ts` | engine/service | 2 | 0 | 2 | KEEP: referenced |
+| `lib/customizer/index.ts` | engine/service | 16 | 1 | 4 | KEEP: referenced |
+| `lib/customizer/mockup-store.ts` | engine/service | 5 | 0 | 6 | KEEP: referenced |
 | `lib/customizer/numeric-stepper.ts` | engine/service | 2 | 0 | 3 | KEEP: referenced |
-| `lib/customizer/order-snapshots.ts` | engine/service | 3 | 0 | 5 | KEEP: referenced |
+| `lib/customizer/order-snapshots.ts` | engine/service | 5 | 0 | 7 | KEEP: referenced |
 | `lib/customizer/public-version.ts` | engine/service | 4 | 0 | 5 | KEEP: referenced |
-| `lib/customizer/render-jobs.ts` | engine/service | 5 | 1 | 8 | KEEP: referenced |
+| `lib/customizer/render-jobs.ts` | engine/service | 8 | 1 | 10 | KEEP: referenced |
 | `lib/customizer/save-validation.ts` | engine/service | 3 | 0 | 4 | KEEP: referenced |
 | `lib/customizer/server/admin-assets.ts` | engine/service | 11 | 0 | 8 | KEEP: referenced |
 | `lib/customizer/server/asset-variants.ts` | engine/service | 2 | 0 | 3 | KEEP: referenced |
-| `lib/customizer/server/private-assets.ts` | engine/service | 9 | 0 | 10 | KEEP: referenced |
+| `lib/customizer/server/env.ts` | engine/service | 1 | 0 | 2 | KEEP: referenced |
+| `lib/customizer/server/private-assets.ts` | engine/service | 9 | 0 | 9 | KEEP: referenced |
+| `lib/customizer/snapshot-hash.ts` | engine/service | 2 | 0 | 3 | KEEP: referenced |
 | `lib/customizer/store.ts` | engine/service | 3 | 0 | 6 | KEEP: referenced |
 | `lib/customizer/v2/__tests__/admin-editor-layout.test.ts` | test | 0 | 0 | 1 | KEEP: framework/script/test/migration entry point |
 | `lib/customizer/v2/__tests__/admin-multi-selection.test.ts` | test | 0 | 0 | 1 | KEEP: framework/script/test/migration entry point |
@@ -133,8 +137,10 @@ Files audited: 178
 | `lib/customizer/v2/__tests__/linked-fields.test.ts` | test | 0 | 0 | 1 | KEEP: framework/script/test/migration entry point |
 | `lib/customizer/v2/__tests__/masks.test.ts` | test | 0 | 0 | 1 | KEEP: framework/script/test/migration entry point |
 | `lib/customizer/v2/__tests__/mockups-render-jobs.test.ts` | test | 0 | 0 | 1 | KEEP: framework/script/test/migration entry point |
+| `lib/customizer/v2/__tests__/multiline-text-persistence.test.ts` | test | 0 | 0 | 1 | KEEP: framework/script/test/migration entry point |
 | `lib/customizer/v2/__tests__/numeric-stepper-component.test.ts` | test | 0 | 0 | 1 | KEEP: framework/script/test/migration entry point |
 | `lib/customizer/v2/__tests__/numeric-stepper.test.ts` | test | 0 | 0 | 1 | KEEP: framework/script/test/migration entry point |
+| `lib/customizer/v2/__tests__/order-integrity-schema.test.ts` | test | 0 | 0 | 1 | KEEP: framework/script/test/migration entry point |
 | `lib/customizer/v2/__tests__/parity.test.ts` | test | 0 | 0 | 2 | KEEP: framework/script/test/migration entry point |
 | `lib/customizer/v2/__tests__/photo-replace-crop-reset.test.ts` | test | 0 | 0 | 1 | KEEP: framework/script/test/migration entry point |
 | `lib/customizer/v2/__tests__/pricing-preflight.test.ts` | test | 0 | 0 | 1 | KEEP: framework/script/test/migration entry point |
@@ -146,22 +152,22 @@ Files audited: 178
 | `lib/customizer/v2/__tests__/single-line-text-resize.test.ts` | test | 0 | 0 | 1 | KEEP: framework/script/test/migration entry point |
 | `lib/customizer/v2/__tests__/text-auto-width-render.test.ts` | test | 0 | 0 | 1 | KEEP: framework/script/test/migration entry point |
 | `lib/customizer/v2/__tests__/text-auto-width.test.ts` | test | 0 | 0 | 1 | KEEP: framework/script/test/migration entry point |
-| `lib/customizer/v2/__tests__/text-editing.test.ts` | test | 0 | 0 | 0 | KEEP: framework/script/test/migration entry point |
+| `lib/customizer/v2/__tests__/text-editing.test.ts` | test | 0 | 0 | 1 | KEEP: framework/script/test/migration entry point |
 | `lib/customizer/v2/__tests__/text-layout.test.ts` | test | 0 | 0 | 1 | KEEP: framework/script/test/migration entry point |
 | `lib/customizer/v2/__tests__/validate.test.ts` | test | 0 | 0 | 1 | KEEP: framework/script/test/migration entry point |
 | `lib/customizer/v2/__tests__/viewport-pan.test.ts` | test | 0 | 0 | 1 | KEEP: framework/script/test/migration entry point |
 | `lib/customizer/v2/asset-references.ts` | engine/service | 8 | 0 | 6 | KEEP: referenced |
-| `lib/customizer/v2/customer-actions.ts` | engine/service | 3 | 0 | 4 | KEEP: referenced |
-| `lib/customizer/v2/document.ts` | engine/service | 9 | 0 | 8 | KEEP: referenced |
-| `lib/customizer/v2/feature-flags.server.ts` | engine/service | 6 | 0 | 7 | KEEP: referenced |
-| `lib/customizer/v2/feature-flags.ts` | engine/service | 10 | 0 | 10 | KEEP: referenced |
-| `lib/customizer/v2/fonts.ts` | engine/service | 8 | 0 | 8 | KEEP: referenced |
+| `lib/customizer/v2/customer-actions.ts` | engine/service | 3 | 0 | 3 | KEEP: referenced |
+| `lib/customizer/v2/document.ts` | engine/service | 9 | 0 | 6 | KEEP: referenced |
+| `lib/customizer/v2/feature-flags.server.ts` | engine/service | 6 | 0 | 6 | KEEP: referenced |
+| `lib/customizer/v2/feature-flags.ts` | engine/service | 10 | 0 | 9 | KEEP: referenced |
+| `lib/customizer/v2/fonts.ts` | engine/service | 8 | 0 | 6 | KEEP: referenced |
 | `lib/customizer/v2/grids.ts` | engine/service | 13 | 0 | 11 | KEEP: referenced |
 | `lib/customizer/v2/groups.ts` | engine/service | 10 | 0 | 7 | KEEP: referenced |
 | `lib/customizer/v2/image-filters.ts` | engine/service | 8 | 0 | 5 | KEEP: referenced |
 | `lib/customizer/v2/masks.ts` | engine/service | 4 | 0 | 3 | KEEP: referenced |
 | `lib/customizer/v2/mockups.ts` | engine/service | 6 | 0 | 4 | KEEP: referenced |
-| `lib/customizer/v2/preflight.ts` | engine/service | 6 | 0 | 5 | KEEP: referenced |
+| `lib/customizer/v2/preflight.ts` | engine/service | 6 | 0 | 4 | KEEP: referenced |
 | `lib/customizer/v2/preview-mapping.ts` | engine/service | 1 | 0 | 2 | KEEP: referenced |
 | `lib/customizer/v2/pricing.ts` | engine/service | 3 | 0 | 4 | KEEP: referenced |
 | `lib/customizer/v2/qr.ts` | engine/service | 9 | 0 | 6 | KEEP: referenced |
@@ -170,17 +176,17 @@ Files audited: 178
 | `lib/customizer/v2/server/render.ts` | engine/service | 9 | 0 | 9 | KEEP: referenced |
 | `lib/customizer/v2/server/server-fonts.ts` | engine/service | 5 | 0 | 3 | KEEP: referenced |
 | `lib/customizer/v2/svg.ts` | engine/service | 7 | 0 | 4 | KEEP: referenced |
-| `lib/customizer/v2/text-editing.ts` | engine/service | 11 | 0 | 10 | KEEP: referenced |
-| `lib/customizer/v2/text-layout.ts` | engine/service | 17 | 0 | 11 | KEEP: referenced |
-| `lib/customizer/v2/types.ts` | engine/service | 10 | 0 | 6 | KEEP: referenced |
+| `lib/customizer/v2/text-editing.ts` | engine/service | 13 | 0 | 12 | KEEP: referenced |
+| `lib/customizer/v2/text-layout.ts` | engine/service | 17 | 0 | 10 | KEEP: referenced |
+| `lib/customizer/v2/types.ts` | engine/service | 11 | 0 | 7 | KEEP: referenced |
 | `lib/customizer/v2/uploads.ts` | engine/service | 3 | 0 | 4 | KEEP: referenced |
-| `lib/customizer/v2/validate.ts` | engine/service | 6 | 0 | 5 | KEEP: referenced |
+| `lib/customizer/v2/validate.ts` | engine/service | 6 | 0 | 4 | KEEP: referenced |
 | `lib/customizer/v2/viewport-pan.ts` | engine/service | 3 | 0 | 4 | KEEP: referenced |
-| `lib/customizer/versions.ts` | engine/service | 7 | 0 | 10 | KEEP: referenced |
+| `lib/customizer/versions.ts` | engine/service | 6 | 0 | 9 | KEEP: referenced |
 | `scripts/seed-customizer-test.mjs` | script | 0 | 0 | 3 | KEEP: framework/script/test/migration entry point |
 | `scripts/validate-customizer-database.mjs` | script | 0 | 0 | 2 | KEEP: framework/script/test/migration entry point |
 | `scripts/validate-customizer-fonts.mjs` | script | 0 | 0 | 2 | KEEP: framework/script/test/migration entry point |
-| `supabase/customizer_v2.sql` | database SQL | 0 | 0 | 8 | KEEP: referenced |
+| `supabase/customizer_v2.sql` | database SQL | 0 | 0 | 5 | KEEP: referenced |
 | `supabase/migrations/20260714120000_customizer_v2.sql` | database migration | 0 | 0 | 1 | KEEP: framework/script/test/migration entry point |
 | `supabase/migrations/20260714153000_customizer_v2_completion.sql` | database migration | 0 | 0 | 1 | KEEP: framework/script/test/migration entry point |
 | `supabase/migrations/20260714210000_customizer_v2_production_hardening.sql` | database migration | 0 | 0 | 1 | KEEP: framework/script/test/migration entry point |

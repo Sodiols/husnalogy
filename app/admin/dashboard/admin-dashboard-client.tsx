@@ -6,6 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import ProductUploadForm from "./product-upload-form";
 import HeroCollectionSection from "./hero-collection-section";
 import ElementsLibrarySection from "./elements-library-section";
+import AdminOrderRenderPanel from "@/app/components/admin/AdminOrderRenderPanel";
 import { formatCurrency as formatMoneyValue } from "@/lib/currency";
 
 const sections = [
@@ -3812,6 +3813,9 @@ function OrdersSection({ orders, query, status, setStatus, onStatusChange, onDel
                 {!checkoutEntries.length && <p className="text-[#1F1F1F]/58">No checkout form details were saved.</p>}
               </div>
             </div>
+
+            {/* Frozen design snapshots and production render state (spec §11). */}
+            <AdminOrderRenderPanel orderId={selectedOrder.id} />
 
             <div className="rounded-none border border-[#1F1F1F]/10 bg-white p-4">
               <div className="flex flex-wrap items-center justify-between gap-3">

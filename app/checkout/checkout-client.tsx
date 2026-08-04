@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { formatCurrency } from "@/lib/currency";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import useAuth from "../lib/useAuth";
 import {
   clearCart,
@@ -13,6 +13,14 @@ import {
   subscribeToUserCart,
 } from "../lib/customer-lists";
 import ServerCustomizationImage from "@/app/components/customizer/ServerCustomizationImage";
+
+// Module scope: generating an id is impure, and it is only ever called from a
+// submit handler, never during render.
+function createIdempotencyKey() {
+  return typeof crypto !== "undefined" && crypto.randomUUID
+    ? crypto.randomUUID()
+    : `order_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+}
 
 const initialCustomer = {
   firstName: "",
@@ -28,6 +36,10 @@ const initialCustomer = {
 export default function CheckoutClient({ initialUser = undefined }: any) {
   const { user, authLoading } = useAuth(initialUser);
   const [items, setItems] = useState([]);
+  // Guards a double submission, and keeps one idempotency key per attempt so a
+  // network retry resolves to the same order instead of creating a second one.
+  const submittingRef = useRef(false);
+  const idempotencyKeyRef = useRef("");
   const [customer, setCustomer] = useState(initialCustomer);
   const [deliveryMethod, setDeliveryMethod] = useState("delivery");
   const [saveAddress, setSaveAddress] = useState(true);
@@ -78,6 +90,16 @@ export default function CheckoutClient({ initialUser = undefined }: any) {
       return;
     }
 
+    // A second submission while the first is still in flight must not create a
+    // second order (spec §7). The button is disabled while loading; this guard
+    // also covers Enter-key submits and double taps that beat the re-render.
+    if (submittingRef.current) return;
+    submittingRef.current = true;
+
+    // The idempotency key survives a network retry of the *same* attempt, so a
+    // dropped response cannot produce a duplicate order or duplicate snapshots.
+    if (!idempotencyKeyRef.current) idempotencyKeyRef.current = createIdempotencyKey();
+
     setStatus({ loading: true, error: "", success: "" });
 
     const customerName = `${customer.firstName} ${customer.lastName}`.trim();
@@ -116,6 +138,7 @@ export default function CheckoutClient({ initialUser = undefined }: any) {
           paymentMethod: "Cash on Delivery",
           status: "pending",
           message,
+          idempotencyKey: idempotencyKeyRef.current,
         }),
       });
 
@@ -160,9 +183,15 @@ export default function CheckoutClient({ initialUser = undefined }: any) {
 
       await clearCart(user);
       setCustomer(initialCustomer);
+      // The order exists; a later submission must be a genuinely new order.
+      idempotencyKeyRef.current = "";
       setStatus({ loading: false, error: "", success: `Order request placed. Order ID: ${data.order?.id || "created"}` });
     } catch (error) {
+      // The key is kept so the customer's retry of this same attempt resolves
+      // to one order rather than creating a duplicate.
       setStatus({ loading: false, error: error.message || "Something went wrong.", success: "" });
+    } finally {
+      submittingRef.current = false;
     }
   };
 

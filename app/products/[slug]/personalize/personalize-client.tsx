@@ -51,7 +51,15 @@ import { getDescendantIds, groupLayers, transformGroupChildren, ungroupLayers } 
 import { createCanvasMeasure, getSingleLineTextBox, isSingleLineAutoSizeText } from "@/lib/customizer/v2/text-layout";
 import { resolveLayerSelectionGeometry } from "@/lib/customizer/v2/selection-geometry";
 import {
+  draftStorageKey,
+  guestSaveFailureMessage,
+  readGuestDraft,
+  removeGuestDraft,
+  writeGuestDraft,
+} from "@/lib/customizer/guest-draft-storage";
+import {
   getTextPlacementStyle,
+  isMultilineTextField,
   normalizeInlineText,
   type TextPlacementPreset,
 } from "@/lib/customizer/v2/text-editing";
@@ -82,9 +90,25 @@ function firstOf(value: any, fallback = ""): string {
   return fallback;
 }
 
-const DRAFT_STORAGE_PREFIX = "husnalogy_customizer_draft";
-const GUEST_SESSION_KEY = "husnalogy_guest_session_id";
 const customerTextMeasure = createCanvasMeasure();
+// Marks that the customer left for the sign-in flow specifically to upload a
+// photo, so they are returned to the Uploads panel afterwards (spec §16).
+const UPLOAD_SIGN_IN_INTENT_KEY = "husnalogy_customizer_upload_signin_intent";
+const UPLOAD_SIGN_IN_INTENT_TTL_MS = 30 * 60 * 1000;
+
+// Module scope: reading the clock is impure, and this only ever runs from the
+// Upload Photo handler, never during render.
+function rememberUploadSignInIntent() {
+  try {
+    window.sessionStorage.setItem(
+      UPLOAD_SIGN_IN_INTENT_KEY,
+      JSON.stringify({ returnTo: `${window.location.pathname}${window.location.search}`, at: Date.now() }),
+    );
+  } catch {
+    // A blocked sessionStorage only costs the post-login confirmation message;
+    // the design itself has already been saved by the caller.
+  }
+}
 
 // Easy Personalize (spec §1): the only tools a normal wedding customer needs
 // — their own details and photos, then product options. Everything else
@@ -94,50 +118,9 @@ const customerTextMeasure = createCanvasMeasure();
 // name and a date.
 const EASY_PERSONALIZE_TOOL_IDS = new Set<CustomerTool>(["edit", "uploads", "options"]);
 
-function canUseStorage() {
-  return typeof window !== "undefined" && Boolean(window.localStorage);
-}
-
-function getGuestSessionId() {
-  if (!canUseStorage()) return "";
-  const existing = window.localStorage.getItem(GUEST_SESSION_KEY);
-  if (existing) return existing;
-  const id = typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `guest_${Date.now()}_${Math.random().toString(36).slice(2)}`;
-  window.localStorage.setItem(GUEST_SESSION_KEY, id);
-  return id;
-}
-
-function draftStorageKey(productId: string, templateId: string, templateVersion: number) {
-  return `${DRAFT_STORAGE_PREFIX}:${productId || "product"}:${templateId || "template"}:${templateVersion || 1}`;
-}
-
-function readLocalDraft(key: string) {
-  if (!canUseStorage()) return null;
-  try {
-    const value = window.localStorage.getItem(key);
-    return value ? JSON.parse(value) : null;
-  } catch {
-    return null;
-  }
-}
-
-function writeLocalDraft(key: string, payload: any) {
-  if (!canUseStorage()) return payload;
-  const current = readLocalDraft(key) || {};
-  const next = {
-    ...current,
-    ...payload,
-    id: current.id || `local_${Date.now()}_${Math.random().toString(36).slice(2)}`,
-    guestSessionId: current.guestSessionId || getGuestSessionId(),
-    updatedAt: new Date().toISOString(),
-  };
-  try {
-    window.localStorage.setItem(key, JSON.stringify(next));
-  } catch {
-    // Storage may be full (preview images are large) — keep editing anyway.
-  }
-  return next;
-}
+// Guest draft persistence lives in lib/customizer/guest-draft-storage: an
+// IndexedDB-first adapter (localStorage fallback) whose writes report honestly
+// whether the browser actually stored the design (spec §13, §14).
 
 function safeInternalPath(value: string, fallback: string) {
   if (!value || !value.startsWith("/") || value.startsWith("//")) return fallback;
@@ -208,7 +191,12 @@ export default function PersonalizeClient({ product, template }: { product: any;
   const [cartItemId, setCartItemId] = useState(initialCartItemId);
   const [restoreReady, setRestoreReady] = useState(false);
   const [dirty, setDirty] = useState(false);
-  const [saveStatus, setSaveStatus] = useState<"idle" | "unsaved" | "saving" | "saved" | "error">("idle");
+  const [saveStatus, setSaveStatus] = useState<"idle" | "unsaved" | "saving" | "saved" | "error" | "offline">("idle");
+  // Set when a guest draft has been restored and still needs migrating into
+  // the signed-in account; cleared as soon as the migration starts.
+  const pendingGuestMigrationRef = useRef("");
+  // Guards against overlapping autosaves creating duplicate customizations.
+  const autosaveInFlightRef = useRef(false);
 
   const [selectedLayerId, setSelectedLayerId] = useState<string | null>(null);
   const [selectedLayerIds, setSelectedLayerIds] = useState<string[]>([]);
@@ -368,9 +356,21 @@ export default function PersonalizeClient({ product, template }: { product: any;
 
   /* ----- change handlers (all record history first) ----- */
   const onFieldChange = (fieldId: string, value: any) => {
+    // recordHistory coalesces on the field key, so a burst of typing produces
+    // one undo entry rather than one per keystroke (spec §18).
     recordHistory(`field-${fieldId}`);
     markDirty();
-    setValues((current) => ({ ...current, [fieldId]: value }));
+
+    // The linked layer's multiline setting is the source of truth: a
+    // single-line layer never keeps line breaks (including pasted ones), and a
+    // multiline layer preserves them exactly through save, reload and render.
+    let nextValue = value;
+    if (typeof value === "string") {
+      const linkedLayer = (template?.layers || []).find((layer: any) => layer.fieldId === fieldId && layer.type === "text");
+      const field = (template?.fields || []).find((f: any) => f.id === fieldId);
+      nextValue = normalizeInlineText(value, isMultilineTextField(field, linkedLayer));
+    }
+    setValues((current) => ({ ...current, [fieldId]: nextValue }));
 
     // A new photo must never inherit the previous photo's crop/zoom/pan/flip.
     // Frame geometry is untouched (values live separately from layerOverrides),
@@ -1678,10 +1678,33 @@ export default function PersonalizeClient({ product, template }: { product: any;
   };
 
   /* ----- uploads ----- */
+
+  // Signing in is required before a photo can be stored in the customer's
+  // private library (spec §16). The design is saved on the device *first* and
+  // the save is confirmed, so an interrupted sign-in never loses the work.
+  const requestUploadSignIn = async () => {
+    const saved = await saveCustomizationDraft("draft", { silent: true }).catch(() => null);
+    if (!saved?.ok) {
+      setMessage(
+        "Your design could not be saved on this device, so signing in now could lose it. Please try saving again first.",
+      );
+      return false;
+    }
+
+    // Remember where to come back to if the sign-in flow navigates away.
+    rememberUploadSignInIntent();
+
+    setMessage("Your design is saved on this device. Sign in to upload and securely store your photographs.");
+    openCustomerLogin();
+    return true;
+  };
+
   const onUploadPhoto = async (file: File) => {
     if (!user) {
-      openCustomerLogin();
-      throw new Error("Please sign in to upload a photo.");
+      await requestUploadSignIn();
+      // Browsers cannot re-open a previously chosen local file for security
+      // reasons, so the customer is asked to choose it again after signing in.
+      throw new Error("Please sign in to upload a photo, then choose your photo again.");
     }
     setUploadingCount((count) => count + 1);
     try {
@@ -1754,13 +1777,30 @@ export default function PersonalizeClient({ product, template }: { product: any;
     const payload = await buildCustomizationPayload(status);
 
     if (!user) {
-      const localDraft = writeLocalDraft(localDraftKey, payload);
-      setCustomizationId(localDraft.id);
+      // Guest saving must report the truth (spec §13): "Saved" is only shown
+      // when the browser actually accepted the write.
+      const result = await writeGuestDraft(localDraftKey, payload);
+      if (!result.ok || !result.draft) {
+        if (changeVersionRef.current === savingVersion) {
+          setDirty(true);
+          setSaveStatus("error");
+        }
+        const failureMessage = guestSaveFailureMessage(result.errorCode);
+        if (!silent) setMessage(failureMessage);
+        return {
+          ok: false,
+          local: true,
+          storageType: result.storageType,
+          errorCode: result.errorCode,
+          error: failureMessage,
+        };
+      }
+      setCustomizationId(result.draft.id);
       if (changeVersionRef.current === savingVersion) {
         setDirty(false);
         setSaveStatus("saved");
       }
-      return { ok: true, customization: localDraft, local: true };
+      return { ok: true, customization: { ...result.draft.payload, id: result.draft.id }, local: true, storageType: result.storageType };
     }
 
     const existingId = payload.customizationId || customizationIdRef.current;
@@ -1882,11 +1922,18 @@ export default function PersonalizeClient({ product, template }: { product: any;
           }
         }
 
-        if (!restored) {
-          const localDraft = readLocalDraft(localDraftKey);
-          if (!cancelled && localDraft) {
-            restored = applySavedCustomization(localDraft);
+        // A design started as a guest lives on the device. Restore it, and —
+        // once signed in — migrate it into the authenticated table so signing
+        // in never destroys the customer's work (spec §15).
+        const guest = await readGuestDraft(localDraftKey);
+        if (!cancelled && guest.draft) {
+          if (!restored) {
+            restored = applySavedCustomization({ ...guest.draft.payload, id: guest.draft.id });
           }
+          // Migrate only when this device's draft is what we just restored,
+          // so a newer authenticated design is never overwritten by an older
+          // local copy.
+          pendingGuestMigrationRef.current = user && restored ? localDraftKey : "";
         }
       } catch (error) {
         console.warn("Could not restore customization draft.", error);
@@ -1909,20 +1956,115 @@ export default function PersonalizeClient({ product, template }: { product: any;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authLoading, user?.id, user?.uid, product.id, template?.id, template?.version, initialCustomizationId, initialCartItemId, localDraftKey]);
 
+  // Guest → account migration (spec §15). Runs once after the draft has been
+  // restored and the state has settled, so the server copy carries the exact
+  // text, layers, page state, options and quantity the guest had. The local
+  // copy is removed only after the authenticated save succeeds, and the
+  // pending flag is cleared first so a repeated login callback cannot create a
+  // second server draft.
+  useEffect(() => {
+    if (!restoreReady || !user) return;
+    const key = pendingGuestMigrationRef.current;
+    if (!key) return;
+    pendingGuestMigrationRef.current = "";
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const result = await saveCustomizationDraft("draft", { silent: true });
+        if (cancelled || !result?.ok || result.local) return;
+        await removeGuestDraft(key);
+      } catch (error) {
+        // Keep the device copy: it is still the customer's only saved work.
+        console.warn("Could not migrate the guest design into your account.", error);
+        if (!cancelled) setSaveStatus("error");
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [restoreReady, user?.id, user?.uid]);
+
+  // Return the customer to the Uploads panel after they signed in to upload
+  // (spec §16). Runs once the draft has been restored so the panel opens on
+  // the design they were working on, not an empty one.
+  useEffect(() => {
+    if (!restoreReady || !user) return;
+    let intent: { returnTo?: string; at?: number } | null = null;
+    try {
+      const raw = window.sessionStorage.getItem(UPLOAD_SIGN_IN_INTENT_KEY);
+      if (!raw) return;
+      window.sessionStorage.removeItem(UPLOAD_SIGN_IN_INTENT_KEY);
+      intent = JSON.parse(raw);
+    } catch {
+      return;
+    }
+    if (!intent || Date.now() - Number(intent.at || 0) > UPLOAD_SIGN_IN_INTENT_TTL_MS) return;
+
+    setActiveTool("uploads");
+    setMobilePanelOpen(true);
+    setMessage("You are signed in. Choose your photo to continue.");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [restoreReady, user?.id, user?.uid]);
+
+  // Autosave (spec §27, §28). Debounced, non-overlapping, and superseded by
+  // newer edits. It never reports "Saved" for work that was not stored, and
+  // while offline it says so rather than claiming a server save.
   useEffect(() => {
     if (!restoreReady || !dirty) return;
     if (template?.settings?.autosave === false) return;
+
     const timer = window.setTimeout(() => {
-      saveCustomizationDraft("draft", { silent: true }).catch((error) => {
-        console.warn("Autosave failed:", error);
-        setSaveStatus("error");
-      });
+      // An in-flight save must not be raced by a second one; the change
+      // version check inside saveCustomizationDraft already discards a stale
+      // result, and this guard prevents duplicate customizations entirely.
+      if (autosaveInFlightRef.current) {
+        setDirty((current) => current);
+        return;
+      }
+      if (user && typeof navigator !== "undefined" && navigator.onLine === false) {
+        setSaveStatus("offline");
+        return;
+      }
+      autosaveInFlightRef.current = true;
+      const savingVersion = changeVersionRef.current;
+      saveCustomizationDraft("draft", { silent: true })
+        .catch((error) => {
+          console.warn("Autosave failed:", error);
+          if (changeVersionRef.current === savingVersion) setSaveStatus("error");
+        })
+        .finally(() => {
+          autosaveInFlightRef.current = false;
+        });
     }, 900);
 
     return () => window.clearTimeout(timer);
     // Snapshot refs keep the latest values/options/page at save time.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [values, editorState, options, quantity, activePage, restoreReady, dirty, user?.id, user?.uid]);
+
+  // Offline/online indicator (spec §28). Reconnecting retries the latest draft
+  // once rather than replaying every queued edit.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const handleOffline = () => {
+      if (dirtyRef.current) setSaveStatus("offline");
+    };
+    const handleOnline = () => {
+      if (!dirtyRef.current) return;
+      setSaveStatus("unsaved");
+      saveCustomizationDraft("draft", { silent: true }).catch(() => setSaveStatus("error"));
+    };
+    window.addEventListener("offline", handleOffline);
+    window.addEventListener("online", handleOnline);
+    return () => {
+      window.removeEventListener("offline", handleOffline);
+      window.removeEventListener("online", handleOnline);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id, user?.uid]);
 
   useEffect(() => {
     const warnBeforeUnload = (event: BeforeUnloadEvent) => {
@@ -2050,6 +2192,13 @@ export default function PersonalizeClient({ product, template }: { product: any;
           : "Next: Options";
 
   const enterStep = (nextStep: string) => {
+    // A photo still uploading is not yet part of the design, so the review
+    // step would show — and could approve — an incomplete card (spec §17).
+    if (nextStep === "review" && uploading) {
+      setActiveTool("uploads");
+      setMessage("Please wait for your photo to finish uploading before reviewing your design.");
+      return;
+    }
     if (nextStep === "review" && !validation.ok) {
       setAttemptedNext(true);
       setActiveTool("edit");
@@ -2246,18 +2395,25 @@ export default function PersonalizeClient({ product, template }: { product: any;
   };
 
   /* ----- render ----- */
+  // "Saved" is only ever shown after a confirmed write (spec §13, §27).
+  // A guest whose browser refused the write sees "Save failed", and an
+  // offline customer is told so instead of being told the server has it.
   const saveStatusLabel =
     savingDraft || saveStatus === "saving"
       ? "Saving"
       : saveStatus === "saved"
-        ? "Saved"
+        ? user
+          ? "Saved to your account"
+          : "Saved on this device"
         : saveStatus === "unsaved"
           ? "Unsaved changes"
-          : saveStatus === "error"
-            ? "Save failed"
-            : restoreReady
-              ? ""
-              : "Loading design";
+          : saveStatus === "offline"
+            ? "Offline — not saved yet"
+            : saveStatus === "error"
+              ? "Save failed"
+              : restoreReady
+                ? ""
+                : "Loading design";
 
   const showSafeArea = template?.settings?.showSafeArea !== false && !previewMode;
   const showPanels = step !== "review" && !previewMode;
@@ -2687,7 +2843,7 @@ export default function PersonalizeClient({ product, template }: { product: any;
 
               {protectionEnabled && (
                 <p className="pointer-events-none absolute bottom-1 left-2 z-30 hidden text-[10px] text-[#303839]/40 sm:block">
-                  Protected preview. Copying, downloading, and printing are disabled.
+                  This preview is watermarked to protect the design.
                 </p>
               )}
             </main>

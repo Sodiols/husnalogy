@@ -45,25 +45,21 @@ export default function useCustomizerProtection(enabled = true) {
     const onKeyDown = (event: KeyboardEvent) => {
       const key = String(event.key || "").toLowerCase();
       const mod = event.ctrlKey || event.metaKey;
-      // Print / save page / view source. Never block plain typing or
-      // accessibility navigation.
-      if (mod && (key === "p" || key === "s" || key === "u")) {
+      // Browser print protection only. Ctrl/Cmd+S and Ctrl/Cmd+U are
+      // deliberately left alone (spec §31): swallowing them blocks normal
+      // keyboard use while providing no real protection, since the same
+      // content is reachable from the browser menu regardless.
+      if (mod && key === "p") {
         event.preventDefault();
-        if (key === "p") coverBriefly();
+        coverBriefly();
       }
     };
 
     const onKeyUp = (event: KeyboardEvent) => {
-      // PrintScreen usually only reports on keyup, and only in some browsers.
-      if (event.key === "PrintScreen") {
-        coverBriefly();
-        // Best effort: overwrite the clipboard image with an empty string.
-        try {
-          navigator.clipboard?.writeText("");
-        } catch {
-          // Clipboard access may be denied — the visual cover still applies.
-        }
-      }
+      // PrintScreen only reports on keyup, and only in some browsers. This is
+      // a brief, non-destructive deterrent — the permanent watermark is the
+      // real protection. The clipboard is never touched (spec §31).
+      if (event.key === "PrintScreen") coverBriefly();
     };
 
     const onVisibility = () => {

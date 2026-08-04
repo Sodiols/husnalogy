@@ -135,6 +135,57 @@ export async function getTemplateVersion(templateId: string, version: number): P
   return versionFromRow({ ...data, document: hydratedDocument });
 }
 
+// V2 documents round-trip into the flat template shape the V1
+// validators/renderers expect, via the pages/layers overlap.
+function versionToFlatTemplate(snapshot: TemplateVersionRow): any {
+  const doc: any = snapshot.document;
+  return {
+    id: snapshot.templateId,
+    version: snapshot.version,
+    enabled: true,
+    engine: "svg",
+    canvasWidthPx: doc.canvas?.widthPx,
+    canvasHeightPx: doc.canvas?.heightPx,
+    cardWidthIn: doc.canvas?.widthIn,
+    cardHeightIn: doc.canvas?.heightIn,
+    dpi: doc.canvas?.dpi,
+    orientation: doc.canvas?.orientation,
+    defaultPage: doc.pages?.[0]?.id || "front",
+    pages: (doc.pages || []).map((page: any) => ({
+      id: page.id,
+      label: page.name,
+      enabled: page.enabled,
+      backgroundImage: page.backgroundImage || "",
+      backgroundColor: page.backgroundColor || "#ffffff",
+      thumbnail: page.thumbnail || page.backgroundImage || "",
+      allowCustomerText: page.allowCustomerText,
+    })),
+    fields: doc.fields || [],
+    layers: (doc.layers || []).map((layer: any) => ({
+      ...layer,
+      page: layer.pageId || layer.page,
+    })),
+    safeArea: doc.pages?.[0]?.safeArea || {},
+    bleed: doc.pages?.[0]?.bleed || {},
+    settings: doc.settings || {},
+    assets: doc.assets || {},
+  };
+}
+
+// The exact published template version an already-placed order was accepted
+// against. Unlike getTrustedTemplateForCustomization this NEVER falls back to
+// the live template row: production output for an order must not change when
+// an administrator edits the product template afterwards (spec §34).
+export async function getFrozenTemplateVersion(
+  templateId: string,
+  version: number,
+): Promise<any | null> {
+  if (!templateId || !version) return null;
+  const snapshot = await getTemplateVersion(templateId, version);
+  if (!snapshot || !snapshot.document || !Object.keys(snapshot.document).length) return null;
+  return versionToFlatTemplate(snapshot);
+}
+
 // The trusted template a customization must be validated and rendered
 // against: its exact published version snapshot when one exists, otherwise
 // the live template row (legacy templates published before versioning).
@@ -149,43 +200,7 @@ export async function getTrustedTemplateForCustomization(customization: {
   if (templateId && version) {
     const snapshot = await getTemplateVersion(templateId, version);
     if (snapshot && snapshot.document && Object.keys(snapshot.document).length) {
-      // V2 documents round-trip into the flat template shape for the V1
-      // validators/renderers via the pages/layers overlap.
-      const doc: any = snapshot.document;
-      return {
-        template: {
-          id: snapshot.templateId,
-          version: snapshot.version,
-          enabled: true,
-          engine: "svg",
-          canvasWidthPx: doc.canvas?.widthPx,
-          canvasHeightPx: doc.canvas?.heightPx,
-          cardWidthIn: doc.canvas?.widthIn,
-          cardHeightIn: doc.canvas?.heightIn,
-          dpi: doc.canvas?.dpi,
-          orientation: doc.canvas?.orientation,
-          defaultPage: doc.pages?.[0]?.id || "front",
-          pages: (doc.pages || []).map((page: any) => ({
-            id: page.id,
-            label: page.name,
-            enabled: page.enabled,
-            backgroundImage: page.backgroundImage || "",
-            backgroundColor: page.backgroundColor || "#ffffff",
-            thumbnail: page.thumbnail || page.backgroundImage || "",
-            allowCustomerText: page.allowCustomerText,
-          })),
-          fields: doc.fields || [],
-          layers: (doc.layers || []).map((layer: any) => ({
-            ...layer,
-            page: layer.pageId || layer.page,
-          })),
-          safeArea: doc.pages?.[0]?.safeArea || {},
-          bleed: doc.pages?.[0]?.bleed || {},
-          settings: doc.settings || {},
-          assets: doc.assets || {},
-        },
-        source: "version",
-      };
+      return { template: versionToFlatTemplate(snapshot), source: "version" };
     }
   }
 
