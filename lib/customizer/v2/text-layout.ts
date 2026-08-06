@@ -64,6 +64,17 @@ export type TextLayoutResult = {
 
 const WORD_SPLIT = /(\s+)/;
 
+function canonicalLayoutText(value: unknown): string {
+  return String(value ?? "").replace(/\r\n?/g, "\n");
+}
+
+function usesMultilineLayout(text: string, configuredMultiline: boolean | undefined): boolean {
+  // A real newline is authoritative. This renderer-level invariant protects
+  // every surface (canvas, preview, PNG and PDF), including restored legacy
+  // documents whose old single-line flag was not promoted when the text saved.
+  return configuredMultiline !== false || text.includes("\n");
+}
+
 function breakLongWord(word: string, maxWidth: number, style: MeasureStyle, measure: MeasureFn): string[] {
   const out: string[] = [];
   let current = "";
@@ -132,9 +143,11 @@ function layoutAtSize(
     letterSpacing: input.letterSpacing || 0,
   };
 
-  const paragraphs = String(text).split("\n");
+  const canonicalText = canonicalLayoutText(text);
+  const paragraphs = canonicalText.split("\n");
+  const multiline = usesMultilineLayout(canonicalText, input.multiline);
   const unbreakableWord =
-    input.multiline !== false &&
+    multiline &&
     paragraphs.some((paragraph) =>
       paragraph
         .split(/\s+/)
@@ -142,9 +155,9 @@ function layoutAtSize(
         .some((word) => measure(word, style) > input.width + 0.5),
     );
   let lines: string[];
-  if (input.multiline === false) {
-    // Single-line mode: manual breaks collapse to spaces, no wrapping.
-    lines = [paragraphs.join(" ")];
+  if (!multiline) {
+    // No manual break is present here (one would have promoted multiline).
+    lines = [canonicalText];
   } else {
     lines = paragraphs.flatMap((p) => wrapParagraph(p, input.width, style, measure));
   }
@@ -155,7 +168,7 @@ function layoutAtSize(
 }
 
 export function layoutText(input: TextLayoutInput, measure: MeasureFn): TextLayoutResult {
-  const canonicalText = String(input.text ?? "").replace(/\r\n?/g, "\n");
+  const canonicalText = canonicalLayoutText(input.text);
   const rawText = input.uppercase ? canonicalText.toUpperCase() : canonicalText;
   const lineHeightMult = Number(input.lineHeight) > 0 ? Number(input.lineHeight) : 1.15;
   const minFontSize = Math.max(4, Number(input.minFontSize) || 8);
@@ -243,9 +256,9 @@ export type TextResizeConstraints = {
 // Text is never stretched: resizing changes the box, wrapping, or the resolved
 // shrink-to-fit font size.
 export function getTextResizeConstraints(input: TextLayoutInput, measure: MeasureFn): TextResizeConstraints {
-  const canonicalText = String(input.text ?? "").replace(/\r\n?/g, "\n");
+  const canonicalText = canonicalLayoutText(input.text);
   const rawText = input.uppercase ? canonicalText.toUpperCase() : canonicalText;
-  const multiline = input.multiline !== false;
+  const multiline = usesMultilineLayout(rawText, input.multiline);
   const lineHeight = Number(input.lineHeight) > 0 ? Number(input.lineHeight) : 1.15;
   const baseFontSize = Math.max(4, Number(input.fontSize) || 16);
   const minFontSize = Math.max(4, Number(input.minFontSize) || Math.min(baseFontSize, 8));
@@ -258,7 +271,7 @@ export function getTextResizeConstraints(input: TextLayoutInput, measure: Measur
     letterSpacing: input.letterSpacing || 0,
   };
   const minStyle = { ...baseStyle, fontSize: minFontSize };
-  const singleLineText = rawText.replace(/[\r\n]+/g, " ");
+  const singleLineText = rawText;
   const chars = Array.from(rawText.replace(/\s/g, ""));
   const widestBaseGlyph = Math.max(1, ...chars.map((char) => measure(char, baseStyle)));
   const widestMinGlyph = Math.max(1, ...chars.map((char) => measure(char, minStyle)));
@@ -412,8 +425,10 @@ export function resolveTextBox(
     autoWidth: false,
     clampedBySafeArea: false,
   };
-  const autoWidth = isAutoWidthText(input);
-  const autoHeight = getTextAutoSizeMode(input) === "height";
+  const canonicalText = canonicalLayoutText(input.text);
+  const manualMultiline = canonicalText.includes("\n");
+  const autoWidth = !manualMultiline && isAutoWidthText(input);
+  const autoHeight = manualMultiline || getTextAutoSizeMode(input) === "height";
   if (!autoWidth && !autoHeight) return stored;
 
   if (autoHeight) {
@@ -427,10 +442,10 @@ export function resolveTextBox(
       measure,
     );
     const height = Math.max(1, Math.ceil(layout.totalHeight));
-    const vAlign = input.verticalAlign || "middle";
-    let y = input.y;
-    if (vAlign === "top") y = input.y - input.height / 2 + height / 2;
-    else if (vAlign === "bottom") y = input.y + input.height / 2 - height / 2;
+    // Growing text is top-anchored. The element's visible top edge stays fixed
+    // while its centre moves down by half the height delta; selection bounds
+    // and resize handles consume this same resolved geometry.
+    const y = input.y - input.height / 2 + height / 2;
     return { ...stored, y, height };
   }
 
@@ -548,8 +563,15 @@ export type SingleLineTextScaleResult = SingleLineTextBox & {
   fontSize: number;
 };
 
-export function isSingleLineAutoSizeText(style: Record<string, unknown> | null | undefined): boolean {
-  return !Boolean(style?.multiline) && String(style?.fitMode || "fixed") === "fixed";
+export function isSingleLineAutoSizeText(
+  style: Record<string, unknown> | null | undefined,
+  text?: unknown,
+): boolean {
+  return (
+    !Boolean(style?.multiline) &&
+    !canonicalLayoutText(text).includes("\n") &&
+    String(style?.fitMode || "fixed") === "fixed"
+  );
 }
 
 // Measures the natural, undistorted box for a normal single-line text object.
@@ -568,10 +590,15 @@ export function getSingleLineTextBox(
     fontStyle: input.fontStyle || "normal",
     letterSpacing: Number(input.letterSpacing) || 0,
   };
-  const text = (input.uppercase ? String(input.text ?? "").toUpperCase() : String(input.text ?? ""))
-    .replace(/[\r\n]+/g, " ");
+  const text = canonicalLayoutText(
+    input.uppercase ? String(input.text ?? "").toUpperCase() : String(input.text ?? ""),
+  );
+  const measuredWidth = Math.max(
+    1,
+    ...text.split("\n").map((line) => measure(line, style)),
+  );
   return {
-    width: Math.max(1, Math.ceil(measure(text, style))),
+    width: Math.max(1, Math.ceil(measuredWidth)),
     height: Math.max(1, Math.ceil(fontSize * lineHeight)),
   };
 }

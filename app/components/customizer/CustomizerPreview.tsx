@@ -156,6 +156,7 @@ function TextLayer({ layer, field, values, fontsReady, idPrefix, safeBounds }: a
       </defs>
       <text
         clipPath={`url(#${clipId})`}
+        xmlSpace="preserve"
         style={{
           fontFamily: `"${style.fontFamily || "Cormorant Garamond"}", serif`,
           fontSize: `${layout.fontSize}px`,

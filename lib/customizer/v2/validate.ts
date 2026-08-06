@@ -12,6 +12,7 @@ import { CUSTOMIZER_APPROVED_FONTS } from "@/lib/customizer";
 import { listFonts } from "./fonts";
 import { isValidQRValue, normalizeQRCodeStyle } from "./qr";
 import { normalizeImageFilters } from "./image-filters";
+import { normalizeCanonicalText, promoteTextStyleForValue } from "./text-editing";
 
 /* ------------------------------------------------------------- zod schemas */
 
@@ -166,6 +167,8 @@ export const userLayerSchema = z
         verticalAlign: z.enum(["top", "middle", "bottom"]).optional(),
         uppercase: z.boolean().optional(),
         multiline: z.boolean().optional(),
+        autoSizeMode: z.enum(["fixed", "width", "height", "shrink"]).optional(),
+        fitMode: z.enum(["fixed", "auto-height", "shrink"]).optional(),
       })
       .optional(),
   })
@@ -335,12 +338,26 @@ export function validateCustomerState(
       violations.push({ code: "invalid-value", fieldId, message: `Value for "${field.label}" is invalid.` });
       continue;
     }
-    let text = raw === null || raw === undefined ? "" : String(raw);
-    if (connectedLayer?.type === "text" && !connectedLayer.textStyle?.multiline && /[\r\n]/.test(text)) {
-      violations.push({ code: "multiline-not-allowed", fieldId, layerId: connectedLayer.id, message: `"${field.label}" does not allow line breaks.` });
-      text = text.replace(/[\r\n]+/g, " ");
+    let text = normalizeCanonicalText(raw === null || raw === undefined ? "" : String(raw));
+    // A manual break promotes a text layer at render time. Never flatten the
+    // canonical value just because an older template still says single-line.
+    const lineLimit = connectedLayer?.type === "text"
+      ? Math.max(0, Math.floor(Number(connectedLayer.maxLines) || 0))
+      : 0;
+    if (lineLimit > 0 && text.split("\n").length > lineLimit) {
+      violations.push({
+        code: "too-many-lines",
+        fieldId,
+        layerId: connectedLayer.id,
+        message: `"${field.label}" supports up to ${lineLimit} ${lineLimit === 1 ? "line" : "lines"}.`,
+      });
+      text = text.split("\n").slice(0, lineLimit).join("\n");
     }
-    const maxLength = Number(field.maxLength) > 0 ? Number(field.maxLength) : 2000;
+    const configuredLengths = [
+      Number(field.maxLength) || 0,
+      Number(connectedLayer?.maxChars) || 0,
+    ].filter((limit) => limit > 0);
+    const maxLength = configuredLengths.length ? Math.min(...configuredLengths) : 2000;
     if (text.length > maxLength) {
       violations.push({
         code: "value-too-long",
@@ -374,9 +391,29 @@ export function validateCustomerState(
       continue;
     }
     const layer = parsed.data;
-    if (layer.type === "text" && !layer.textStyle?.multiline && /[\r\n]/.test(String(layer.text || ""))) {
-      violations.push({ code: "multiline-not-allowed", layerId: layer.id, message: "This text layer does not allow line breaks." });
-      layer.text = String(layer.text || "").replace(/[\r\n]+/g, " ");
+    if (layer.type === "text") {
+      layer.text = normalizeCanonicalText(layer.text || "");
+      layer.textStyle = promoteTextStyleForValue(layer.textStyle, layer.text);
+    }
+    if (layer.type === "text" && layer.textStyle?.multiline) {
+      const lineLimit = Math.max(0, Math.floor(Number((layer as any).maxLines) || 0));
+      if (lineLimit > 0 && String(layer.text || "").split("\n").length > lineLimit) {
+        violations.push({
+          code: "too-many-lines",
+          layerId: layer.id,
+          message: `This text layer supports up to ${lineLimit} ${lineLimit === 1 ? "line" : "lines"}.`,
+        });
+        layer.text = String(layer.text || "").split("\n").slice(0, lineLimit).join("\n");
+      }
+      const maxChars = Math.max(0, Math.floor(Number((layer as any).maxChars) || 0));
+      if (maxChars > 0 && String(layer.text || "").length > maxChars) {
+        violations.push({
+          code: "value-too-long",
+          layerId: layer.id,
+          message: `This text layer supports up to ${maxChars} characters.`,
+        });
+        layer.text = String(layer.text || "").slice(0, maxChars);
+      }
     }
     if (!pageIds.has(layer.page)) {
       violations.push({ code: "user-layer-bad-page", message: "A customer-added layer points at a missing page." });

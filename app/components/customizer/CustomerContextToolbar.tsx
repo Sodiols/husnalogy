@@ -79,6 +79,7 @@ export default function CustomerContextToolbar({
 
   return (
     <div
+      data-customizer-text-interaction
       className="pointer-events-auto flex max-w-full items-center gap-0.5 overflow-x-auto rounded-xl border border-[#303839]/8 bg-white px-1.5 py-1.5 shadow-[0_6px_24px_rgba(48,56,57,0.10)] no-scrollbar"
       role="toolbar"
       aria-label="Text formatting"

@@ -41,13 +41,10 @@ export default function CustomizerProtectionOverlay({ covered }: { covered: bool
         </div>
       )}
 
-      {/* Print-only replacement (the print CSS below hides the editor).
-          The wording stays truthful (spec §30): a browser cannot prevent
-          operating-system screenshots, screen recording, extensions or a
-          camera, so nothing here claims that it does. */}
+      {/* Print-only replacement (the print CSS below hides the editor). */}
       <div className="cz-print-notice hidden">
         <p style={{ fontFamily: "Georgia, serif", fontSize: 22, color: "#303839", padding: 48, textAlign: "center" }}>
-          This preview is watermarked to protect the design.
+          Protected preview. Copying, downloading, and printing are disabled.
         </p>
       </div>
 

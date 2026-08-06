@@ -7,36 +7,12 @@ import { subscribeToLocalOrders } from "../lib/customer-lists";
 import { formatCurrency, normalizeCurrency } from "@/lib/currency";
 import ServerCustomizationImage from "@/app/components/customizer/ServerCustomizationImage";
 
-// Customer-facing wording for personalized production (spec §40). Deliberately
-// calm and non-technical: internal render statuses and error codes stay in the
-// admin panel.
-const DESIGN_STATUS_LABELS: Record<string, string> = {
-  not_required: "",
-  snapshot_pending: "Design received",
-  snapshot_ready: "Design received",
-  render_queued: "Preparing production files",
-  rendering: "Preparing production files",
-  render_ready: "Design ready for production",
-  attention_required: "Design requires attention",
-  failed: "Design requires attention",
-};
-
-function designStatusLabel(productionStatus: string) {
-  return DESIGN_STATUS_LABELS[String(productionStatus || "not_required")] || "";
-}
-
-function needsDesignSupport(productionStatus: string) {
-  return productionStatus === "attention_required" || productionStatus === "failed";
-}
-
 function normalizeOrder(order: any = {}) {
   return {
     ...order,
     id: order.id || `local_${order.createdAt || Date.now()}`,
     items: Array.isArray(order.items) ? order.items : [],
     status: order.status || "pending",
-    // Personalized production progress, kept separate from the order status.
-    productionStatus: order.productionStatus || "not_required",
     paymentStatus: order.paymentStatus || "unpaid",
     total: Number(order.total || 0),
     currency: normalizeCurrency(order.currency),
@@ -163,35 +139,10 @@ export default function OrdersClient() {
                     <p className="mt-1 text-xs text-[#303839]/55">Placed {formatOrderDate(order.createdAt)}</p>
                   </div>
 
-                  <div className="flex flex-wrap items-center gap-2">
-                    {/* Calm, plain-language design progress (spec §40). Internal
-                        render states and error codes are never shown here. */}
-                    {designStatusLabel(order.productionStatus) && (
-                      <span
-                        className={`rounded-full px-4 py-2 text-xs font-bold uppercase tracking-[0.1em] ${
-                          order.productionStatus === "attention_required" || order.productionStatus === "failed"
-                            ? "bg-[#F4ECEC] text-[#303839]"
-                            : "bg-[#FAF7F7] text-[#596061]"
-                        }`}
-                      >
-                        {designStatusLabel(order.productionStatus)}
-                      </span>
-                    )}
-                    <span className="rounded-full bg-[#E6E6E6] px-4 py-2 text-xs font-bold uppercase tracking-[0.1em] text-[#303839]">
-                      {order.status || "pending"}
-                    </span>
-                  </div>
+                  <span className="rounded-full bg-[#E6E6E6] px-4 py-2 text-xs font-bold uppercase tracking-[0.1em] text-[#303839]">
+                    {order.status || "pending"}
+                  </span>
                 </div>
-
-                {needsDesignSupport(order.productionStatus) && (
-                  <p className="mt-3 text-xs text-[#596061]">
-                    We need to check something on your personalized design.{" "}
-                    <Link href="/support" className="font-bold text-[#303839] underline">
-                      Contact support
-                    </Link>{" "}
-                    and quote order {order.id}.
-                  </p>
-                )}
 
                 {!!items.length && (
                   <div className="mt-4 space-y-3">

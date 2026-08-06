@@ -29,6 +29,7 @@ import { maskShapeFromLegacy } from "./masks";
 import { mergeGridSlotOverrides, normalizeGridSlot } from "./grids";
 import { normalizeImageFilters } from "./image-filters";
 import { normalizeQRCodeStyle } from "./qr";
+import { normalizeCanonicalText, promoteTextStyleForValue } from "./text-editing";
 
 /* ----------------------------------------------------------------- helpers */
 
@@ -266,15 +267,16 @@ function migrateLayerV1(raw: Record<string, any>, pageIdFallback: string): Custo
   }
 
   // Default: text.
+  const text = normalizeCanonicalText(raw.text);
   const textLayer: TextLayer = {
     ...base,
     type: "text",
-    text: str(raw.text),
+    text,
     placeholder: str(raw.placeholder),
     maxChars: Math.max(0, Math.round(num(raw.maxChars, 0))),
     maxLines: Math.max(0, Math.round(num(raw.maxLines, 0))),
     required: bool(raw.required),
-    textStyle: normalizeTextStyleV2(raw.textStyle),
+    textStyle: promoteTextStyleForValue(normalizeTextStyleV2(raw.textStyle), text) as TextStyle,
   };
   return textLayer;
 }
@@ -579,8 +581,13 @@ export function resolveCustomerDocument(
     let next = applyOverrideV2(layer, overrides[layer.id]);
     if (next.type === "text" && next.customerEditable && next.fieldId) {
       const value = values[next.fieldId];
-      if (value !== undefined && value !== null && String(value).trim() !== "" && typeof value !== "object") {
-        next = { ...next, text: String(value) };
+      if (value !== undefined && value !== null && String(value) !== "" && typeof value !== "object") {
+        const text = normalizeCanonicalText(value);
+        next = {
+          ...next,
+          text,
+          textStyle: promoteTextStyleForValue(next.textStyle, text) as TextStyle,
+        };
       }
     }
     if ((next.type === "image" || next.type === "frame") && next.customerEditable && next.fieldId) {

@@ -44,10 +44,10 @@ describe("server customization validation", () => {
     expect(result.violations.some((v) => v.code === "unknown-field")).toBe(true);
   });
 
-  it("removes submitted line breaks when multiline is disabled", () => {
+  it("preserves submitted line breaks and lets the renderer promote a legacy single-line layer", () => {
     const result = validateCustomerState(template, { values: { names: "Salman\nBobita" } });
-    expect(result.sanitizedValues.names).toBe("Salman Bobita");
-    expect(result.violations.some((violation) => violation.code === "multiline-not-allowed")).toBe(true);
+    expect(result.sanitizedValues.names).toBe("Salman\nBobita");
+    expect(result.violations.some((violation) => violation.code === "multiline-not-allowed")).toBe(false);
   });
 
   it("preserves submitted line breaks when multiline is enabled", () => {
@@ -60,6 +60,92 @@ describe("server customization validation", () => {
     const result = validateCustomerState(multilineTemplate, { values: { names: "Salman\nBobita" } });
     expect(result.sanitizedValues.names).toBe("Salman\nBobita");
     expect(result.violations.some((violation) => violation.code === "multiline-not-allowed")).toBe(false);
+  });
+
+  it("normalizes CRLF and enforces the connected layer line limit", () => {
+    const multilineTemplate = {
+      ...template,
+      layers: template.layers.map((layer) =>
+        layer.id === "names_layer"
+          ? { ...layer, maxLines: 2, textStyle: { multiline: true } }
+          : layer,
+      ),
+    };
+    const result = validateCustomerState(multilineTemplate, {
+      values: { names: "ONE\r\nTWO\r\nTHREE" },
+    });
+    expect(result.sanitizedValues.names).toBe("ONE\nTWO");
+    expect(result.violations.some((violation) => violation.code === "too-many-lines")).toBe(true);
+  });
+
+  it("preserves multiline auto-height settings on customer-created text", () => {
+    const result = validateCustomerState(
+      { ...template, settings: { ...template.settings, allowCustomerText: true } },
+      {
+        editorState: {
+          layerOverrides: {},
+          userLayers: [{
+            id: "user_text",
+            type: "text",
+            page: "front",
+            text: "ONE\r\nTWO",
+            x: 100,
+            y: 100,
+            width: 300,
+            height: 80,
+            textStyle: {
+              multiline: true,
+              autoSizeMode: "height",
+              fitMode: "auto-height",
+            },
+          }],
+        },
+      },
+    );
+    expect(result.sanitizedEditorState.userLayers[0].text).toBe("ONE\nTWO");
+    expect(result.sanitizedEditorState.userLayers[0].textStyle).toMatchObject({
+      multiline: true,
+      autoSizeMode: "height",
+      fitMode: "auto-height",
+    });
+  });
+
+  it("promotes a restored customer text layer whose saved style is still single-line", () => {
+    const result = validateCustomerState(
+      { ...template, settings: { ...template.settings, allowCustomerText: true } },
+      {
+        editorState: {
+          layerOverrides: {},
+          userLayers: [{
+            id: "restored_text",
+            type: "text",
+            page: "front",
+            text: "Salman\r\nadfasdf",
+            x: 100,
+            y: 100,
+            width: 300,
+            height: 80,
+            textStyle: {
+              fontFamily: "Inter",
+              fontSize: 48,
+              multiline: false,
+              autoSizeMode: "width",
+              fitMode: "fixed",
+            },
+          }],
+        },
+      },
+    );
+    expect(result.sanitizedEditorState.userLayers[0]).toMatchObject({
+      text: "Salman\nadfasdf",
+      textStyle: {
+        fontFamily: "Inter",
+        fontSize: 48,
+        multiline: true,
+        autoSizeMode: "height",
+        fitMode: "auto-height",
+      },
+    });
   });
 
   it("unlocks movement when Customer editable is checked", () => {

@@ -40,6 +40,7 @@ import {
   selectionBounds,
 } from "@/lib/customizer/v2/selection-geometry";
 import { isEmptyText } from "@/lib/customizer/v2/text-editing";
+import { computeFitZoom } from "@/lib/customizer/v2/zoom";
 import { layersForPage, selectableLayersForPage } from "./builder-utils";
 
 const HANDLES: Array<{ id: string; cx: number; cy: number; cursor: string }> = [
@@ -72,6 +73,8 @@ export default function AdminCanvas({
   onTextPlace,
   onTextEditStart,
   onTextDraftChange,
+  onTextMultilineActivate,
+  onTextCancel,
   onTextDiscard,
   onEditingTextChange,
   onExitTextTool,
@@ -89,6 +92,7 @@ export default function AdminCanvas({
   editingGroupId = null,
   onEnterGroup,
   onExitGroup,
+  onFitZoomChange,
 }: any) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const surfaceRef = useRef<HTMLDivElement>(null);
@@ -99,6 +103,15 @@ export default function AdminCanvas({
   const [selectedGuideId, setSelectedGuideId] = useState<string | null>(null);
   const [editingTextId, setEditingTextId] = useState<string | null>(null);
   const newTextIdsRef = useRef(new Set<string>());
+  const textEditSessionRef = useRef<{
+    layerId: string;
+    text: string;
+    textStyle: Record<string, any>;
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  } | null>(null);
   const panRef = useRef<PanGesture | null>(null);
   const [isPanning, setIsPanning] = useState(false);
   const [spacePanActive, setSpacePanActive] = useState(false);
@@ -123,9 +136,21 @@ export default function AdminCanvas({
       setContainerHeight(el.clientHeight);
     };
     update();
+    // Same belt-and-braces measurement as CustomizerWorkspace: the first mount
+    // measurement can precede the panels taking their space.
+    const frame = requestAnimationFrame(update);
+    const settle = window.setTimeout(update, 250);
     const ro = new ResizeObserver(update);
     ro.observe(el);
-    return () => ro.disconnect();
+    window.addEventListener("resize", update);
+    window.addEventListener("orientationchange", update);
+    return () => {
+      cancelAnimationFrame(frame);
+      window.clearTimeout(settle);
+      ro.disconnect();
+      window.removeEventListener("resize", update);
+      window.removeEventListener("orientationchange", update);
+    };
   }, []);
 
   const maxCanvasWidth = containerWidth >= 1200 ? 900 : containerWidth >= 900 ? 760 : 640;
@@ -134,6 +159,22 @@ export default function AdminCanvas({
   const displayH = displayW * (canvasH / canvasW);
   const scale = displayW / canvasW;
   const snapTolerance = SNAP_PX / scale;
+
+  // Real Fit (spec §9): measured from the workspace box on both axes, so Fit
+  // reacts to collapsing the tool rail, the layers drawer or the inspector.
+  const fitZoom = computeFitZoom({
+    availableWidth: containerWidth,
+    availableHeight: containerHeight,
+    baseWidth,
+    canvasWidth: canvasW,
+    canvasHeight: canvasH,
+    padding: 32,
+  });
+  useEffect(() => {
+    if (fitZoom === null) return;
+    onFitZoomChange?.(fitZoom);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fitZoom]);
 
   // Pan tool proper, or Space held down as a temporary override.
   const panToolActive = activeTool === PAN_TOOL || spacePanActive;
@@ -285,6 +326,18 @@ export default function AdminCanvas({
 
   const beginTextEditing = (layerId: string, created = false) => {
     if (editingTextId === layerId) return;
+    const layer = selectableLayers.find((candidate: any) => candidate.id === layerId);
+    if (!layer) return;
+    const field = layer.fieldId ? getFieldById(template, layer.fieldId) : null;
+    textEditSessionRef.current = {
+      layerId,
+      text: String(resolveLayerText(layer, field, values)),
+      textStyle: { ...(layer.textStyle || {}) },
+      x: Number(layer.x) || 0,
+      y: Number(layer.y) || 0,
+      width: Number(layer.width) || 0,
+      height: Number(layer.height) || 0,
+    };
     if (created) newTextIdsRef.current.add(layerId);
     else onTextEditStart?.(layerId);
     setEditingTextId(layerId);
@@ -293,6 +346,7 @@ export default function AdminCanvas({
 
   const finishTextEditing = (layerId: string, text: string) => {
     const created = newTextIdsRef.current.delete(layerId);
+    textEditSessionRef.current = null;
     setEditingTextId(null);
     onEditingTextChange?.(null);
     if (created && isEmptyText(text)) {
@@ -300,6 +354,26 @@ export default function AdminCanvas({
       return;
     }
     onTextCommit?.(layerId, text);
+  };
+
+  const cancelTextEditing = (layerId: string) => {
+    const created = newTextIdsRef.current.delete(layerId);
+    const session = textEditSessionRef.current;
+    textEditSessionRef.current = null;
+    setEditingTextId(null);
+    onEditingTextChange?.(null);
+    if (created) {
+      onTextDiscard?.(layerId);
+      return;
+    }
+    if (session?.layerId === layerId) onTextCancel?.(layerId, {
+      text: session.text,
+      textStyle: session.textStyle,
+      x: session.x,
+      y: session.y,
+      width: session.width,
+      height: session.height,
+    });
   };
 
   const onLayerPointerDown = (e: React.PointerEvent, layer: any) => {
@@ -429,7 +503,10 @@ export default function AdminCanvas({
     e.stopPropagation();
     (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
     const interactionLayer = singleLineInteractionLayer(layer);
-    const textScale = interactionLayer.type === "text" && isSingleLineAutoSizeText(interactionLayer.textStyle);
+    const textScale = interactionLayer.type === "text" && isSingleLineAutoSizeText(
+      interactionLayer.textStyle,
+      interactionLayer.resolvedText ?? interactionLayer.text,
+    );
     dragRef.current = {
       mode: textScale ? "text-scale" : "resize",
       handle,
@@ -804,7 +881,7 @@ export default function AdminCanvas({
       >
         {/* Base render (shared with the customer) */}
         <div className="pointer-events-none absolute inset-0">
-          <CustomizerPreview template={template} values={values} page={pageId} showSafeArea={showSafeArea} showBleed={showBleed} hiddenLayerIds={editingTextId ? [editingTextId] : []} />
+          <CustomizerPreview template={template} values={values} page={pageId} showSafeArea={showSafeArea} showBleed={showBleed} hiddenLayerIds={[]} />
         </div>
 
         {/* Alignment guides */}
@@ -907,8 +984,16 @@ export default function AdminCanvas({
           const boxTop = (interactionLayer.y - interactionLayer.height / 2) * scale;
           const boxW = interactionLayer.width * scale;
           const boxH = interactionLayer.height * scale;
-          const singleLineTextScale = selected && layer.type === "text" && isSingleLineAutoSizeText(layer.textStyle);
-          const textOverflow = selected && textOverflowForLayer(layer);
+           const singleLineTextScale = selected && layer.type === "text" && isSingleLineAutoSizeText(
+             layer.textStyle,
+             interactionLayer.resolvedText ?? layer.text,
+           );
+           const textOverflow = selected && textOverflowForLayer(layer);
+           const connectedField = layer.type === "text" && layer.fieldId ? getFieldById(template, layer.fieldId) : null;
+           const characterLimits = [
+             Number(connectedField?.maxLength) || 0,
+             Number(layer.maxChars) || 0,
+           ].filter((limit) => limit > 0);
 
           return (
             <div
@@ -960,14 +1045,19 @@ export default function AdminCanvas({
             >
               {editingTextId === layer.id && (
                 <InlineCanvasTextEditor
-                  value={String(resolveLayerText(layer, layer.fieldId ? getFieldById(template, layer.fieldId) : null, values))}
-                  multiline={Boolean(layer.textStyle?.multiline)}
-                  scale={scale}
-                  textStyle={layer.textStyle}
-                  onDraftChange={(text) => onTextDraftChange?.(layer.id, text)}
-                  onCommit={(text) => finishTextEditing(layer.id, text)}
-                  onEscape={() => onExitTextTool?.()}
-                />
+                   value={String(resolveLayerText(layer, layer.fieldId ? getFieldById(template, layer.fieldId) : null, values))}
+                   multiline={Boolean(layer.textStyle?.multiline)}
+                   allowMultiline
+                   maxLines={Number(layer.maxLines) || 0}
+                   maxLength={characterLimits.length ? Math.min(...characterLimits) : 0}
+                   scale={scale}
+                   textStyle={layer.textStyle}
+                   onDraftChange={(text) => onTextDraftChange?.(layer.id, text)}
+                   onMultilineActivate={() => onTextMultilineActivate?.(layer.id)}
+                   onCommit={(text) => finishTextEditing(layer.id, text)}
+                   onCancel={() => cancelTextEditing(layer.id)}
+                   onEscape={onExitTextTool}
+                 />
               )}
               {selected && editingTextId !== layer.id && (
                 <span className="pointer-events-none absolute -top-6 left-0 z-10 whitespace-nowrap rounded bg-[#303839] px-1.5 py-0.5 text-[9px] font-bold text-white">

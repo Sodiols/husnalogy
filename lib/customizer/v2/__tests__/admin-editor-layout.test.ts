@@ -143,7 +143,8 @@ describe("tool rail keeps every tool", () => {
 describe("canvas controls survive the restyle", () => {
   it("keeps zoom, fit, snap, safe area and bleed", () => {
     expect(builder).toContain("<CustomizerZoomControls");
-    expect(builder).toContain("onFit={resetViewport}");
+    expect(builder).toContain("onFit={fitToPage}");
+    expect(builder).toContain("onActualSize={resetViewport}");
     expect(builder).toContain("setSnapEnabled");
     expect(builder).toContain("showSafeArea: !settings.showSafeArea");
     expect(builder).toContain("showBleed: !settings.showBleed");

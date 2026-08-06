@@ -11,7 +11,6 @@ const migrationNames = [
   "20260719120000_customizer_v2_schema_consolidation.sql",
   "20260719180000_permanent_admin_asset_library.sql",
   "20260726120000_customizer_public_versioning.sql",
-  "20260804120000_customizer_order_integrity.sql",
 ];
 
 function read(relativePath) {

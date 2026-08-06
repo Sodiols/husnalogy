@@ -210,6 +210,12 @@ export default function CustomizerReviewStep({
             Your latest changes could not be saved. Please try again before adding to cart.
           </p>
         )}
+
+        {saveStatus === "offline" && (
+          <p className="rounded-xl border border-[#D4AF37]/40 bg-[#D4AF37]/10 px-4 py-3 text-sm font-semibold text-[#303839]" role="status">
+            You appear to be offline. Your changes are queued and will save automatically once the connection returns.
+          </p>
+        )}
       </div>
     </div>
   );

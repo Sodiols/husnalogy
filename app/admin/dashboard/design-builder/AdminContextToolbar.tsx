@@ -210,7 +210,7 @@ export default function AdminContextToolbar(props: Props) {
   const showTextControls = selectedLayers.length > 0 && selectedLayers.every((layer) => layer?.type === "text");
 
   return (
-    <div role="toolbar" aria-label="Selection formatting and layout" className="pointer-events-auto flex max-w-full items-center gap-0.5 overflow-x-auto rounded-2xl border border-[#303839]/12 bg-white px-2 py-1.5 shadow-[0_12px_36px_rgba(48,56,57,0.14)] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+    <div data-customizer-text-interaction role="toolbar" aria-label="Selection formatting and layout" className="pointer-events-auto flex max-w-full items-center gap-0.5 overflow-x-auto rounded-2xl border border-[#303839]/12 bg-white px-2 py-1.5 shadow-[0_12px_36px_rgba(48,56,57,0.14)] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
       {showTextControls && (
         <>
           {props.editingText && (

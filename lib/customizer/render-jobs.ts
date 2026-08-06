@@ -8,8 +8,7 @@
 import { createHash, randomUUID } from "crypto";
 import { createServiceRoleClient } from "@/lib/supabase/server";
 import { customizationFromRow } from "@/lib/customizer/customizations";
-import { getFrozenTemplateVersion, getTrustedTemplateForCustomization } from "@/lib/customizer/versions";
-import { computeIntegrityHash } from "@/lib/customizer/snapshot-hash";
+import { getTrustedTemplateForCustomization } from "@/lib/customizer/versions";
 import {
   renderCustomizationPages,
   buildPrintPdf,
@@ -128,15 +127,9 @@ export function computeRenderInputHash(
   jobType: string,
   customization: { id: string; templateId?: string; templateVersion?: number; values?: unknown; renderData?: any; updatedAt?: string },
   trustedTemplate?: any,
-  // Production order jobs hash the frozen snapshot instead of only the live
-  // draft, so a later edit to the draft cannot collide with (or reuse) the
-  // output of an order that has already been placed.
-  snapshot?: { snapshotId: string; integrityHash: string } | null,
 ): string {
   const material = JSON.stringify(stable({
     jobType,
-    snapshotId: snapshot?.snapshotId || undefined,
-    snapshotIntegrityHash: snapshot?.integrityHash || undefined,
     customizationId: customization.id,
     templateId: customization.templateId || "",
     templateVersion: customization.templateVersion || 0,
@@ -153,81 +146,11 @@ export function computeRenderInputHash(
   return createHash("sha256").update(material).digest("hex");
 }
 
-// The immutable render source for a production order job (spec §34). The
-// template version, customer values and editor state all come from the frozen
-// snapshot, so later edits to the customer's draft or the product template can
-// never change an order that has already been placed.
-export type FrozenRenderSource = {
-  snapshotId: string;
-  orderId: string;
-  orderItemId: string | null;
-  customizationId: string;
-  ownerId: string;
-  template: any;
-  values: Record<string, unknown>;
-  editorState: Record<string, unknown> | null;
-  integrityOk: boolean;
-  renderFeatures: { serverRendering: boolean; printPdf: boolean };
-};
-
-export async function loadFrozenRenderSource(
-  snapshotId: string,
-  supabase: ReturnType<typeof createServiceRoleClient> = createServiceRoleClient(),
-): Promise<FrozenRenderSource> {
-  const { data: row, error } = await supabase
-    .from("order_design_snapshots")
-    .select("*")
-    .eq("id", snapshotId)
-    .maybeSingle();
-  if (error) throw new RenderError("INVALID_DOCUMENT", `Order design snapshot lookup failed: ${error.message}`);
-  if (!row) throw new RenderError("INVALID_DOCUMENT", "The order design snapshot no longer exists.");
-
-  const snapshot = (row.snapshot || {}) as Record<string, any>;
-
-  // A snapshot whose stored payload no longer matches its recorded hash must
-  // not be sent to production.
-  const integrityOk = Boolean(row.integrity_hash) && computeIntegrityHash(snapshot) === row.integrity_hash;
-  if (!integrityOk) {
-    throw new RenderError(
-      "INVALID_DOCUMENT",
-      `Order design snapshot ${snapshotId} failed integrity verification and was not rendered.`,
-    );
-  }
-
-  const templateId = String(snapshot.templateId || row.template_id || "");
-  const templateVersion = Number(snapshot.templateVersion || row.template_version) || 0;
-  const template = await getFrozenTemplateVersion(templateId, templateVersion);
-  if (!template) {
-    throw new RenderError(
-      "INVALID_DOCUMENT",
-      `Published template version ${templateId}@${templateVersion} for snapshot ${snapshotId} is unavailable; production rendering must not fall back to the live template.`,
-    );
-  }
-
-  return {
-    snapshotId,
-    orderId: String(row.order_id || ""),
-    orderItemId: row.order_item_id || null,
-    customizationId: String(row.customization_id || ""),
-    ownerId: String((snapshot.assetReferences || [])[0]?.ownerId || ""),
-    template,
-    values: (snapshot.values || {}) as Record<string, unknown>,
-    editorState: (snapshot.editorState || null) as Record<string, unknown> | null,
-    integrityOk,
-    renderFeatures: {
-      serverRendering: snapshot.renderFeatures?.serverRendering !== false,
-      printPdf: snapshot.renderFeatures?.printPdf !== false,
-    },
-  };
-}
-
 // Enqueue a render job. Idempotent: returns an existing completed job with
 // the same input instead of creating a duplicate (spec §23).
 export async function enqueueRenderJob(options: {
   customizationId: string;
   orderId?: string | null;
-  orderItemId?: string | null;
-  snapshotId?: string | null;
   jobType: RenderJobType;
   priority?: number;
   force?: boolean;
@@ -255,21 +178,7 @@ export async function enqueueRenderJob(options: {
   });
   const disabledFeature = getDisabledRenderFeature(authoritativeTemplate, options.jobType);
   if (disabledFeature) throw new RenderError("FEATURE_DISABLED", `${disabledFeature} is disabled for this product.`);
-
-  // Production order jobs are bound to the immutable snapshot they must render.
-  let snapshotHashMaterial: { snapshotId: string; integrityHash: string } | null = null;
-  if (options.snapshotId) {
-    const { data: snapshotRow, error: snapshotError } = await supabase
-      .from("order_design_snapshots")
-      .select("id, integrity_hash")
-      .eq("id", options.snapshotId)
-      .maybeSingle();
-    if (snapshotError) throw new RenderError("INVALID_DOCUMENT", `Order design snapshot lookup failed: ${snapshotError.message}`);
-    if (!snapshotRow) throw new RenderError("INVALID_DOCUMENT", "The order design snapshot to render does not exist.");
-    snapshotHashMaterial = { snapshotId: snapshotRow.id, integrityHash: String(snapshotRow.integrity_hash || "") };
-  }
-
-  const inputHash = computeRenderInputHash(options.jobType, customization, authoritativeTemplate, snapshotHashMaterial);
+  const inputHash = computeRenderInputHash(options.jobType, customization, authoritativeTemplate);
 
   const { data: existing } = options.force ? { data: null } : await supabase
     .from("customizer_render_jobs")
@@ -296,8 +205,6 @@ export async function enqueueRenderJob(options: {
     .insert({
       customization_id: options.customizationId,
       order_id: options.orderId || null,
-      order_item_id: options.orderItemId || null,
-      snapshot_id: options.snapshotId || null,
       template_version_id: versionRow?.id || null,
       job_type: options.jobType,
       status: "queued",
@@ -408,80 +315,35 @@ export async function processRenderJob(jobId: string): Promise<RenderJobRow> {
 
   const uploadedPaths: string[] = [];
   try {
+    const { data: row } = await supabase
+      .from("product_customizations")
+      .select("*")
+      .eq("id", claimed.customization_id)
+      .maybeSingle();
+    if (!row) throw new RenderError("customization-not-found", "Customization no longer exists.");
+    const customization = customizationFromRow(row);
+
+    const trusted = await getTrustedTemplateForCustomization(customization);
+    if (!trusted) throw new RenderError("template-not-found", "No template available for this customization.");
+    let template = trusted.template;
+
     const jobType = claimed.job_type as RenderJobType;
+    const normalizedMockup = jobType === "mockup" ? await effectiveMockupTemplate(customization.productId, template, supabase) : null;
+    if (normalizedMockup) template = { ...template, mockupTemplates: [normalizedMockup] };
+    template = await resolveFlagsIntoTemplate(template, {
+      productId: customization.productId,
+      productType: normalizedMockup?.productType || template?.productType || template?.settings?.productType,
+      actorId: customization.userId,
+    });
+    const disabledFeature = getDisabledRenderFeature(template, jobType);
+    if (disabledFeature) {
+      throw new RenderError("FEATURE_DISABLED", `${disabledFeature} is disabled for this product.`);
+    }
     const isPrint = jobType === "print_png" || jobType === "print_pdf";
     const assetVariant = isPrint ? "original" : "editor";
-
-    // Production order rendering reads the immutable snapshot; only preview
-    // rendering for an active draft reads the live customization (spec §34).
-    const frozen = claimed.snapshot_id ? await loadFrozenRenderSource(claimed.snapshot_id, supabase) : null;
-
-    let template: any;
-    let rawValues: unknown;
-    let rawEditorState: unknown;
-    let customizationId: string;
-    let customizationProductId = "";
-    let customizationUserId = "";
-    let templateVersionForOutputs: number;
-
-    if (frozen) {
-      // The frozen path deliberately skips live template lookup and live
-      // feature-flag resolution: both would let a later administrator change
-      // alter an order that has already been accepted.
-      template = frozen.template;
-      rawValues = frozen.values;
-      rawEditorState = frozen.editorState;
-      customizationId = frozen.customizationId || String(claimed.customization_id || "");
-      customizationUserId = frozen.ownerId;
-      templateVersionForOutputs = Number(template.version) || 1;
-      if (jobType === "print_pdf" && !frozen.renderFeatures.printPdf) {
-        throw new RenderError("FEATURE_DISABLED", "Print PDF was disabled for this product when the order was placed.");
-      }
-      if (isPrint && !frozen.renderFeatures.serverRendering) {
-        throw new RenderError("FEATURE_DISABLED", "Server rendering was disabled for this product when the order was placed.");
-      }
-    } else {
-      const { data: row } = await supabase
-        .from("product_customizations")
-        .select("*")
-        .eq("id", claimed.customization_id)
-        .maybeSingle();
-      if (!row) throw new RenderError("customization-not-found", "Customization no longer exists.");
-      const customization = customizationFromRow(row);
-
-      const trusted = await getTrustedTemplateForCustomization(customization);
-      if (!trusted) throw new RenderError("template-not-found", "No template available for this customization.");
-      template = trusted.template;
-
-      const normalizedMockup = jobType === "mockup" ? await effectiveMockupTemplate(customization.productId, template, supabase) : null;
-      if (normalizedMockup) template = { ...template, mockupTemplates: [normalizedMockup] };
-      template = await resolveFlagsIntoTemplate(template, {
-        productId: customization.productId,
-        productType: normalizedMockup?.productType || template?.productType || template?.settings?.productType,
-        actorId: customization.userId,
-      });
-      const disabledFeature = getDisabledRenderFeature(template, jobType);
-      if (disabledFeature) {
-        throw new RenderError("FEATURE_DISABLED", `${disabledFeature} is disabled for this product.`);
-      }
-      rawValues = customization.values || {};
-      rawEditorState = customization.renderData?.editorState || null;
-      customizationId = customization.id;
-      customizationProductId = customization.productId;
-      customizationUserId = customization.userId;
-      templateVersionForOutputs = customization.templateVersion || template.version || 1;
-    }
-
-    const normalizedMockupForRender = jobType === "mockup"
-      ? await effectiveMockupTemplate(customizationProductId, template, supabase)
-      : null;
-    if (normalizedMockupForRender && !template.mockupTemplates?.length) {
-      template = { ...template, mockupTemplates: [normalizedMockupForRender] };
-    }
-
     const [values, editorState] = await Promise.all([
-      resolvePrivateAssetsForDelivery(rawValues as any, { productionWorker: true }, assetVariant, supabase),
-      resolvePrivateAssetsForDelivery(rawEditorState as any, { productionWorker: true }, assetVariant, supabase),
+      resolvePrivateAssetsForDelivery(customization.values || {}, { productionWorker: true }, assetVariant, supabase),
+      resolvePrivateAssetsForDelivery(customization.renderData?.editorState || null, { productionWorker: true }, assetVariant, supabase),
     ]);
 
     const pages: PageRenderResult[] = await renderCustomizationPages({
@@ -496,10 +358,10 @@ export async function processRenderJob(jobId: string): Promise<RenderJobRow> {
     await assertActiveLease();
 
     const outputs: Array<Record<string, unknown>> = [];
-    const basePath = `renders/${customizationId}/${jobId}`;
+    const basePath = `renders/${customization.id}/${jobId}`;
 
     if (jobType === "mockup") {
-      const config = normalizedMockupForRender || await effectiveMockupTemplate(customizationProductId, template, supabase);
+      const config = normalizedMockup || await effectiveMockupTemplate(customization.productId, template, supabase);
       if (!config?.views?.length) throw new RenderError("MOCKUP_RENDER_FAILED", "No mockup template is configured for this product.");
       const pageImages = Object.fromEntries(pages.map((page) => [page.pageId, page.png]));
       for (const view of config.views) {
@@ -530,7 +392,7 @@ export async function processRenderJob(jobId: string): Promise<RenderJobRow> {
         const verifiedChecksum = await verifyStoredOutput(supabase, path, rendered.image);
         outputs.push({
           job_id: jobId,
-          customization_id: customizationId,
+          customization_id: customization.id,
           page_id: `mockup:${view.id}`,
           format,
           mime_type: contentType,
@@ -543,7 +405,7 @@ export async function processRenderJob(jobId: string): Promise<RenderJobRow> {
           checksum: verifiedChecksum,
           watermarked: true,
           render_engine_version: `husnalogy-2.2.0/${MOCKUP_RENDERER_VERSION}`,
-          template_version: templateVersionForOutputs,
+          template_version: customization.templateVersion || template.version || 1,
           mockup_version: Number(config.version) || 1,
           output_type: "customer_mockup",
           input_hash: claimed.input_hash,
@@ -573,7 +435,7 @@ export async function processRenderJob(jobId: string): Promise<RenderJobRow> {
       const verifiedChecksum = await verifyStoredOutput(supabase, path, pdf);
       outputs.push({
         job_id: jobId,
-        customization_id: customizationId,
+        customization_id: customization.id,
         page_id: "all",
         format: "pdf",
         bucket: RENDER_BUCKET,
@@ -585,7 +447,7 @@ export async function processRenderJob(jobId: string): Promise<RenderJobRow> {
         checksum: verifiedChecksum || checksum,
         watermarked: false,
         render_engine_version: "husnalogy-2.2.0",
-        template_version: templateVersionForOutputs,
+        template_version: customization.templateVersion || template.version || 1,
         order_id: claimed.order_id || null,
         output_type: "print_pdf",
         mime_type: "application/pdf",
@@ -605,7 +467,7 @@ export async function processRenderJob(jobId: string): Promise<RenderJobRow> {
       const verifiedChecksum = await verifyStoredOutput(supabase, path, page.png);
       outputs.push({
         job_id: jobId,
-        customization_id: customizationId,
+        customization_id: customization.id,
         page_id: page.pageId,
         format: "png",
         bucket: RENDER_BUCKET,
@@ -617,7 +479,7 @@ export async function processRenderJob(jobId: string): Promise<RenderJobRow> {
         checksum: verifiedChecksum,
         watermarked: !isPrint,
         render_engine_version: "husnalogy-2.2.0",
-        template_version: templateVersionForOutputs,
+        template_version: customization.templateVersion || template.version || 1,
         order_id: claimed.order_id || null,
         output_type: jobType,
         mime_type: "image/png",
@@ -649,32 +511,17 @@ export async function processRenderJob(jobId: string): Promise<RenderJobRow> {
           renderedAt: new Date().toISOString(),
         };
       }
-      // The live draft only mirrors preview/print references for the editor.
-      // The permanent record is the snapshot, keyed by its own id.
       await supabase
         .from("product_customizations")
         .update({ print_files: printFiles })
-        .eq("id", customizationId);
-
-      const snapshotUpdate = {
-        print_files: printFiles,
-        render_status: "completed",
-        render_error_code: null,
-        render_error_message: null,
-        last_render_attempt_at: new Date().toISOString(),
-        render_attempt_count: (Number(claimed.attempt_count) || 0) + 1,
-      };
-      if (claimed.snapshot_id) {
-        await supabase.from("order_design_snapshots").update(snapshotUpdate).eq("id", claimed.snapshot_id);
-      } else if (claimed.order_id) {
+        .eq("id", customization.id);
+      if (claimed.order_id) {
         await supabase
           .from("order_design_snapshots")
-          .update(snapshotUpdate)
+          .update({ print_files: printFiles, render_status: "completed" })
           .eq("order_id", claimed.order_id)
-          .eq("customization_id", customizationId);
+          .eq("customization_id", customization.id);
       }
-
-      await refreshOrderProductionStatus(supabase, claimed.order_id);
     }
 
     return await finish({
@@ -692,27 +539,12 @@ export async function processRenderJob(jobId: string): Promise<RenderJobRow> {
     console.error(`[customizer] Render job ${jobId} failed (attempt ${attempts}):`, error);
     const cancelled = code === "RENDER_CANCELLED";
     const nextStatus = cancelled ? "cancelled" : renderRetryStatus(attempts);
-
-    // The failure must be visible on the permanent snapshot with its technical
-    // code, so admin render monitoring can surface and retry it (spec §10).
-    if (claimed.order_id || claimed.snapshot_id) {
-      const snapshotUpdate = {
-        render_status: cancelled || nextStatus === "failed" ? "failed" : "queued",
-        render_error_code: code,
-        render_error_message: String(error?.message || error).slice(0, 1000),
-        render_attempt_count: attempts,
-        last_render_attempt_at: new Date().toISOString(),
-      };
-      if (claimed.snapshot_id) {
-        await supabase.from("order_design_snapshots").update(snapshotUpdate).eq("id", claimed.snapshot_id);
-      } else {
-        await supabase
-          .from("order_design_snapshots")
-          .update(snapshotUpdate)
-          .eq("order_id", claimed.order_id)
-          .eq("customization_id", claimed.customization_id);
-      }
-      await refreshOrderProductionStatus(supabase, claimed.order_id);
+    if (claimed.order_id) {
+      await supabase
+        .from("order_design_snapshots")
+        .update({ render_status: cancelled ? "failed" : nextStatus === "failed" ? "failed" : "queued" })
+        .eq("order_id", claimed.order_id)
+        .eq("customization_id", claimed.customization_id);
     }
     return await finish({
       status: nextStatus,
@@ -722,120 +554,6 @@ export async function processRenderJob(jobId: string): Promise<RenderJobRow> {
       completed_at: nextStatus === "failed" || nextStatus === "cancelled" ? new Date().toISOString() : null,
     });
   }
-}
-
-// Roll the snapshot render states of an order up into its single
-// production_status (spec §39). Never touches orders.status.
-export async function refreshOrderProductionStatus(
-  supabase: ReturnType<typeof createServiceRoleClient>,
-  orderId: string | null | undefined,
-): Promise<string | null> {
-  if (!orderId) return null;
-  const { data, error } = await supabase
-    .from("order_design_snapshots")
-    .select("render_status")
-    .eq("order_id", orderId);
-  if (error || !data?.length) return null;
-
-  const statuses = data.map((row: any) => String(row.render_status || "pending"));
-  const has = (status: string) => statuses.includes(status);
-
-  const productionStatus = has("failed") || has("queue_failed") || has("attention_required")
-    ? "attention_required"
-    : has("pending")
-      ? "snapshot_pending"
-      : has("processing")
-        ? "rendering"
-        : has("queued")
-          ? "render_queued"
-          : statuses.every((status) => status === "completed" || status === "not_required")
-            ? "render_ready"
-            : "snapshot_ready";
-
-  await supabase.from("orders").update({ production_status: productionStatus }).eq("id", orderId);
-  return productionStatus;
-}
-
-// Production readiness summary for the admin health view (spec §12).
-export type RenderHealthSummary = {
-  jobs: Record<string, number>;
-  oldestQueuedJobAgeSeconds: number | null;
-  abandonedJobsRecovered: number;
-  ordersMissingSnapshots: number;
-  snapshotsWithoutRenderJobs: number;
-  snapshotsWithFailedRendering: number;
-  snapshotsAwaitingAttention: number;
-  generatedAt: string;
-};
-
-export async function getRenderHealthSummary(): Promise<RenderHealthSummary> {
-  const supabase = createServiceRoleClient();
-
-  const { data: recovered } = await supabase.rpc("recover_abandoned_customizer_render_jobs");
-
-  const { data: jobRows, error: jobError } = await supabase
-    .from("customizer_render_jobs")
-    .select("status, created_at")
-    .in("status", ["queued", "retrying", "processing", "completed", "failed", "cancelled"]);
-  if (jobError) throw jobError;
-
-  const jobs: Record<string, number> = {
-    queued: 0, retrying: 0, processing: 0, completed: 0, failed: 0, cancelled: 0,
-  };
-  let oldestQueuedAt: number | null = null;
-  for (const row of jobRows || []) {
-    const status = String(row.status);
-    jobs[status] = (jobs[status] || 0) + 1;
-    if (status === "queued" || status === "retrying") {
-      const createdAt = new Date(row.created_at).getTime();
-      if (!Number.isNaN(createdAt) && (oldestQueuedAt === null || createdAt < oldestQueuedAt)) oldestQueuedAt = createdAt;
-    }
-  }
-
-  const { data: snapshotRows, error: snapshotError } = await supabase
-    .from("order_design_snapshots")
-    .select("id, render_status");
-  if (snapshotError) throw snapshotError;
-
-  const snapshotsWithFailedRendering = (snapshotRows || []).filter((row: any) =>
-    ["failed", "queue_failed"].includes(String(row.render_status)),
-  ).length;
-  const snapshotsAwaitingAttention = (snapshotRows || []).filter(
-    (row: any) => String(row.render_status) === "attention_required",
-  ).length;
-
-  // Snapshots that should have production output but have no job at all.
-  const { data: linkedJobs } = await supabase
-    .from("customizer_render_jobs")
-    .select("snapshot_id")
-    .not("snapshot_id", "is", null);
-  const linked = new Set((linkedJobs || []).map((row: any) => String(row.snapshot_id)));
-  const snapshotsWithoutRenderJobs = (snapshotRows || []).filter(
-    (row: any) => !linked.has(String(row.id)) && !["not_required", "archived"].includes(String(row.render_status)),
-  ).length;
-
-  // Orders flagged as personalized whose snapshots never materialised.
-  const { data: personalizedOrders } = await supabase
-    .from("orders")
-    .select("id")
-    .neq("production_status", "not_required");
-  const snapshotOrderIds = new Set(
-    ((await supabase.from("order_design_snapshots").select("order_id")).data || []).map((row: any) => String(row.order_id)),
-  );
-  const ordersMissingSnapshots = (personalizedOrders || []).filter(
-    (row: any) => !snapshotOrderIds.has(String(row.id)),
-  ).length;
-
-  return {
-    jobs,
-    oldestQueuedJobAgeSeconds: oldestQueuedAt === null ? null : Math.round((Date.now() - oldestQueuedAt) / 1000),
-    abandonedJobsRecovered: Number(recovered) || 0,
-    ordersMissingSnapshots,
-    snapshotsWithoutRenderJobs,
-    snapshotsWithFailedRendering,
-    snapshotsAwaitingAttention,
-    generatedAt: new Date().toISOString(),
-  };
 }
 
 // Worker entry: claim and process up to `limit` queued jobs by priority.

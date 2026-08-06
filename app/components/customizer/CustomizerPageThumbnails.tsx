@@ -40,7 +40,14 @@ export default function CustomizerPageThumbnails({
             onClick={() => onSelect(page.id)}
             aria-pressed={active}
             aria-label={`Edit ${page.label}`}
-            className={`group w-24 shrink-0 text-left transition sm:w-full ${active ? "" : "opacity-75 hover:opacity-100"}`}
+            // Width follows the ORIENTATION. The vertical sidebar fills its
+            // column; the horizontal strip must stay a small thumbnail at every
+            // width — `sm:w-full` used to apply to both, so on a 768px tablet
+            // each "thumbnail" grew to ~744px wide and ~1040px tall, collapsing
+            // the canvas to a 64px sliver.
+            className={`group shrink-0 text-left transition ${
+              orientation === "horizontal" ? "w-24 sm:w-28" : "w-24 sm:w-full"
+            } ${active ? "" : "opacity-75 hover:opacity-100"}`}
           >
             <div
               className={`overflow-hidden rounded-md border-2 bg-white transition ${

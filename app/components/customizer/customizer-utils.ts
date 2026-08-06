@@ -248,7 +248,15 @@ export function resolveLayerText(layer: any, field: any, values: Record<string, 
   const editable = Boolean(layer?.customerEditable && field);
   const raw = editable ? values[field.id] : undefined;
   let text = "";
-  if (!isValueEmpty(raw) && typeof raw !== "object") {
+  // Whitespace is content in a text editor. Only the truly empty string falls
+  // back to design/default text; trimming here would make the renderer read a
+  // different value from the textarea and persisted document.
+  if (
+    raw !== undefined &&
+    raw !== null &&
+    typeof raw !== "object" &&
+    (typeof raw !== "string" || raw.length > 0)
+  ) {
     text = String(raw);
   } else if (layer?.text) {
     text = String(layer.text);

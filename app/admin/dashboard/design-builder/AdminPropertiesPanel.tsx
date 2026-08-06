@@ -8,6 +8,11 @@ import { getConnectedField, uploadBuilderImage } from "./builder-utils";
 import { customerEditablePermissionBundle } from "@/lib/customizer";
 import EditableNumericStepper from "@/app/components/customizer/EditableNumericStepper";
 import { getTextAutoSizeMode } from "@/lib/customizer/v2/text-layout";
+import {
+  countTextLines,
+  insertTextNewline,
+  resolveTextEditorKeyAction,
+} from "@/lib/customizer/v2/text-editing";
 
 const controlClass = "h-11 w-full rounded-xl border border-[#303839]/12 bg-white px-3 text-sm text-[#303839] outline-none transition-colors hover:border-[#303839]/25 focus:border-[#D4AF37] focus:ring-2 focus:ring-[#D4AF37]/20";
 
@@ -256,7 +261,7 @@ export default function AdminPropertiesPanel({
   const style = layer?.textStyle || {};
 
   return (
-    <div className="bg-white">
+    <div data-customizer-text-interaction className="bg-white">
       {/* Inspector tabs. Purely a routing layer over the existing sections —
           every control below keeps its original handler. */}
       <div className="sticky top-0 z-10 flex items-center gap-0.5 border-b border-[#303839]/8 bg-white px-3 pt-3">
@@ -294,15 +299,42 @@ export default function AdminPropertiesPanel({
         <Section title="Text">
           <div>
             <Lbl>Text content</Lbl>
-            {style.multiline ? (
-              <textarea
-                value={layer.text || ""}
-                onChange={(e) => onLayerPatch(layer.id, { text: e.target.value })}
-                className="min-h-24 w-full resize-y rounded-xl border border-[#303839]/12 bg-white p-3 text-sm leading-relaxed text-[#303839] outline-none transition-colors focus:border-[#D4AF37] focus:ring-2 focus:ring-[#D4AF37]/20"
-              />
-            ) : (
-              <Txt value={layer.text || ""} onChange={(text: string) => onLayerPatch(layer.id, { text: text.replace(/[\r\n]+/g, " ") })} />
-            )}
+            <textarea
+              value={layer.text || ""}
+              rows={style.multiline ? 3 : 1}
+              maxLength={Number(layer.maxChars) > 0 ? Number(layer.maxChars) : undefined}
+              onChange={(event) => onLayerPatch(layer.id, { text: event.target.value })}
+              onInput={(event) => {
+                event.currentTarget.style.height = "auto";
+                event.currentTarget.style.height = `${Math.min(event.currentTarget.scrollHeight, 320)}px`;
+              }}
+              // Admin editing may convert an existing single-line layer in
+              // place. Ctrl/Cmd + Enter is the only Enter-based save action.
+              onKeyDown={(event) => {
+                const action = resolveTextEditorKeyAction(event, true);
+                if (action === "commit") {
+                  event.preventDefault();
+                  event.currentTarget.blur();
+                  return;
+                }
+                if (action !== "newline") return;
+                const inserted = insertTextNewline(event.currentTarget.value, {
+                  start: event.currentTarget.selectionStart ?? event.currentTarget.value.length,
+                  end: event.currentTarget.selectionEnd ?? event.currentTarget.value.length,
+                });
+                if (Number(layer.maxLines) > 0 && countTextLines(inserted.value) > Number(layer.maxLines)) {
+                  event.preventDefault();
+                  return;
+                }
+                if (!style.multiline) onStylePatch(layer.id, {
+                  multiline: true,
+                  autoSizeMode: "height",
+                  fitMode: "auto-height",
+                });
+              }}
+              title="Enter adds a line. Ctrl/Cmd + Enter finishes editing."
+              className="min-h-11 w-full resize-y rounded-xl border border-[#303839]/12 bg-white p-3 text-sm leading-relaxed text-[#303839] outline-none transition-colors focus:border-[#D4AF37] focus:ring-2 focus:ring-[#D4AF37]/20"
+            />
           </div>
           <div>
             <Lbl>Font size</Lbl>

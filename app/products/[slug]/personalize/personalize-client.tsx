@@ -21,7 +21,8 @@ import {
 import { getDefaultOptionCartValue } from "@/lib/products/options";
 import CustomizerWorkspace from "@/app/components/customizer/CustomizerWorkspace";
 import CustomizerPageThumbnails from "@/app/components/customizer/CustomizerPageThumbnails";
-import CustomizerZoomControls, { ZOOM_MAX, ZOOM_MIN } from "@/app/components/customizer/CustomizerZoomControls";
+import CustomizerZoomControls from "@/app/components/customizer/CustomizerZoomControls";
+import { ZOOM_MAX, ZOOM_MIN, clampZoom } from "@/lib/customizer/v2/zoom";
 import CustomizerReviewStep from "@/app/components/customizer/CustomizerReviewStep";
 import CustomerCustomizerHeader from "@/app/components/customizer/CustomerCustomizerHeader";
 import CustomerToolRail, { getCustomerTools, type CustomerTool } from "@/app/components/customizer/CustomerToolRail";
@@ -43,6 +44,12 @@ import CustomerOptionsPanel, { CUSTOMIZER_FORMAT_OPTIONS } from "@/app/component
 import CustomizerProtectionOverlay from "@/app/components/customizer/CustomizerProtectionOverlay";
 import useCustomizerProtection from "@/app/components/customizer/useCustomizerProtection";
 import useCustomizerHistory from "@/app/components/customizer/useCustomizerHistory";
+import {
+  createSaveQueue,
+  saveStatusLabel as formatSaveStatus,
+  type SaveQueue,
+  type SaveQueueStatus,
+} from "@/lib/customizer/save-queue";
 import { isCustomizerFeatureEnabled } from "@/lib/customizer/v2/feature-flags";
 import { stripEphemeralAssetUrls } from "@/lib/customizer/v2/asset-references";
 import { createGridSlotsFromPreset, GRID_PRESETS } from "@/lib/customizer/v2/grids";
@@ -51,16 +58,9 @@ import { getDescendantIds, groupLayers, transformGroupChildren, ungroupLayers } 
 import { createCanvasMeasure, getSingleLineTextBox, isSingleLineAutoSizeText } from "@/lib/customizer/v2/text-layout";
 import { resolveLayerSelectionGeometry } from "@/lib/customizer/v2/selection-geometry";
 import {
-  draftStorageKey,
-  guestSaveFailureMessage,
-  readGuestDraft,
-  removeGuestDraft,
-  writeGuestDraft,
-} from "@/lib/customizer/guest-draft-storage";
-import {
+  canonicalTextLayerUpdate,
   getTextPlacementStyle,
-  isMultilineTextField,
-  normalizeInlineText,
+  normalizeCanonicalText,
   type TextPlacementPreset,
 } from "@/lib/customizer/v2/text-editing";
 import {
@@ -90,25 +90,9 @@ function firstOf(value: any, fallback = ""): string {
   return fallback;
 }
 
+const DRAFT_STORAGE_PREFIX = "husnalogy_customizer_draft";
+const GUEST_SESSION_KEY = "husnalogy_guest_session_id";
 const customerTextMeasure = createCanvasMeasure();
-// Marks that the customer left for the sign-in flow specifically to upload a
-// photo, so they are returned to the Uploads panel afterwards (spec §16).
-const UPLOAD_SIGN_IN_INTENT_KEY = "husnalogy_customizer_upload_signin_intent";
-const UPLOAD_SIGN_IN_INTENT_TTL_MS = 30 * 60 * 1000;
-
-// Module scope: reading the clock is impure, and this only ever runs from the
-// Upload Photo handler, never during render.
-function rememberUploadSignInIntent() {
-  try {
-    window.sessionStorage.setItem(
-      UPLOAD_SIGN_IN_INTENT_KEY,
-      JSON.stringify({ returnTo: `${window.location.pathname}${window.location.search}`, at: Date.now() }),
-    );
-  } catch {
-    // A blocked sessionStorage only costs the post-login confirmation message;
-    // the design itself has already been saved by the caller.
-  }
-}
 
 // Easy Personalize (spec §1): the only tools a normal wedding customer needs
 // — their own details and photos, then product options. Everything else
@@ -118,9 +102,50 @@ function rememberUploadSignInIntent() {
 // name and a date.
 const EASY_PERSONALIZE_TOOL_IDS = new Set<CustomerTool>(["edit", "uploads", "options"]);
 
-// Guest draft persistence lives in lib/customizer/guest-draft-storage: an
-// IndexedDB-first adapter (localStorage fallback) whose writes report honestly
-// whether the browser actually stored the design (spec §13, §14).
+function canUseStorage() {
+  return typeof window !== "undefined" && Boolean(window.localStorage);
+}
+
+function getGuestSessionId() {
+  if (!canUseStorage()) return "";
+  const existing = window.localStorage.getItem(GUEST_SESSION_KEY);
+  if (existing) return existing;
+  const id = typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `guest_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+  window.localStorage.setItem(GUEST_SESSION_KEY, id);
+  return id;
+}
+
+function draftStorageKey(productId: string, templateId: string, templateVersion: number) {
+  return `${DRAFT_STORAGE_PREFIX}:${productId || "product"}:${templateId || "template"}:${templateVersion || 1}`;
+}
+
+function readLocalDraft(key: string) {
+  if (!canUseStorage()) return null;
+  try {
+    const value = window.localStorage.getItem(key);
+    return value ? JSON.parse(value) : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeLocalDraft(key: string, payload: any) {
+  if (!canUseStorage()) return payload;
+  const current = readLocalDraft(key) || {};
+  const next = {
+    ...current,
+    ...payload,
+    id: current.id || `local_${Date.now()}_${Math.random().toString(36).slice(2)}`,
+    guestSessionId: current.guestSessionId || getGuestSessionId(),
+    updatedAt: new Date().toISOString(),
+  };
+  try {
+    window.localStorage.setItem(key, JSON.stringify(next));
+  } catch {
+    // Storage may be full (preview images are large) — keep editing anyway.
+  }
+  return next;
+}
 
 function safeInternalPath(value: string, fallback: string) {
   if (!value || !value.startsWith("/") || value.startsWith("//")) return fallback;
@@ -182,6 +207,31 @@ export default function PersonalizeClient({ product, template }: { product: any;
   const [editorState, setEditorState] = useState<EditorState>(() => normalizeEditorState({}));
   const [activePage, setActivePage] = useState(enabledPages[0]?.id || "front");
   const [viewZoom, setViewZoom] = useState(1);
+  // Real Fit (spec §9): reported by the workspace from its measured box, so the
+  // Fit button always lands on a zoom where the whole page is visible on the
+  // current screen — not a hardcoded 100%.
+  const [fitZoom, setFitZoom] = useState<number | null>(null);
+  // Until the customer chooses their own zoom, the canvas follows Fit — so the
+  // whole card is visible on load and stays visible when a panel opens, the
+  // keyboard appears, or the device rotates.
+  const userChoseZoomRef = useRef(false);
+  const setZoomSafely = useCallback((nextZoom: number) => {
+    userChoseZoomRef.current = true;
+    setViewZoom(clampZoom(nextZoom, ZOOM_MIN, ZOOM_MAX));
+  }, []);
+  const onWorkspaceFitZoom = useCallback((next: number) => {
+    setFitZoom(next);
+    if (!userChoseZoomRef.current) setViewZoom(next);
+  }, []);
+  const fitToPage = useCallback(() => {
+    // Explicit Fit hands control back to the automatic behaviour.
+    userChoseZoomRef.current = false;
+    if (fitZoom !== null) setViewZoom(fitZoom);
+  }, [fitZoom]);
+  const actualSizeZoom = useCallback(() => {
+    userChoseZoomRef.current = true;
+    setViewZoom(1);
+  }, []);
   const [approved, setApproved] = useState(false);
   const [adding, setAdding] = useState(false);
   const [savingDraft, setSavingDraft] = useState(false);
@@ -191,12 +241,8 @@ export default function PersonalizeClient({ product, template }: { product: any;
   const [cartItemId, setCartItemId] = useState(initialCartItemId);
   const [restoreReady, setRestoreReady] = useState(false);
   const [dirty, setDirty] = useState(false);
-  const [saveStatus, setSaveStatus] = useState<"idle" | "unsaved" | "saving" | "saved" | "error" | "offline">("idle");
-  // Set when a guest draft has been restored and still needs migrating into
-  // the signed-in account; cleared as soon as the migration starts.
-  const pendingGuestMigrationRef = useRef("");
-  // Guards against overlapping autosaves creating duplicate customizations.
-  const autosaveInFlightRef = useRef(false);
+  const [saveStatus, setSaveStatus] = useState<SaveQueueStatus>("idle");
+  const [lastSavedAt, setLastSavedAt] = useState<number | null>(null);
 
   const [selectedLayerId, setSelectedLayerId] = useState<string | null>(null);
   const [selectedLayerIds, setSelectedLayerIds] = useState<string[]>([]);
@@ -255,6 +301,12 @@ export default function PersonalizeClient({ product, template }: { product: any;
   const changeVersionRef = useRef(0);
   const customerClipboardRef = useRef<any[]>([]);
   const activeTextHistoryIdRef = useRef<string | null>(null);
+  const activeTextSessionRef = useRef<{
+    layerId: string;
+    snapshot: HistorySnapshot;
+    dirty: boolean;
+    changeVersion: number;
+  } | null>(null);
 
   valuesRef.current = values;
   editorStateRef.current = editorState;
@@ -315,7 +367,6 @@ export default function PersonalizeClient({ product, template }: { product: any;
   const markDirty = () => {
     changeVersionRef.current += 1;
     setDirty(true);
-    setSaveStatus("unsaved");
   };
 
   const snapshot = (): HistorySnapshot => ({
@@ -356,21 +407,9 @@ export default function PersonalizeClient({ product, template }: { product: any;
 
   /* ----- change handlers (all record history first) ----- */
   const onFieldChange = (fieldId: string, value: any) => {
-    // recordHistory coalesces on the field key, so a burst of typing produces
-    // one undo entry rather than one per keystroke (spec §18).
     recordHistory(`field-${fieldId}`);
     markDirty();
-
-    // The linked layer's multiline setting is the source of truth: a
-    // single-line layer never keeps line breaks (including pasted ones), and a
-    // multiline layer preserves them exactly through save, reload and render.
-    let nextValue = value;
-    if (typeof value === "string") {
-      const linkedLayer = (template?.layers || []).find((layer: any) => layer.fieldId === fieldId && layer.type === "text");
-      const field = (template?.fields || []).find((f: any) => f.id === fieldId);
-      nextValue = normalizeInlineText(value, isMultilineTextField(field, linkedLayer));
-    }
-    setValues((current) => ({ ...current, [fieldId]: nextValue }));
+    setValues((current) => ({ ...current, [fieldId]: value }));
 
     // A new photo must never inherit the previous photo's crop/zoom/pan/flip.
     // Frame geometry is untouched (values live separately from layerOverrides),
@@ -534,6 +573,12 @@ export default function PersonalizeClient({ product, template }: { product: any;
     };
     const layer = normalizeUserLayer(applyCustomerObjectLimits(draft, draft));
     if (!layer) return null;
+    activeTextSessionRef.current = {
+      layerId: layer.id,
+      snapshot: snapshot(),
+      dirty: dirtyRef.current,
+      changeVersion: changeVersionRef.current,
+    };
     recordHistory();
     activeTextHistoryIdRef.current = layer.id;
     patchEditorState((current) => ({ ...current, userLayers: [...current.userLayers, layer] }));
@@ -1515,15 +1560,20 @@ export default function PersonalizeClient({ product, template }: { product: any;
 
   const onToolbarStyleChange = (patch: any, group?: string) => {
     if (!selectedLayer) return;
+    const textSessionActive = activeTextHistoryIdRef.current === selectedLayer.id;
     const groupKey = group ? `style-${selectedLayer.id}-${group}` : undefined;
     const resizeSingleLineBox = (stylePatch: any) => {
-      if (stylePatch.fontSize === undefined || !isSingleLineAutoSizeText(selectedLayer.textStyle)) return null;
+      const selectedField = selectedLayer.fieldId ? getFieldById(template, selectedLayer.fieldId) : null;
+      const selectedText = resolveLayerText(selectedLayer, selectedField, values);
+      if (
+        stylePatch.fontSize === undefined ||
+        !isSingleLineAutoSizeText(selectedLayer.textStyle, selectedText)
+      ) return null;
       const nextStyle = { ...(selectedLayer.textStyle || {}), ...stylePatch };
       const minFontSize = Math.max(4, Number(nextStyle.minFontSize) || 4);
       const maxFontSize = Math.max(minFontSize, Number(nextStyle.maxFontSize) || 500);
       nextStyle.fontSize = Math.min(maxFontSize, Math.max(minFontSize, Number(nextStyle.fontSize) || minFontSize));
-      const field = selectedLayer.fieldId ? getFieldById(template, selectedLayer.fieldId) : null;
-      const text = resolveLayerText(selectedLayer, field, values);
+      const text = selectedText;
       const box = getSingleLineTextBox({
         text: String(text),
         fontFamily: nextStyle.fontFamily || "Cormorant Garamond",
@@ -1540,7 +1590,7 @@ export default function PersonalizeClient({ product, template }: { product: any;
     if (selectedIsUser) {
       const resized = resizeSingleLineBox(patch);
       if (resized) {
-        recordHistory(groupKey);
+        if (!textSessionActive) recordHistory(groupKey);
         patchEditorState((current) => ({
           ...current,
           userLayers: current.userLayers.map((layer) => layer.id === selectedLayer.id ? {
@@ -1552,7 +1602,16 @@ export default function PersonalizeClient({ product, template }: { product: any;
         }));
         return;
       }
-      updateUserLayerStyle(selectedLayer.id, patch, groupKey);
+      if (textSessionActive) {
+        patchEditorState((current) => ({
+          ...current,
+          userLayers: current.userLayers.map((layer) => layer.id === selectedLayer.id
+            ? { ...layer, textStyle: { ...(layer.textStyle || {}), ...patch } }
+            : layer),
+        }));
+      } else {
+        updateUserLayerStyle(selectedLayer.id, patch, groupKey);
+      }
       return;
     }
     // Template layer: keep only the changes the admin allowed.
@@ -1580,7 +1639,7 @@ export default function PersonalizeClient({ product, template }: { product: any;
     if (!Object.keys(allowed).length) return;
     const resized = resizeSingleLineBox(allowed);
     if (resized) {
-      recordHistory(groupKey);
+      if (!textSessionActive) recordHistory(groupKey);
       patchEditorState((current) => {
         const existing = current.layerOverrides[selectedLayer.id] || {};
         return {
@@ -1597,7 +1656,23 @@ export default function PersonalizeClient({ product, template }: { product: any;
       });
       return;
     }
-    updateLayerOverride(selectedLayer.id, "textStyle", allowed, groupKey);
+    if (textSessionActive) {
+      patchEditorState((current) => {
+        const existing = current.layerOverrides[selectedLayer.id] || {};
+        return {
+          ...current,
+          layerOverrides: {
+            ...current.layerOverrides,
+            [selectedLayer.id]: {
+              ...existing,
+              textStyle: { ...(existing.textStyle || {}), ...allowed },
+            },
+          },
+        };
+      });
+    } else {
+      updateLayerOverride(selectedLayer.id, "textStyle", allowed, groupKey);
+    }
   };
 
   const onEditTextAction = () => {
@@ -1611,6 +1686,12 @@ export default function PersonalizeClient({ product, template }: { product: any;
 
   const onCanvasTextEditStart = (layerId: string) => {
     if (activeTextHistoryIdRef.current === layerId) return;
+    activeTextSessionRef.current = {
+      layerId,
+      snapshot: snapshot(),
+      dirty: dirtyRef.current,
+      changeVersion: changeVersionRef.current,
+    };
     recordHistory();
     activeTextHistoryIdRef.current = layerId;
   };
@@ -1619,12 +1700,24 @@ export default function PersonalizeClient({ product, template }: { product: any;
     const layer = effectiveLayers.find((item: any) => item.id === layerId);
     if (!layer || layer.type !== "text") return;
     if (!layer.isUserLayer && !getLayerPermissions(layer).editContent) return;
-    const text = normalizeInlineText(rawText, Boolean(layer.textStyle?.multiline));
+    const update = canonicalTextLayerUpdate(rawText, layer.textStyle);
+    const text = update.text;
     markDirty();
     if (layer.isUserLayer) {
       setEditorState((current) => ({
         ...current,
-        userLayers: current.userLayers.map((item) => item.id === layerId ? { ...item, text } : item),
+        userLayers: current.userLayers.map((item) =>
+          item.id === layerId
+            ? {
+                ...item,
+                text,
+                textStyle: {
+                  ...(item.textStyle || {}),
+                  ...update.textStyle,
+                },
+              }
+            : item,
+        ),
       }));
     } else if (layer.fieldId) {
       setValues((current) => ({ ...current, [layer.fieldId]: text }));
@@ -1645,6 +1738,28 @@ export default function PersonalizeClient({ product, template }: { product: any;
     }
   };
 
+  const onCanvasTextMultilineActivate = (layerId: string) => {
+    const layer = effectiveLayers.find((item: any) => item.id === layerId);
+    if (!layer?.isUserLayer || layer.type !== "text") return;
+    const style = layer.textStyle || {};
+    if (style.multiline && style.autoSizeMode === "height" && style.fitMode === "auto-height") return;
+    markDirty();
+    setEditorState((current) => ({
+      ...current,
+      userLayers: current.userLayers.map((item) => item.id === layerId
+        ? {
+            ...item,
+            textStyle: {
+              ...(item.textStyle || {}),
+              multiline: true,
+              autoSizeMode: "height",
+              fitMode: "auto-height",
+            },
+          }
+        : item),
+    }));
+  };
+
   const onCanvasTextCommit = (layerId: string, rawText: string) => {
     const layer = effectiveLayers.find((item: any) => item.id === layerId);
     if (layer) {
@@ -1653,13 +1768,46 @@ export default function PersonalizeClient({ product, template }: { product: any;
         layer.fieldId ? getFieldById(template, layer.fieldId) : null,
         valuesRef.current,
       ));
-      const text = normalizeInlineText(rawText, Boolean(layer.textStyle?.multiline));
+      const text = normalizeCanonicalText(rawText);
       if (currentText !== text) onCanvasTextDraftChange(layerId, text);
     }
     if (activeTextHistoryIdRef.current === layerId) activeTextHistoryIdRef.current = null;
+    if (activeTextSessionRef.current?.layerId === layerId) activeTextSessionRef.current = null;
+  };
+
+  const restoreCancelledTextSession = (layerId: string) => {
+    const session = activeTextSessionRef.current;
+    if (!session || session.layerId !== layerId) return false;
+    setValues(session.snapshot.values);
+    setEditorState(session.snapshot.editorState);
+    setDirty(session.dirty);
+    changeVersionRef.current = session.changeVersion;
+    history.discardLast();
+    activeTextHistoryIdRef.current = null;
+    activeTextSessionRef.current = null;
+    return true;
+  };
+
+  const onCanvasTextCancel = (
+    layerId: string,
+    _initial: {
+      text: string;
+      textStyle: Record<string, any>;
+      x: number;
+      y: number;
+      width: number;
+      height: number;
+    },
+  ) => {
+    restoreCancelledTextSession(layerId);
   };
 
   const onCanvasTextDiscard = (layerId: string) => {
+    if (restoreCancelledTextSession(layerId)) {
+      setSelectedLayerIds([]);
+      setSelectedLayerId(null);
+      return;
+    }
     const layer = editorStateRef.current.userLayers.find((item) => item.id === layerId);
     if (!layer || activeTextHistoryIdRef.current !== layerId) return;
     patchEditorState((current) => ({
@@ -1678,33 +1826,10 @@ export default function PersonalizeClient({ product, template }: { product: any;
   };
 
   /* ----- uploads ----- */
-
-  // Signing in is required before a photo can be stored in the customer's
-  // private library (spec §16). The design is saved on the device *first* and
-  // the save is confirmed, so an interrupted sign-in never loses the work.
-  const requestUploadSignIn = async () => {
-    const saved = await saveCustomizationDraft("draft", { silent: true }).catch(() => null);
-    if (!saved?.ok) {
-      setMessage(
-        "Your design could not be saved on this device, so signing in now could lose it. Please try saving again first.",
-      );
-      return false;
-    }
-
-    // Remember where to come back to if the sign-in flow navigates away.
-    rememberUploadSignInIntent();
-
-    setMessage("Your design is saved on this device. Sign in to upload and securely store your photographs.");
-    openCustomerLogin();
-    return true;
-  };
-
   const onUploadPhoto = async (file: File) => {
     if (!user) {
-      await requestUploadSignIn();
-      // Browsers cannot re-open a previously chosen local file for security
-      // reasons, so the customer is asked to choose it again after signing in.
-      throw new Error("Please sign in to upload a photo, then choose your photo again.");
+      openCustomerLogin();
+      throw new Error("Please sign in to upload a photo.");
     }
     setUploadingCount((count) => count + 1);
     try {
@@ -1769,38 +1894,20 @@ export default function PersonalizeClient({ product, template }: { product: any;
     };
   };
 
+  // The raw save. Status reporting belongs to the save queue (spec §11) so
+  // "Saved" is only ever shown after the server confirmed it — this function
+  // just performs one write and reports what happened.
   const saveCustomizationDraft = async (status = "draft", { silent = false }: any = {}) => {
     if (!silent) setMessage("");
-    setSaveStatus("saving");
     const savingVersion = changeVersionRef.current;
 
     const payload = await buildCustomizationPayload(status);
 
     if (!user) {
-      // Guest saving must report the truth (spec §13): "Saved" is only shown
-      // when the browser actually accepted the write.
-      const result = await writeGuestDraft(localDraftKey, payload);
-      if (!result.ok || !result.draft) {
-        if (changeVersionRef.current === savingVersion) {
-          setDirty(true);
-          setSaveStatus("error");
-        }
-        const failureMessage = guestSaveFailureMessage(result.errorCode);
-        if (!silent) setMessage(failureMessage);
-        return {
-          ok: false,
-          local: true,
-          storageType: result.storageType,
-          errorCode: result.errorCode,
-          error: failureMessage,
-        };
-      }
-      setCustomizationId(result.draft.id);
-      if (changeVersionRef.current === savingVersion) {
-        setDirty(false);
-        setSaveStatus("saved");
-      }
-      return { ok: true, customization: { ...result.draft.payload, id: result.draft.id }, local: true, storageType: result.storageType };
+      const localDraft = writeLocalDraft(localDraftKey, payload);
+      setCustomizationId(localDraft.id);
+      if (changeVersionRef.current === savingVersion) setDirty(false);
+      return { ok: true, customization: localDraft, local: true };
     }
 
     const existingId = payload.customizationId || customizationIdRef.current;
@@ -1818,11 +1925,60 @@ export default function PersonalizeClient({ product, template }: { product: any;
     const saved = data.customization || {};
     if (saved.id) setCustomizationId(saved.id);
     if (saved.cartItemId) setCartItemId(saved.cartItemId);
-    if (changeVersionRef.current === savingVersion) {
-      setDirty(false);
-      setSaveStatus("saved");
-    }
+    if (changeVersionRef.current === savingVersion) setDirty(false);
     return { ok: true, customization: saved, local: false };
+  };
+
+  /* ----- autosave queue (spec §11) -----
+     Debounced, single-flight and retrying. Single-flight matters most: the old
+     bare setTimeout could start a second POST while the first was still in
+     flight, creating a duplicate draft for the same design. */
+  const saveDraftRef = useRef(saveCustomizationDraft);
+  saveDraftRef.current = saveCustomizationDraft;
+  // An explicit save (Save & Exit, Add to cart) owns the write while it runs;
+  // the queue backs off and retries rather than racing it.
+  const explicitSaveRef = useRef(false);
+  const saveQueueRef = useRef<SaveQueue | null>(null);
+  if (!saveQueueRef.current) {
+    saveQueueRef.current = createSaveQueue({
+      save: async () => {
+        if (explicitSaveRef.current) {
+          return { ok: false, error: new Error("explicit-save-in-flight"), retryable: true };
+        }
+        try {
+          const result = await saveDraftRef.current("draft", { silent: true });
+          return { ok: true, local: Boolean(result?.local) };
+        } catch (error) {
+          console.warn("Autosave failed:", error);
+          return { ok: false, error };
+        }
+      },
+      onStatusChange: (status, detail) => {
+        setSaveStatus(status);
+        setLastSavedAt(detail.lastSavedAt);
+      },
+    });
+  }
+  const saveQueue = saveQueueRef.current;
+
+  useEffect(() => () => saveQueue.destroy(), [saveQueue]);
+
+  // One tracked explicit save, used by Save & Exit and Add to cart so their
+  // status reporting matches the queue's exactly.
+  const runExplicitSave = async (status: string) => {
+    explicitSaveRef.current = true;
+    setSaveStatus("saving");
+    try {
+      const result = await saveDraftRef.current(status, { silent: true });
+      setLastSavedAt(Date.now());
+      setSaveStatus(result?.local ? "saved-local" : "saved");
+      return result;
+    } catch (error) {
+      setSaveStatus("error");
+      throw error;
+    } finally {
+      explicitSaveRef.current = false;
+    }
   };
 
   const applySavedCustomization = (
@@ -1922,18 +2078,11 @@ export default function PersonalizeClient({ product, template }: { product: any;
           }
         }
 
-        // A design started as a guest lives on the device. Restore it, and —
-        // once signed in — migrate it into the authenticated table so signing
-        // in never destroys the customer's work (spec §15).
-        const guest = await readGuestDraft(localDraftKey);
-        if (!cancelled && guest.draft) {
-          if (!restored) {
-            restored = applySavedCustomization({ ...guest.draft.payload, id: guest.draft.id });
+        if (!restored) {
+          const localDraft = readLocalDraft(localDraftKey);
+          if (!cancelled && localDraft) {
+            restored = applySavedCustomization(localDraft);
           }
-          // Migrate only when this device's draft is what we just restored,
-          // so a newer authenticated design is never overwritten by an older
-          // local copy.
-          pendingGuestMigrationRef.current = user && restored ? localDraftKey : "";
         }
       } catch (error) {
         console.warn("Could not restore customization draft.", error);
@@ -1956,115 +2105,16 @@ export default function PersonalizeClient({ product, template }: { product: any;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authLoading, user?.id, user?.uid, product.id, template?.id, template?.version, initialCustomizationId, initialCartItemId, localDraftKey]);
 
-  // Guest → account migration (spec §15). Runs once after the draft has been
-  // restored and the state has settled, so the server copy carries the exact
-  // text, layers, page state, options and quantity the guest had. The local
-  // copy is removed only after the authenticated save succeeds, and the
-  // pending flag is cleared first so a repeated login callback cannot create a
-  // second server draft.
-  useEffect(() => {
-    if (!restoreReady || !user) return;
-    const key = pendingGuestMigrationRef.current;
-    if (!key) return;
-    pendingGuestMigrationRef.current = "";
-
-    let cancelled = false;
-    (async () => {
-      try {
-        const result = await saveCustomizationDraft("draft", { silent: true });
-        if (cancelled || !result?.ok || result.local) return;
-        await removeGuestDraft(key);
-      } catch (error) {
-        // Keep the device copy: it is still the customer's only saved work.
-        console.warn("Could not migrate the guest design into your account.", error);
-        if (!cancelled) setSaveStatus("error");
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [restoreReady, user?.id, user?.uid]);
-
-  // Return the customer to the Uploads panel after they signed in to upload
-  // (spec §16). Runs once the draft has been restored so the panel opens on
-  // the design they were working on, not an empty one.
-  useEffect(() => {
-    if (!restoreReady || !user) return;
-    let intent: { returnTo?: string; at?: number } | null = null;
-    try {
-      const raw = window.sessionStorage.getItem(UPLOAD_SIGN_IN_INTENT_KEY);
-      if (!raw) return;
-      window.sessionStorage.removeItem(UPLOAD_SIGN_IN_INTENT_KEY);
-      intent = JSON.parse(raw);
-    } catch {
-      return;
-    }
-    if (!intent || Date.now() - Number(intent.at || 0) > UPLOAD_SIGN_IN_INTENT_TTL_MS) return;
-
-    setActiveTool("uploads");
-    setMobilePanelOpen(true);
-    setMessage("You are signed in. Choose your photo to continue.");
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [restoreReady, user?.id, user?.uid]);
-
-  // Autosave (spec §27, §28). Debounced, non-overlapping, and superseded by
-  // newer edits. It never reports "Saved" for work that was not stored, and
-  // while offline it says so rather than claiming a server save.
   useEffect(() => {
     if (!restoreReady || !dirty) return;
+    if (editingTextLayerId) return;
     if (template?.settings?.autosave === false) return;
-
-    const timer = window.setTimeout(() => {
-      // An in-flight save must not be raced by a second one; the change
-      // version check inside saveCustomizationDraft already discards a stale
-      // result, and this guard prevents duplicate customizations entirely.
-      if (autosaveInFlightRef.current) {
-        setDirty((current) => current);
-        return;
-      }
-      if (user && typeof navigator !== "undefined" && navigator.onLine === false) {
-        setSaveStatus("offline");
-        return;
-      }
-      autosaveInFlightRef.current = true;
-      const savingVersion = changeVersionRef.current;
-      saveCustomizationDraft("draft", { silent: true })
-        .catch((error) => {
-          console.warn("Autosave failed:", error);
-          if (changeVersionRef.current === savingVersion) setSaveStatus("error");
-        })
-        .finally(() => {
-          autosaveInFlightRef.current = false;
-        });
-    }, 900);
-
-    return () => window.clearTimeout(timer);
-    // Snapshot refs keep the latest values/options/page at save time.
+    // The queue owns debouncing, single-flight and retry — this only tells it
+    // that something changed. Snapshot refs give it the latest state at save
+    // time, so a coalesced save never writes stale values.
+    saveQueue.request();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [values, editorState, options, quantity, activePage, restoreReady, dirty, user?.id, user?.uid]);
-
-  // Offline/online indicator (spec §28). Reconnecting retries the latest draft
-  // once rather than replaying every queued edit.
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const handleOffline = () => {
-      if (dirtyRef.current) setSaveStatus("offline");
-    };
-    const handleOnline = () => {
-      if (!dirtyRef.current) return;
-      setSaveStatus("unsaved");
-      saveCustomizationDraft("draft", { silent: true }).catch(() => setSaveStatus("error"));
-    };
-    window.addEventListener("offline", handleOffline);
-    window.addEventListener("online", handleOnline);
-    return () => {
-      window.removeEventListener("offline", handleOffline);
-      window.removeEventListener("online", handleOnline);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.id, user?.uid]);
+  }, [values, editorState, options, quantity, activePage, restoreReady, dirty, editingTextLayerId, user?.id, user?.uid]);
 
   useEffect(() => {
     const warnBeforeUnload = (event: BeforeUnloadEvent) => {
@@ -2192,13 +2242,6 @@ export default function PersonalizeClient({ product, template }: { product: any;
           : "Next: Options";
 
   const enterStep = (nextStep: string) => {
-    // A photo still uploading is not yet part of the design, so the review
-    // step would show — and could approve — an incomplete card (spec §17).
-    if (nextStep === "review" && uploading) {
-      setActiveTool("uploads");
-      setMessage("Please wait for your photo to finish uploading before reviewing your design.");
-      return;
-    }
     if (nextStep === "review" && !validation.ok) {
       setAttemptedNext(true);
       setActiveTool("edit");
@@ -2238,7 +2281,7 @@ export default function PersonalizeClient({ product, template }: { product: any;
   const handleAddToCart = async () => {
     if (!user) {
       try {
-        await saveCustomizationDraft("draft", { silent: true });
+        await runExplicitSave("draft");
       } catch {
         // Best-effort local protection before showing login.
       }
@@ -2262,8 +2305,9 @@ export default function PersonalizeClient({ product, template }: { product: any;
     setMessage("");
 
     try {
-      const saved = await saveCustomizationDraft("in_cart", { silent: true });
-      const savedCustomization = saved.customization || {};
+      await saveQueue.flush();
+      const saved = await runExplicitSave("in_cart");
+      const savedCustomization = saved?.customization || {};
 
       // Server preflight (spec §30): blocking print problems stop the add.
       if (savedCustomization.id && !String(savedCustomization.id).startsWith("local_")) {
@@ -2372,15 +2416,17 @@ export default function PersonalizeClient({ product, template }: { product: any;
     }
   };
 
+  // Save and Exit (spec §11): finish the latest save, confirm success, and only
+  // then leave — the design id is preserved in the saved draft.
   const handleSaveExit = async () => {
     setSavingDraft(true);
     setMessage("");
     try {
-      await saveCustomizationDraft("draft");
+      await saveQueue.flush();
+      await runExplicitSave("draft");
       router.push(exitHref);
     } catch (error) {
       console.error("Save draft failed:", error);
-      setSaveStatus("error");
       setMessage("Your changes could not be saved. Please try again.");
       setSavingDraft(false);
     }
@@ -2395,25 +2441,11 @@ export default function PersonalizeClient({ product, template }: { product: any;
   };
 
   /* ----- render ----- */
-  // "Saved" is only ever shown after a confirmed write (spec §13, §27).
-  // A guest whose browser refused the write sees "Save failed", and an
-  // offline customer is told so instead of being told the server has it.
-  const saveStatusLabel =
-    savingDraft || saveStatus === "saving"
-      ? "Saving"
-      : saveStatus === "saved"
-        ? user
-          ? "Saved to your account"
-          : "Saved on this device"
-        : saveStatus === "unsaved"
-          ? "Unsaved changes"
-          : saveStatus === "offline"
-            ? "Offline — not saved yet"
-            : saveStatus === "error"
-              ? "Save failed"
-              : restoreReady
-                ? ""
-                : "Loading design";
+  const saveStatusLabel = !restoreReady
+    ? "Loading design"
+    : savingDraft
+      ? "Saving…"
+      : formatSaveStatus(saveStatus, lastSavedAt);
 
   const showSafeArea = template?.settings?.showSafeArea !== false && !previewMode;
   const showPanels = step !== "review" && !previewMode;
@@ -2471,12 +2503,18 @@ export default function PersonalizeClient({ product, template }: { product: any;
         onSelectLayer={onSelectLayer}
         onUpdateText={(layerId, text) => {
           const layer = editorStateRef.current.userLayers.find((item) => item.id === layerId);
+          const update = canonicalTextLayerUpdate(text, layer?.textStyle);
           updateUserLayer(
             layerId,
-            { text: normalizeInlineText(text, Boolean(layer?.textStyle?.multiline)) },
+            update,
             `usertext-${layerId}`,
           );
         }}
+        onEnableMultiline={(layerId) => updateUserLayerStyle(
+          layerId,
+          { multiline: true, autoSizeMode: "height", fitMode: "auto-height" },
+          `usertext-${layerId}`,
+        )}
         onDeleteLayer={deleteUserLayer}
       />
     ) : activeTool === "uploads" ? (
@@ -2574,7 +2612,8 @@ export default function PersonalizeClient({ product, template }: { product: any;
       editorState={editorState}
       pageId={activePage}
       zoom={viewZoom}
-      onZoomChange={(nextZoom) => setViewZoom(Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, nextZoom)))}
+      onZoomChange={setZoomSafely}
+      onFitZoomChange={onWorkspaceFitZoom}
       selectedLayerId={previewMode ? null : selectedLayerId}
       selectedLayerIds={previewMode ? [] : selectedLayerIds}
       onSelectLayer={previewMode ? undefined : onSelectLayer}
@@ -2584,6 +2623,8 @@ export default function PersonalizeClient({ product, template }: { product: any;
       onTextPlace={(position) => addUserTextLayer(position)}
       onTextEditStart={onCanvasTextEditStart}
       onTextDraftChange={onCanvasTextDraftChange}
+      onTextMultilineActivate={onCanvasTextMultilineActivate}
+      onTextCancel={onCanvasTextCancel}
       onTextDiscard={onCanvasTextDiscard}
       onEditingTextChange={setEditingTextLayerId}
       onExitTextTool={() => setActiveTool("edit")}
@@ -2800,9 +2841,9 @@ export default function PersonalizeClient({ product, template }: { product: any;
                   </div>
                 )}
                 {workspaceMode === "product" && productPreviewEditingEnabled ? (
-                  <CustomerProductEditingPreview template={template} values={values} editorState={editorState} pageId={activePage} zoom={viewZoom} onZoomChange={(nextZoom: number) => setViewZoom(Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, nextZoom)))} selectedLayerIds={selectedLayerIds} onSelectLayer={onSelectLayer} onSelectionChange={onSelectionChange} onLayerTransform={onLayerTransform} editingGroupId={editingGroupId} onEnterGroup={enterGroup} showWatermark={protectionEnabled} />
+                  <CustomerProductEditingPreview template={template} values={values} editorState={editorState} pageId={activePage} zoom={viewZoom} onZoomChange={setZoomSafely} selectedLayerIds={selectedLayerIds} onSelectLayer={onSelectLayer} onSelectionChange={onSelectionChange} onLayerTransform={onLayerTransform} editingGroupId={editingGroupId} onEnterGroup={enterGroup} showWatermark={protectionEnabled} />
                 ) : workspaceMode === "split" && splitViewEnabled ? (
-                  <div className="grid h-full min-h-0 grid-rows-2 divide-y divide-[#303839]/10 xl:grid-cols-2 xl:grid-rows-1 xl:divide-x xl:divide-y-0"><div className="min-h-0 min-w-0">{printCanvas}</div><div className="min-h-0 min-w-0"><CustomerProductEditingPreview template={template} values={values} editorState={editorState} pageId={activePage} zoom={viewZoom} onZoomChange={(nextZoom: number) => setViewZoom(Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, nextZoom)))} selectedLayerIds={selectedLayerIds} onSelectLayer={onSelectLayer} onSelectionChange={onSelectionChange} onLayerTransform={onLayerTransform} editingGroupId={editingGroupId} onEnterGroup={enterGroup} showWatermark={protectionEnabled} /></div></div>
+                  <div className="grid h-full min-h-0 grid-rows-2 divide-y divide-[#303839]/10 xl:grid-cols-2 xl:grid-rows-1 xl:divide-x xl:divide-y-0"><div className="min-h-0 min-w-0">{printCanvas}</div><div className="min-h-0 min-w-0"><CustomerProductEditingPreview template={template} values={values} editorState={editorState} pageId={activePage} zoom={viewZoom} onZoomChange={setZoomSafely} selectedLayerIds={selectedLayerIds} onSelectLayer={onSelectLayer} onSelectionChange={onSelectionChange} onLayerTransform={onLayerTransform} editingGroupId={editingGroupId} onEnterGroup={enterGroup} showWatermark={protectionEnabled} /></div></div>
                 ) : printCanvas}
               </div>
 
@@ -2810,7 +2851,7 @@ export default function PersonalizeClient({ product, template }: { product: any;
               <div className="pointer-events-none absolute inset-x-0 bottom-3 z-30 flex items-end justify-center gap-2 px-3">
                 <div className="pointer-events-auto flex max-w-full items-center gap-2 overflow-x-auto rounded-full no-scrollbar">
                   {enabledPages.length > 1 && (
-                    <div className="hidden min-h-11 items-center rounded-full border border-[#303839]/8 bg-white px-1 shadow-[0_2px_12px_rgba(48,56,57,0.08)] md:flex" role="group" aria-label="Page navigation">
+                    <div className="flex min-h-11 items-center rounded-full border border-[#303839]/8 bg-white px-1 shadow-[0_2px_12px_rgba(48,56,57,0.08)]" role="group" aria-label="Page navigation">
                       <button type="button" aria-label="Previous page" disabled={pageIndex <= 0} onClick={() => onActivePageChange(enabledPages[Math.max(0, pageIndex - 1)].id)} className="grid h-9 w-9 place-items-center rounded-full text-[#303839]/70 transition-colors hover:bg-[#303839]/5 hover:text-[#303839] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] disabled:opacity-25">‹</button>
                       <span className="min-w-14 text-center text-[11px] font-bold tabular-nums text-[#303839]/50">{pageIndex + 1} / {enabledPages.length}</span>
                       <button type="button" aria-label="Next page" disabled={pageIndex >= enabledPages.length - 1} onClick={() => onActivePageChange(enabledPages[Math.min(enabledPages.length - 1, pageIndex + 1)].id)} className="grid h-9 w-9 place-items-center rounded-full text-[#303839]/70 transition-colors hover:bg-[#303839]/5 hover:text-[#303839] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] disabled:opacity-25">›</button>
@@ -2818,8 +2859,10 @@ export default function PersonalizeClient({ product, template }: { product: any;
                   )}
                   <CustomizerZoomControls
                     zoom={viewZoom}
-                    onZoomChange={(z) => setViewZoom(Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, z)))}
-                    onFit={() => setViewZoom(1)}
+                    onZoomChange={setZoomSafely}
+                    fitZoom={fitZoom}
+                    onFit={fitToPage}
+                    onActualSize={actualSizeZoom}
                   />
                   {(productPreviewEditingEnabled || splitViewEnabled) && !previewMode && (
                     <div className="hidden min-h-11 items-center gap-0.5 rounded-full border border-[#303839]/8 bg-white p-1 shadow-[0_2px_12px_rgba(48,56,57,0.08)] xl:flex" role="group" aria-label="Canvas view">
@@ -2843,7 +2886,7 @@ export default function PersonalizeClient({ product, template }: { product: any;
 
               {protectionEnabled && (
                 <p className="pointer-events-none absolute bottom-1 left-2 z-30 hidden text-[10px] text-[#303839]/40 sm:block">
-                  This preview is watermarked to protect the design.
+                  Protected preview. Copying, downloading, and printing are disabled.
                 </p>
               )}
             </main>
@@ -2867,7 +2910,12 @@ export default function PersonalizeClient({ product, template }: { product: any;
       {/* Mobile: horizontal thumbnails + bottom tool rail + slide-up panel */}
       {step !== "review" && !previewMode && !isDesktop && (
         <div className="lg:hidden">
-          <div className="overflow-x-auto border-t border-[#303839]/8 bg-white px-3 py-2.5 no-scrollbar" data-customizer-protected>
+          {/* Page thumbnails render at the card's own aspect ratio, so the strip
+              is ~174px tall — a third of a 568px phone. On phones the compact
+              "‹ 1 / 2 ›" pager below the canvas does the same job, so the strip
+              only appears from md up where there is room for it (spec §8:
+              prioritise the canvas). */}
+          <div className="hidden overflow-x-auto border-t border-[#303839]/8 bg-white px-3 py-2.5 no-scrollbar md:block" data-customizer-protected>
             <CustomizerPageThumbnails
               template={template}
               values={values}

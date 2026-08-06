@@ -5,7 +5,11 @@
 // theirs: movable, resizable, editable, duplicatable, deletable.
 
 import { pageAllowsCustomerText } from "./customizer-utils";
-import type { TextPlacementPreset } from "@/lib/customizer/v2/text-editing";
+import {
+  applyTextEditLimits,
+  resolveTextEditorKeyAction,
+  type TextPlacementPreset,
+} from "@/lib/customizer/v2/text-editing";
 
 type Props = {
   template: any;
@@ -16,6 +20,7 @@ type Props = {
   onSelectPreset: (preset: TextPlacementPreset) => void;
   onSelectLayer: (layerId: string) => void;
   onUpdateText: (layerId: string, text: string) => void;
+  onEnableMultiline: (layerId: string) => void;
   onDeleteLayer: (layerId: string) => void;
 };
 
@@ -28,6 +33,7 @@ export default function CustomerAddTextPanel({
   onSelectPreset,
   onSelectLayer,
   onUpdateText,
+  onEnableMultiline,
   onDeleteLayer,
 }: Props) {
   const allowed = pageAllowsCustomerText(template, activePage);
@@ -101,27 +107,35 @@ export default function CustomerAddTextPanel({
                 selectedLayerId === layer.id ? "border-[#D4AF37] bg-[#D4AF37]/5" : "border-[#303839]/12"
               }`}
             >
-              {layer.textStyle?.multiline ? (
-                <textarea
-                  value={layer.text || ""}
-                  onFocus={() => onSelectLayer(layer.id)}
-                  onChange={(e) => onUpdateText(layer.id, e.target.value)}
-                  placeholder="Your text"
-                  rows={2}
-                  className="w-full resize-none rounded-md border border-[#303839]/12 bg-white px-2.5 py-2 text-sm text-[#303839] outline-none focus:border-[#D4AF37]"
-                  aria-label="Your text"
-                />
-              ) : (
-                <input
-                  type="text"
-                  value={layer.text || ""}
-                  onFocus={() => onSelectLayer(layer.id)}
-                  onChange={(e) => onUpdateText(layer.id, e.target.value)}
-                  placeholder="Your text"
-                  className="h-10 w-full rounded-md border border-[#303839]/12 bg-white px-2.5 text-sm text-[#303839] outline-none focus:border-[#D4AF37]"
-                  aria-label="Your text"
-                />
-              )}
+              <textarea
+                value={layer.text || ""}
+                onFocus={() => onSelectLayer(layer.id)}
+                onChange={(event) => {
+                  const limited = applyTextEditLimits(event.target.value, {
+                    maxLines: Number(layer.maxLines) || 0,
+                    maxLength: Number(layer.maxChars) || 0,
+                  });
+                  onUpdateText(layer.id, limited.value);
+                }}
+                onInput={(event) => {
+                  event.currentTarget.style.height = "auto";
+                  event.currentTarget.style.height = `${Math.min(event.currentTarget.scrollHeight, 240)}px`;
+                }}
+                onKeyDown={(event) => {
+                  const action = resolveTextEditorKeyAction(event, true);
+                  if (action === "commit") {
+                    event.preventDefault();
+                    event.currentTarget.blur();
+                  } else if (action === "newline" && !layer.textStyle?.multiline) {
+                    onEnableMultiline(layer.id);
+                  }
+                }}
+                placeholder="Your text"
+                rows={layer.textStyle?.multiline ? 2 : 1}
+                maxLength={Number(layer.maxChars) > 0 ? Number(layer.maxChars) : undefined}
+                className="min-h-10 w-full resize-none rounded-md border border-[#303839]/12 bg-white px-2.5 py-2 text-sm text-[#303839] outline-none focus:border-[#D4AF37] focus:ring-2 focus:ring-[#D4AF37]/15"
+                aria-label="Your text"
+              />
               <div className="mt-1.5 flex justify-end">
                 <button
                   type="button"

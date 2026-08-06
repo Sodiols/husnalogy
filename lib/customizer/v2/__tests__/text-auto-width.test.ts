@@ -242,7 +242,7 @@ describe("persistence — survives save, reload and restore", () => {
     const single = normalizeUserLayer({ type: "text", text: "Bobita", textStyle: {} });
     const multi = normalizeUserLayer({ type: "text", text: "Para", textStyle: { multiline: true } });
     expect(single.textStyle.autoSizeMode).toBe("width");
-    expect(multi.textStyle.autoSizeMode).toBe("fixed");
+    expect(multi.textStyle.autoSizeMode).toBe("height");
   });
 });
 

@@ -5,7 +5,7 @@
 // local throw-away state. Nothing here creates a customer customization —
 // test uploads go through the admin asset upload, and nothing is saved.
 
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import CustomizerWorkspace from "@/app/components/customizer/CustomizerWorkspace";
 import CustomizerPageThumbnails from "@/app/components/customizer/CustomizerPageThumbnails";
 import CustomizerZoomControls from "@/app/components/customizer/CustomizerZoomControls";
@@ -31,8 +31,8 @@ import { getDefaultOptionCartValue } from "@/lib/products/options";
 import { getOptionsSurcharge } from "@/app/lib/customer-lists";
 import { uploadBuilderImage } from "./builder-utils";
 import {
+  canonicalTextLayerUpdate,
   getTextPlacementStyle,
-  normalizeInlineText,
   type TextPlacementPreset,
 } from "@/lib/customizer/v2/text-editing";
 
@@ -44,6 +44,18 @@ export default function AdminCustomerPreview({ template, product }: { template: 
   const [editorState, setEditorState] = useState<EditorState>(() => normalizeEditorState({}));
   const [activePage, setActivePage] = useState(enabledPages[0]?.id || "front");
   const [zoom, setZoom] = useState(1);
+  // The admin preview must behave exactly like the customer editor, including
+  // its measured Fit (spec §9/§16 "Do not use an approximate preview").
+  const [fitZoom, setFitZoom] = useState<number | null>(null);
+  const userChoseZoomRef = useRef(false);
+  const onWorkspaceFitZoom = useCallback((next: number) => {
+    setFitZoom(next);
+    if (!userChoseZoomRef.current) setZoom(next);
+  }, []);
+  const setZoomManually = useCallback((next: number) => {
+    userChoseZoomRef.current = true;
+    setZoom(next);
+  }, []);
   const [approved, setApproved] = useState(false);
   const [selectedLayerId, setSelectedLayerId] = useState<string | null>(null);
   const [activeTool, setActiveTool] = useState<CustomerTool>("edit");
@@ -194,11 +206,23 @@ export default function AdminCustomerPreview({ template, product }: { template: 
   const updateCanvasText = (layerId: string, rawText: string) => {
     const layer = effectiveLayers.find((item: any) => item.id === layerId);
     if (!layer || layer.type !== "text") return;
-    const text = normalizeInlineText(rawText, Boolean(layer.textStyle?.multiline));
+    const update = canonicalTextLayerUpdate(rawText, layer.textStyle);
+    const text = update.text;
     if (layer.isUserLayer) {
       setEditorState((current) => ({
         ...current,
-        userLayers: current.userLayers.map((item: any) => item.id === layerId ? { ...item, text } : item),
+        userLayers: current.userLayers.map((item: any) =>
+          item.id === layerId
+            ? {
+                ...item,
+                text,
+                textStyle: {
+                  ...(item.textStyle || {}),
+                  ...update.textStyle,
+                },
+              }
+            : item,
+        ),
       }));
     } else if (layer.fieldId) {
       setValues((current) => ({ ...current, [layer.fieldId]: text }));
@@ -246,6 +270,22 @@ export default function AdminCustomerPreview({ template, product }: { template: 
         onSelectPreset={(preset) => setTextPlacementPreset(preset)}
         onSelectLayer={setSelectedLayerId}
         onUpdateText={updateCanvasText}
+        onEnableMultiline={(layerId) =>
+          setEditorState((current) => ({
+            ...current,
+            userLayers: current.userLayers.map((item: any) => item.id === layerId
+              ? {
+                  ...item,
+                  textStyle: {
+                    ...(item.textStyle || {}),
+                    multiline: true,
+                    autoSizeMode: "height",
+                    fitMode: "auto-height",
+                  },
+                }
+              : item),
+          }))
+        }
         onDeleteLayer={(layerId) =>
           setEditorState((current) => ({
             ...current,
@@ -356,13 +396,32 @@ export default function AdminCustomerPreview({ template, product }: { template: 
               editorState={editorState}
               pageId={activePage}
               zoom={zoom}
-              onZoomChange={setZoom}
+              onZoomChange={setZoomManually}
+              onFitZoomChange={onWorkspaceFitZoom}
               selectedLayerId={selectedLayerId}
               onSelectLayer={setSelectedLayerId}
               onLayerTransform={onLayerTransform}
               textPlacementActive={activeTool === "addText" && pageAllowsCustomerText(template, activePage)}
               onTextPlace={addUserText}
               onTextDraftChange={updateCanvasText}
+              onTextMultilineActivate={(layerId) =>
+                setEditorState((current) => ({
+                  ...current,
+                  userLayers: current.userLayers.map((item: any) =>
+                    item.id === layerId
+                      ? {
+                          ...item,
+                          textStyle: {
+                            ...(item.textStyle || {}),
+                            multiline: true,
+                            autoSizeMode: "height",
+                            fitMode: "auto-height",
+                          },
+                        }
+                      : item,
+                  ),
+                }))
+              }
               onTextCommit={updateCanvasText}
               onTextDiscard={(layerId) => setEditorState((current) => ({
                 ...current,
@@ -377,7 +436,7 @@ export default function AdminCustomerPreview({ template, product }: { template: 
             />
             <div className="pointer-events-none absolute inset-x-0 bottom-3 z-30 flex justify-center">
               <div className="pointer-events-auto">
-                <CustomizerZoomControls zoom={zoom} onZoomChange={setZoom} onFit={() => setZoom(1)} />
+                <CustomizerZoomControls zoom={zoom} onZoomChange={setZoomManually} fitZoom={fitZoom} onFit={() => { userChoseZoomRef.current = false; if (fitZoom !== null) setZoom(fitZoom); }} onActualSize={() => setZoomManually(1)} />
               </div>
             </div>
           </main>

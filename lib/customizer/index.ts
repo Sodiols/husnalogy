@@ -14,7 +14,10 @@ import { normalizeGridSlot } from "@/lib/customizer/v2/grids";
 import { normalizeImageFilters } from "@/lib/customizer/v2/image-filters";
 import { normalizeQRCodeStyle } from "@/lib/customizer/v2/qr";
 import { migrateTextAutoSizing } from "@/lib/customizer/v2/text-layout";
-import { normalizeCanonicalText } from "@/lib/customizer/v2/text-editing";
+import {
+  normalizeCanonicalText,
+  promoteTextStyleForValue,
+} from "@/lib/customizer/v2/text-editing";
 
 export const CUSTOMIZER_ENGINES = new Set(["svg"]);
 export const CUSTOMIZER_ORIENTATIONS = new Set(["portrait", "landscape", "square"]);
@@ -452,12 +455,13 @@ export function normalizeCustomizerLayer(input: any = {}): any {
     };
   }
 
+  const text = normalizeCanonicalText(input.text).slice(0, 2000);
   return {
     ...base,
     // The design text the admin typed. The customer's value overrides it only
     // when the layer is customer-editable and connected to a field.
-    text: normalizeCanonicalText(input.text).slice(0, 2000),
-    textStyle: normalizeTextStyle(input.textStyle),
+    text,
+    textStyle: promoteTextStyleForValue(normalizeTextStyle(input.textStyle), text),
   };
 }
 
@@ -509,12 +513,35 @@ export function normalizeUserLayer(input: any = {}): any | null {
   }
 
   const textAlign = cleanString(input.textStyle?.textAlign).toLowerCase();
+  const text = normalizeCanonicalText(input.text).slice(0, 500);
+  const textStyle = promoteTextStyleForValue({
+    fontFamily: cleanString(input.textStyle?.fontFamily) || DEFAULT_TEXT_STYLE.fontFamily,
+    fontSize: toPositiveInt(input.textStyle?.fontSize, 48),
+    fontWeight: cleanString(input.textStyle?.fontWeight) || "400",
+    fontStyle: cleanString(input.textStyle?.fontStyle) === "italic" ? "italic" : "normal",
+    color: cleanString(input.textStyle?.color) || DEFAULT_TEXT_STYLE.color,
+    letterSpacing: toNumber(input.textStyle?.letterSpacing, 0),
+    lineHeight: toNumber(input.textStyle?.lineHeight, 1.2) || 1.2,
+    textAlign: CUSTOMIZER_TEXT_ALIGN.has(textAlign) ? textAlign : "center",
+    verticalAlign: ["top", "middle", "bottom"].includes(cleanString(input.textStyle?.verticalAlign)) ? cleanString(input.textStyle?.verticalAlign) : "middle",
+    uppercase: normalizeBoolean(input.textStyle?.uppercase),
+    multiline: normalizeBoolean(input.textStyle?.multiline),
+    autoSizeMode: CUSTOMIZER_AUTO_SIZE_MODES.has(cleanString(input.textStyle?.autoSizeMode))
+      ? cleanString(input.textStyle?.autoSizeMode)
+      : normalizeBoolean(input.textStyle?.multiline) ? "height" : "width",
+    fitMode:
+      cleanString(input.textStyle?.fitMode) === "auto-height"
+        ? "auto-height"
+        : cleanString(input.textStyle?.fitMode) === "shrink"
+          ? "shrink"
+          : "fixed",
+  }, text);
   return {
     id,
     type: "text",
     name: clampString(input.name || "Customer text", 120),
     page: cleanString(input.page) || "front",
-    text: normalizeCanonicalText(input.text).slice(0, 500),
+    text,
     x: toNumber(input.x, 0),
     y: toNumber(input.y, 0),
     width: toNumber(input.width, 600) || 600,
@@ -525,23 +552,9 @@ export function normalizeUserLayer(input: any = {}): any | null {
     locked: normalizeBoolean(input.locked),
     groupId: cleanString(input.groupId),
     zIndex: toInt(input.zIndex, 1000),
-    textStyle: {
-      fontFamily: cleanString(input.textStyle?.fontFamily) || DEFAULT_TEXT_STYLE.fontFamily,
-      fontSize: toPositiveInt(input.textStyle?.fontSize, 48),
-      fontWeight: cleanString(input.textStyle?.fontWeight) || "400",
-      fontStyle: cleanString(input.textStyle?.fontStyle) === "italic" ? "italic" : "normal",
-      color: cleanString(input.textStyle?.color) || DEFAULT_TEXT_STYLE.color,
-      letterSpacing: toNumber(input.textStyle?.letterSpacing, 0),
-      lineHeight: toNumber(input.textStyle?.lineHeight, 1.2) || 1.2,
-      textAlign: CUSTOMIZER_TEXT_ALIGN.has(textAlign) ? textAlign : "center",
-      verticalAlign: ["top", "middle", "bottom"].includes(cleanString(input.textStyle?.verticalAlign)) ? cleanString(input.textStyle?.verticalAlign) : "middle",
-      uppercase: normalizeBoolean(input.textStyle?.uppercase),
-      multiline: normalizeBoolean(input.textStyle?.multiline),
-      // Customer-added text is single-line personalization by definition, so it
-      // grows with what is typed. Multiline text keeps a fixed box and wraps.
-      autoSizeMode: cleanString(input.textStyle?.autoSizeMode)
-        || (normalizeBoolean(input.textStyle?.multiline) ? "fixed" : "width"),
-    },
+    ...(toPositiveInt(input.maxLines, 0) > 0 ? { maxLines: toPositiveInt(input.maxLines, 0) } : {}),
+    ...(toPositiveInt(input.maxChars, 0) > 0 ? { maxChars: toPositiveInt(input.maxChars, 0) } : {}),
+    textStyle,
   };
 }
 

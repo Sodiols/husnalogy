@@ -87,7 +87,7 @@ function renderTextLayer(layer: any, field: any, values: Record<string, any>, me
 
   // Print output never renders placeholder hint text (spec §24).
   if (mode === "print" && isPlaceholder) return "";
-  if (!String(text).trim()) return "";
+  if (String(text).length === 0) return "";
 
   // Same resolver the browser renderer uses, so on-screen and print output
   // agree. Layers without an explicit autoSizeMode keep their stored box, which
@@ -150,7 +150,7 @@ function renderTextLayer(layer: any, field: any, values: Record<string, any>, me
 
   return (
     `<g${rotate}><defs><clipPath id="${clipId}"><rect x="${boxLeft}" y="${boxTop}" width="${box.width}" height="${box.height}"/></clipPath></defs>` +
-    `<text clip-path="url(#${clipId})" text-anchor="${layout.anchor}" dominant-baseline="middle"` +
+    `<text clip-path="url(#${clipId})" xml:space="preserve" text-anchor="${layout.anchor}" dominant-baseline="middle"` +
     ` font-family="${esc(style.fontFamily || "Cormorant Garamond")}"` +
     ` font-size="${layout.fontSize}"` +
     attr("font-weight", style.fontWeight || "400") +

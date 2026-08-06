@@ -4,10 +4,20 @@
 // two-way connected to the canvas — focusing a field selects its layer, and
 // selecting an editable layer scrolls to / focuses its field.
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { getEnabledPages, getImageUrl, getLayerPermissions, isValueEmpty } from "./customizer-utils";
-import { isMultilineTextField } from "@/lib/customizer/v2/text-editing";
+import {
+  countTextLines,
+  customerFieldInputType,
+  normalizeCustomerFieldText,
+  resolveCustomerFieldEditor,
+  type CustomerFieldEditor,
+} from "@/lib/customizer/v2/customer-fields";
+import { resolveTextEditorKeyAction } from "@/lib/customizer/v2/text-editing";
 
+// One shared keyboard contract with the inline canvas editor: Ctrl/Cmd + Enter
+// finishes editing this field (and never inserts a line break), while a plain
+// Enter in a multiline field stays a real line break.
 const inputClass =
   "w-full rounded-md border border-[#303839]/15 bg-white px-3 py-2.5 text-sm text-[#303839] outline-none transition focus:border-[#D4AF37]";
 
@@ -32,7 +42,10 @@ export function mapCustomerFields(template: any) {
     if (!layer.customerEditable || !layer.fieldId || layer.hidden) return;
     if (!enabledPageIds.has(layer.page)) return;
     const permissions = getLayerPermissions(layer);
-    const canEditField = layer.type === "image" ? permissions.replaceImage : permissions.editContent;
+    // Frames are photo placeholders too — gate them on replaceImage like images,
+    // matching validateCustomerValues() in customizer-utils.
+    const canEditField =
+      layer.type === "image" || layer.type === "frame" ? permissions.replaceImage : permissions.editContent;
     if (!canEditField) return;
     const field: any = fieldById.get(layer.fieldId);
     if (!field || field.customerVisible === false) return;
@@ -45,24 +58,69 @@ export function mapCustomerFields(template: any) {
   return entries;
 }
 
-function TextField({ field, layer, value, error, onChange, onFocusField, inputRef, highlighted }: any) {
+// Multiline fields grow with their content instead of scrolling inside a fixed
+// box, so a customer typing a three-line verse always sees all three lines.
+function autoGrow(el: HTMLTextAreaElement | null) {
+  if (!el) return;
+  el.style.height = "auto";
+  el.style.height = `${Math.min(el.scrollHeight, 320)}px`;
+}
+
+function TextField({
+  field,
+  editor,
+  value,
+  error,
+  onChange,
+  onFocusField,
+  inputRef,
+  highlighted,
+}: {
+  field: any;
+  editor: CustomerFieldEditor;
+  value: any;
+  error?: string;
+  onChange: (next: any) => void;
+  onFocusField: () => void;
+  inputRef: (el: HTMLElement | null) => void;
+  highlighted: boolean;
+}) {
+  const [keyboardMessage, setKeyboardMessage] = useState("");
+  const textValue = typeof value === "string" ? value : "";
+  const overLimit = editor.maxLength > 0 && textValue.length > editor.maxLength;
   const count =
-    field.maxLength && typeof value === "string" ? (
-      <span className={`text-[11px] font-bold ${value.length > field.maxLength ? "text-red-700" : "text-[#303839]/45"}`}>
-        {value.length}/{field.maxLength}
+    editor.maxLength > 0 && typeof value === "string" ? (
+      <span className={`text-[11px] font-bold ${overLimit ? "text-red-700" : "text-[#303839]/45"}`}>
+        {textValue.length}/{editor.maxLength}
       </span>
     ) : null;
 
-  const multiline = isMultilineTextField(field, layer);
+  const lineCount = editor.multiline ? countTextLines(textValue) : 1;
+  const atLineLimit = editor.multiline && editor.maxLines > 0 && lineCount >= editor.maxLines;
+  const onFieldKeyDown = (event: React.KeyboardEvent<HTMLElement>) => {
+    const action = resolveTextEditorKeyAction(event, editor.multiline);
+    if (action === "commit") {
+      event.preventDefault();
+      (event.currentTarget as HTMLElement).blur();
+    } else if (action === "blocked-newline") {
+      event.preventDefault();
+      setKeyboardMessage("This field supports one line only.");
+    } else if (action === "newline") {
+      setKeyboardMessage("");
+    }
+  };
 
   const shared = {
     id: `cz-field-${field.id}`,
-    ref: inputRef,
-    value: value || "",
+    value: textValue,
     placeholder: field.placeholder || "",
-    maxLength: field.maxLength || undefined,
+    maxLength: editor.maxLength || undefined,
     onFocus: onFocusField,
-    onChange: (e: any) => onChange(e.target.value),
+    onKeyDown: onFieldKeyDown,
+    // Every keystroke and paste is normalized through the same rules the server
+    // validates against, so the value in the input, on the canvas, in the saved
+    // draft and in the print render are always the same string.
+    onChange: (e: any) => onChange(normalizeCustomerFieldText(e.target.value, editor)),
   };
 
   return (
@@ -81,18 +139,23 @@ function TextField({ field, layer, value, error, onChange, onFocusField, inputRe
         </label>
         {count}
       </div>
-      {multiline ? (
+      {editor.control === "textarea" ? (
         <textarea
           {...shared}
-          rows={field.type === "textarea" ? 4 : 2}
-          className={`${inputClass} min-h-24`}
-          // Enter inserts a line break here; it must not submit or blur.
-          onKeyDown={(event) => {
-            if (event.key === "Enter") event.stopPropagation();
+          ref={(el) => {
+            inputRef(el);
+            autoGrow(el);
           }}
+          rows={Math.min(Math.max(lineCount, 2), 8)}
+          onInput={(e) => autoGrow(e.currentTarget)}
+          // Enter is a line break here, so the browser must not treat it as
+          // form submission.
+          onKeyDown={onFieldKeyDown}
+          aria-describedby={`cz-field-${field.id}-hint`}
+          className={`${inputClass} min-h-20 resize-y leading-snug`}
         />
-      ) : field.type === "select" ? (
-        <select {...shared} className={inputClass}>
+      ) : editor.control === "select" ? (
+        <select {...shared} ref={inputRef as any} className={inputClass}>
           <option value="">Select…</option>
           {(field.options || []).map((opt: string) => (
             <option key={opt} value={opt}>
@@ -100,27 +163,43 @@ function TextField({ field, layer, value, error, onChange, onFocusField, inputRe
             </option>
           ))}
         </select>
-      ) : field.type === "checkbox" ? (
-        <label className="flex cursor-pointer items-center gap-2 text-sm text-[#303839]">
+      ) : editor.control === "checkbox" ? (
+        <label className="flex min-h-11 cursor-pointer items-center gap-2 text-sm text-[#303839]">
           <input
             id={`cz-field-${field.id}`}
-            ref={inputRef}
+            ref={inputRef as any}
             type="checkbox"
             checked={Boolean(value)}
             onFocus={onFocusField}
+            onKeyDown={onFieldKeyDown}
             onChange={(e) => onChange(e.target.checked)}
             className="h-4 w-4 accent-[#303839]"
           />
           {field.placeholder || "Yes"}
         </label>
       ) : (
-        <input
-          {...shared}
-          type={field.type === "number" ? "number" : field.type === "date" ? "date" : field.type === "time" ? "time" : "text"}
-          className={inputClass}
-        />
+        <input {...shared} ref={inputRef as any} type={customerFieldInputType(editor)} className={inputClass} />
       )}
-      {field.helpText && <p className="mt-1 text-xs text-[#303839]/55">{field.helpText}</p>}
+      <p id={`cz-field-${field.id}-hint`} className="mt-1 text-xs text-[#303839]/55">
+        {field.helpText}
+        {field.helpText && editor.multiline ? " " : ""}
+        {editor.multiline && (
+          <span>
+            Press Enter for a new line
+            {editor.maxLines > 0 ? ` (up to ${editor.maxLines} lines)` : ""}.
+          </span>
+        )}
+      </p>
+      {atLineLimit && (
+        <p className="mt-1 text-xs font-bold text-[#303839]/70" role="status">
+          This design holds {editor.maxLines} {editor.maxLines === 1 ? "line" : "lines"}.
+        </p>
+      )}
+      {keyboardMessage && (
+        <p className="mt-1 text-xs font-bold text-[#8a701d]" role="status" aria-live="polite">
+          {keyboardMessage}
+        </p>
+      )}
       {error && (
         <p className="mt-1 text-xs font-bold text-red-700" role="alert">
           {error}
@@ -206,7 +285,10 @@ export default function CustomerEditPanel({
             </h3>
             <div className="grid gap-1.5">
               {pageEntries.map(({ field, layer }) => {
-                if (field.type === "image" || field.type === "file") {
+                // One shared resolver decides the control, the multiline rule
+                // and the limits — the same rule the server validates with.
+                const editor = resolveCustomerFieldEditor(field, layer);
+                if (editor.control === "image") {
                   const hasPhoto = !isValueEmpty(values[field.id]) && Boolean(getImageUrl(values[field.id]));
                   return (
                     <div
@@ -249,7 +331,7 @@ export default function CustomerEditPanel({
                   <TextField
                     key={field.id}
                     field={field}
-                    layer={layer}
+                    editor={editor}
                     value={values[field.id]}
                     error={errors[field.id]}
                     highlighted={selectedLayerId === layer.id}

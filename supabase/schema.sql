@@ -182,27 +182,9 @@ create table if not exists public.orders (
   customization_details jsonb not null default '{}'::jsonb,
   uploaded_files jsonb not null default '{}'::jsonb,
   metadata jsonb not null default '{}'::jsonb,
-  -- Personalized production lifecycle, deliberately separate from `status` so
-  -- render progress never overloads the customer-facing order status.
-  production_status text not null default 'not_required'
-    check (production_status in (
-      'not_required', 'snapshot_pending', 'snapshot_ready', 'render_queued',
-      'rendering', 'render_ready', 'attention_required', 'failed'
-    )),
-  -- A retried checkout submission reuses the same order instead of creating a
-  -- duplicate one.
-  idempotency_key text,
   created_at timestamp with time zone not null default now(),
   updated_at timestamp with time zone not null default now()
 );
-
-create unique index if not exists uniq_orders_idempotency_key
-  on public.orders(idempotency_key)
-  where idempotency_key is not null;
-
-create index if not exists idx_orders_production_status
-  on public.orders(production_status, created_at desc)
-  where production_status <> 'not_required';
 
 create table if not exists public.order_items (
   id uuid primary key default gen_random_uuid(),

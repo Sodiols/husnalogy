@@ -39,6 +39,7 @@ import {
 } from "@/lib/customizer/v2/selection-geometry";
 import { getDescendantIds } from "@/lib/customizer/v2/groups";
 import { isEmptyText } from "@/lib/customizer/v2/text-editing";
+import { ZOOM_MAX, ZOOM_MIN, clampZoom, computeFitZoom } from "@/lib/customizer/v2/zoom";
 
 const HANDLES: Array<{ id: string; cx: number; cy: number; cursor: string }> = [
   { id: "nw", cx: 0, cy: 0, cursor: "nwse-resize" },
@@ -63,6 +64,10 @@ type Props = {
   pageId: string;
   zoom?: number;
   onZoomChange?: (zoom: number) => void;
+  // Reports the zoom that makes the whole page fit the CURRENT workspace box
+  // (spec §9). Recomputed whenever the workspace resizes: panel open/close,
+  // sidebar collapse, orientation change, keyboard, page change.
+  onFitZoomChange?: (fitZoom: number) => void;
   selectedLayerId?: string | null;
   selectedLayerIds?: string[];
   onSelectLayer?: (layerId: string | null) => void;
@@ -80,6 +85,15 @@ type Props = {
   onTextPlace?: (position: { x: number; y: number }) => string | null;
   onTextEditStart?: (layerId: string) => void;
   onTextDraftChange?: (layerId: string, text: string) => void;
+  onTextMultilineActivate?: (layerId: string) => void;
+  onTextCancel?: (layerId: string, initial: {
+    text: string;
+    textStyle: Record<string, any>;
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  }) => void;
   onTextDiscard?: (layerId: string) => void;
   onEditingTextChange?: (layerId: string | null) => void;
   onExitTextTool?: () => void;
@@ -104,6 +118,7 @@ export default function CustomizerWorkspace({
   pageId,
   zoom = 1,
   onZoomChange,
+  onFitZoomChange,
   selectedLayerId,
   selectedLayerIds,
   onSelectLayer,
@@ -120,6 +135,8 @@ export default function CustomizerWorkspace({
   onTextPlace,
   onTextEditStart,
   onTextDraftChange,
+  onTextMultilineActivate,
+  onTextCancel,
   onTextDiscard,
   onEditingTextChange,
   onExitTextTool,
@@ -144,10 +161,20 @@ export default function CustomizerWorkspace({
   const gestureRef = useRef<any>(null);
   const touchPointsRef = useRef(new Map<number, { x: number; y: number }>());
   const [containerWidth, setContainerWidth] = useState(0);
+  const [containerHeight, setContainerHeight] = useState(0);
   const [guides, setGuides] = useState<Guide[]>([]);
   const [selectionBox, setSelectionBox] = useState<null | { startX: number; startY: number; x: number; y: number; additive: boolean }>(null);
   const [editingTextId, setEditingTextId] = useState<string | null>(null);
   const newTextIdsRef = useRef(new Set<string>());
+  const textEditSessionRef = useRef<{
+    layerId: string;
+    text: string;
+    textStyle: Record<string, any>;
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  } | null>(null);
 
   const canvasW = template?.canvasWidthPx || 1500;
   const canvasH = template?.canvasHeightPx || 2100;
@@ -156,11 +183,28 @@ export default function CustomizerWorkspace({
   useLayoutEffect(() => {
     if (!wrapRef.current) return;
     const el = wrapRef.current;
-    const update = () => setContainerWidth(el.clientWidth);
+    const update = () => {
+      setContainerWidth(el.clientWidth);
+      setContainerHeight(el.clientHeight);
+    };
     update();
+    // ResizeObserver is the primary signal, but the first mount measurement can
+    // land before sibling panels/toolbars have taken their space, and window
+    // resize / orientation change are cheap extra guarantees. All three call the
+    // same idempotent measure.
+    const frame = requestAnimationFrame(update);
+    const settle = window.setTimeout(update, 250);
     const ro = new ResizeObserver(update);
     ro.observe(el);
-    return () => ro.disconnect();
+    window.addEventListener("resize", update);
+    window.addEventListener("orientationchange", update);
+    return () => {
+      cancelAnimationFrame(frame);
+      window.clearTimeout(settle);
+      ro.disconnect();
+      window.removeEventListener("resize", update);
+      window.removeEventListener("orientationchange", update);
+    };
   }, []);
 
   useEffect(() => {
@@ -182,6 +226,25 @@ export default function CustomizerWorkspace({
   const displayH = displayW * (canvasH / canvasW);
   const scale = displayW / canvasW;
   const snapTolerance = SNAP_PX / Math.max(scale, 1e-6);
+
+  // Real Fit (spec §9): derived from the measured workspace box on BOTH axes,
+  // never a hardcoded 100%. Reported upward so the Fit button, the keyboard
+  // shortcut and the initial view all use the same number.
+  const fitZoom = computeFitZoom({
+    availableWidth: containerWidth,
+    availableHeight: containerHeight,
+    baseWidth,
+    canvasWidth: canvasW,
+    canvasHeight: canvasH,
+    padding,
+  });
+  useEffect(() => {
+    if (fitZoom === null) return;
+    onFitZoomChange?.(fitZoom);
+    // onFitZoomChange is treated as a stable reporter; re-running on identity
+    // changes would loop through the parent's setState.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fitZoom]);
 
   const layers = getEffectiveLayersForPage(template, pageId, editorState);
 
@@ -291,6 +354,18 @@ export default function CustomizerWorkspace({
 
   const beginTextEditing = (layerId: string, created = false) => {
     if (editingTextId === layerId) return;
+    const layer = layers.find((candidate: any) => candidate.id === layerId);
+    if (!layer) return;
+    const field = layer.fieldId ? getFieldById(template, layer.fieldId) : null;
+    textEditSessionRef.current = {
+      layerId,
+      text: String(resolveLayerText(layer, field, values)),
+      textStyle: { ...(layer.textStyle || {}) },
+      x: Number(layer.x) || 0,
+      y: Number(layer.y) || 0,
+      width: Number(layer.width) || 0,
+      height: Number(layer.height) || 0,
+    };
     if (created) newTextIdsRef.current.add(layerId);
     else onTextEditStart?.(layerId);
     setEditingTextId(layerId);
@@ -299,6 +374,7 @@ export default function CustomizerWorkspace({
 
   const finishTextEditing = (layerId: string, text: string) => {
     const created = newTextIdsRef.current.delete(layerId);
+    textEditSessionRef.current = null;
     setEditingTextId(null);
     onEditingTextChange?.(null);
     if (created && isEmptyText(text)) {
@@ -306,6 +382,26 @@ export default function CustomizerWorkspace({
       return;
     }
     onTextCommit?.(layerId, text);
+  };
+
+  const cancelTextEditing = (layerId: string) => {
+    const created = newTextIdsRef.current.delete(layerId);
+    const session = textEditSessionRef.current;
+    textEditSessionRef.current = null;
+    setEditingTextId(null);
+    onEditingTextChange?.(null);
+    if (created) {
+      onTextDiscard?.(layerId);
+      return;
+    }
+    if (session?.layerId === layerId) onTextCancel?.(layerId, {
+      text: session.text,
+      textStyle: session.textStyle,
+      x: session.x,
+      y: session.y,
+      width: session.width,
+      height: session.height,
+    });
   };
 
   useEffect(() => {
@@ -318,6 +414,7 @@ export default function CustomizerWorkspace({
 
   useEffect(() => {
     setEditingTextId(null);
+    textEditSessionRef.current = null;
     onEditingTextChange?.(null);
     // Canonical text is updated on every input event, so a page switch cannot
     // lose the last character even if the browser skips blur during unmount.
@@ -337,7 +434,14 @@ export default function CustomizerWorkspace({
   const canScaleSingleLineText = (layer: any) =>
     canResize(layer) &&
     layer?.type === "text" &&
-    isSingleLineAutoSizeText(layer.textStyle) &&
+    isSingleLineAutoSizeText(
+      layer.textStyle,
+      resolveLayerText(
+        layer,
+        layer.fieldId ? getFieldById(template, layer.fieldId) : null,
+        values,
+      ),
+    ) &&
     (layer.isUserLayer || Boolean(getLayerPermissions(layer).changeFontSize));
   const canRotate = (layer: any) => logicalLayers(layer).every(
     (candidate: any) => !isTransformLocked(candidate) && (candidate.isUserLayer || getLayerPermissions(candidate).rotate),
@@ -916,7 +1020,7 @@ export default function CustomizerWorkspace({
     } else if (cropGridLayer && cropGridSlot) {
       onGridSlotTransform?.(cropGridLayer.id, cropGridSlot.id, { zoom: Number(Math.min(8, Math.max(1, gesture.gridZoom * ratio)).toFixed(3)) }, "move");
     } else {
-      onZoomChange?.(Math.min(3, Math.max(0.35, gesture.zoom * ratio)));
+      onZoomChange?.(clampZoom(gesture.zoom * ratio, ZOOM_MIN, ZOOM_MAX));
       if (wrapRef.current) {
         wrapRef.current.scrollLeft = gesture.scrollLeft - (centerX - gesture.centerX);
         wrapRef.current.scrollTop = gesture.scrollTop - (centerY - gesture.centerY);
@@ -983,7 +1087,7 @@ export default function CustomizerWorkspace({
             page={pageId}
             showSafeArea={previewMode ? false : showSafeArea}
             showBleed={previewMode ? false : showBleed}
-            hiddenLayerIds={editingTextId ? [editingTextId] : []}
+            hiddenLayerIds={[]}
           />
         </div>
 
@@ -1119,19 +1223,27 @@ export default function CustomizerWorkspace({
           if (layer.hidden) return null;
           const selected = activeSelection.includes(layer.id);
           const movable = canMove(layer);
-          const resizable = canResize(layer);
-          const rotatable = canRotate(layer);
-          const isText = layer.type === "text";
-          const singleLineAutoSize = isText && isSingleLineAutoSizeText(layer.textStyle);
-          const singleLineTextScale = selected && activeSelection.length === 1 && canScaleSingleLineText(layer);
-          const showResizeHandles = resizable && (!singleLineAutoSize || singleLineTextScale);
-          const interactionLayer = isText ? singleLineInteractionLayer(layer) : layer;
+           const resizable = canResize(layer);
+           const rotatable = canRotate(layer);
+           const isText = layer.type === "text";
+           const interactionLayer = isText ? singleLineInteractionLayer(layer) : layer;
+           const singleLineAutoSize = isText && isSingleLineAutoSizeText(
+             layer.textStyle,
+             interactionLayer.resolvedText ?? layer.text,
+           );
+           const singleLineTextScale = selected && activeSelection.length === 1 && canScaleSingleLineText(layer);
+           const showResizeHandles = resizable && (!singleLineAutoSize || singleLineTextScale);
           const boxLeft = (interactionLayer.x - interactionLayer.width / 2) * scale;
           const boxTop = (interactionLayer.y - interactionLayer.height / 2) * scale;
           const boxW = interactionLayer.width * scale;
           const boxH = interactionLayer.height * scale;
           const isImage = layer.type === "image" || layer.type === "frame";
-          const canEditText = isText && (layer.isUserLayer || Boolean(getLayerPermissions(layer).editContent));
+           const canEditText = isText && (layer.isUserLayer || Boolean(getLayerPermissions(layer).editContent));
+           const connectedField = isText && layer.fieldId ? getFieldById(template, layer.fieldId) : null;
+           const characterLimits = [
+             Number(connectedField?.maxLength) || 0,
+             Number(layer.maxChars) || 0,
+           ].filter((limit) => limit > 0);
           const textOverflow = selected && textOverflowForLayer(layer);
 
           return (
@@ -1182,14 +1294,23 @@ export default function CustomizerWorkspace({
             >
               {editingTextId === layer.id && (
                 <InlineCanvasTextEditor
-                  value={String(resolveLayerText(layer, layer.fieldId ? getFieldById(template, layer.fieldId) : null, values))}
-                  multiline={Boolean(layer.textStyle?.multiline)}
-                  scale={scale}
-                  textStyle={layer.textStyle}
-                  onDraftChange={(text) => onTextDraftChange?.(layer.id, text)}
-                  onCommit={(text) => finishTextEditing(layer.id, text)}
-                  onEscape={() => onExitTextTool?.()}
-                />
+                   value={String(resolveLayerText(layer, layer.fieldId ? getFieldById(template, layer.fieldId) : null, values))}
+                   multiline={Boolean(layer.textStyle?.multiline)}
+                   // Any editable text object promotes in place on its first
+                   // manual line break. The parent keeps permissions and field
+                   // connection unchanged while the shared renderer switches
+                   // the object to multiline auto-height geometry.
+                   allowMultiline={canEditText}
+                   maxLines={Number(layer.maxLines) || 0}
+                   maxLength={characterLimits.length ? Math.min(...characterLimits) : 0}
+                   scale={scale}
+                   textStyle={layer.textStyle}
+                   onDraftChange={(text) => onTextDraftChange?.(layer.id, text)}
+                   onMultilineActivate={() => onTextMultilineActivate?.(layer.id)}
+                   onCommit={(text) => finishTextEditing(layer.id, text)}
+                   onCancel={() => cancelTextEditing(layer.id)}
+                   onEscape={onExitTextTool}
+                 />
               )}
               {layer.type === "grid" && (layer.slots || []).map((rawSlot: any, index: number) => {
                 const slot = normalizeGridSlot(rawSlot, index);

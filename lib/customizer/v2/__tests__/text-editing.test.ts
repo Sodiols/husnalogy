@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { newTextLayer } from "@/app/admin/dashboard/design-builder/builder-utils";
 import {
+  canonicalTextLayerUpdate,
   getTextPlacementStyle,
   isEmptyText,
   normalizeCanonicalText,
@@ -27,7 +28,7 @@ describe("canonical inline text rules", () => {
   it("normalizes browser and persisted newline variants without flattening multiline text", () => {
     expect(normalizeCanonicalText("MADISON\r\n&\rKENNEDY")).toBe("MADISON\n&\nKENNEDY");
     expect(normalizeInlineText("MADISON\r\n&\rKENNEDY", true)).toBe("MADISON\n&\nKENNEDY");
-    expect(normalizeInlineText("MADISON\r\n&\rKENNEDY", false)).toBe("MADISON & KENNEDY");
+    expect(normalizeInlineText("MADISON\r\n&\rKENNEDY", false)).toBe("MADISON\n&\nKENNEDY");
     expect(isEmptyText(" \n \r\n")).toBe(true);
   });
 
@@ -64,7 +65,7 @@ describe("canonical inline text rules", () => {
     expect(result.lines.map((line) => line.text)).toEqual(["MADISON", "&", "", "KENNEDY"]);
   });
 
-  it("collapses unauthorized newlines for a single-line layout", () => {
+  it("promotes a stale single-line object when its canonical value contains a newline", () => {
     const result = layoutText(
       {
         text: "MADISON\n&\nKENNEDY",
@@ -76,7 +77,35 @@ describe("canonical inline text rules", () => {
       },
       fallbackMeasure,
     );
-    expect(result.lines.map((line) => line.text)).toEqual(["MADISON & KENNEDY"]);
+    expect(result.lines.map((line) => line.text)).toEqual(["MADISON", "&", "KENNEDY"]);
+  });
+
+  it("promotes text and mode atomically without changing the rest of the style", () => {
+    const update = canonicalTextLayerUpdate("Salman\r\nadfasdf", {
+      fontFamily: "Inter",
+      fontSize: 52,
+      fontWeight: "700",
+      color: "#112233",
+      textAlign: "right",
+      letterSpacing: 1.5,
+      lineHeight: 1.3,
+      multiline: false,
+      autoSizeMode: "width",
+      fitMode: "fixed",
+    });
+    expect(update.text).toBe("Salman\nadfasdf");
+    expect(update.textStyle).toMatchObject({
+      fontFamily: "Inter",
+      fontSize: 52,
+      fontWeight: "700",
+      color: "#112233",
+      textAlign: "right",
+      letterSpacing: 1.5,
+      lineHeight: 1.3,
+      multiline: true,
+      autoSizeMode: "height",
+      fitMode: "auto-height",
+    });
   });
 });
 
@@ -130,7 +159,8 @@ describe("resolved multiline bounds and rendering parity", () => {
     expect(box.width).toBe(700);
     expect(box.height).toBe(180);
     expect(box.x).toBe(500);
-    expect(box.y).toBe(600);
+    expect(box.y).toBe(650);
+    expect(box.y - box.height / 2).toBe(600 - 80 / 2);
   });
 
   it("uses the auto-height result for selection and hit-test geometry", () => {
@@ -159,6 +189,35 @@ describe("resolved multiline bounds and rendering parity", () => {
     );
     expect(resolved.height).toBe(180);
     expect(resolved.width).toBe(700);
+    expect(resolved.y).toBe(650);
+  });
+
+  it("resizes selection geometry even when a restored layer still says single-line", () => {
+    const resolved = resolveLayerSelectionGeometry(
+      {
+        id: "legacy-single",
+        type: "text",
+        x: 500,
+        y: 600,
+        width: 700,
+        height: 60,
+        text: "Salman\nadfasdf",
+        textStyle: {
+          fontFamily: "Cormorant Garamond",
+          fontSize: 50,
+          lineHeight: 1.2,
+          multiline: false,
+          autoSizeMode: "width",
+        },
+      },
+      {
+        text: "Salman\nadfasdf",
+        measure: fallbackMeasure,
+        safeBounds: { left: 0, top: 0, right: 1500, bottom: 2100 },
+      },
+    );
+    expect(resolved.height).toBe(120);
+    expect(resolved.y - resolved.height / 2).toBe(600 - 60 / 2);
   });
 
   it("emits one SVG tspan per preserved manual line", () => {
@@ -199,6 +258,45 @@ describe("resolved multiline bounds and rendering parity", () => {
     expect(svg).toContain(">KENNEDY</tspan>");
   });
 
+  it("emits two SVG lines from a legacy single-line object without flattening", () => {
+    const svg = buildPageSvg({
+      template: {
+        ...template,
+        layers: [
+          {
+            id: "promoted",
+            name: "Promoted",
+            page: "front",
+            type: "text",
+            text: "Salman\nadfasdf",
+            x: 750,
+            y: 700,
+            width: 900,
+            height: 90,
+            zIndex: 1,
+            opacity: 1,
+            textStyle: {
+              fontFamily: "Cormorant Garamond",
+              fontSize: 72,
+              lineHeight: 1.2,
+              textAlign: "center",
+              multiline: false,
+              autoSizeMode: "width",
+            },
+          },
+        ],
+      },
+      values: {},
+      pageId: "front",
+      mode: "print",
+      measure: fallbackMeasure,
+    });
+    expect(svg.match(/<tspan /g)).toHaveLength(2);
+    expect(svg).toContain(">Salman</tspan>");
+    expect(svg).toContain(">adfasdf</tspan>");
+    expect(svg).toContain('xml:space="preserve"');
+  });
+
   it("wires both canvases to canonical live drafts, click placement, and empty-layer discard", () => {
     const admin = readFileSync("app/admin/dashboard/design-builder/AdminCanvas.tsx", "utf8");
     const customer = readFileSync("app/components/customizer/CustomizerWorkspace.tsx", "utf8");
@@ -211,7 +309,10 @@ describe("resolved multiline bounds and rendering parity", () => {
       expect(source).toContain("<InlineCanvasTextEditor");
     }
     expect(inline).toContain("setSelectionRange");
-    expect(inline).toContain('event.key === "Escape"');
+    // Escape still cancels — it is now resolved through the shared keyboard
+    // contract in text-editing.ts along with Enter and Ctrl+Enter.
+    expect(inline).toContain("resolveTextEditorKeyAction");
+    expect(inline).toContain('action === "cancel"');
     expect(inline).toContain("onDraftChange?.(next)");
     expect(inline).toContain("Done");
   });

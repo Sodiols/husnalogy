@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import { renderCustomizationPages, buildPrintPdf, RenderError } from "../server/render";
 import { buildPageSvg } from "../svg";
 import { createServerMeasure } from "../server/server-fonts";
+import sharp from "sharp";
 
 // A tiny valid PNG (1x1 red pixel) used as an embedded photo.
 const RED_PIXEL =
@@ -170,6 +171,77 @@ describe("server render pipeline", () => {
     const { width, height } = parsed.getPage(0).getSize();
     expect(width).toBeCloseTo((5 + 40 / 150) * 72, 1);
     expect(height).toBeCloseTo((7 + 40 / 150) * 72, 1);
+  });
+
+  it("keeps an Enter-created newline in the production PNG and its PDF", async () => {
+    const promotedTemplate = {
+      ...template,
+      pages: [template.pages[0]],
+      layers: [{
+        ...template.layers[0],
+        height: 70,
+        text: "Fallback",
+        textStyle: {
+          ...template.layers[0].textStyle,
+          multiline: false,
+          autoSizeMode: "width",
+          fitMode: "fixed",
+          lineHeight: 1.35,
+        },
+      }],
+    };
+    const promotedValues = { names: "Salman\nadfasdf" };
+    const svg = buildPageSvg({
+      template: promotedTemplate,
+      values: promotedValues,
+      editorState: null,
+      pageId: "front",
+      measure: createServerMeasure(),
+      mode: "print",
+    });
+    expect(svg.match(/<tspan /g)).toHaveLength(2);
+    expect(svg).toContain(">Salman</tspan>");
+    expect(svg).toContain(">adfasdf</tspan>");
+
+    const [page] = await renderCustomizationPages({
+      template: promotedTemplate,
+      values: promotedValues,
+      editorState: null,
+      mode: "print",
+      pageIds: ["front"],
+    });
+    const { data, info } = await sharp(page.png)
+      .removeAlpha()
+      .raw()
+      .toBuffer({ resolveWithObject: true });
+    const inkRows: number[] = [];
+    for (let y = 0; y < info.height; y += 1) {
+      let ink = 0;
+      for (let x = 0; x < info.width; x += 1) {
+        const offset = (y * info.width + x) * info.channels;
+        if (data[offset] < 150 && data[offset + 1] < 150 && data[offset + 2] < 150) ink += 1;
+      }
+      if (ink >= 4) inkRows.push(y);
+    }
+    const bands: Array<{ start: number; end: number }> = [];
+    for (const row of inkRows) {
+      const last = bands[bands.length - 1];
+      if (!last || row - last.end > 4) bands.push({ start: row, end: row });
+      else last.end = row;
+    }
+    expect(bands).toHaveLength(2);
+    expect(bands[1].start).toBeGreaterThan(bands[0].end);
+
+    const { pdf } = await buildPrintPdf([page], {
+      widthIn: 5,
+      heightIn: 7,
+      dpi: 150,
+      bleedPx: { top: 0, right: 0, bottom: 0, left: 0 },
+    });
+    const { PDFDocument } = await import("pdf-lib");
+    const parsed = await PDFDocument.load(pdf);
+    expect(parsed.getPageCount()).toBe(1);
+    expect(pdf.subarray(0, 5).toString()).toBe("%PDF-");
   });
 
   it("renders independent grid slots and grouped layers through PNG and PDF", async () => {

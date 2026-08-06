@@ -104,7 +104,6 @@ export type Database = {
           created_at: string
           updated_at: string
           asset_references: Json
-          revision: number
         }
         Insert: {
           id?: string
@@ -124,7 +123,6 @@ export type Database = {
           created_at?: string
           updated_at?: string
           asset_references?: Json
-          revision?: number
         }
         Update: {
           id?: string
@@ -144,7 +142,6 @@ export type Database = {
           created_at?: string
           updated_at?: string
           asset_references?: Json
-          revision?: number
         }
         Relationships: []
       }
@@ -154,6 +151,8 @@ export type Database = {
           template_id: string
           product_id: string | null
           version: number
+          major_version: number
+          minor_revision: number
           schema_version: number
           engine_version: string
           document: Json
@@ -161,14 +160,14 @@ export type Database = {
           published_by: string | null
           notes: string | null
           created_at: string
-          major_version: number
-          minor_revision: number
         }
         Insert: {
           id?: string
           template_id: string
           product_id?: string | null
           version: number
+          major_version?: number
+          minor_revision?: number
           schema_version?: number
           engine_version?: string
           document?: Json
@@ -176,14 +175,14 @@ export type Database = {
           published_by?: string | null
           notes?: string | null
           created_at?: string
-          major_version?: number
-          minor_revision?: number
         }
         Update: {
           id?: string
           template_id?: string
           product_id?: string | null
           version?: number
+          major_version?: number
+          minor_revision?: number
           schema_version?: number
           engine_version?: string
           document?: Json
@@ -191,8 +190,6 @@ export type Database = {
           published_by?: string | null
           notes?: string | null
           created_at?: string
-          major_version?: number
-          minor_revision?: number
         }
         Relationships: []
       }
@@ -253,7 +250,7 @@ export type Database = {
           created_by: string | null
           created_at: string
           updated_at: string
-          original_filename: string
+          original_filename: string | null
           asset_type: string
           thumbnail_path: string | null
           editor_path: string | null
@@ -285,7 +282,7 @@ export type Database = {
           created_by?: string | null
           created_at?: string
           updated_at?: string
-          original_filename: string
+          original_filename?: string | null
           asset_type?: string
           thumbnail_path?: string | null
           editor_path?: string | null
@@ -317,7 +314,7 @@ export type Database = {
           created_by?: string | null
           created_at?: string
           updated_at?: string
-          original_filename?: string
+          original_filename?: string | null
           asset_type?: string
           thumbnail_path?: string | null
           editor_path?: string | null
@@ -646,8 +643,6 @@ export type Database = {
           heartbeat_at: string | null
           next_attempt_at: string | null
           cancel_requested_at: string | null
-          snapshot_id: string | null
-          order_item_id: string | null
         }
         Insert: {
           id?: string
@@ -672,8 +667,6 @@ export type Database = {
           heartbeat_at?: string | null
           next_attempt_at?: string | null
           cancel_requested_at?: string | null
-          snapshot_id?: string | null
-          order_item_id?: string | null
         }
         Update: {
           id?: string
@@ -698,8 +691,6 @@ export type Database = {
           heartbeat_at?: string | null
           next_attempt_at?: string | null
           cancel_requested_at?: string | null
-          snapshot_id?: string | null
-          order_item_id?: string | null
         }
         Relationships: []
       }
@@ -843,13 +834,6 @@ export type Database = {
           integrity_hash: string | null
           created_at: string
           updated_at: string
-          render_error_code: string | null
-          render_error_message: string | null
-          render_attempt_count: number
-          last_render_attempt_at: string | null
-          render_queued_at: string | null
-          manual_review_requested_at: string | null
-          manual_review_note: string | null
         }
         Insert: {
           id?: string
@@ -873,13 +857,6 @@ export type Database = {
           integrity_hash?: string | null
           created_at?: string
           updated_at?: string
-          render_error_code?: string | null
-          render_error_message?: string | null
-          render_attempt_count?: number
-          last_render_attempt_at?: string | null
-          render_queued_at?: string | null
-          manual_review_requested_at?: string | null
-          manual_review_note?: string | null
         }
         Update: {
           id?: string
@@ -903,13 +880,6 @@ export type Database = {
           integrity_hash?: string | null
           created_at?: string
           updated_at?: string
-          render_error_code?: string | null
-          render_error_message?: string | null
-          render_attempt_count?: number
-          last_render_attempt_at?: string | null
-          render_queued_at?: string | null
-          manual_review_requested_at?: string | null
-          manual_review_note?: string | null
         }
         Relationships: []
       }
@@ -921,7 +891,7 @@ export type Database = {
           created_at: string
           updated_at: string
           scope: string
-          scope_key: string
+          scope_key: string | null
           product_type: string | null
           environments: string
           rollout_percentage: number
@@ -935,7 +905,7 @@ export type Database = {
           created_at?: string
           updated_at?: string
           scope?: string
-          scope_key: string
+          scope_key?: string | null
           product_type?: string | null
           environments?: string
           rollout_percentage?: number
@@ -949,7 +919,7 @@ export type Database = {
           created_at?: string
           updated_at?: string
           scope?: string
-          scope_key?: string
+          scope_key?: string | null
           product_type?: string | null
           environments?: string
           rollout_percentage?: number

@@ -27,7 +27,10 @@ describe("admin properties sidebar contract", () => {
     expect(panel).toContain("<Lbl>Font size</Lbl>");
     expect(panel).toContain('ariaLabel="Font size"');
     expect(panel).toContain("showStepButtons={false}");
-    expect(panel).toContain("style.multiline ? (");
+    expect(panel).toContain("<textarea");
+    expect(panel).toContain('resolveTextEditorKeyAction(event, true)');
+    expect(panel).toContain('multiline: true');
+    expect(panel).toContain('autoSizeMode: "height"');
   });
 
   it("uses the Husnalogy soft background for customer access", () => {

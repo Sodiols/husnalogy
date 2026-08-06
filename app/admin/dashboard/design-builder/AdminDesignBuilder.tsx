@@ -8,7 +8,7 @@
 // Collapsed: a launch card with a live summary. Open: a full-screen
 // professional editor (fixed overlay, no site chrome).
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
   validateCustomizerTemplateDetailed,
@@ -35,7 +35,10 @@ import { createGridSlots } from "@/lib/customizer/v2/grids";
 import { groupLayers, ungroupLayers } from "@/lib/customizer/v2/groups";
 import { createCanvasMeasure, getTextResizeConstraints, isSingleLineAutoSizeText } from "@/lib/customizer/v2/text-layout";
 import { resolveLayerSelectionGeometry } from "@/lib/customizer/v2/selection-geometry";
-import { type TextPlacementPreset } from "@/lib/customizer/v2/text-editing";
+import {
+  canonicalTextLayerUpdate,
+  type TextPlacementPreset,
+} from "@/lib/customizer/v2/text-editing";
 import { getFieldById, resolveLayerText } from "@/app/components/customizer/customizer-utils";
 import { formatCustomizerVersion, nextCustomizerVersion, type CustomizerUpdateType } from "@/lib/customizer/public-version";
 import {
@@ -99,7 +102,7 @@ function constrainTextLayerBox(template: any, layerId: string): any {
     multiline: Boolean(style.multiline),
     fitMode: style.fitMode === "shrink" ? "shrink" : style.fitMode === "auto-height" ? "auto-height" : "fixed",
   }, builderTextMeasure);
-  const autoSizedSingleLine = isSingleLineAutoSizeText(style);
+  const autoSizedSingleLine = isSingleLineAutoSizeText(style, layer.text);
   const width = autoSizedSingleLine ? constraints.requiredWidth : Math.max(layer.width, constraints.minWidth);
   constraints = getTextResizeConstraints({
     text: String(layer.text || ""),
@@ -120,8 +123,13 @@ function constrainTextLayerBox(template: any, layerId: string): any {
     : style.fitMode === "auto-height"
       ? constraints.requiredHeight
       : Math.max(layer.height, constraints.minHeight);
-  if (width === layer.width && height === layer.height) return template;
-  return updateLayer(template, layerId, { width: Math.ceil(width), height: Math.ceil(height) });
+  const nextHeight = Math.ceil(height);
+  const nextWidth = Math.ceil(width);
+  const nextY = style.fitMode === "auto-height" || String(layer.text || "").includes("\n")
+    ? layer.y - layer.height / 2 + nextHeight / 2
+    : layer.y;
+  if (nextWidth === layer.width && nextHeight === layer.height && nextY === layer.y) return template;
+  return updateLayer(template, layerId, { width: nextWidth, height: nextHeight, y: nextY });
 }
 
 export default function AdminDesignBuilder({
@@ -158,6 +166,13 @@ export default function AdminDesignBuilder({
   const { zoom } = viewport;
   const setZoom = (next: number) => setViewport((current) => ({ ...current, zoom: next }));
   const setPan = (pan: { panX: number; panY: number }) => setViewport((current) => ({ ...current, ...pan }));
+  // Fit is measured by AdminCanvas from its live workspace box (spec §9), so
+  // collapsing the tool rail / layers drawer / inspector changes what Fit does.
+  const [fitZoom, setFitZoom] = useState<number | null>(null);
+  const onCanvasFitZoom = useCallback((next: number) => setFitZoom(next), []);
+  // Fit and 1:1 both recentre: zoom and pan reset together, so the page is
+  // always recoverable however far it was panned.
+  const fitToPage = () => setViewport(fitViewport(fitZoom ?? 1));
   const resetViewport = () => setViewport(fitViewport(1));
   const [snapEnabled, setSnapEnabled] = useState(true);
   const [publishCheck, setPublishCheck] = useState<{ errors: string[]; warnings: string[] } | null>(null);
@@ -181,10 +196,16 @@ export default function AdminDesignBuilder({
   const undoStack = useRef<BuilderHistoryEntry[]>([]);
   const redoStack = useRef<BuilderHistoryEntry[]>([]);
   const activeTextHistoryIdRef = useRef<string | null>(null);
+  const activeTextDirtyBeforeRef = useRef(false);
   const [, forceTick] = useState(0);
   const bump = () => forceTick((x) => x + 1);
 
   const apply = (next: any) => {
+    // Several editor callbacks intentionally run in the same input event
+    // (promote-to-multiline, then publish the exact textarea value). Keep the
+    // canonical ref synchronous so the second write cannot overwrite the first
+    // with the previous render's template.
+    tRef.current = next;
     setDirtySinceSave(true);
     onChangeRef.current(next);
   };
@@ -340,6 +361,7 @@ export default function AdminDesignBuilder({
       text: "",
       preset: textPlacementPreset,
     });
+    activeTextDirtyBeforeRef.current = dirtySinceSave;
     snapshot();
     apply(addLayer(current, layer));
     activeTextHistoryIdRef.current = layer.id;
@@ -406,7 +428,7 @@ export default function AdminDesignBuilder({
 
   /* ----- layer + field + permission actions ----- */
   const onLayerPatch = (id: string, patch: any) => {
-    const current = getLayer(t, id);
+    const current = getLayer(tRef.current, id);
     if (current?.type === "grid" && (patch.columns !== undefined || patch.rows !== undefined)) {
       const columns = Number(patch.columns ?? current.columns ?? 2);
       const rows = Number(patch.rows ?? current.rows ?? 2);
@@ -428,9 +450,24 @@ export default function AdminDesignBuilder({
       });
       patch = { ...patch, columns, rows, slots };
     }
-    commit(constrainTextLayerBox(updateLayer(t, id, patch), id));
+    if (current?.type === "text" && patch.text !== undefined) {
+      patch = {
+        ...patch,
+        ...canonicalTextLayerUpdate(patch.text, {
+          ...(current.textStyle || {}),
+          ...(patch.textStyle || {}),
+        }),
+      };
+    }
+    const next = constrainTextLayerBox(updateLayer(tRef.current, id, patch), id);
+    if (activeTextHistoryIdRef.current === id) apply(next);
+    else commit(next);
   };
-  const onStylePatch = (id: string, patch: any) => commit(constrainTextLayerBox(updateLayerStyle(t, id, patch), id));
+  const onStylePatch = (id: string, patch: any) => {
+    const next = constrainTextLayerBox(updateLayerStyle(tRef.current, id, patch), id);
+    if (activeTextHistoryIdRef.current === id) apply(next);
+    else commit(next);
+  };
   const onFieldPatch = (id: string, patch: any) => commit(updateConnectedField(t, id, patch));
   const onFieldReorder = (id: string, direction: "up" | "down") => commit(moveConnectedField(t, id, direction));
   const onLinkField = (id: string, targetFieldId: string) => commit(linkLayerToField(t, id, targetFieldId));
@@ -453,22 +490,82 @@ export default function AdminDesignBuilder({
   };
   const onCanvasTextEditStart = (id: string) => {
     if (activeTextHistoryIdRef.current === id) return;
+    activeTextDirtyBeforeRef.current = dirtySinceSave;
     snapshot();
     activeTextHistoryIdRef.current = id;
   };
   const onCanvasTextDraftChange = (id: string, text: string) => {
     const current = getLayer(tRef.current, id);
-    if (!current || String(current.text || "") === text) return;
-    apply(constrainTextLayerBox(updateLayer(tRef.current, id, { text }), id));
+    if (!current || current.type !== "text") return;
+    const update = canonicalTextLayerUpdate(text, current.textStyle);
+    if (
+      String(current.text || "") === update.text &&
+      current.textStyle?.multiline === update.textStyle.multiline &&
+      current.textStyle?.autoSizeMode === update.textStyle.autoSizeMode &&
+      current.textStyle?.fitMode === update.textStyle.fitMode
+    ) return;
+    apply(constrainTextLayerBox(updateLayer(tRef.current, id, update), id));
+  };
+  const onCanvasTextMultilineActivate = (id: string) => {
+    const current = getLayer(tRef.current, id);
+    if (!current || current.type !== "text") return;
+    const style = current.textStyle || {};
+    if (style.multiline && style.autoSizeMode === "height" && style.fitMode === "auto-height") return;
+    apply(constrainTextLayerBox(updateLayerStyle(tRef.current, id, {
+      multiline: true,
+      autoSizeMode: "height",
+      fitMode: "auto-height",
+    }), id));
   };
   const onCanvasTextCommit = (id: string, text: string) => {
     const current = getLayer(tRef.current, id);
-    if (current && String(current.text || "") !== text) {
-      const next = constrainTextLayerBox(updateLayer(tRef.current, id, { text }), id);
+    if (current?.type === "text") {
+      const update = canonicalTextLayerUpdate(text, current.textStyle);
+      if (
+        String(current.text || "") === update.text &&
+        current.textStyle?.multiline === update.textStyle.multiline &&
+        current.textStyle?.autoSizeMode === update.textStyle.autoSizeMode &&
+        current.textStyle?.fitMode === update.textStyle.fitMode
+      ) {
+        if (activeTextHistoryIdRef.current === id) activeTextHistoryIdRef.current = null;
+        return;
+      }
+      const next = constrainTextLayerBox(updateLayer(tRef.current, id, update), id);
       if (activeTextHistoryIdRef.current === id) apply(next);
       else commit(next);
     }
     if (activeTextHistoryIdRef.current === id) activeTextHistoryIdRef.current = null;
+  };
+  const onCanvasTextCancel = (
+    id: string,
+    initial: {
+      text: string;
+      textStyle: Record<string, any>;
+      x: number;
+      y: number;
+      width: number;
+      height: number;
+    },
+  ) => {
+    const current = getLayer(tRef.current, id);
+    if (current) {
+      const restored = updateLayer(tRef.current, id, {
+        text: initial.text,
+        textStyle: { ...initial.textStyle },
+        x: initial.x,
+        y: initial.y,
+        width: initial.width,
+        height: initial.height,
+      });
+      apply(restored);
+    }
+    if (activeTextHistoryIdRef.current === id) {
+      undoStack.current.pop();
+      redoStack.current = [];
+      activeTextHistoryIdRef.current = null;
+      setDirtySinceSave(activeTextDirtyBeforeRef.current);
+      bump();
+    }
   };
   const onCanvasTextDiscard = (id: string) => {
     if (activeTextHistoryIdRef.current !== id) return;
@@ -476,6 +573,7 @@ export default function AdminDesignBuilder({
     undoStack.current.pop();
     redoStack.current = [];
     activeTextHistoryIdRef.current = null;
+    setDirtySinceSave(activeTextDirtyBeforeRef.current);
     setSelectedLayerIds([]);
     bump();
   };
@@ -737,7 +835,8 @@ export default function AdminDesignBuilder({
     for (const layer of selectedLayers) {
       if (layer.type === "text") next = constrainTextLayerBox(updateLayerStyle(next, layer.id, patch), layer.id);
     }
-    commit(next);
+    if (editingTextLayerId && selectedLayerIds.includes(editingTextLayerId)) apply(next);
+    else commit(next);
   };
   const currentAssetIds: string[] = [
     ...new Set<string>((t.layers || []).map((layer: any) => String(layer.assetId || "")).filter((id: string) => Boolean(id))),
@@ -941,15 +1040,18 @@ export default function AdminDesignBuilder({
                 onLayerChange={onCanvasLayerChange}
                 onLayersChange={onCanvasLayersChange}
                 onTextPlace={placeText}
-                onTextEditStart={onCanvasTextEditStart}
-                onTextDraftChange={onCanvasTextDraftChange}
-                onTextDiscard={onCanvasTextDiscard}
+                  onTextEditStart={onCanvasTextEditStart}
+                  onTextDraftChange={onCanvasTextDraftChange}
+                  onTextMultilineActivate={onCanvasTextMultilineActivate}
+                  onTextCancel={onCanvasTextCancel}
+                  onTextDiscard={onCanvasTextDiscard}
                 onEditingTextChange={setEditingTextLayerId}
                 onExitTextTool={() => setActiveTool("select")}
                 onTextCommit={onCanvasTextCommit}
                 editingGroupId={editingGroupId}
                 onEnterGroup={enterAdminGroup}
                 onExitGroup={exitAdminGroup}
+                onFitZoomChange={onCanvasFitZoom}
                 zoom={zoom}
                 panX={viewport.panX}
                 panY={viewport.panY}
@@ -968,12 +1070,11 @@ export default function AdminDesignBuilder({
               />
               <div className="pointer-events-none absolute inset-x-0 bottom-3 z-30 flex items-center justify-center gap-2">
                 <div className="pointer-events-auto flex items-center gap-2">
-                  {/* Fit and 1:1 both recentre: zoom and pan reset together, so
-                      the page is always recoverable however far it was panned. */}
                   <CustomizerZoomControls
                     zoom={zoom}
                     onZoomChange={setZoom}
-                    onFit={resetViewport}
+                    fitZoom={fitZoom}
+                    onFit={fitToPage}
                     onActualSize={resetViewport}
                   />
                   {/* One segmented group instead of three separate pills. */}
