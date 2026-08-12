@@ -45,8 +45,17 @@ export function stepNumericValue(value: number, direction: -1 | 1, rules: Numeri
   return clampNumericValue(value + direction * amount, rules);
 }
 
+// Format for display. Two rules matter for the text toolbars:
+//   1. Never lose precision the value actually carries. A 0.1 step must still
+//      render a stored line height of 1.15 as "1.15", not "1.1".
+//   2. Only trim trailing zeros inside the fraction. Trimming the whole string
+//      turned a letter spacing of 10 ("10.0") into "1".
 export function defaultNumericFormat(value: number, step = 1): string {
   if (!Number.isFinite(value)) return "0";
-  const precision = Math.max(decimalPlaces(step), 0);
-  return precision ? value.toFixed(precision).replace(/0+$/, "").replace(/\.$/, "") : String(Math.round(value));
+  const precision = Math.min(4, Math.max(decimalPlaces(step), decimalPlaces(Number(value.toFixed(4)))));
+  if (precision <= 0) return String(Math.round(value));
+  return value
+    .toFixed(precision)
+    .replace(/(\.\d*?)0+$/, "$1")
+    .replace(/\.$/, "");
 }

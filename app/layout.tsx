@@ -149,7 +149,7 @@ export default async function RootLayout({ children }) {
   };
 
   return (
-    <html lang="en" className={fontVariables}>
+    <html lang="en" className={fontVariables} data-scroll-behavior="smooth">
       <head>
         <link rel="dns-prefetch" href="https://cdnjs.cloudflare.com" />
         <link

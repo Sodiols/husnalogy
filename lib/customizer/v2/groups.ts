@@ -15,7 +15,13 @@ function number(value: unknown, fallback = 0): number {
 
 export function resolveGroupBounds(layers: any[], layerIds?: string[]): Bounds | null {
   const ids = layerIds ? new Set(layerIds) : null;
-  const selected = layers.filter((layer) => (!ids || ids.has(layer.id)) && !layer.hidden);
+  // An explicit id list is a deliberate request: a hidden member still owns
+  // space in the group box, so dropping it here would shift every child the
+  // moment the layer is shown again. Hidden layers are only skipped when the
+  // caller asks for "whatever is visible".
+  const selected = ids
+    ? layers.filter((layer) => ids.has(layer.id))
+    : layers.filter((layer) => !layer.hidden);
   if (!selected.length) return null;
   let left = Infinity;
   let top = Infinity;
@@ -250,6 +256,92 @@ export function transformGroupChildren(layers: any[], groupId: string, patch: Pa
       rotation: number(layer.rotation) + rotationDelta,
     };
   });
+}
+
+/* ---------------------------------------------------- selection rules ----- */
+
+export type GroupActionState = {
+  /** Whether the action can run right now. */
+  enabled: boolean;
+  /** Human-readable explanation — shown as the control's tooltip whether the
+   *  action is available or not, so a disabled control always says why. */
+  reason: string;
+};
+
+export type GroupSelectionRules = {
+  /** Admin: always true. Customer: the template's grouping permission. */
+  groupingAllowed?: boolean;
+  ungroupingAllowed?: boolean;
+  /** Per-layer veto, e.g. the customer's permission bundle or a lock state.
+   *  Return a reason string to block, or null to allow. */
+  blockedReason?: (layer: any) => string | null;
+};
+
+/**
+ * The single source of truth for "can this selection be grouped?", shared by
+ * the admin builder and the customer customizer so both surfaces enable,
+ * disable and explain the action identically (spec: Selection rules).
+ */
+export function evaluateGroupAction(
+  layers: any[],
+  selectedIds: string[],
+  rules: GroupSelectionRules = {},
+): { group: GroupActionState; ungroup: GroupActionState } {
+  const byId = new Map(layers.map((layer) => [layer.id, layer]));
+  const selected = selectedIds.map((id) => byId.get(id)).filter(Boolean);
+  const pageOf = (layer: any) => layer.page ?? layer.pageId;
+
+  const blocked = (): string | null => {
+    if (rules.groupingAllowed === false) return "Grouping is turned off for this template.";
+    if (selected.length !== selectedIds.length) return "Part of the selection is no longer on this page.";
+    if (selected.length < 2) return "Select at least two objects to group them.";
+    const page = pageOf(selected[0]);
+    if (selected.some((layer) => pageOf(layer) !== page)) return "Objects on different pages cannot be grouped.";
+    for (const layer of selected) {
+      const veto = rules.blockedReason?.(layer);
+      if (veto) return veto;
+      if (layer.locked) return `"${layer.name || "An object"}" is locked.`;
+      if (layer.type === "background") return "The page background cannot be grouped.";
+    }
+    // Selecting a group together with one of its own descendants would nest a
+    // group inside itself.
+    const ids = new Set(selectedIds);
+    for (const layer of selected) {
+      let parentId = String(layer.groupId || "");
+      const visited = new Set<string>();
+      while (parentId && !visited.has(parentId)) {
+        if (ids.has(parentId)) return "A group and one of its own children cannot be grouped together.";
+        visited.add(parentId);
+        parentId = String(byId.get(parentId)?.groupId || "");
+      }
+    }
+    return null;
+  };
+
+  const groupBlock = blocked();
+  const only = selected.length === 1 ? selected[0] : null;
+  const isGroup = only?.type === "group";
+  const ungroupBlock: string | null =
+    rules.ungroupingAllowed === false
+      ? "Ungrouping is turned off for this template."
+      : !only
+        ? "Select one group to ungroup it."
+        : !isGroup
+          ? "The selected object is not a group."
+          : only.locked
+            ? `"${only.name || "This group"}" is locked.`
+            : (rules.blockedReason?.(only) ?? null);
+
+  return {
+    group: {
+      enabled: !groupBlock,
+      reason: groupBlock || `Group ${selected.length} objects into one`,
+    },
+    ungroup: {
+      enabled: !ungroupBlock,
+      reason: ungroupBlock || `Ungroup "${only?.name || "group"}" back into its objects`,
+    },
+  };
 }
 
 export function validateGroupRelationships(layers: any[]): Array<{ groupId: string; code: string }> {

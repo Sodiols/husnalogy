@@ -147,10 +147,13 @@ describe("admin multi-object selection and alignment", () => {
     expect(canvas).toContain("if (!drag.began)");
     expect(canvas).toContain("onBeginChange?.()");
     expect(renderer).not.toContain("data-admin-selection-marquee");
-    expect(toolbar).toContain('aria-label="Equal horizontal spacing"');
-    expect(toolbar).toContain('aria-label="Equal vertical spacing"');
-    expect(toolbar).toContain("selectionCount >= 3");
-    expect(toolbar).toContain('aria-label="Group"');
-    expect(toolbar).toContain('aria-label="Ungroup"');
+    // Distribution, spacing, match size and grouping moved out of the toolbar
+    // row into the structured Layout menu; their gating now lives in the pure
+    // layoutActionAvailability helper (asserted in admin-text-toolbar.test.ts).
+    expect(toolbar).toContain('label="Equal horizontal spacing"');
+    expect(toolbar).toContain('label="Equal vertical spacing"');
+    expect(toolbar).toContain('label="Group objects"');
+    expect(toolbar).toContain('label="Ungroup"');
+    expect(toolbar).toContain("layoutActionAvailability");
   });
 });

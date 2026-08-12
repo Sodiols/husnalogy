@@ -122,3 +122,137 @@ export function stepZoom(zoom: number, direction: 1 | -1, min = ZOOM_MIN, max = 
   const factor = direction > 0 ? 1.2 : 1 / 1.2;
   return clampZoom(Number((current * factor).toFixed(4)), min, max);
 }
+
+/* ==========================================================================
+ * Workspace-relative zoom (admin design builder)
+ *
+ * The builder used to define zoom 1 as "the page drawn at a width-derived base
+ * size, capped at 900px". That is not a zoom convention at all: it ignores the
+ * available HEIGHT, so a 5x7 portrait card at "100%" was 1260px tall and could
+ * not be seen end to end in any normal workspace — the whole card only appeared
+ * around 70%.
+ *
+ * Here, zoom 1 means "the complete page fitted inside the measured workspace".
+ * Everything else follows from that: below 100% the page is smaller than the
+ * fitted view, above 100% it grows and pans, and 1:1 stays a separate physical
+ * scale derived from the document DPI.
+ * ========================================================================== */
+
+/** CSS reference pixels per inch. Fixed by the CSS specification. */
+export const SCREEN_CSS_DPI = 96;
+
+export type WorkspacePadding = { top: number; right: number; bottom: number; left: number };
+
+/**
+ * Breathing room kept between the page and the workspace edges.
+ *
+ * The bottom is deliberately larger than the rest: the floating zoom controls
+ * sit there, and the card must never slide underneath them. Values scale with
+ * the workspace and are clamped to the ranges the design calls for.
+ */
+export function resolveWorkspacePadding(availableWidth: number, availableHeight: number): WorkspacePadding {
+  const width = Math.max(0, Number(availableWidth) || 0);
+  const height = Math.max(0, Number(availableHeight) || 0);
+  const side = Math.round(Math.min(40, Math.max(24, width * 0.03)));
+  const top = Math.round(Math.min(40, Math.max(24, height * 0.035)));
+  const bottom = Math.round(Math.min(80, Math.max(56, height * 0.085)));
+  return { top, right: side, bottom, left: side };
+}
+
+export type WorkspaceFitInput = {
+  /** Measured width of the workspace box, in CSS pixels. */
+  availableWidth: number;
+  /** Measured height of the workspace box, in CSS pixels. */
+  availableHeight: number;
+  /** Document page size, in document pixels. Only the ratio and scale matter. */
+  canvasWidth: number;
+  canvasHeight: number;
+  /** Override the responsive padding, e.g. in tests. */
+  padding?: Partial<WorkspacePadding>;
+};
+
+export type WorkspaceFit = {
+  /** Document pixels -> CSS pixels at 100% zoom. */
+  fitScale: number;
+  /** On-screen page size at 100% zoom, in CSS pixels. */
+  baseWidth: number;
+  baseHeight: number;
+  /** Space reserved around the page. */
+  padding: WorkspacePadding;
+  /** Workspace box minus the padding. */
+  usableWidth: number;
+  usableHeight: number;
+};
+
+/**
+ * The base scale for 100% zoom: the largest scale at which the complete page,
+ * plus its padding, fits the workspace on BOTH axes.
+ *
+ * Returns null when the workspace has not been measured yet, so callers can
+ * hold off rather than snapping to a wrong scale during the first paint.
+ */
+export function computeWorkspaceFit(input: WorkspaceFitInput): WorkspaceFit | null {
+  const availableWidth = Number(input?.availableWidth);
+  const availableHeight = Number(input?.availableHeight);
+  const canvasWidth = Number(input?.canvasWidth);
+  const canvasHeight = Number(input?.canvasHeight);
+  if (![availableWidth, availableHeight, canvasWidth, canvasHeight].every((value) => Number.isFinite(value))) return null;
+  if (availableWidth <= 0 || availableHeight <= 0 || canvasWidth <= 0 || canvasHeight <= 0) return null;
+
+  const base = resolveWorkspacePadding(availableWidth, availableHeight);
+  const padding: WorkspacePadding = {
+    top: Math.max(0, Number(input.padding?.top ?? base.top)),
+    right: Math.max(0, Number(input.padding?.right ?? base.right)),
+    bottom: Math.max(0, Number(input.padding?.bottom ?? base.bottom)),
+    left: Math.max(0, Number(input.padding?.left ?? base.left)),
+  };
+
+  const usableWidth = availableWidth - padding.left - padding.right;
+  const usableHeight = availableHeight - padding.top - padding.bottom;
+  if (usableWidth <= 0 || usableHeight <= 0) return null;
+
+  const widthScale = usableWidth / canvasWidth;
+  const heightScale = usableHeight / canvasHeight;
+  // The tighter axis wins, so the page never overflows either direction.
+  const fitScale = Math.min(widthScale, heightScale);
+  if (!Number.isFinite(fitScale) || fitScale <= 0) return null;
+
+  return {
+    fitScale,
+    baseWidth: canvasWidth * fitScale,
+    baseHeight: canvasHeight * fitScale,
+    padding,
+    usableWidth,
+    usableHeight,
+  };
+}
+
+/**
+ * The zoom value that renders the page at its true physical size — what the
+ * 1:1 control means. A 300 DPI document shown on a 96 DPI screen is drawn at
+ * 96/300 document-pixels-per-CSS-pixel; expressed against the fitted base that
+ * becomes `physicalScale / fitScale`, so 1:1 and 100% stay distinct actions.
+ */
+export function actualSizeZoom(fitScale: number, documentDpi: number, screenDpi = SCREEN_CSS_DPI): number {
+  const fit = Number(fitScale);
+  const dpi = Number(documentDpi);
+  const screen = Number(screenDpi);
+  if (!Number.isFinite(fit) || fit <= 0 || !Number.isFinite(dpi) || dpi <= 0 || !Number.isFinite(screen) || screen <= 0) {
+    return 1;
+  }
+  return clampZoom(screen / dpi / fit);
+}
+
+/** Zoom stops the controls step through. 1 is always present — it is Fit. */
+export const ZOOM_PRESETS = [0.25, 0.33, 0.5, 0.67, 0.75, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2, 2.5, 3];
+
+/** Next preset in a direction; falls back to the nearest end of the list. */
+export function nextZoomPreset(zoom: number, direction: 1 | -1, presets = ZOOM_PRESETS): number {
+  const current = Number(zoom);
+  if (!Number.isFinite(current)) return 1;
+  const epsilon = 0.001;
+  if (direction > 0) {
+    return presets.find((preset) => preset > current + epsilon) ?? presets[presets.length - 1];
+  }
+  return [...presets].reverse().find((preset) => preset < current - epsilon) ?? presets[0];
+}

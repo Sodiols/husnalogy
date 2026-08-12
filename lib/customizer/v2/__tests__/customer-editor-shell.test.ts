@@ -22,12 +22,19 @@ describe("Fit is measured, never hardcoded (spec §9)", () => {
     }
   });
 
-  it("both canvases measure their box on two axes and report a fit zoom", () => {
+  it("both canvases measure their box on two axes", () => {
     for (const source of [workspace, adminCanvas]) {
-      expect(source).toContain("computeFitZoom");
       expect(source).toContain("availableHeight: containerHeight");
-      expect(source).toContain("onFitZoomChange?.(fitZoom)");
     }
+    // The customer workspace keeps the width-based base scale with a separate
+    // measured Fit zoom.
+    expect(workspace).toContain("computeFitZoom");
+    expect(workspace).toContain("onFitZoomChange?.(fitZoom)");
+    // The admin builder redefines zoom 1 as the fitted page, so its base width
+    // comes from the workspace fit itself and 1:1 is reported instead.
+    expect(adminCanvas).toContain("computeWorkspaceFit");
+    expect(adminCanvas).toContain("onFitZoomChange?.(actualZoom)");
+    expect(adminCanvas).not.toContain("maxCanvasWidth");
   });
 
   it("re-measures on resize and orientation change, not only via ResizeObserver", () => {

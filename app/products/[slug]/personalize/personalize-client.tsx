@@ -35,6 +35,7 @@ import CustomerAddTextPanel from "@/app/components/customizer/CustomerAddTextPan
 import CustomerUploadsPanel from "@/app/components/customizer/CustomerUploadsPanel";
 import CustomerElementsPanel, { type LibraryElement } from "@/app/components/customizer/CustomerElementsPanel";
 import CustomerElementToolbar from "@/app/components/customizer/CustomerElementToolbar";
+import CustomerGroupToolbar from "@/app/components/customizer/CustomerGroupToolbar";
 import CustomerLayersPanel from "@/app/components/customizer/CustomerLayersPanel";
 import CustomerInsertPanel from "@/app/components/customizer/CustomerInsertPanel";
 import CustomerSelectionPanel from "@/app/components/customizer/CustomerSelectionPanel";
@@ -54,7 +55,7 @@ import { isCustomizerFeatureEnabled } from "@/lib/customizer/v2/feature-flags";
 import { stripEphemeralAssetUrls } from "@/lib/customizer/v2/asset-references";
 import { createGridSlotsFromPreset, GRID_PRESETS } from "@/lib/customizer/v2/grids";
 import { alignCustomerLayers, arrangeLayers, removeCustomerLayers, reorderLayerByDrop, type AlignAction, type ArrangeAction } from "@/lib/customizer/v2/customer-actions";
-import { getDescendantIds, groupLayers, transformGroupChildren, ungroupLayers } from "@/lib/customizer/v2/groups";
+import { evaluateGroupAction, getDescendantIds, groupLayers, transformGroupChildren, ungroupLayers } from "@/lib/customizer/v2/groups";
 import { createCanvasMeasure, getSingleLineTextBox, isSingleLineAutoSizeText } from "@/lib/customizer/v2/text-layout";
 import { resolveLayerSelectionGeometry } from "@/lib/customizer/v2/selection-geometry";
 import {
@@ -1452,6 +1453,35 @@ export default function PersonalizeClient({ product, template }: { product: any;
 
   const showSelectionPanel = !previewMode && step === "design" && selectedLayers.length > 0;
 
+  // Grouping toolbar: shown for a multiple selection, or for one selected
+  // group so Ungroup and Edit group are reachable from the canvas.
+  const selectionIsGroup = selectedLayers.length === 1 && selectedLayers[0]?.type === "group";
+  const showGroupToolbar =
+    !previewMode &&
+    step === "design" &&
+    activeTool !== "options" &&
+    ((customerGroupingEnabled && multiselectEnabled && selectedLayers.length > 1) ||
+      (selectionIsGroup && canUngroupSelection));
+  // The shared rule engine explains a blocked action instead of leaving a dead
+  // control; the customer's own permission bundle supplies the per-layer veto.
+  const groupActionState = useMemo(
+    () =>
+      evaluateGroupAction(effectiveLayers, selectedLayerIds, {
+        groupingAllowed: customerGroupingEnabled,
+        ungroupingAllowed: true,
+        blockedReason: (layer: any) => {
+          if (layer.positionLocked || layer.customerLocked) return `"${layer.name || "An object"}" is locked by the template.`;
+          if (layer.customerInteractionDisabled) return `"${layer.name || "An object"}" cannot be changed.`;
+          if (!layer.isUserLayer && !getLayerPermissions(layer).group) {
+            return `"${layer.name || "An object"}" cannot be grouped in this design.`;
+          }
+          return null;
+        },
+      }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [effectiveLayers, selectedLayerIds, customerGroupingEnabled],
+  );
+
   const onSelectLayer = (layerId: string | null, additive = false) => {
     let targetId = layerId;
     let targetLayer = targetId ? effectiveLayers.find((item: any) => item.id === targetId) : null;
@@ -2182,6 +2212,15 @@ export default function PersonalizeClient({ product, template }: { product: any;
           arrangeSelection(event.shiftKey ? "sendToBack" : "sendBackward");
           return;
         }
+        // Ctrl/Cmd+G groups, Ctrl/Cmd+Shift+G ungroups. Both run through the
+        // same permission-checked handlers as the buttons, so a shortcut can
+        // never bypass a template restriction.
+        if (key === "g") {
+          event.preventDefault();
+          if (event.shiftKey) ungroupSelection();
+          else groupSelection();
+          return;
+        }
       }
       if (typing) return;
       if (event.key === "Escape") {
@@ -2739,11 +2778,27 @@ export default function PersonalizeClient({ product, template }: { product: any;
 
             {/* Central workspace */}
             <main className="relative flex min-h-0 min-w-0 flex-1 flex-col bg-[#F0EDED]" data-customizer-protected>
-              {(showTextToolbar || showElementToolbar || showImageToolbar || showGridToolbar) && (
+              {(showTextToolbar || showElementToolbar || showImageToolbar || showGridToolbar || showGroupToolbar) && (
                 <div
                   data-customer-toolbar-dock
                   className="pointer-events-none absolute inset-x-0 top-3 z-40 flex min-w-0 justify-center px-3"
                 >
+                  {showGroupToolbar && (
+                    <CustomerGroupToolbar
+                      selectionCount={selectedLayers.length}
+                      isGroup={selectionIsGroup}
+                      groupingAllowed={customerGroupingEnabled && multiselectEnabled}
+                      ungroupingAllowed={canUngroupSelection}
+                      group={groupActionState.group}
+                      ungroup={groupActionState.ungroup}
+                      onGroup={groupSelection}
+                      onUngroup={ungroupSelection}
+                      onEnterGroup={selectionIsGroup ? () => enterGroup(selectedLayers[0].id) : undefined}
+                      onDuplicate={canDuplicateSelection ? duplicateSelection : undefined}
+                      onDelete={canDeleteSelection ? deleteSelection : undefined}
+                    />
+                  )}
+
                   {showTextToolbar && selectedLayer && (
                     <CustomerContextToolbar
                       layer={selectedLayer}

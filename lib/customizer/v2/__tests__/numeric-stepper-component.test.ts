@@ -54,35 +54,36 @@ describe("editable numeric stepper component contract", () => {
     expect(gridToolbar).toContain("disabled={!(permissions.zoomImage || permissions.cropImage)}");
   });
 
-  it("uses direct numeric inputs without visible carousel buttons in both text toolbars", () => {
+  it("keeps the customer toolbar on direct numeric inputs and the admin toolbar on visible steppers", () => {
     const adminToolbar = read("app/admin/dashboard/design-builder/AdminContextToolbar.tsx");
     const customerToolbar = read("app/components/customizer/CustomerContextToolbar.tsx");
     expect(component).toContain("showStepButtons?: boolean");
     expect(component).toContain("showStepButtons &&");
     for (const toolbar of [adminToolbar, customerToolbar]) {
-      expect(toolbar).toContain("showStepButtons={false}");
       expect(toolbar).toContain('label="Font size"');
       expect(toolbar).toMatch(/label="Letter spac(?:e|ing)"/);
       expect(toolbar).toContain('label="Line height"');
     }
-    expect(adminToolbar).toContain('sharedStyleValue(layers, "fontSize", 48)');
-    expect(adminToolbar).toContain('sharedStyleValue(layers, "letterSpacing", 0)');
-    expect(adminToolbar).toContain('sharedStyleValue(layers, "lineHeight", 1.15)');
+    // The customer toolbar keeps its label-only numeric fields.
+    expect(customerToolbar).toContain("showStepButtons={false}");
+    // The admin toolbar now shows explicit decrease/increase buttons (spec §9).
+    expect(adminToolbar).toContain("showStepButtons\n");
+    expect(adminToolbar).toContain('sharedTextStyleValue(selectedLayers, "fontSize"');
+    expect(adminToolbar).toContain('sharedTextStyleValue(selectedLayers, "letterSpacing"');
+    expect(adminToolbar).toContain('sharedTextStyleValue(selectedLayers, "lineHeight"');
     expect(customerToolbar).toContain("style.fontSize ?? 48");
     expect(customerToolbar).toContain("style.letterSpacing ?? 0");
     expect(customerToolbar).toContain("style.lineHeight ?? 1.2");
   });
 
-  it("uses one alignment dropdown for horizontal and vertical text alignment", () => {
+  it("keeps the shared alignment dropdown for the customer toolbar", () => {
     const alignment = read("app/components/customizer/TextAlignmentDropdown.tsx");
-    const adminToolbar = read("app/admin/dashboard/design-builder/AdminContextToolbar.tsx");
     const customerToolbar = read("app/components/customizer/CustomerContextToolbar.tsx");
     expect(alignment).toContain('role="menu"');
     expect(alignment).toContain('role="menuitemradio"');
     expect(alignment).toContain('event.key === "Escape"');
     expect(alignment).toContain('document.addEventListener("pointerdown", onOutside)');
     expect(alignment).toContain("grid grid-cols-3");
-    expect(adminToolbar).toContain("<TextAlignmentDropdown");
     expect(customerToolbar).toContain("<TextAlignmentDropdown");
     expect(customerToolbar).toContain("canHorizontal={canAlign}");
     expect(customerToolbar).toContain("canVertical={canVerticalAlign}");
@@ -93,10 +94,10 @@ describe("editable numeric stepper component contract", () => {
     const toolbar = read("app/admin/dashboard/design-builder/AdminContextToolbar.tsx");
     const builder = read("app/admin/dashboard/design-builder/AdminDesignBuilder.tsx");
     expect(stepper).toContain('placeholder={mixed ? "Mixed" : undefined}');
-    expect(toolbar).toContain("values.some((value) => value !== values[0])");
-    expect(toolbar).toContain('horizontal={textAlign.mixed ? "mixed"');
-    expect(builder).toContain("for (const layer of selectedLayers)");
-    expect(builder).toContain('if (layer.type === "text") next = constrainTextLayerBox(updateLayerStyle');
+    expect(toolbar).toContain("sharedTextStyleValue");
+    expect(toolbar).toContain("mixed={textAlign.mixed}");
+    expect(builder).toContain("for (const id of selectedLayerIdsRef.current)");
+    expect(builder).toContain('if (layer?.type === "text") next = constrainTextLayerBox(updateLayerStyle');
   });
 
   it("omits grid and grouping actions from the admin tool rail", () => {

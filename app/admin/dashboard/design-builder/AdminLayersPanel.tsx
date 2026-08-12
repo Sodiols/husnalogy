@@ -10,7 +10,46 @@ function typeIcon(layer: any) {
   if (layer.type === "text") return "T";
   if (layer.type === "image") return layer.customerEditable ? "◉" : "▣";
   if (layer.type === "shape") return "◆";
+  if (layer.type === "group") return "▦";
   return "?";
+}
+
+/**
+ * Flatten the page into display rows: a group is followed by its own children,
+ * indented one level, so the panel mirrors the document tree instead of
+ * listing containers and children as unrelated siblings.
+ *
+ * Children are only walked from their parent, never emitted at the top level,
+ * which is what stops a child appearing twice.
+ */
+export function buildLayerRows(layers: any[], collapsed: Set<string>) {
+  const childrenOf = new Map<string, any[]>();
+  for (const layer of layers) {
+    const parent = String(layer.groupId || "");
+    if (!parent) continue;
+    if (!childrenOf.has(parent)) childrenOf.set(parent, []);
+    childrenOf.get(parent)!.push(layer);
+  }
+
+  const rows: Array<{ layer: any; depth: number; hasChildren: boolean; hidden: boolean; locked: boolean }> = [];
+  const visited = new Set<string>();
+
+  const walk = (layer: any, depth: number, inheritedHidden: boolean, inheritedLocked: boolean) => {
+    if (visited.has(layer.id)) return; // defensive: a corrupt cycle cannot hang the panel
+    visited.add(layer.id);
+    const children = childrenOf.get(layer.id) || [];
+    const hidden = inheritedHidden || Boolean(layer.hidden);
+    const locked = inheritedLocked || Boolean(layer.locked);
+    rows.push({ layer, depth, hasChildren: children.length > 0, hidden, locked });
+    if (collapsed.has(layer.id)) return;
+    for (const child of children) walk(child, depth + 1, hidden, locked);
+  };
+
+  for (const layer of layers) {
+    if (layer.groupId) continue; // reached through its parent
+    walk(layer, 0, false, false);
+  }
+  return rows;
 }
 
 export default function AdminLayersPanel({
@@ -42,31 +81,59 @@ export default function AdminLayersPanel({
   };
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
+  const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set());
 
   const commitRename = (layerId: string) => {
     if (renameValue.trim()) onLayerPatch(layerId, { name: renameValue.trim() });
     setRenamingId(null);
   };
+  const toggleCollapsed = (layerId: string) =>
+    setCollapsed((current) => {
+      const next = new Set(current);
+      if (next.has(layerId)) next.delete(layerId);
+      else next.add(layerId);
+      return next;
+    });
+
+  const rows = buildLayerRows(layers, collapsed);
 
   return (
     <div className="grid gap-0.5 px-2 pb-2">
-      {layers.map((layer: any, index: number) => {
+      {rows.map(({ layer, depth, hasChildren }, index) => {
         const targetId = logicalSelectionId(layer);
         const selected = selectedLayerIds.length
           ? selectedLayerIds.includes(targetId)
           : targetId === selectedLayerId;
+        const isGroup = layer.type === "group";
+        const isCollapsed = collapsed.has(layer.id);
         return (
           <div
             key={layer.id}
-            className={`group flex items-center gap-1.5 rounded-lg px-2 py-1.5 transition-colors ${
+            data-layer-row
+            data-layer-depth={depth}
+            style={{ paddingLeft: 8 + depth * 12 }}
+            className={`group flex items-center gap-1.5 rounded-lg py-1.5 pr-2 transition-colors ${
               selected ? "bg-white/[0.14] text-white" : "text-white/65 hover:bg-white/[0.07] hover:text-white"
             }`}
           >
+            {hasChildren ? (
+              <button
+                type="button"
+                aria-label={`${isCollapsed ? "Expand" : "Collapse"} ${layer.name || "group"}`}
+                aria-expanded={!isCollapsed}
+                onClick={() => toggleCollapsed(layer.id)}
+                className="grid h-5 w-4 shrink-0 place-items-center text-[9px] opacity-60 transition-transform hover:opacity-100"
+              >
+                {isCollapsed ? "▶" : "▼"}
+              </button>
+            ) : (
+              <span className="w-4 shrink-0" aria-hidden />
+            )}
             <button
               type="button"
               onClick={(event) => onSelect(targetId, event.shiftKey || event.ctrlKey || event.metaKey)}
               onDoubleClick={() => {
-                if (layer.type === "group") {
+                if (isGroup) {
                   onEnterGroup?.(layer.id);
                   return;
                 }
@@ -93,6 +160,11 @@ export default function AdminLayersPanel({
               ) : (
                 <span className="truncate text-xs font-medium">{layer.name}</span>
               )}
+              {isGroup && !renamingId && (
+                <span className="shrink-0 rounded bg-white/10 px-1 text-[8px] font-bold uppercase tracking-wide text-white/60">
+                  Group
+                </span>
+              )}
               {layer.customerEditable && !renamingId && (
                 <span className="shrink-0 rounded px-1 text-[8px] font-bold uppercase text-[#D4AF37]">
                   Edit
@@ -113,7 +185,7 @@ export default function AdminLayersPanel({
               <button
                 type="button"
                 aria-label={`Move ${layer.name} down`}
-                disabled={index === layers.length - 1}
+                disabled={index === rows.length - 1}
                 onClick={() => onReorder(layer.id, "down")}
                 className="grid h-6 w-5 place-items-center text-[10px] opacity-60 hover:opacity-100 disabled:opacity-20"
               >

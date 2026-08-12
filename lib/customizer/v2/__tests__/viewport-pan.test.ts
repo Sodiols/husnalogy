@@ -340,10 +340,10 @@ describe("AdminDesignBuilder viewport wiring", () => {
   });
 
   it("resets pan as well as zoom on Fit and 1:1", () => {
-    expect(adminBuilder).toContain("const resetViewport = () => setViewport(fitViewport(1))");
-    // Fit routes through fitViewport too, so pan is zeroed on both actions —
-    // but it uses the MEASURED fit zoom (spec §9) rather than a hardcoded 100%.
-    expect(adminBuilder).toContain("const fitToPage = () => setViewport(fitViewport(fitZoom ?? 1))");
+    // Zoom 1 IS the fitted page now, so Fit is a plain reset to 100% and pan 0.
+    expect(adminBuilder).toContain("const fitToPage = () => setViewport(fitViewport(1))");
+    // 1:1 stays a separate action: the measured physical scale of the document.
+    expect(adminBuilder).toContain("const resetViewport = () => setViewport(fitViewport(actualSizeZoomValue ?? 1))");
     expect(adminBuilder).toContain("onFit={fitToPage}");
     expect(adminBuilder).toContain("onActualSize={resetViewport}");
     expect(adminBuilder).toContain("onFitZoomChange={onCanvasFitZoom}");

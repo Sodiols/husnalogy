@@ -27,11 +27,18 @@ export type EditableNumericStepperProps = {
   className?: string;
   buttonClassName?: string;
   inputClassName?: string;
+  /** Inline styles for the value input. Needed because globals.css sets a
+   *  padding shorthand on every `input` outside Tailwind's layers, which wins
+   *  over `px-*` utilities and would otherwise eat the value column. */
+  inputStyle?: React.CSSProperties;
   showLabel?: boolean;
   labelClassName?: string;
   compact?: boolean;
   showStepButtons?: boolean;
   mixed?: boolean;
+  /** Exact pixel width for each arrow button. Overrides `compact`, so a
+   *  toolbar can guarantee the value column keeps a known readable width. */
+  stepButtonWidth?: number;
 };
 
 export default function EditableNumericStepper({
@@ -52,11 +59,13 @@ export default function EditableNumericStepper({
   className = "h-10 w-full rounded-lg border border-[#303839]/15 bg-white shadow-sm",
   buttonClassName = "grid h-full min-h-10 place-items-center text-[#303839]/55 transition hover:bg-[#F8F6F1] hover:text-[#303839] focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#D4AF37] disabled:cursor-not-allowed disabled:opacity-25",
   inputClassName = "h-full min-w-0 w-full bg-transparent px-1 text-center text-xs font-extrabold tabular-nums text-[#303839] outline-none focus:bg-white focus:ring-2 focus:ring-inset focus:ring-[#D4AF37] disabled:cursor-not-allowed disabled:opacity-40",
+  inputStyle,
   showLabel = false,
   labelClassName = "col-span-3 text-center text-[8px] font-extrabold uppercase tracking-[0.12em] text-[#303839]/45",
   compact = false,
   showStepButtons = true,
   mixed = false,
+  stepButtonWidth,
 }: EditableNumericStepperProps) {
   const rules: NumericStepperRules = { minimum, maximum, step, largeStep, allowNegative, allowDecimal };
   const format = (next: number) => formatValue ? formatValue(next) : defaultNumericFormat(next, step);
@@ -85,7 +94,10 @@ export default function EditableNumericStepper({
     const next = parseNumericDraft(draft, originalValue.current, rules);
     setDraft(mixed && !hasNumber ? "" : format(next));
     setEditing(false);
-    const shouldCommit = draftDirty.current && hasNumber && (mixed || next !== value);
+    // With a preview channel the value has already moved on the canvas, so
+    // `next === value` is the normal case: commit still has to fire to close
+    // the interaction and seal its single history entry.
+    const shouldCommit = draftDirty.current && hasNumber && (mixed || next !== value || Boolean(onPreviewChange));
     draftDirty.current = false;
     if (shouldCommit) onCommit(next);
   };
@@ -100,16 +112,26 @@ export default function EditableNumericStepper({
     onCommit(next);
   };
 
-  const columns = showStepButtons
-    ? compact
-      ? "grid-cols-[26px_minmax(0,1fr)_26px]"
-      : "grid-cols-[34px_minmax(0,1fr)_34px]"
-    : "grid-cols-1";
+  const explicitColumns = showStepButtons && stepButtonWidth
+    ? `${stepButtonWidth}px minmax(0,1fr) ${stepButtonWidth}px`
+    : undefined;
+  const columns = explicitColumns
+    ? ""
+    : showStepButtons
+      ? compact
+        ? "grid-cols-[26px_minmax(0,1fr)_26px]"
+        : "grid-cols-[34px_minmax(0,1fr)_34px]"
+      : "grid-cols-1";
   const rowClass = showLabel ? `grid ${columns} grid-rows-[13px_1fr] items-center overflow-hidden` : `grid ${columns} items-center overflow-hidden`;
   const resolvedLabelClassName = showStepButtons ? labelClassName : labelClassName.replace("col-span-3", "");
 
   return (
-    <div role="group" aria-label={label} className={`${rowClass} ${className}`}>
+    <div
+      role="group"
+      aria-label={label}
+      style={explicitColumns ? { gridTemplateColumns: explicitColumns } : undefined}
+      className={`${rowClass} ${className}`}
+    >
       {showLabel && <span className={resolvedLabelClassName}>{label}</span>}
       {showStepButtons && (
         <button type="button" aria-label={`Decrease ${label}`} onClick={() => applyStep(-1)} disabled={disabled || readOnly || value <= (minimum ?? -Infinity)} className={`${buttonClassName} border-r border-[#303839]/10`}>
@@ -167,6 +189,7 @@ export default function EditableNumericStepper({
           commitDraft();
         }}
         className={inputClassName}
+        style={inputStyle}
       />
       {showStepButtons && (
         <button type="button" aria-label={`Increase ${label}`} onClick={() => applyStep(1)} disabled={disabled || readOnly || value >= (maximum ?? Infinity)} className={`${buttonClassName} border-l border-[#303839]/10`}>

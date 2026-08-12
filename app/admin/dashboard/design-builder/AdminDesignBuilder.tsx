@@ -32,7 +32,7 @@ import AdminMockupEditor from "./AdminMockupEditor";
 import AdminUploadsPanel, { type AdminUploadAsset } from "./AdminUploadsPanel";
 import CustomerElementsPanel, { type LibraryElement } from "@/app/components/customizer/CustomerElementsPanel";
 import { createGridSlots } from "@/lib/customizer/v2/grids";
-import { groupLayers, ungroupLayers } from "@/lib/customizer/v2/groups";
+import { evaluateGroupAction, groupLayers, ungroupLayers } from "@/lib/customizer/v2/groups";
 import { createCanvasMeasure, getTextResizeConstraints, isSingleLineAutoSizeText } from "@/lib/customizer/v2/text-layout";
 import { resolveLayerSelectionGeometry } from "@/lib/customizer/v2/selection-geometry";
 import {
@@ -166,14 +166,18 @@ export default function AdminDesignBuilder({
   const { zoom } = viewport;
   const setZoom = (next: number) => setViewport((current) => ({ ...current, zoom: next }));
   const setPan = (pan: { panX: number; panY: number }) => setViewport((current) => ({ ...current, ...pan }));
-  // Fit is measured by AdminCanvas from its live workspace box (spec §9), so
-  // collapsing the tool rail / layers drawer / inspector changes what Fit does.
-  const [fitZoom, setFitZoom] = useState<number | null>(null);
-  const onCanvasFitZoom = useCallback((next: number) => setFitZoom(next), []);
-  // Fit and 1:1 both recentre: zoom and pan reset together, so the page is
-  // always recoverable however far it was panned.
-  const fitToPage = () => setViewport(fitViewport(fitZoom ?? 1));
-  const resetViewport = () => setViewport(fitViewport(1));
+  // Zoom 1 IS the fitted page: AdminCanvas measures its live workspace box and
+  // scales the card so the whole thing fits, so collapsing the tool rail, the
+  // layers panel or the inspector simply re-fits at the same 100%.
+  //
+  // 1:1 stays a separate action — the physical scale of the document at the
+  // screen's CSS DPI — which AdminCanvas reports here as a zoom value.
+  const [actualSizeZoomValue, setActualSizeZoomValue] = useState<number | null>(null);
+  const onCanvasFitZoom = useCallback((next: number) => setActualSizeZoomValue(next), []);
+  // Fit returns to the complete card at 100% and recentres, so the page is
+  // always recoverable however far it was panned or zoomed.
+  const fitToPage = () => setViewport(fitViewport(1));
+  const resetViewport = () => setViewport(fitViewport(actualSizeZoomValue ?? 1));
   const [snapEnabled, setSnapEnabled] = useState(true);
   const [publishCheck, setPublishCheck] = useState<{ errors: string[]; warnings: string[] } | null>(null);
   const [updateType, setUpdateType] = useState<CustomizerUpdateType>("minor");
@@ -197,6 +201,10 @@ export default function AdminDesignBuilder({
   const redoStack = useRef<BuilderHistoryEntry[]>([]);
   const activeTextHistoryIdRef = useRef<string | null>(null);
   const activeTextDirtyBeforeRef = useRef(false);
+  // Open toolbar interaction (typing in a numeric field, dragging the colour
+  // picker): holds the template to restore on Escape and whether the
+  // interaction already pushed its single undo entry.
+  const textStylePreviewRef = useRef<{ baseline: any; snapshotted: boolean } | null>(null);
   const [, forceTick] = useState(0);
   const bump = () => forceTick((x) => x + 1);
 
@@ -285,6 +293,14 @@ export default function AdminDesignBuilder({
           duplicateSelectedLayers();
           return;
         }
+        // Ctrl/Cmd+G groups, Ctrl/Cmd+Shift+G ungroups. Both are preventDefault-ed
+        // so the browser's own find-again binding never fires.
+        if (k === "g") {
+          e.preventDefault();
+          if (e.shiftKey) ungroupSelectedLayer();
+          else groupSelectedLayers();
+          return;
+        }
       }
       if (typing || tab !== "design") return;
       if (e.key === "Escape" && activeTool === "text") {
@@ -296,6 +312,15 @@ export default function AdminDesignBuilder({
         e.preventDefault();
         exitAdminGroup();
         return;
+      }
+      // Enter opens group editing mode, matching the double-click route.
+      if (e.key === "Enter" && selectedLayerIds.length === 1) {
+        const only = getLayer(tRef.current, selectedLayerIds[0]);
+        if (only?.type === "group") {
+          e.preventDefault();
+          enterAdminGroup(only.id);
+          return;
+        }
       }
       if ((e.key === "Delete" || e.key === "Backspace") && selectedLayerIds.length) {
         e.preventDefault();
@@ -651,9 +676,10 @@ export default function AdminDesignBuilder({
     });
   };
 
+  // One object aligns to the card, several align to each other — both are real
+  // behaviours of alignLayers, so a single selection is not blocked (spec §18).
   const runAlign = (mode: AlignMode) => {
-    const cardMode = mode === "centerOnCardHorizontal" || mode === "centerOnCardVertical" || mode === "centerOnCard";
-    if (!canTransformSelection() || (!cardMode && selectedLayerIds.length < 2)) return;
+    if (!canTransformSelection() || selectedLayerIds.length < 1) return;
     commit(alignLayers(tRef.current, selectedLayerIds, mode, resolvedGeometryForSelection()));
   };
   const runDistribute = (axis: "horizontal" | "vertical", mode: DistributionMode = "spacing") => {
@@ -664,21 +690,34 @@ export default function AdminDesignBuilder({
     if (selectedLayerIds.length < 2) return;
     commit(matchLayerSize(tRef.current, selectedLayerIds, dimension));
   };
+  // One shared verdict for the toolbar, the Layout menu and Ctrl+G, so a
+  // disabled button and a dead shortcut can never disagree.
+  const groupActionState = (ids = selectedLayerIds) =>
+    evaluateGroupAction(tRef.current.layers || [], ids, {
+      blockedReason: (layer: any) =>
+        layer.adminEditable === false ? `"${layer.name || "An object"}" is not editable in the builder.` : null,
+    });
+
   const groupSelectedLayers = () => {
-    const ids = selectedLayerIds.filter((id) => getLayer(tRef.current, id)?.page === activePage);
-    if (ids.length < 2) return;
+    if (!groupActionState().group.enabled) return;
+    const ids = selectedLayerIds.slice();
     const groupId = genId("group");
     const layers = groupLayers(tRef.current.layers || [], ids, groupId, "Group");
     if (layers === tRef.current.layers) return;
+    // One commit for the whole operation: one undo entry, one autosave.
     commit({ ...tRef.current, layers });
     setEditingGroupId(null);
     setSelectedLayerIds([groupId]);
   };
   const ungroupSelectedLayer = () => {
-    if (selectedLayerIds.length !== 1) return;
+    if (!groupActionState().ungroup.enabled) return;
     const group = getLayer(tRef.current, selectedLayerIds[0]);
     if (!group || group.type !== "group") return;
-    const childIds = (group.childIds || []).filter((id: string) => Boolean(getLayer(tRef.current, id)));
+    // Read the children from the document rather than the container's childIds
+    // so a stale list can never orphan a layer out of the selection.
+    const childIds = (tRef.current.layers || [])
+      .filter((layer: any) => layer.groupId === group.id)
+      .map((layer: any) => layer.id);
     const layers = ungroupLayers(tRef.current.layers || [], group.id);
     if (layers === tRef.current.layers) return;
     commit({ ...tRef.current, layers });
@@ -830,13 +869,52 @@ export default function AdminDesignBuilder({
 
   const selectedLayer = selectedLayerId ? getLayer(t, selectedLayerId) : null;
   const selectedLayers = selectedLayerIds.map((id) => getLayer(t, id)).filter(Boolean);
-  const onSelectedTextStylePatch = (patch: Record<string, unknown>) => {
+  // One style write applied to every selected text layer, re-measuring each
+  // box so line height / letter spacing changes move the selection geometry in
+  // the same pass as the glyphs (spec §23).
+  const buildSelectedTextStyle = (patch: Record<string, unknown>) => {
     let next = tRef.current;
-    for (const layer of selectedLayers) {
-      if (layer.type === "text") next = constrainTextLayerBox(updateLayerStyle(next, layer.id, patch), layer.id);
+    for (const id of selectedLayerIdsRef.current) {
+      const layer = getLayer(next, id);
+      if (layer?.type === "text") next = constrainTextLayerBox(updateLayerStyle(next, id, patch), id);
     }
-    if (editingTextLayerId && selectedLayerIds.includes(editingTextLayerId)) apply(next);
+    return next;
+  };
+  const editingSelectedText = () => Boolean(editingTextLayerId && selectedLayerIds.includes(editingTextLayerId));
+
+  /**
+   * Live preview while a toolbar control is being manipulated. The canvas
+   * updates on every step, but only the first preview of an interaction opens
+   * a history entry — so dragging a value from 0 to 2.4 is one undo, not
+   * twenty-four (spec §17).
+   */
+  const onSelectedTextStylePreview = (patch: Record<string, unknown>) => {
+    if (!textStylePreviewRef.current) {
+      const snapshotted = !editingSelectedText();
+      const baseline = clone(tRef.current);
+      if (snapshotted) snapshot();
+      textStylePreviewRef.current = { baseline, snapshotted };
+    }
+    apply(buildSelectedTextStyle(patch));
+  };
+  const onSelectedTextStylePatch = (patch: Record<string, unknown>) => {
+    const next = buildSelectedTextStyle(patch);
+    const session = textStylePreviewRef.current;
+    textStylePreviewRef.current = null;
+    // A preview session already pushed the history entry for this interaction.
+    if (session) apply(next);
+    else if (editingSelectedText()) apply(next);
     else commit(next);
+  };
+  /** Escape during a live change: restore the value the interaction started
+   *  from and drop the history entry it opened, so it leaves no trace. */
+  const onSelectedTextStyleCancel = () => {
+    const session = textStylePreviewRef.current;
+    if (!session) return;
+    textStylePreviewRef.current = null;
+    if (session.snapshotted) undoStack.current.pop();
+    apply(session.baseline);
+    bump();
   };
   const currentAssetIds: string[] = [
     ...new Set<string>((t.layers || []).map((layer: any) => String(layer.assetId || "")).filter((id: string) => Boolean(id))),
@@ -1015,7 +1093,12 @@ export default function AdminDesignBuilder({
                     selectionCount={selectedLayerIds.length}
                     editingText={editingTextLayerId === selectedLayerId}
                     canTransformSelection={canTransformSelection()}
+                    approvedColors={Array.isArray(settings.allowedCustomerColors) ? settings.allowedCustomerColors : []}
+                    groupAction={groupActionState()}
+                    onEnterGroup={() => selectedLayerId && enterAdminGroup(selectedLayerId)}
                     onStylePatch={onSelectedTextStylePatch}
+                    onStylePreview={onSelectedTextStylePreview}
+                    onStyleCancel={onSelectedTextStyleCancel}
                     onAlign={runAlign}
                     onDistribute={runDistribute}
                     onMatchSize={runMatchSize}
@@ -1073,7 +1156,9 @@ export default function AdminDesignBuilder({
                   <CustomizerZoomControls
                     zoom={zoom}
                     onZoomChange={setZoom}
-                    fitZoom={fitZoom}
+                    fitZoom={1}
+                    actualSizeZoom={actualSizeZoomValue}
+                    usePresetSteps
                     onFit={fitToPage}
                     onActualSize={resetViewport}
                   />

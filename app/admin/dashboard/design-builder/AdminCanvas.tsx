@@ -40,7 +40,7 @@ import {
   selectionBounds,
 } from "@/lib/customizer/v2/selection-geometry";
 import { isEmptyText } from "@/lib/customizer/v2/text-editing";
-import { computeFitZoom } from "@/lib/customizer/v2/zoom";
+import { actualSizeZoom, computeWorkspaceFit, resolveWorkspacePadding } from "@/lib/customizer/v2/zoom";
 import { layersForPage, selectableLayersForPage } from "./builder-utils";
 
 const HANDLES: Array<{ id: string; cx: number; cy: number; cursor: string }> = [
@@ -153,28 +153,37 @@ export default function AdminCanvas({
     };
   }, []);
 
-  const maxCanvasWidth = containerWidth >= 1200 ? 900 : containerWidth >= 900 ? 760 : 640;
-  const baseWidth = Math.min(Math.max((containerWidth || 520) - 64, 260), maxCanvasWidth);
+  // Zoom 1 == the complete page fitted inside the measured workspace, on BOTH
+  // axes. The old base width was derived from the container width alone and
+  // capped at 900px, so a 5x7 portrait card at "100%" was taller than any
+  // normal workspace and only became fully visible around 70%.
+  //
+  // The workspace box is measured live, so collapsing the tool rail, the layers
+  // panel or the inspector re-fits the page with no breakpoint involved.
+  const workspaceFit = computeWorkspaceFit({
+    availableWidth: containerWidth,
+    availableHeight: containerHeight,
+    canvasWidth: canvasW,
+    canvasHeight: canvasH,
+  });
+  const fitPadding = workspaceFit?.padding ?? resolveWorkspacePadding(containerWidth, containerHeight);
+  // Before the first measurement, fall back to a width-derived guess purely so
+  // the very first frame is not zero-sized; it is replaced on the next tick.
+  const baseWidth = workspaceFit?.baseWidth ?? Math.max(260, (containerWidth || 520) - 96);
   const displayW = baseWidth * zoom;
   const displayH = displayW * (canvasH / canvasW);
   const scale = displayW / canvasW;
   const snapTolerance = SNAP_PX / scale;
 
-  // Real Fit (spec §9): measured from the workspace box on both axes, so Fit
-  // reacts to collapsing the tool rail, the layers drawer or the inspector.
-  const fitZoom = computeFitZoom({
-    availableWidth: containerWidth,
-    availableHeight: containerHeight,
-    baseWidth,
-    canvasWidth: canvasW,
-    canvasHeight: canvasH,
-    padding: 32,
-  });
+  // Publish the physical-scale zoom so the 1:1 control stays a distinct action
+  // from Fit. Fit itself is simply zoom 1 now, so it needs no separate value.
+  const documentDpi = Number(template?.dpi) || 300;
+  const actualZoom = workspaceFit ? actualSizeZoom(workspaceFit.fitScale, documentDpi) : null;
   useEffect(() => {
-    if (fitZoom === null) return;
-    onFitZoomChange?.(fitZoom);
+    if (actualZoom === null) return;
+    onFitZoomChange?.(actualZoom);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fitZoom]);
+  }, [actualZoom]);
 
   // Pan tool proper, or Space held down as a temporary override.
   const panToolActive = activeTool === PAN_TOOL || spacePanActive;
@@ -842,10 +851,18 @@ export default function AdminCanvas({
     <div
       ref={wrapRef}
       data-canvas-workspace
+      // items-center: the page is centred on both axes inside the padded box.
+      // The padding is asymmetric — a taller bottom keeps the card clear of the
+      // floating zoom controls — so flex centring lands it correctly without a
+      // second offset calculation.
       // overflow-hidden: pan owns canvas movement, so browser scrollbars must
       // not fight it with a second, competing movement system.
-      className="flex h-full w-full items-start justify-center overflow-hidden bg-transparent p-6 xl:p-8 2xl:p-12"
+      className="flex h-full w-full items-center justify-center overflow-hidden bg-transparent"
       style={{
+        paddingTop: fitPadding.top,
+        paddingRight: fitPadding.right,
+        paddingBottom: fitPadding.bottom,
+        paddingLeft: fitPadding.left,
         cursor: cursor || undefined,
         // Stop the browser claiming one-finger drags while panning on touch.
         touchAction: panToolActive || isPanning ? "none" : undefined,
