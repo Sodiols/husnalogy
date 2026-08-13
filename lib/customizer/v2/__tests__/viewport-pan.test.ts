@@ -284,7 +284,10 @@ describe("AdminCanvas pan wiring", () => {
     expect(adminCanvas).toContain("if (panOwnsPointer(event) || event.button !== 0 || editingTextId) return;");
     expect(adminCanvas).toContain('if (activeTool !== "select") return;');
     expect(adminCanvas).toContain("originalSelection: selectionIds.slice()");
-    expect(adminCanvas).toContain("if (!drag.additive) onSelectionChange?.([])");
+    // A background gesture that never moved is a plain click, which clears the
+    // selection; a marquee that moved replaces or merges it.
+    expect(adminCanvas).toContain("resolveMarqueeSelection({");
+    expect(adminCanvas).toContain("moved: Boolean(drag.began)");
   });
 
   it("stands down layer, handle, rotation and guide gestures during pan", () => {

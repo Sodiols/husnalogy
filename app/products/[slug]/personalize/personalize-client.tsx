@@ -58,6 +58,7 @@ import { alignCustomerLayers, arrangeLayers, removeCustomerLayers, reorderLayerB
 import { evaluateGroupAction, getDescendantIds, groupLayers, transformGroupChildren, ungroupLayers } from "@/lib/customizer/v2/groups";
 import { createCanvasMeasure, getSingleLineTextBox, isSingleLineAutoSizeText } from "@/lib/customizer/v2/text-layout";
 import { resolveLayerSelectionGeometry } from "@/lib/customizer/v2/selection-geometry";
+import { resolveSelection, sanitizeSelection } from "@/lib/customizer/v2/selection";
 import {
   canonicalTextLayerUpdate,
   getTextPlacementStyle,
@@ -252,7 +253,7 @@ export default function PersonalizeClient({ product, template }: { product: any;
   const [activeTool, setActiveTool] = useState<CustomerTool>("edit");
   const [textPlacementPreset, setTextPlacementPreset] = useState<TextPlacementPreset>("body");
   const [editingTextLayerId, setEditingTextLayerId] = useState<string | null>(null);
-  const [editTextRequest, setEditTextRequest] = useState<{ layerId: string; requestId: number } | null>(null);
+  const [editTextRequest, setEditTextRequest] = useState<{ layerId: string; requestId: number; created?: boolean } | null>(null);
   // Easy Personalize vs Advanced Customize (spec §1/§2): a display-only
   // toggle over the SAME values/editorState — never a second document. Easy
   // mode simply narrows which tools are reachable so ordinary wedding
@@ -537,14 +538,21 @@ export default function PersonalizeClient({ product, template }: { product: any;
     return next;
   };
 
+  /**
+   * One-shot text insertion (spec §11, §18). The Text tool creates exactly one
+   * object at the centre of the card, selects it and opens its editor — it
+   * never arms a mode, so later taps on the card can never create a second
+   * text object by accident.
+   */
   const addUserTextLayer = (
-    position: { x: number; y: number },
+    position?: { x: number; y: number },
     preset: TextPlacementPreset = textPlacementPreset,
   ): string | null => {
     if (!pageAllowsCustomerText(template, activePage) || !canAddCustomerObject()) return null;
     const canvasW = template?.canvasWidthPx || 1500;
     const canvasH = template?.canvasHeightPx || 2100;
     const style = getTextPlacementStyle(preset, canvasW, canvasH);
+    const placement = position || { x: Math.round(canvasW / 2), y: Math.round(canvasH / 2) };
     const maxZ = Math.max(
       999,
       ...editorStateRef.current.userLayers
@@ -555,8 +563,8 @@ export default function PersonalizeClient({ product, template }: { product: any;
       page: activePage,
       name: style.name,
       text: "",
-      x: position.x,
-      y: position.y,
+      x: placement.x,
+      y: placement.y,
       width: style.width,
       height: style.height,
       zIndex: maxZ + 1,
@@ -583,9 +591,21 @@ export default function PersonalizeClient({ product, template }: { product: any;
     recordHistory();
     activeTextHistoryIdRef.current = layer.id;
     patchEditorState((current) => ({ ...current, userLayers: [...current.userLayers, layer] }));
+    setSelectedLayerIds([layer.id]);
     setSelectedLayerId(layer.id);
     setActiveTool("addText");
+    // Hand the new object to the canvas so typing can start straight away; an
+    // object left empty is discarded again.
+    setEditTextRequest((request) => ({ layerId: layer.id, requestId: (request?.requestId || 0) + 1, created: true }));
     return layer.id;
+  };
+
+  /** Toolbar action: insert one text object and stay in the resting state. */
+  const insertCustomerText = (preset: TextPlacementPreset = textPlacementPreset) => {
+    setWorkspaceMode("print");
+    setActiveTool("addText");
+    if (step === "options") setStep("design");
+    addUserTextLayer(undefined, preset);
   };
 
   const addElementLayer = (element: LibraryElement, position?: { x: number; y: number }) => {
@@ -851,8 +871,7 @@ export default function PersonalizeClient({ product, template }: { product: any;
         })
         .map((layer: any) => layer.id),
     );
-    const sanitized = Array.from(new Set(ids.filter((id) => selectable.has(id))));
-    applySelection(sanitized);
+    applySelection(sanitizeSelection(ids, selectable));
   };
 
   const transformCustomerGroupState = (
@@ -1494,9 +1513,12 @@ export default function PersonalizeClient({ product, template }: { product: any;
       targetId = parent.id;
     }
     if (targetId && !customerSelectableLayers.some((layer: any) => layer.id === targetId)) return;
-    const nextIds = !targetId ? [] : additive && multiselectEnabled
-      ? selectedLayerIds.includes(targetId) ? selectedLayerIds.filter((id) => id !== targetId) : [...selectedLayerIds, targetId]
-      : [targetId];
+    // Same reducer as the canvas, so a panel row and a card click agree.
+    const nextIds = resolveSelection(
+      selectedLayerIds,
+      targetId,
+      additive && multiselectEnabled ? "toggle" : "replace",
+    );
     setSelectedLayerIds(nextIds);
     setSelectedLayerId(nextIds[nextIds.length - 1] || null);
     if (!targetId) {
@@ -2536,7 +2558,7 @@ export default function PersonalizeClient({ product, template }: { product: any;
         selectedPreset={textPlacementPreset}
         onSelectPreset={(preset) => {
           setTextPlacementPreset(preset);
-          setActiveTool("addText");
+          insertCustomerText(preset);
           if (!isDesktop) setMobilePanelOpen(false);
         }}
         onSelectLayer={onSelectLayer}
@@ -2658,8 +2680,6 @@ export default function PersonalizeClient({ product, template }: { product: any;
       onSelectLayer={previewMode ? undefined : onSelectLayer}
       onSelectionChange={previewMode ? undefined : onSelectionChange}
       onLayerTransform={onLayerTransform}
-      textPlacementActive={!previewMode && activeTool === "addText" && pageAllowsCustomerText(template, activePage)}
-      onTextPlace={(position) => addUserTextLayer(position)}
       onTextEditStart={onCanvasTextEditStart}
       onTextDraftChange={onCanvasTextDraftChange}
       onTextMultilineActivate={onCanvasTextMultilineActivate}
@@ -2746,8 +2766,12 @@ export default function PersonalizeClient({ product, template }: { product: any;
                   tools={visibleTools}
                   activeTool={activeTool}
                   onSelect={(tool) => {
+                    // Text is an insertion command, not a mode.
+                    if (tool === "addText") {
+                      insertCustomerText();
+                      return;
+                    }
                     setActiveTool(tool);
-                    if (tool === "addText") setWorkspaceMode("print");
                     if (tool === "options") setStep("options");
                     else if (step === "options") setStep("design");
                   }}
@@ -2986,12 +3010,18 @@ export default function PersonalizeClient({ product, template }: { product: any;
             activeTool={mobilePanelOpen ? activeTool : null}
             orientation="horizontal"
             onSelect={(tool) => {
+              // Tapping Text always inserts exactly one object, so a second tap
+              // adds a second text box instead of collapsing the panel.
+              if (tool === "addText") {
+                insertCustomerText();
+                setMobilePanelOpen(false);
+                return;
+              }
               if (mobilePanelOpen && activeTool === tool) {
                 setMobilePanelOpen(false);
                 return;
               }
               setActiveTool(tool);
-              if (tool === "addText") setWorkspaceMode("print");
               setMobilePanelOpen(true);
               if (tool === "options") setStep("options");
               else if (step === "options") setStep("design");

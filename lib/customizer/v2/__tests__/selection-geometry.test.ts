@@ -1,19 +1,22 @@
 import { describe, expect, it } from "vitest";
 import {
   clientPointToDocument,
-  fullyEnclosedLayerIds,
+  marqueeSelectedLayerIds,
   pointerExceededDragThreshold,
+  rectIntersectsTransformedLayer,
   resolveLayerSelectionGeometry,
   transformedLayerBounds,
 } from "../selection-geometry";
 
 describe("shared multi-selection geometry", () => {
-  it("uses full enclosure and transformed bounds for mixed rotated objects", () => {
+  it("selects every object the marquee touches, using transformed bounds", () => {
     const layers = [
       { id: "text", type: "text", x: 50, y: 50, width: 40, height: 20, rotation: 0 },
       { id: "rotated-line", type: "shape", x: 90, y: 50, width: 60, height: 4, rotation: 90 },
       { id: "partial", type: "image", x: 115, y: 50, width: 40, height: 40, rotation: 0 },
+      { id: "far", type: "image", x: 400, y: 400, width: 40, height: 40, rotation: 0 },
       { id: "hidden", type: "frame", x: 40, y: 40, width: 10, height: 10, hidden: true },
+      { id: "page", type: "background", x: 50, y: 50, width: 1500, height: 2100 },
     ];
 
     expect(transformedLayerBounds(layers[1])).toMatchObject({
@@ -22,10 +25,27 @@ describe("shared multi-selection geometry", () => {
       top: 20,
       bottom: 80,
     });
-    expect(fullyEnclosedLayerIds({ left: 0, top: 0, right: 100, bottom: 100 }, layers)).toEqual([
+    // "partial" is only clipped by the box, not swallowed by it — touch is enough.
+    expect(marqueeSelectedLayerIds({ left: 0, top: 0, right: 100, bottom: 100 }, layers)).toEqual([
       "text",
       "rotated-line",
+      "partial",
     ]);
+    // Hidden objects and the full-page background never join a marquee.
+    expect(marqueeSelectedLayerIds({ left: 0, top: 0, right: 2000, bottom: 2000 }, layers)).not.toContain("hidden");
+    expect(marqueeSelectedLayerIds({ left: 0, top: 0, right: 2000, bottom: 2000 }, layers)).not.toContain("page");
+  });
+
+  it("is direction independent and exact for rotated objects", () => {
+    const layers = [{ id: "text", type: "text", x: 50, y: 50, width: 40, height: 20, rotation: 0 }];
+    // Dragged up-left instead of down-right: same result.
+    expect(marqueeSelectedLayerIds({ left: 100, top: 100, right: 0, bottom: 0 }, layers)).toEqual(["text"]);
+
+    // A 45° square: the world AABB reaches the corner, the real object does not.
+    const diamond = { id: "diamond", type: "shape", x: 100, y: 100, width: 40, height: 40, rotation: 45 };
+    expect(transformedLayerBounds(diamond).left).toBeCloseTo(100 - Math.SQRT2 * 20);
+    expect(rectIntersectsTransformedLayer({ left: 70, top: 70, right: 76, bottom: 76 }, diamond)).toBe(false);
+    expect(rectIntersectsTransformedLayer({ left: 70, top: 95, right: 76, bottom: 105 }, diamond)).toBe(true);
   });
 
   it("converts zoomed and rotated screen pointers back into document coordinates", () => {

@@ -58,7 +58,9 @@ export default function AdminUploadsPanel({ onInsertAsset, currentAssetIds = [] 
   const [reloadKey, setReloadKey] = useState(0);
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
-  const [retryFile, setRetryFile] = useState<File | null>(null);
+  // Batch position for a multi-file selection ("Uploading 3 of 12").
+  const [batch, setBatch] = useState<{ index: number; total: number } | null>(null);
+  const [retryFiles, setRetryFiles] = useState<File[]>([]);
   const [deletingId, setDeletingId] = useState("");
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -109,27 +111,72 @@ export default function AdminUploadsPanel({ onInsertAsset, currentAssetIds = [] 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [search, reloadKey]);
 
-  const uploadFile = async (file?: File | null) => {
-    if (!file) return;
+  /**
+   * Bulk upload (spec §1, §37). Files are sent one at a time so each keeps its
+   * own duplicate detection, variant generation and progress, and so a single
+   * rejected file can never cancel the ones that already succeeded. Every
+   * successful asset lands in the library immediately.
+   *
+   * Auto-inserting onto the page stays a SINGLE-image action: choosing twelve
+   * photos fills the library, it does not drop twelve layers on the card.
+   */
+  const uploadFiles = async (input?: File[] | FileList | null) => {
+    const files = Array.from(input || []).filter(Boolean) as File[];
+    if (!files.length) return;
     setUploading(true);
     setUploadProgress(0);
-    setRetryFile(null);
+    setRetryFiles([]);
     setError("");
     setNotice("");
     setUsage([]);
+    setBatch(files.length > 1 ? { index: 1, total: files.length } : null);
+
+    const uploaded: AdminUploadAsset[] = [];
+    const failed: Array<{ file: File; message: string }> = [];
+    let duplicates = 0;
+
     try {
-      const asset = await uploadBuilderImage(file, "image", { onProgress: setUploadProgress });
-      setAssets((current) => [asset, ...current.filter((item) => item.id !== asset.id)]);
-      if (!asset.duplicate) setTotal((current) => current + 1);
-      setNotice(asset.duplicate ? asset.message || "This image already exists in your uploads." : `“${asset.title}” uploaded and added to this page.`);
-      onInsertAsset(asset);
-    } catch (caught: any) {
-      setRetryFile(file);
-      setError(caught?.message || "Could not upload this image.");
+      for (let index = 0; index < files.length; index += 1) {
+        const file = files[index];
+        if (files.length > 1) setBatch({ index: index + 1, total: files.length });
+        setUploadProgress(0);
+        try {
+          const asset = await uploadBuilderImage(file, "image", { onProgress: setUploadProgress });
+          uploaded.push(asset);
+          if (asset.duplicate) duplicates += 1;
+          // Publish each success as it lands rather than at the end of the batch.
+          setAssets((current) => [asset, ...current.filter((item) => item.id !== asset.id)]);
+          if (!asset.duplicate) setTotal((current) => current + 1);
+        } catch (caught: any) {
+          failed.push({ file, message: caught?.message || "Could not upload this image." });
+        }
+      }
     } finally {
       setUploading(false);
       setUploadProgress(0);
+      setBatch(null);
       if (inputRef.current) inputRef.current.value = "";
+    }
+
+    if (files.length === 1) {
+      const asset = uploaded[0];
+      if (asset) {
+        setNotice(asset.duplicate ? asset.message || "This image already exists in your uploads." : `“${asset.title}” uploaded and added to this page.`);
+        onInsertAsset(asset);
+      }
+    } else if (uploaded.length) {
+      const added = uploaded.length - duplicates;
+      setNotice(
+        `${added} image${added === 1 ? "" : "s"} uploaded to your library${duplicates ? ` · ${duplicates} already existed` : ""}. Choose one to add it to this page.`,
+      );
+    }
+    if (failed.length) {
+      setRetryFiles(failed.map((entry) => entry.file));
+      setError(
+        failed.length === 1
+          ? `${failed[0].file.name}: ${failed[0].message}`
+          : `${failed.length} of ${files.length} images could not be uploaded (${failed.map((entry) => entry.file.name).join(", ")}).`,
+      );
     }
   };
 
@@ -212,16 +259,23 @@ export default function AdminUploadsPanel({ onInsertAsset, currentAssetIds = [] 
             <path d="M12 16V4M7 9l5-5 5 5" />
             <path d="M5 14v5h14v-5" />
           </svg>
-          {uploading ? `Uploading ${uploadProgress}%` : "Upload new image"}
+          {uploading
+            ? batch
+              ? `Uploading ${batch.index} of ${batch.total}`
+              : `Uploading ${uploadProgress}%`
+            : "Upload images"}
         </button>
-        <input ref={inputRef} type="file" accept="image/svg+xml,image/png,image/jpeg,image/webp" className="sr-only" disabled={uploading} onChange={(event) => uploadFile(event.target.files?.[0])} />
+        <input ref={inputRef} type="file" multiple accept="image/svg+xml,image/png,image/jpeg,image/webp" className="sr-only" disabled={uploading} onChange={(event) => uploadFiles(event.target.files)} />
+        <p className="mt-1.5 text-center text-[10px] font-semibold text-[#303839]/45">Select several files at once — SVG, PNG, JPG or WebP.</p>
         {uploading && (
           <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-[#F8F6F1]" role="progressbar" aria-label="Image upload progress" aria-valuemin={0} aria-valuemax={100} aria-valuenow={uploadProgress}>
             <span className="block h-full rounded-full bg-[#D4AF37] transition-[width] duration-200" style={{ width: `${uploadProgress}%` }} />
           </div>
         )}
-        {retryFile && !uploading && (
-          <button type="button" onClick={() => uploadFile(retryFile)} className="mt-2 min-h-11 w-full rounded-xl border border-red-200 text-xs font-extrabold text-red-700 transition-colors hover:bg-red-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500">Retry {retryFile.name}</button>
+        {retryFiles.length > 0 && !uploading && (
+          <button type="button" onClick={() => uploadFiles(retryFiles)} className="mt-2 min-h-11 w-full rounded-xl border border-red-200 text-xs font-extrabold text-red-700 transition-colors hover:bg-red-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500">
+            {retryFiles.length === 1 ? `Retry ${retryFiles[0].name}` : `Retry ${retryFiles.length} failed images`}
+          </button>
         )}
         <label className="relative mt-3 block">
           <span className="pointer-events-none absolute inset-y-0 right-3 grid place-items-center text-[#303839]/45"><SearchIcon /></span>

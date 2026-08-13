@@ -131,12 +131,15 @@ export default function AdminLayersPanel({
             )}
             <button
               type="button"
-              onClick={(event) => onSelect(targetId, event.shiftKey || event.ctrlKey || event.metaKey)}
+              // Same contract as the canvas: a click adds the row to the
+              // selection, clicking a selected row again removes only that row.
+              onClick={() => onSelect(targetId, "toggle")}
               onDoubleClick={() => {
                 if (isGroup) {
                   onEnterGroup?.(layer.id);
                   return;
                 }
+                onSelect(targetId, "replace");
                 setRenamingId(layer.id);
                 setRenameValue(layer.name || "");
               }}

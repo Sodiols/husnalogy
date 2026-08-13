@@ -14,7 +14,10 @@ describe("administrator uploads panel contract", () => {
     expect(rail).toContain('label="Uploads"');
     expect(rail).toContain('props.onSelectTool("uploads")');
     expect(rail).not.toContain("imageInput");
-    expect(builder).toContain('activeTool === "uploads"');
+    // Uploads is inspector content, not a canvas mode: opening it must not
+    // change what a click on the card does (spec §12).
+    expect(builder).toContain('activePanel === "uploads"');
+    expect(builder).not.toContain('activeTool === "uploads"');
     expect(builder).toContain("<AdminUploadsPanel");
   });
 
@@ -33,7 +36,7 @@ describe("administrator uploads panel contract", () => {
     const panel = read("app/admin/dashboard/design-builder/AdminUploadsPanel.tsx");
     expect(panel).toContain('uploadBuilderImage(file, "image"');
     expect(panel).toContain("onProgress: setUploadProgress");
-    expect(panel).toContain("Retry {retryFile.name}");
+    expect(panel).toContain("Retry ${retryFiles[0].name}");
     expect(panel).toContain("asset.duplicate");
     expect(panel).toContain('body: JSON.stringify({ archived: true })');
     expect(panel).toContain('method: "DELETE"');

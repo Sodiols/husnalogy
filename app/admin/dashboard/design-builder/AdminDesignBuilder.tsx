@@ -35,6 +35,7 @@ import { createGridSlots } from "@/lib/customizer/v2/grids";
 import { evaluateGroupAction, groupLayers, ungroupLayers } from "@/lib/customizer/v2/groups";
 import { createCanvasMeasure, getTextResizeConstraints, isSingleLineAutoSizeText } from "@/lib/customizer/v2/text-layout";
 import { resolveLayerSelectionGeometry } from "@/lib/customizer/v2/selection-geometry";
+import { resolveSelection, sanitizeSelection, selectionsEqual, type SelectionIntent } from "@/lib/customizer/v2/selection";
 import {
   canonicalTextLayerUpdate,
   type TextPlacementPreset,
@@ -148,9 +149,15 @@ export default function AdminDesignBuilder({
 }: any) {
   const t = template || {};
   const [studioOpen, setStudioOpen] = useState(false);
-  const [activeTool, setActiveTool] = useState("select");
+  // activeTool is the canvas INTERACTION mode only — Select (the resting
+  // state) or Pan. Insertion tools are one-shot commands, and library panels
+  // are inspector content, so neither can leave the editor stuck in a mode
+  // that keeps creating objects on every canvas click (spec §10–§12, §35).
+  const [activeTool, setActiveTool] = useState<"select" | "pan">("select");
+  const [activePanel, setActivePanel] = useState<"properties" | "text" | "uploads" | "elements">("properties");
   const [textPlacementPreset, setTextPlacementPreset] = useState<TextPlacementPreset>("body");
   const [editingTextLayerId, setEditingTextLayerId] = useState<string | null>(null);
+  const [editTextRequest, setEditTextRequest] = useState<{ layerId: string; requestId: number; created: boolean } | null>(null);
   const [tab, setTab] = useState("design");
   const [activePage, setActivePage] = useState(t.defaultPage || "front");
   // Multi-selection (spec §7): the LAST id is the primary layer (shows
@@ -303,7 +310,7 @@ export default function AdminDesignBuilder({
         }
       }
       if (typing || tab !== "design") return;
-      if (e.key === "Escape" && activeTool === "text") {
+      if (e.key === "Escape" && activeTool !== "select") {
         e.preventDefault();
         setActiveTool("select");
         return;
@@ -311,6 +318,11 @@ export default function AdminDesignBuilder({
       if (e.key === "Escape" && editingGroupIdRef.current) {
         e.preventDefault();
         exitAdminGroup();
+        return;
+      }
+      if (e.key === "Escape" && selectedLayerIdsRef.current.length) {
+        e.preventDefault();
+        setSelectedLayerIds([]);
         return;
       }
       // Enter opens group editing mode, matching the double-click route.
@@ -351,10 +363,10 @@ export default function AdminDesignBuilder({
     const editingGroup = editingGroupId ? getLayer(tRef.current, editingGroupId) : null;
     const scope = editingGroup?.page === activePage ? editingGroupId : null;
     if (editingGroupId && !scope) setEditingGroupId(null);
-    const selectable = new Set(selectableLayersForPage(tRef.current, activePage, scope).map((layer: any) => layer.id));
+    const selectable = new Set<string>(selectableLayersForPage(tRef.current, activePage, scope).map((layer: any) => layer.id));
     setSelectedLayerIds((current) => {
-      const next = current.filter((id) => selectable.has(id));
-      return next.length === current.length && next.every((id, index) => id === current[index]) ? current : next;
+      const next = sanitizeSelection(current, selectable);
+      return selectionsEqual(next, current) ? current : next;
     });
   }, [activePage, editingGroupId, t.layers]);
 
@@ -375,23 +387,30 @@ export default function AdminDesignBuilder({
   const validation = validateCustomizerTemplateDetailed(t);
 
   /* ----- tool actions ----- */
-  const addText = () => {
-    setActiveTool("text");
-    setSelectedLayerId(null);
-  };
-  const placeText = (position: { x: number; y: number }) => {
+  // Every insertion tool follows the same contract: create exactly one object,
+  // select it, and leave the editor in Select mode (spec §12, §35).
+  const insertTextLayer = (preset: TextPlacementPreset = textPlacementPreset) => {
     const current = tRef.current;
     const layer = newTextLayer(current, activePageRef.current, {
-      ...position,
+      x: Math.round(Number(current?.canvasWidthPx || 1500) / 2),
+      y: Math.round(Number(current?.canvasHeightPx || 2100) / 2),
       text: "",
-      preset: textPlacementPreset,
+      preset,
     });
     activeTextDirtyBeforeRef.current = dirtySinceSave;
     snapshot();
     apply(addLayer(current, layer));
     activeTextHistoryIdRef.current = layer.id;
-    setSelectedLayerId(layer.id);
+    setSelectedLayerIds([layer.id]);
+    setActiveTool("select");
+    // The canvas owns the inline editor, so the new object is handed to it for
+    // immediate typing. Leaving it empty discards it again.
+    setEditTextRequest((request) => ({ layerId: layer.id, requestId: (request?.requestId || 0) + 1, created: true }));
     return layer.id;
+  };
+  const addText = () => {
+    setActivePanel("text");
+    insertTextLayer();
   };
   const addPhotoArea = () => {
     const layer = newImageLayer(t, activePage);
@@ -400,6 +419,8 @@ export default function AdminDesignBuilder({
     next = setCustomerEditable(next, layer.id, true);
     commit(next);
     setSelectedLayerId(layer.id);
+    setActiveTool("select");
+    setActivePanel("properties");
   };
   const addShape = (shape: string) => {
     const layer = newShapeLayer(t, activePage, shape);
@@ -407,6 +428,7 @@ export default function AdminDesignBuilder({
     commit(addLayer(t, layer));
     setSelectedLayerId(layer.id);
     setActiveTool("select");
+    setActivePanel("properties");
   };
   const addLine = () => addShape("line");
   const addQRCode = () => {
@@ -414,6 +436,7 @@ export default function AdminDesignBuilder({
     commit(addLayer(t, layer));
     setSelectedLayerId(layer.id);
     setActiveTool("select");
+    setActivePanel("properties");
   };
   const addElement = (element: LibraryElement) => {
     const layer = newElementLayer(tRef.current, activePage, element);
@@ -431,6 +454,7 @@ export default function AdminDesignBuilder({
       setSelectedLayerId(layer.id);
     }
     setActiveTool("select");
+    setActivePanel("properties");
   };
   const addGuide = (axis: "horizontal" | "vertical") => {
     const guide = {
@@ -608,8 +632,11 @@ export default function AdminDesignBuilder({
     apply(next);
   };
 
-  /* ----- selection + alignment commands (spec §7, §8) ----- */
-  const onCanvasSelect = (id: string | null, shiftKey = false) => {
+  /* ----- selection + alignment commands (spec §2–§8) ----- */
+  // One entry point for every non-canvas selection source (layers panel, field
+  // jumps). It shares the canvas's semantics through lib/customizer/v2/selection
+  // so a click in the panel and a click on the card can never diverge.
+  const onCanvasSelect = (id: string | null, intent: SelectionIntent = "toggle") => {
     if (!id) {
       setSelectedLayerIds([]);
       return;
@@ -618,15 +645,7 @@ export default function AdminDesignBuilder({
     if (editingGroupIdRef.current && String(target?.groupId || "") !== editingGroupIdRef.current) {
       setEditingGroupId(null);
     }
-    if (!shiftKey) {
-      // Clicking a member of an existing multi-selection keeps the selection
-      // intact so dragging that object moves the combined selection.
-      setSelectedLayerIds((current) => current.length > 1 && current.includes(id) ? current : [id]);
-      return;
-    }
-    setSelectedLayerIds((current) =>
-      current.includes(id) ? current.filter((item) => item !== id) : [...current, id],
-    );
+    setSelectedLayerIds((current) => resolveSelection(current, id, intent));
   };
 
   const selectAllOnPage = () => {
@@ -1012,16 +1031,22 @@ export default function AdminDesignBuilder({
           <>
             <AdminToolRail
               activeTool={activeTool}
+              activePanel={activePanel}
               onSelectTool={(tool) => {
-                setActiveTool(tool);
-                if (tool === "select") setSelectedLayerId(null);
+                if (tool === "select") {
+                  setActiveTool("select");
+                  setActivePanel("properties");
+                  setSelectedLayerId(null);
+                  return;
+                }
+                setActivePanel(tool as "uploads" | "elements");
               }}
               onAddText={addText}
               onAddPhotoArea={addPhotoArea}
               onAddShape={addShape}
               onAddLine={addLine}
               onAddQRCode={addQRCode}
-              onOpenElements={() => setActiveTool("elements")}
+              onOpenElements={() => setActivePanel("elements")}
               onAddBackground={addBackground}
               onAddGuide={addGuide}
               onPan={() => setActiveTool((current) => current === "pan" ? "select" : "pan")}
@@ -1117,12 +1142,11 @@ export default function AdminDesignBuilder({
                 values={{}}
                 selectedLayerId={selectedLayerId}
                 selectedLayerIds={selectedLayerIds}
-                onSelect={onCanvasSelect}
                 onSelectionChange={setSelectedLayerIds}
                 onBeginChange={snapshot}
                 onLayerChange={onCanvasLayerChange}
                 onLayersChange={onCanvasLayersChange}
-                onTextPlace={placeText}
+                editTextRequest={editTextRequest}
                   onTextEditStart={onCanvasTextEditStart}
                   onTextDraftChange={onCanvasTextDraftChange}
                   onTextMultilineActivate={onCanvasTextMultilineActivate}
@@ -1206,17 +1230,17 @@ export default function AdminDesignBuilder({
             {/* Right inspector: the configuration surface for the selection. */}
             <aside className="flex w-[clamp(300px,21vw,360px)] shrink-0 flex-col border-l border-[#303839]/8 bg-white max-lg:absolute max-lg:inset-x-0 max-lg:bottom-0 max-lg:z-40 max-lg:max-h-[48%] max-lg:w-full max-lg:rounded-t-2xl max-lg:border-l-0 max-lg:border-t max-lg:shadow-[0_-8px_32px_rgba(48,56,57,0.14)]">
               <div className="min-h-0 flex-1 overflow-y-auto [scrollbar-color:rgba(48,56,57,0.18)_transparent] [scrollbar-width:thin]">
-                {activeTool === "text" && !selectedLayer ? (
+                {activePanel === "text" && !selectedLayer ? (
                   <AdminTextToolPanel
                     preset={textPlacementPreset}
                     onSelectPreset={(preset) => {
                       setTextPlacementPreset(preset);
-                      setActiveTool("text");
+                      insertTextLayer(preset);
                     }}
                   />
-                ) : activeTool === "uploads" ? (
+                ) : activePanel === "uploads" ? (
                   <AdminUploadsPanel onInsertAsset={addImageFromAdminAsset} currentAssetIds={currentAssetIds} />
-                ) : activeTool === "elements" ? (
+                ) : activePanel === "elements" ? (
                   <div className="h-full overflow-y-auto">
                     <div className="border-b border-[#303839]/8 px-4 py-3.5">
                       <p className="font-display text-[19px] leading-tight text-[#303839]">Elements library</p>
@@ -1254,6 +1278,7 @@ export default function AdminDesignBuilder({
                 const layer = getLayer(t, layerId);
                 if (layer) setActivePage(layer.page);
                 setSelectedLayerId(layerId);
+                setActivePanel("properties");
                 setTab("design");
               }}
             />

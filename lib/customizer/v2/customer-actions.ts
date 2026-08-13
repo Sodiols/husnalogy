@@ -1,6 +1,6 @@
 import { distributeAlongAxis, groupLayers, resolveGroupBounds, rotatedAxisHalfExtents, ungroupLayers } from "./groups";
 import {
-  fullyEnclosedLayerIds,
+  marqueeSelectedLayerIds,
   selectionBounds as resolveSelectionBounds,
   type SelectionRect,
 } from "./selection-geometry";
@@ -15,7 +15,7 @@ export type CardSize = { width: number; height: number };
 const CARD_ONLY_ACTIONS = new Set<AlignAction>(["centerOnCardHorizontal", "centerOnCardVertical", "centerOnCard"]);
 
 export function layersInsideSelection(rect: SelectionRect, layers: any[]): string[] {
-  return fullyEnclosedLayerIds(
+  return marqueeSelectedLayerIds(
     rect,
     layers.filter((layer) => !layer.customerInteractionDisabled),
   );

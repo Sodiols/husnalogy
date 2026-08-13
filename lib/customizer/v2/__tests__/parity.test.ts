@@ -47,13 +47,14 @@ describe("Customizer parity primitives", () => {
     expect(imageFilterSvgPrimitives(filters)).toContain("feFlood");
   });
 
-  it("selects only objects fully inside a drag marquee", () => {
+  it("selects every object a drag marquee touches, minus the ones the template locks out", () => {
     const layers = [
       { id: "inside", x: 50, y: 50, width: 20, height: 20 },
       { id: "edge", x: 98, y: 50, width: 20, height: 20 },
+      { id: "outside", x: 200, y: 50, width: 20, height: 20 },
       { id: "disabled", x: 30, y: 30, width: 10, height: 10, customerInteractionDisabled: true },
     ];
-    expect(layersInsideSelection({ left: 0, top: 0, right: 100, bottom: 100 }, layers)).toEqual(["inside"]);
+    expect(layersInsideSelection({ left: 0, top: 0, right: 100, bottom: 100 }, layers)).toEqual(["inside", "edge"]);
   });
 
   it("arranges customer layers without crossing a protected administrator layer", () => {

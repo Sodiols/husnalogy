@@ -2,7 +2,7 @@
 
 import { customerEditablePermissionBundle } from "@/lib/customizer";
 import { distributeAlongAxis, getDescendantIds, rotatedAxisHalfExtents, transformGroupChildren } from "@/lib/customizer/v2/groups";
-import { fullyEnclosedLayerIds, type SelectionRect } from "@/lib/customizer/v2/selection-geometry";
+import { marqueeSelectedLayerIds, type SelectionRect } from "@/lib/customizer/v2/selection-geometry";
 import { getTextPlacementStyle, type TextPlacementPreset } from "@/lib/customizer/v2/text-editing";
 
 // Shared helpers for the admin visual Design Builder. Pure functions that take a
@@ -56,8 +56,8 @@ export function selectableLayersForPage(template: any, pageId: string, editingGr
   });
 }
 
-export function fullyEnclosedLayerIdsForSelection(rect: SelectionRect, layers: any[]): string[] {
-  return fullyEnclosedLayerIds(rect, layers);
+export function marqueeLayerIdsForSelection(rect: SelectionRect, layers: any[]): string[] {
+  return marqueeSelectedLayerIds(rect, layers);
 }
 
 export function getLayer(template: any, layerId: string): any {

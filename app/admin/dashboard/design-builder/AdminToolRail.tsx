@@ -3,7 +3,10 @@
 import { useState } from "react";
 
 type Props = {
+  /** Canvas interaction mode: Select (the resting state) or Pan. */
   activeTool: string;
+  /** Inspector content. Panels are not modes: they never create objects. */
+  activePanel?: string;
   onSelectTool: (tool: string) => void;
   onAddText: () => void;
   onAddPhotoArea: () => void;
@@ -67,13 +70,13 @@ export default function AdminToolRail(props: Props) {
   return (
     <div className="relative flex w-[72px] shrink-0 flex-col gap-0.5 overflow-y-auto overflow-x-visible border-r border-white/10 bg-[#303839] py-2 2xl:w-24 2xl:py-3">
       <RailButton id="select" label="Select" active={props.activeTool === "select"} onClick={() => props.onSelectTool("select")} />
-      <RailButton id="text" label="Text" active={props.activeTool === "text"} onClick={props.onAddText} />
-      <RailButton id="image" label="Uploads" active={props.activeTool === "uploads"} onClick={() => props.onSelectTool("uploads")} />
+      <RailButton id="text" label="Text" active={props.activePanel === "text"} onClick={props.onAddText} />
+      <RailButton id="image" label="Uploads" active={props.activePanel === "uploads"} onClick={() => props.onSelectTool("uploads")} />
       <RailButton id="photo" label="Frame" onClick={props.onAddPhotoArea} />
       <RailButton id="shape" label="Shape" active={menu === "shape"} onClick={() => setMenu((value) => value === "shape" ? null : "shape")} />
       <RailButton id="line" label="Line" onClick={props.onAddLine} />
       <RailButton id="qr" label="QR Code" onClick={props.onAddQRCode} />
-      <RailButton id="elements" label="Elements" onClick={props.onOpenElements} />
+      <RailButton id="elements" label="Elements" active={props.activePanel === "elements"} onClick={props.onOpenElements} />
       <RailButton id="background" label="Background" onClick={props.onAddBackground} />
       <RailButton id="guide" label="Guide" active={menu === "guide"} onClick={() => setMenu((value) => value === "guide" ? null : "guide")} />
       <RailButton id="pan" label="Pan" active={props.activeTool === "pan"} onClick={props.onPan} />

@@ -34,13 +34,25 @@ function qualityLabel(width: number, height: number): { label: string; good: boo
   return { label: "Low resolution", good: false };
 }
 
-function PhotoLibrary({ onPick, refreshKey }: { onPick: (asset: LibraryAsset) => void; refreshKey: number }) {
+function PhotoLibrary({
+  onPick,
+  refreshKey,
+  onUploadPhoto,
+  onUploaded,
+}: {
+  onPick: (asset: LibraryAsset) => void;
+  refreshKey: number;
+  onUploadPhoto: (file: File) => Promise<any>;
+  onUploaded: () => void;
+}) {
   const [assets, setAssets] = useState<LibraryAsset[]>([]);
   const [search, setSearch] = useState("");
   const [sort, setSort] = useState<"newest" | "oldest">("newest");
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
   const [deletingId, setDeletingId] = useState("");
+  const [batch, setBatch] = useState<{ index: number; total: number } | null>(null);
+  const [uploadError, setUploadError] = useState("");
 
   useEffect(() => {
     let cancelled = false;
@@ -63,15 +75,54 @@ function PhotoLibrary({ onPick, refreshKey }: { onPick: (asset: LibraryAsset) =>
     };
   }, [search, sort, refreshKey]);
 
+  /**
+   * Bulk upload into the photo library (spec §1, §37). Files are sent one at a
+   * time, so a single rejected file never cancels the ones that already
+   * succeeded and every success is reusable straight away. Filling a photo
+   * area stays a deliberate, separate action.
+   */
+  const uploadFiles = async (input?: FileList | File[] | null) => {
+    const files = Array.from(input || []).filter(Boolean) as File[];
+    if (!files.length) return;
+    setUploadError("");
+    setMessage("");
+    setBatch({ index: 1, total: files.length });
+    const failed: string[] = [];
+    let uploaded = 0;
+    for (let index = 0; index < files.length; index += 1) {
+      setBatch({ index: index + 1, total: files.length });
+      try {
+        await onUploadPhoto(files[index]);
+        uploaded += 1;
+      } catch (caught: any) {
+        failed.push(files[index].name);
+        if (String(caught?.message || "").toLowerCase().includes("sign in")) break;
+      }
+    }
+    setBatch(null);
+    if (uploaded) {
+      setMessage(`${uploaded} photo${uploaded === 1 ? "" : "s"} added to your library.`);
+      onUploaded();
+    }
+    if (failed.length) {
+      setUploadError(
+        failed.length === 1
+          ? `${failed[0]} could not be uploaded.`
+          : `${failed.length} of ${files.length} photos could not be uploaded (${failed.join(", ")}).`,
+      );
+    }
+  };
+
   const removeAsset = async (asset: LibraryAsset) => {
     if (!window.confirm(`Delete “${asset.fileName}” from your photo library? Photos used in a cart or order cannot be deleted.`)) return;
     setMessage("");
+    setUploadError("");
     setDeletingId(asset.id);
     try {
       const res = await fetch(`/api/customizer/library/${encodeURIComponent(asset.id)}`, { method: "DELETE" });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || data.ok === false) {
-        setMessage(data?.error || "Could not delete this photo.");
+        setUploadError(data?.error || "Could not delete this photo.");
         return;
       }
       setAssets((current) => current.filter((item) => item.id !== asset.id));
@@ -94,6 +145,25 @@ function PhotoLibrary({ onPick, refreshKey }: { onPick: (asset: LibraryAsset) =>
           {sort === "newest" ? "Newest first" : "Oldest first"}
         </button>
       </div>
+      <label className="mt-2 flex min-h-11 cursor-pointer items-center justify-center gap-2 rounded-full bg-[#303839] px-3 text-xs font-extrabold text-white transition hover:bg-[#434c4d]">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+          <path d="M12 16V4M7 9l5-5 5 5" />
+          <path d="M5 14v5h14v-5" />
+        </svg>
+        {batch ? `Uploading ${batch.index} of ${batch.total}` : "Upload photos"}
+        <input
+          type="file"
+          multiple
+          accept="image/jpeg,image/png,image/webp"
+          className="sr-only"
+          disabled={Boolean(batch)}
+          onChange={(event) => {
+            uploadFiles(event.target.files);
+            event.target.value = "";
+          }}
+        />
+      </label>
+      <p className="mt-1 text-center text-[10px] text-[#303839]/45">Select several photos at once · JPG, PNG or WebP</p>
       <input
         type="search"
         value={search}
@@ -102,8 +172,18 @@ function PhotoLibrary({ onPick, refreshKey }: { onPick: (asset: LibraryAsset) =>
         aria-label="Search your photos"
         className="mt-2 w-full rounded-full border border-[#303839]/12 px-3 py-1.5 text-xs text-[#303839] outline-none placeholder:text-[#303839]/40 focus:border-[#303839]/35"
       />
-      {message && (
+      {batch && (
+        <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-[#F8F6F1]" role="progressbar" aria-label="Photo upload progress" aria-valuemin={0} aria-valuemax={batch.total} aria-valuenow={batch.index}>
+          <span className="block h-full rounded-full bg-[#D4AF37] transition-[width] duration-200" style={{ width: `${Math.round((batch.index / batch.total) * 100)}%` }} />
+        </div>
+      )}
+      {uploadError && (
         <p className="mt-2 text-xs font-bold text-red-700" role="alert">
+          {uploadError}
+        </p>
+      )}
+      {message && (
+        <p className="mt-2 text-xs font-bold text-[#303839]/70" role="status">
           {message}
         </p>
       )}
@@ -441,7 +521,14 @@ export default function CustomerUploadsPanel({
         />
       ))}
 
-      {user && <PhotoLibrary onPick={applyLibraryAsset} refreshKey={libraryRefresh} />}
+      {user && (
+        <PhotoLibrary
+          onPick={applyLibraryAsset}
+          refreshKey={libraryRefresh}
+          onUploadPhoto={onUploadPhoto}
+          onUploaded={() => setLibraryRefresh((current) => current + 1)}
+        />
+      )}
     </div>
   );
 }

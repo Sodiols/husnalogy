@@ -25,7 +25,7 @@ export default function AdminTextToolPanel({ preset, onSelectPreset }: Props) {
         <p className="text-[10px] font-extrabold uppercase tracking-[0.16em] text-[#303839]/45">Add text</p>
         <h2 className="mt-1 font-display text-[24px] leading-tight text-[#303839]">Place text naturally</h2>
         <p className="mt-1.5 text-xs leading-relaxed text-[#303839]/58">
-          Select a text style, then click anywhere on the card to start typing.
+          Each style adds one text box to the centre of the card, ready to type into.
         </p>
 
         <div className="mt-4 grid gap-2">
@@ -64,8 +64,8 @@ export default function AdminTextToolPanel({ preset, onSelectPreset }: Props) {
             </svg>
           </span>
           <span>
-            <span className="block text-xs font-bold">Click anywhere to add text</span>
-            <span className="mt-0.5 block text-[10px] text-white/58">Press Escape or choose Select to leave text mode.</span>
+            <span className="block text-xs font-bold">One click, one text box</span>
+            <span className="mt-0.5 block text-[10px] text-white/58">The editor returns to Select straight away, so the card never gains text by accident.</span>
           </span>
         </div>
       </div>

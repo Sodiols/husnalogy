@@ -53,23 +53,75 @@ export function pointInsideTransformedLayer(x: number, y: number, layer: any) {
 }
 
 /**
- * Professional editor marquee semantics: an object joins the selection only
- * when its complete transformed AABB is enclosed by the document-space box.
+ * Does the marquee touch this object at all? Exact for rotated objects: the
+ * separating axis theorem is evaluated on the world axes (the object's rotated
+ * AABB against the box) and then on the object's own axes (the box's corners
+ * projected into the object's local frame). Two convex quads that separate on
+ * none of those four axes overlap.
+ *
+ * The rect may be drawn in any direction — it is normalized first.
+ */
+export function rectIntersectsTransformedLayer(rect: SelectionRect, layer: any): boolean {
+  const marquee = normalizeSelectionRect(rect);
+  const bounds = transformedLayerBounds(layer);
+  if (bounds.right < marquee.left || bounds.left > marquee.right) return false;
+  if (bounds.bottom < marquee.top || bounds.top > marquee.bottom) return false;
+
+  const rotation = Number(layer?.rotation) || 0;
+  if (!rotation) return true;
+
+  const centerX = Number(layer?.x) || 0;
+  const centerY = Number(layer?.y) || 0;
+  const radians = (-rotation * Math.PI) / 180;
+  const cos = Math.cos(radians);
+  const sin = Math.sin(radians);
+  const halfW = Math.abs(Number(layer?.width) || 0) / 2;
+  const halfH = Math.abs(Number(layer?.height) || 0) / 2;
+
+  let minX = Infinity;
+  let maxX = -Infinity;
+  let minY = Infinity;
+  let maxY = -Infinity;
+  const corners: Array<[number, number]> = [
+    [marquee.left, marquee.top],
+    [marquee.right, marquee.top],
+    [marquee.right, marquee.bottom],
+    [marquee.left, marquee.bottom],
+  ];
+  for (const [pointX, pointY] of corners) {
+    const dx = pointX - centerX;
+    const dy = pointY - centerY;
+    const localX = dx * cos - dy * sin;
+    const localY = dx * sin + dy * cos;
+    minX = Math.min(minX, localX);
+    maxX = Math.max(maxX, localX);
+    minY = Math.min(minY, localY);
+    maxY = Math.max(maxY, localY);
+  }
+  return maxX >= -halfW && minX <= halfW && maxY >= -halfH && minY <= halfH;
+}
+
+/**
+ * Marquee semantics: an object joins the selection as soon as the box TOUCHES
+ * it — brushing across three objects selects all three, and the box may be
+ * dragged in any direction (down-right, up-left, or across).
+ *
+ * Requiring full enclosure, as this used to, meant a sweep only ever picked up
+ * whatever it completely swallowed, which is why the marquee felt like it only
+ * worked in one direction.
+ *
+ * Full-page backgrounds are skipped: every marquee overlaps them, so touch
+ * semantics would otherwise drag the page background into every selection.
+ * They stay selectable by clicking them or through the layers panel.
+ *
  * Permission/page/group filtering stays with the caller so Admin and Customer
  * can share this exact geometry without sharing policy.
  */
-export function fullyEnclosedLayerIds(rect: SelectionRect, layers: any[]): string[] {
-  const marquee = normalizeSelectionRect(rect);
+export function marqueeSelectedLayerIds(rect: SelectionRect, layers: any[]): string[] {
   return layers
     .filter((layer: any) => {
-      if (!layer || layer.hidden) return false;
-      const box = transformedLayerBounds(layer);
-      return (
-        box.left >= marquee.left &&
-        box.right <= marquee.right &&
-        box.top >= marquee.top &&
-        box.bottom <= marquee.bottom
-      );
+      if (!layer || layer.hidden || layer.type === "background") return false;
+      return rectIntersectsTransformedLayer(rect, layer);
     })
     .map((layer: any) => layer.id);
 }

@@ -297,17 +297,27 @@ describe("resolved multiline bounds and rendering parity", () => {
     expect(svg).toContain('xml:space="preserve"');
   });
 
-  it("wires both canvases to canonical live drafts, click placement, and empty-layer discard", () => {
+  it("wires both canvases to canonical live drafts, one-shot insertion, and empty-layer discard", () => {
     const admin = readFileSync("app/admin/dashboard/design-builder/AdminCanvas.tsx", "utf8");
     const customer = readFileSync("app/components/customizer/CustomizerWorkspace.tsx", "utf8");
     const inline = readFileSync("app/components/customizer/InlineCanvasTextEditor.tsx", "utf8");
+    const builder = readFileSync("app/admin/dashboard/design-builder/AdminDesignBuilder.tsx", "utf8");
+    const personalize = readFileSync("app/products/[slug]/personalize/personalize-client.tsx", "utf8");
     for (const source of [admin, customer]) {
-      expect(source).toContain('mode: "text-placement"');
+      // Text is inserted by the toolbar and handed to the canvas for editing.
+      // No canvas surface gesture may ever create a text object (spec §11–§15).
+      expect(source).not.toContain('mode: "text-placement"');
+      expect(source).toContain("editTextRequest");
+      expect(source).toContain("beginTextEditing(layer.id, Boolean(editTextRequest.created))");
       expect(source).toContain("pointerExceededDragThreshold");
       expect(source).toContain("onTextDraftChange");
       expect(source).toContain("onTextDiscard");
       expect(source).toContain("<InlineCanvasTextEditor");
     }
+    // Both editors return to their resting state as part of the insertion.
+    expect(builder).toContain('setActiveTool("select")');
+    expect(builder).toContain("const insertTextLayer = ");
+    expect(personalize).toContain("const insertCustomerText = ");
     expect(inline).toContain("setSelectionRange");
     // Escape still cancels — it is now resolved through the shared keyboard
     // contract in text-editing.ts along with Enter and Ctrl+Enter.

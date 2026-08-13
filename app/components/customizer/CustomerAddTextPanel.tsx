@@ -55,7 +55,7 @@ export default function CustomerAddTextPanel({
         <p className="text-[10px] font-extrabold uppercase tracking-[0.16em] text-[#303839]/45">Add text</p>
         <p className="mt-1 font-display text-[21px] leading-tight text-[#303839]">Choose a text style</p>
         <p className="mt-1 text-xs leading-relaxed text-[#303839]/55">
-          Select a style, then tap anywhere on the card to start typing.
+          Choose a style to add one text box to the card, then type straight into it.
         </p>
 
         <div className="mt-3 grid gap-2">
@@ -93,7 +93,7 @@ export default function CustomerAddTextPanel({
           <svg className="shrink-0 text-[#D4AF37]" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden>
             <path d="M4 7V5h16v2M12 5v14M9 19h6" />
           </svg>
-          <span className="text-[11px] font-bold">Click anywhere to add text on {pageLabel}</span>
+          <span className="text-[11px] font-bold">Each choice adds one text box to {pageLabel}</span>
         </div>
       </div>
 

@@ -4,7 +4,7 @@ import {
   alignLayers,
   arrangeLayerSelection,
   distributeLayers,
-  fullyEnclosedLayerIdsForSelection,
+  marqueeLayerIdsForSelection,
   selectableLayersForPage,
 } from "@/app/admin/dashboard/design-builder/builder-utils";
 import { groupLayers, rotatedAxisHalfExtents, ungroupLayers } from "../groups";
@@ -45,7 +45,7 @@ describe("admin multi-object selection and alignment", () => {
     expect(selectableLayersForPage(template, "front", "group").map((layer) => layer.id)).toEqual(["front", "child"]);
   });
 
-  it("selects only objects fully enclosed by a marquee using transformed bounds", () => {
+  it("selects every object a marquee touches, in any drag direction", () => {
     const layers = [
       shape("inside", 50, 50, 20, 20),
       shape("edge", 108, 50, 20, 20),
@@ -54,12 +54,20 @@ describe("admin multi-object selection and alignment", () => {
       shape("hidden", 50, 50, 20, 20, { hidden: true }),
     ];
 
-    expect(fullyEnclosedLayerIdsForSelection({ left: 0, top: 0, right: 100, bottom: 100 }, layers)).toEqual([
+    // "edge" spans 98–118: clipped by the box, so touch semantics include it.
+    expect(marqueeLayerIdsForSelection({ left: 0, top: 0, right: 100, bottom: 100 }, layers)).toEqual([
       "inside",
+      "edge",
+    ]);
+    // Dragged bottom-right to top-left instead: identical result.
+    expect(marqueeLayerIdsForSelection({ left: 100, top: 100, right: 0, bottom: 0 }, layers)).toEqual([
+      "inside",
+      "edge",
     ]);
     const rotated = rotatedAxisHalfExtents(layers[3]);
     expect(rotated.halfH).toBeCloseTo(30);
-    expect(fullyEnclosedLayerIdsForSelection({ left: 0, top: 100, right: 100, bottom: 170 }, [layers[3]])).toEqual(["rotated"]);
+    // A thin sweep that merely grazes the rotated object still catches it.
+    expect(marqueeLayerIdsForSelection({ left: 0, top: 150, right: 100, bottom: 155 }, [layers[3]])).toEqual(["rotated"]);
   });
 
   it("runs the four-text alignment and equal-edge-gap workflow", () => {

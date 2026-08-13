@@ -31,12 +31,17 @@ import {
 } from "@/lib/customizer/v2/text-layout";
 import {
   clientPointToDocument,
-  fullyEnclosedLayerIds,
+  marqueeSelectedLayerIds,
   pointInsideTransformedLayer,
   pointerExceededDragThreshold,
   resolveLayerSelectionGeometry,
   selectionBounds,
 } from "@/lib/customizer/v2/selection-geometry";
+import {
+  resolveMarqueeSelection,
+  resolvePointerDownSelection,
+  resolvePointerUpSelection,
+} from "@/lib/customizer/v2/selection";
 import { getDescendantIds } from "@/lib/customizer/v2/groups";
 import { isEmptyText } from "@/lib/customizer/v2/text-editing";
 import { ZOOM_MAX, ZOOM_MIN, clampZoom, computeFitZoom } from "@/lib/customizer/v2/zoom";
@@ -81,8 +86,6 @@ type Props = {
   onGridSlotSelect?: (layerId: string, slotId: string) => void;
   onGridSlotAssetDrop?: (layerId: string, slotId: string, asset: any) => void;
   onElementDrop?: (element: any, position: { x: number; y: number }) => void;
-  textPlacementActive?: boolean;
-  onTextPlace?: (position: { x: number; y: number }) => string | null;
   onTextEditStart?: (layerId: string) => void;
   onTextDraftChange?: (layerId: string, text: string) => void;
   onTextMultilineActivate?: (layerId: string) => void;
@@ -97,7 +100,7 @@ type Props = {
   onTextDiscard?: (layerId: string) => void;
   onEditingTextChange?: (layerId: string | null) => void;
   onExitTextTool?: () => void;
-  editTextRequest?: { layerId: string; requestId: number } | null;
+  editTextRequest?: { layerId: string; requestId: number; created?: boolean } | null;
   onTextCommit?: (layerId: string, text: string) => void;
   onImageLayerActivate?: (layerId: string) => void;
   previewMode?: boolean;
@@ -131,8 +134,6 @@ export default function CustomizerWorkspace({
   onGridSlotSelect,
   onGridSlotAssetDrop,
   onElementDrop,
-  textPlacementActive = false,
-  onTextPlace,
   onTextEditStart,
   onTextDraftChange,
   onTextMultilineActivate,
@@ -407,7 +408,8 @@ export default function CustomizerWorkspace({
   useEffect(() => {
     if (!editTextRequest?.layerId) return;
     const layer = layers.find((candidate: any) => candidate.id === editTextRequest.layerId);
-    if (canEditTextLayer(layer)) beginTextEditing(layer.id);
+    // `created` marks a brand new object: leaving it empty discards it again.
+    if (canEditTextLayer(layer)) beginTextEditing(layer.id, Boolean(editTextRequest.created));
     // requestId deliberately retriggers editing for the same selected layer.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editTextRequest?.requestId]);
@@ -499,35 +501,49 @@ export default function CustomizerWorkspace({
   };
 
   /* ---- pointer interactions ---- */
-  const onLayerPointerDown = (e: React.PointerEvent, layer: any) => {
-    if (gestureRef.current) return;
-    e.stopPropagation();
+  const applySelection = (ids: string[]) => {
+    if (onSelectionChange) onSelectionChange(ids);
+    else onSelectLayer?.(ids[ids.length - 1] || null);
+  };
+
+  /**
+   * One pointer-down path for every object, whether it was hit directly or
+   * through the combined selection frame. Plain clicks accumulate the
+   * selection; an object that is already selected keeps the whole selection
+   * intact so the drag moves it as one block, and is only removed again if the
+   * gesture ends without movement (spec §2, §3, §7).
+   */
+  const beginObjectInteraction = (e: React.PointerEvent, layer: any) => {
     if (editingTextId && editingTextId !== layer.id) return;
     const wasOnlySelected = activeSelection.length === 1 && activeSelection[0] === layer.id;
-    if (textPlacementActive) {
-      if (onSelectionChange) onSelectionChange([layer.id]);
-      else onSelectLayer?.(layer.id);
-      if (canEditTextLayer(layer)) beginTextEditing(layer.id);
-      return;
-    }
+    // Touch has no double-click affordance worth relying on: tapping the one
+    // selected text object opens its editor, as it always has.
     if (e.pointerType === "touch" && wasOnlySelected && canEditTextLayer(layer)) {
       beginTextEditing(layer.id);
       return;
     }
     const additive = e.shiftKey || e.ctrlKey || e.metaKey;
-    const nextSelection = additive
-      ? activeSelection.includes(layer.id) ? activeSelection.filter((id) => id !== layer.id) : [...activeSelection, layer.id]
-      : activeSelection.includes(layer.id) && activeSelection.length > 1 ? activeSelection : [layer.id];
-    if (onSelectionChange) onSelectionChange(nextSelection);
-    else onSelectLayer?.(nextSelection[nextSelection.length - 1] || null);
-    if (additive) return;
-    const selectedTargets = nextSelection
+    const decision = resolvePointerDownSelection({ current: activeSelection, id: layer.id, additive });
+    applySelection(decision.selection);
+    if (!decision.allowDrag) return;
+    const selectedTargets = decision.selection
       .map((id) => interactiveLayers.find((candidate: any) => candidate.id === id))
       .filter(Boolean);
-    if (
-      selectedTargets.length !== nextSelection.length ||
-      selectedTargets.some((target: any) => !canMove(target))
-    ) return;
+    const movable =
+      selectedTargets.length === decision.selection.length &&
+      !selectedTargets.some((target: any) => !canMove(target));
+    if (!movable) {
+      // Locked objects still take part in click selection.
+      (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
+      dragRef.current = {
+        mode: "select-click",
+        layerId: layer.id,
+        startClientX: e.clientX,
+        startClientY: e.clientY,
+        toggleOnRelease: decision.toggleOnRelease,
+      };
+      return;
+    }
     (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
     dragRef.current = {
       mode: "move",
@@ -537,7 +553,14 @@ export default function CustomizerWorkspace({
       startX: layer.x,
       startY: layer.y,
       selected: selectedTargets.map((item: any) => ({ id: item.id, x: item.x, y: item.y })),
+      toggleOnRelease: decision.toggleOnRelease,
     };
+  };
+
+  const onLayerPointerDown = (e: React.PointerEvent, layer: any) => {
+    if (gestureRef.current) return;
+    e.stopPropagation();
+    beginObjectInteraction(e, layer);
   };
 
   const onSurfacePointerDown = (e: React.PointerEvent) => {
@@ -547,18 +570,6 @@ export default function CustomizerWorkspace({
     const rect = surfaceRef.current?.getBoundingClientRect();
     if (!rect) return;
     const point = clientPointToDocument(e.clientX, e.clientY, rect, displayW, displayH, scale, interactionRotation);
-    if (textPlacementActive) {
-      dragRef.current = {
-        mode: "text-placement",
-        startClientX: e.clientX,
-        startClientY: e.clientY,
-        x: point.x,
-        y: point.y,
-        moved: false,
-      };
-      (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
-      return;
-    }
     const additive = e.shiftKey || e.ctrlKey || e.metaKey;
     dragRef.current = {
       mode: "marquee",
@@ -578,20 +589,22 @@ export default function CustomizerWorkspace({
   const onMultiSelectionPointerDown = (e: React.PointerEvent) => {
     if (!multiBounds || e.button !== 0 || gestureRef.current) return;
     e.stopPropagation();
-    const additive = e.shiftKey || e.ctrlKey || e.metaKey;
-    if (additive) {
-      const rect = surfaceRef.current?.getBoundingClientRect();
-      if (!rect) return;
-      const point = clientPointToDocument(e.clientX, e.clientY, rect, displayW, displayH, scale, interactionRotation);
-      const hit = resolvedSelectedInteractiveLayers
-        .filter((layer: any) => pointInsideTransformedLayer(point.x, point.y, layer))
-        .at(-1);
-      if (!hit) return;
-      const next = activeSelection.filter((id) => id !== hit.id);
-      if (onSelectionChange) onSelectionChange(next);
-      else onSelectLayer?.(next[next.length - 1] || null);
-      return;
+    const rect = surfaceRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const point = clientPointToDocument(e.clientX, e.clientY, rect, displayW, displayH, scale, interactionRotation);
+    // The frame covers the whole bounding box and paints above the objects, so
+    // resolve what is really under the pointer before treating it as a frame drag.
+    const hit = resolvedInteractiveLayers
+      .filter((layer: any) => pointInsideTransformedLayer(point.x, point.y, layer))
+      .at(-1);
+    if (hit) {
+      const target = interactiveLayers.find((layer: any) => layer.id === hit.id);
+      if (target) {
+        beginObjectInteraction(e, target);
+        return;
+      }
     }
+    if (e.shiftKey || e.ctrlKey || e.metaKey) return;
     if (!multiCanMove) return;
     (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
     dragRef.current = {
@@ -602,6 +615,8 @@ export default function CustomizerWorkspace({
       startX: selectedInteractiveLayers[0].x,
       startY: selectedInteractiveLayers[0].y,
       selected: selectedInteractiveLayers.map((item: any) => ({ id: item.id, x: item.x, y: item.y })),
+      // Empty space inside the frame is still empty canvas (spec §4).
+      clearOnRelease: true,
     };
   };
 
@@ -699,7 +714,7 @@ export default function CustomizerWorkspace({
   const onPointerMove = (e: React.PointerEvent) => {
     const drag = dragRef.current;
     if (!drag) return;
-    if (drag.mode === "text-placement") {
+    if (drag.mode === "select-click") {
       if (pointerExceededDragThreshold(drag.startClientX, drag.startClientY, e.clientX, e.clientY)) {
         drag.moved = true;
       }
@@ -934,29 +949,35 @@ export default function CustomizerWorkspace({
 
   const endDrag = (cancelled = false) => {
     const drag = dragRef.current;
-    if (drag?.mode === "text-placement" && !cancelled && !drag.moved) {
-      const layerId = onTextPlace?.({ x: drag.x, y: drag.y });
-      if (layerId) {
-        if (onSelectionChange) onSelectionChange([layerId]);
-        else onSelectLayer?.(layerId);
-        beginTextEditing(layerId, true);
+    // A gesture that moved is a drag, never a click: it must not change the
+    // selection on release (spec §17, §39).
+    const moved = Boolean(drag?.began || drag?.moved);
+    if (drag && !cancelled && !moved) {
+      if (drag.clearOnRelease) {
+        applySelection([]);
+      } else if (drag.toggleOnRelease && drag.layerId) {
+        const next = resolvePointerUpSelection({
+          current: activeSelection,
+          id: drag.layerId,
+          moved,
+          toggleOnRelease: true,
+        });
+        if (next) applySelection(next);
       }
     }
     if (drag?.mode === "marquee" && !cancelled) {
-      let next: string[];
-      if (!drag.began) {
-        next = drag.additive ? drag.originalSelection || [] : [];
-      } else {
-        const found = fullyEnclosedLayerIds(
-          { left: drag.startX, top: drag.startY, right: drag.x, bottom: drag.y },
-          resolvedInteractiveLayers,
-        );
-        next = drag.additive
-          ? Array.from(new Set([...(drag.originalSelection || []), ...found]))
-          : found;
-      }
-      if (onSelectionChange) onSelectionChange(next);
-      else onSelectLayer?.(next[next.length - 1] || null);
+      const found = drag.began
+        ? marqueeSelectedLayerIds(
+            { left: drag.startX, top: drag.startY, right: drag.x, bottom: drag.y },
+            resolvedInteractiveLayers,
+          )
+        : [];
+      applySelection(resolveMarqueeSelection({
+        original: drag.originalSelection || [],
+        found,
+        additive: drag.additive,
+        moved: Boolean(drag.began),
+      }));
     }
     dragRef.current = null;
     setGuides([]);
@@ -1046,7 +1067,7 @@ export default function CustomizerWorkspace({
           width: displayW,
           height: displayH,
           touchAction: editingTextId ? "manipulation" : "none",
-          cursor: textPlacementActive && !editingTextId ? "text" : undefined,
+          cursor: undefined,
         }}
         onPointerDownCapture={onGesturePointerDown}
         onPointerMoveCapture={onGesturePointerMove}
@@ -1255,6 +1276,9 @@ export default function CustomizerWorkspace({
               aria-label={`Edit ${layer.name || (isText ? "text" : "photo")}`}
               onPointerDown={(e) => onLayerPointerDown(e, layer)}
               onDoubleClick={() => {
+                // Double click is an explicit "work on this one object" action:
+                // it replaces the selection rather than toggling it.
+                applySelection([layer.id]);
                 if (layer.type === "group") onEnterGroup?.(layer.id);
                 else if (canEditText) beginTextEditing(layer.id);
                 else if (isImage) onImageLayerActivate?.(layer.id);
@@ -1270,8 +1294,7 @@ export default function CustomizerWorkspace({
                     beginTextEditing(layer.id);
                     return;
                   }
-                  if (onSelectionChange) onSelectionChange([layer.id]);
-                  else onSelectLayer?.(layer.id);
+                  applySelection([layer.id]);
                 }
               }}
               className="absolute outline-none"
@@ -1284,8 +1307,10 @@ export default function CustomizerWorkspace({
                 cursor: movable ? "move" : "pointer",
                 outline: editingTextId === layer.id
                   ? "1px solid rgba(212,175,55,0.9)"
-                  : selected && activeSelection.length === 1
-                    ? "2px solid #D4AF37"
+                  : selected
+                    // Every member of a multi-selection is outlined, so click
+                    // selection shows exactly what is in the set (spec §22).
+                    ? activeSelection.length === 1 ? "2px solid #D4AF37" : "1.5px solid #D4AF37"
                     : "1px solid transparent",
                 outlineOffset: 1,
                 touchAction: editingTextId === layer.id ? "manipulation" : "none",
@@ -1322,8 +1347,7 @@ export default function CustomizerWorkspace({
                     aria-label={`Select photo grid slot ${index + 1}`}
                     onPointerDown={(event) => {
                       event.stopPropagation();
-                      if (onSelectionChange) onSelectionChange([layer.id]);
-                      else onSelectLayer?.(layer.id);
+                      applySelection([layer.id]);
                       onGridSlotSelect?.(layer.id, slot.id);
                     }}
                     onDragOver={(event) => {

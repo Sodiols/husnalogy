@@ -61,7 +61,7 @@ export default function AdminCustomerPreview({ template, product }: { template: 
   const [activeTool, setActiveTool] = useState<CustomerTool>("edit");
   const [textPlacementPreset, setTextPlacementPreset] = useState<TextPlacementPreset>("body");
   const [editingTextLayerId, setEditingTextLayerId] = useState<string | null>(null);
-  const [editTextRequest, setEditTextRequest] = useState<{ layerId: string; requestId: number } | null>(null);
+  const [editTextRequest, setEditTextRequest] = useState<{ layerId: string; requestId: number; created?: boolean } | null>(null);
 
   const validation = useMemo(() => validateCustomerValues(template, values), [template, values]);
   const basePrice = Number(product?.salePrice ?? product?.price ?? 0);
@@ -176,16 +176,18 @@ export default function AdminCustomerPreview({ template, product }: { template: 
     });
   };
 
-  const addUserText = (position: { x: number; y: number }): string | null => {
+  // Mirrors the live customer editor: Text inserts exactly one object at the
+  // centre of the card and never arms a placement mode (spec §11).
+  const addUserText = (preset: TextPlacementPreset = textPlacementPreset): string | null => {
     const canvasW = template?.canvasWidthPx || 1500;
     const canvasH = template?.canvasHeightPx || 2100;
-    const style = getTextPlacementStyle(textPlacementPreset, canvasW, canvasH);
+    const style = getTextPlacementStyle(preset, canvasW, canvasH);
     const layer = normalizeUserLayer({
       page: activePage,
       name: style.name,
       text: "",
-      x: position.x,
-      y: position.y,
+      x: Math.round(canvasW / 2),
+      y: Math.round(canvasH / 2),
       width: style.width,
       height: style.height,
       textStyle: {
@@ -200,7 +202,14 @@ export default function AdminCustomerPreview({ template, product }: { template: 
     if (!layer) return null;
     setEditorState((current) => ({ ...current, userLayers: [...current.userLayers, layer] }));
     setSelectedLayerId(layer.id);
+    setEditTextRequest((current) => ({ layerId: layer.id, requestId: (current?.requestId || 0) + 1, created: true }));
     return layer.id;
+  };
+
+  const insertPreviewText = (preset: TextPlacementPreset = textPlacementPreset) => {
+    if (!pageAllowsCustomerText(template, activePage)) return;
+    setActiveTool("addText");
+    addUserText(preset);
   };
 
   const updateCanvasText = (layerId: string, rawText: string) => {
@@ -267,7 +276,10 @@ export default function AdminCustomerPreview({ template, product }: { template: 
         userLayers={editorState.userLayers}
         selectedLayerId={selectedLayerId}
         selectedPreset={textPlacementPreset}
-        onSelectPreset={(preset) => setTextPlacementPreset(preset)}
+        onSelectPreset={(preset) => {
+          setTextPlacementPreset(preset);
+          insertPreviewText(preset);
+        }}
         onSelectLayer={setSelectedLayerId}
         onUpdateText={updateCanvasText}
         onEnableMultiline={(layerId) =>
@@ -363,7 +375,17 @@ export default function AdminCustomerPreview({ template, product }: { template: 
         </div>
       ) : (
         <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden">
-          <CustomerToolRail tools={tools} activeTool={activeTool} onSelect={setActiveTool} />
+          <CustomerToolRail
+            tools={tools}
+            activeTool={activeTool}
+            onSelect={(tool) => {
+              if (tool === "addText") {
+                insertPreviewText();
+                return;
+              }
+              setActiveTool(tool);
+            }}
+          />
           <aside className="flex w-[clamp(280px,20vw,390px)] shrink-0 flex-col overflow-y-auto border-r border-[#303839]/10 bg-white shadow-[8px_0_24px_rgba(48,56,57,0.035)]">
             {panelContent}
           </aside>
@@ -401,8 +423,6 @@ export default function AdminCustomerPreview({ template, product }: { template: 
               selectedLayerId={selectedLayerId}
               onSelectLayer={setSelectedLayerId}
               onLayerTransform={onLayerTransform}
-              textPlacementActive={activeTool === "addText" && pageAllowsCustomerText(template, activePage)}
-              onTextPlace={addUserText}
               onTextDraftChange={updateCanvasText}
               onTextMultilineActivate={(layerId) =>
                 setEditorState((current) => ({

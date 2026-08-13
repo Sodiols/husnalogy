@@ -33,12 +33,17 @@ import {
 } from "@/lib/customizer/v2/viewport-pan";
 import {
   clientPointToDocument,
-  fullyEnclosedLayerIds,
+  marqueeSelectedLayerIds,
   pointInsideTransformedLayer,
   pointerExceededDragThreshold,
   resolveLayerSelectionGeometry,
   selectionBounds,
 } from "@/lib/customizer/v2/selection-geometry";
+import {
+  resolveMarqueeSelection,
+  resolvePointerDownSelection,
+  resolvePointerUpSelection,
+} from "@/lib/customizer/v2/selection";
 import { isEmptyText } from "@/lib/customizer/v2/text-editing";
 import { actualSizeZoom, computeWorkspaceFit, resolveWorkspacePadding } from "@/lib/customizer/v2/zoom";
 import { layersForPage, selectableLayersForPage } from "./builder-utils";
@@ -65,12 +70,11 @@ export default function AdminCanvas({
   values = {},
   selectedLayerId,
   selectedLayerIds = [],
-  onSelect,
   onSelectionChange,
   onLayerChange,
   onLayersChange,
   onBeginChange,
-  onTextPlace,
+  editTextRequest,
   onTextEditStart,
   onTextDraftChange,
   onTextMultilineActivate,
@@ -385,36 +389,62 @@ export default function AdminCanvas({
     });
   };
 
-  const onLayerPointerDown = (e: React.PointerEvent, layer: any) => {
-    // Let the workspace pan instead — no stopPropagation, no selection change.
-    if (panOwnsPointer(e)) return;
-    e.stopPropagation();
+  // Text insertion is a one-shot toolbar action (spec §11): the builder creates
+  // the layer, then asks the canvas to open its editor. `created` keeps the
+  // "leave it empty and it disappears again" contract of a brand new object.
+  useEffect(() => {
+    if (!editTextRequest?.layerId) return;
+    const layer = selectableLayers.find((candidate: any) => candidate.id === editTextRequest.layerId);
+    if (!layer || layer.type !== "text" || layer.locked || layer.adminEditable === false) return;
+    beginTextEditing(layer.id, Boolean(editTextRequest.created));
+    // requestId deliberately re-opens the editor for the same layer.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editTextRequest?.requestId]);
+
+  /**
+   * One pointer-down path for every object, whether it was hit directly or
+   * through the combined selection frame. Plain clicks accumulate the
+   * selection; an object that is already selected keeps the whole selection
+   * intact so the drag moves it as one block, and is only removed again if the
+   * gesture ends without movement (spec §2, §3, §7).
+   */
+  const beginObjectInteraction = (e: React.PointerEvent, layer: any) => {
     if (editingTextId && editingTextId !== layer.id) return;
-    if (activeTool === "text") {
-      onSelect(layer.id, false);
-      if (layer.type === "text" && !layer.locked && layer.adminEditable !== false) {
-        beginTextEditing(layer.id);
-      }
-      return;
-    }
     if (editingGroupId && String(layer.groupId || "") !== editingGroupId) onExitGroup?.(false);
     const additive = e.shiftKey || e.ctrlKey || e.metaKey;
-    onSelect(layer.id, additive);
-    // Additive clicks are selection toggles, never accidental drags.
-    if (additive) return;
-    if (layer.locked || layer.adminEditable === false) return;
+    const decision = resolvePointerDownSelection({ current: selectionIds, id: layer.id, additive });
+    onSelectionChange?.(decision.selection);
+    // Modifier clicks are selection toggles, never accidental drags.
+    if (!decision.allowDrag) return;
 
+    const immovable = layer.locked || layer.adminEditable === false;
     // Dragging a layer that is part of a multi-selection moves the whole
     // selection together (spec §7).
-    const groupIds = selectionIds.includes(layer.id) && selectionIds.length > 1 ? selectionIds : [layer.id];
+    const groupIds = decision.selection.includes(layer.id) && decision.selection.length > 1
+      ? decision.selection
+      : [layer.id];
     const selectedTargets = groupIds
       .map((id) => layers.find((candidate: any) => candidate.id === id))
       .filter(Boolean);
     // A multi-selection is one logical command: never move an allowed subset.
-    if (
-      selectedTargets.length !== groupIds.length ||
-      selectedTargets.some((target: any) => target.locked || target.adminEditable === false)
-    ) return;
+    const movable =
+      !immovable &&
+      selectedTargets.length === groupIds.length &&
+      !selectedTargets.some((target: any) => target.locked || target.adminEditable === false);
+
+    if (!movable) {
+      // Still track the gesture so a click on a locked/undraggable object can
+      // toggle itself back out of the selection on release.
+      (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
+      dragRef.current = {
+        mode: "select-click",
+        layerId: layer.id,
+        startClientX: e.clientX,
+        startClientY: e.clientY,
+        toggleOnRelease: decision.toggleOnRelease,
+      };
+      return;
+    }
 
     (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
     const startPositions: Record<string, { x: number; y: number }> = {};
@@ -431,23 +461,36 @@ export default function AdminCanvas({
       startY: layer.y,
       startPositions,
       excludeIds: groupIds,
+      toggleOnRelease: decision.toggleOnRelease,
     };
+  };
+
+  const onLayerPointerDown = (e: React.PointerEvent, layer: any) => {
+    // Let the workspace pan instead — no stopPropagation, no selection change.
+    if (panOwnsPointer(e)) return;
+    e.stopPropagation();
+    beginObjectInteraction(e, layer);
   };
 
   const onMultiSelectionPointerDown = (e: React.PointerEvent) => {
     if (panOwnsPointer(e) || !multiBounds || e.button !== 0) return;
     e.stopPropagation();
-    const additive = e.shiftKey || e.ctrlKey || e.metaKey;
-    if (additive) {
-      const rect = surfaceRef.current?.getBoundingClientRect();
-      if (!rect) return;
-      const point = clientPointToDocument(e.clientX, e.clientY, rect, displayW, displayH, scale);
-      const hit = resolvedSelectableLayers
-        .filter((layer: any) => selectionIds.includes(layer.id) && pointInsideTransformedLayer(point.x, point.y, layer))
-        .at(-1);
-      if (hit) onSelect(hit.id, true);
-      return;
+    const rect = surfaceRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const point = clientPointToDocument(e.clientX, e.clientY, rect, displayW, displayH, scale);
+    // The frame spans the whole bounding box, including the gaps between
+    // objects — resolve what is actually under the pointer first.
+    const hit = resolvedSelectableLayers
+      .filter((layer: any) => pointInsideTransformedLayer(point.x, point.y, layer))
+      .at(-1);
+    if (hit) {
+      const target = selectableLayers.find((layer: any) => layer.id === hit.id);
+      if (target) {
+        beginObjectInteraction(e, target);
+        return;
+      }
     }
+    if (e.shiftKey || e.ctrlKey || e.metaKey) return;
     if (!multiCanMove) return;
     (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
     const startPositions: Record<string, { x: number; y: number }> = {};
@@ -464,6 +507,9 @@ export default function AdminCanvas({
       startY: multiBounds.y,
       startPositions,
       excludeIds: selectionIds,
+      // Empty space inside the frame is still empty canvas: a click that never
+      // moves clears the selection (spec §4).
+      clearOnRelease: true,
     };
   };
 
@@ -473,18 +519,6 @@ export default function AdminCanvas({
     const rect = surfaceRef.current?.getBoundingClientRect();
     if (!rect) return;
     const point = clientPointToDocument(event.clientX, event.clientY, rect, displayW, displayH, scale);
-    if (activeTool === "text") {
-      dragRef.current = {
-        mode: "text-placement",
-        startClientX: event.clientX,
-        startClientY: event.clientY,
-        x: point.x,
-        y: point.y,
-        moved: false,
-      };
-      (event.currentTarget as HTMLElement).setPointerCapture?.(event.pointerId);
-      return;
-    }
     if (activeTool !== "select") return;
     if (editingGroupId) {
       const group = layers.find((layer: any) => layer.id === editingGroupId);
@@ -547,7 +581,7 @@ export default function AdminCanvas({
   const onPointerMove = (e: React.PointerEvent) => {
     const drag = dragRef.current;
     if (!drag) return;
-    if (drag.mode === "text-placement") {
+    if (drag.mode === "select-click") {
       if (pointerExceededDragThreshold(drag.startClientX, drag.startClientY, e.clientX, e.clientY)) {
         drag.moved = true;
       }
@@ -708,31 +742,40 @@ export default function AdminCanvas({
 
   const endDrag = (cancelled = false) => {
     const drag = dragRef.current;
-    if (drag?.mode === "text-placement" && !cancelled && !drag.moved) {
-      const layerId = onTextPlace?.({ x: drag.x, y: drag.y });
-      if (layerId) {
-        onSelect(layerId, false);
-        beginTextEditing(layerId, true);
+    // A gesture that moved is a drag, never a click: it must not change the
+    // selection on release (spec §39).
+    const moved = Boolean(drag?.began || drag?.moved);
+    if (drag && !cancelled && !moved) {
+      if (drag.clearOnRelease) {
+        onSelectionChange?.([]);
+      } else if (drag.toggleOnRelease && drag.layerId) {
+        const next = resolvePointerUpSelection({
+          current: selectionIds,
+          id: drag.layerId,
+          moved,
+          toggleOnRelease: true,
+        });
+        if (next) onSelectionChange?.(next);
       }
     }
     if (drag?.mode === "marquee" && !cancelled) {
-      if (!drag.began) {
-        if (!drag.additive) onSelectionChange?.([]);
-      } else {
-        const found = fullyEnclosedLayerIds(
-        {
-            left: drag.startX,
-            top: drag.startY,
-            right: drag.x,
-            bottom: drag.y,
-        },
-        resolvedSelectableLayers,
-      );
-        const next = drag.additive
-          ? Array.from(new Set([...(drag.originalSelection || []), ...found]))
-        : found;
-        onSelectionChange?.(next);
-      }
+      const found = drag.began
+        ? marqueeSelectedLayerIds(
+            {
+              left: drag.startX,
+              top: drag.startY,
+              right: drag.x,
+              bottom: drag.y,
+            },
+            resolvedSelectableLayers,
+          )
+        : [];
+      onSelectionChange?.(resolveMarqueeSelection({
+        original: drag.originalSelection || [],
+        found,
+        additive: drag.additive,
+        moved: Boolean(drag.began),
+      }));
     }
     dragRef.current = null;
     setGuides([]);
@@ -886,7 +929,7 @@ export default function AdminCanvas({
           // outlines, handles and the inline editor all move together and stay
           // aligned, because they all live inside this element.
           transform: `translate3d(${panX}px, ${panY}px, 0)`,
-          cursor: activeTool === "text" && !editingTextId ? "text" : undefined,
+          cursor: undefined,
         }}
         onPointerMove={onPointerMove}
         onPointerUp={() => endDrag(false)}
@@ -1021,7 +1064,9 @@ export default function AdminCanvas({
               onPointerDown={(e) => onLayerPointerDown(e, layer)}
               onDoubleClick={(event) => {
                 event.stopPropagation();
-                onSelect(layer.id);
+                // Double click is an explicit "work on this one object" action:
+                // it replaces the selection rather than toggling it.
+                onSelectionChange?.([layer.id]);
                 if (layer.type === "group") onEnterGroup?.(layer.id);
                 else if (layer.type === "text" && !layer.locked && layer.adminEditable !== false) beginTextEditing(layer.id);
               }}
@@ -1050,8 +1095,10 @@ export default function AdminCanvas({
                    ? "1px solid rgba(212,175,55,0.9)"
                    : selected
                    ? "2px solid #303839"
+                   // Every member of a multi-selection is outlined, so click
+                   // selection shows exactly what is in the set (spec §22).
                    : inSelection
-                     ? "1px solid transparent"
+                     ? "1.5px solid #D4AF37"
                      : "1px dashed rgba(48,56,57,0.22)",
                 background: "transparent",
                 touchAction: "none",
