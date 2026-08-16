@@ -7,6 +7,17 @@
 // breaks. SVG has no automatic wrapping — each output line becomes one
 // positioned <tspan>/<text>, which resvg and browsers draw identically.
 
+/**
+ * Product defaults for new text, shared by every surface that creates,
+ * normalizes or resets a text object so "the default" is one number rather
+ * than a literal repeated across a dozen modules.
+ *
+ * Render-time fallbacks for a MISSING letter spacing stay at 0 ("no extra
+ * spacing"), which is a different question from what a new object starts with.
+ */
+export const DEFAULT_LINE_HEIGHT = 1;
+export const DEFAULT_LETTER_SPACING = 1;
+
 export type MeasureStyle = {
   fontFamily: string;
   fontSize: number;
@@ -170,7 +181,7 @@ function layoutAtSize(
 export function layoutText(input: TextLayoutInput, measure: MeasureFn): TextLayoutResult {
   const canonicalText = canonicalLayoutText(input.text);
   const rawText = input.uppercase ? canonicalText.toUpperCase() : canonicalText;
-  const lineHeightMult = Number(input.lineHeight) > 0 ? Number(input.lineHeight) : 1.15;
+  const lineHeightMult = Number(input.lineHeight) > 0 ? Number(input.lineHeight) : DEFAULT_LINE_HEIGHT;
   const minFontSize = Math.max(4, Number(input.minFontSize) || 8);
   const startSize = Math.max(minFontSize, Number(input.fontSize) || 16);
   const shrink = input.fitMode === "shrink";
@@ -259,7 +270,7 @@ export function getTextResizeConstraints(input: TextLayoutInput, measure: Measur
   const canonicalText = canonicalLayoutText(input.text);
   const rawText = input.uppercase ? canonicalText.toUpperCase() : canonicalText;
   const multiline = usesMultilineLayout(rawText, input.multiline);
-  const lineHeight = Number(input.lineHeight) > 0 ? Number(input.lineHeight) : 1.15;
+  const lineHeight = Number(input.lineHeight) > 0 ? Number(input.lineHeight) : DEFAULT_LINE_HEIGHT;
   const baseFontSize = Math.max(4, Number(input.fontSize) || 16);
   const minFontSize = Math.max(4, Number(input.minFontSize) || Math.min(baseFontSize, 8));
   const width = Math.max(1, Number(input.width) || 1);
@@ -582,7 +593,7 @@ export function getSingleLineTextBox(
   measure: MeasureFn,
 ): SingleLineTextBox {
   const fontSize = Math.max(4, Number(input.fontSize) || 16);
-  const lineHeight = Number(input.lineHeight) > 0 ? Number(input.lineHeight) : 1.15;
+  const lineHeight = Number(input.lineHeight) > 0 ? Number(input.lineHeight) : DEFAULT_LINE_HEIGHT;
   const style: MeasureStyle = {
     fontFamily: input.fontFamily,
     fontSize,
@@ -690,6 +701,89 @@ export function scaleSingleLineText(
     result = best;
   }
   return result;
+}
+
+export type TextBoxScaleInput = {
+  /** Corner handle being dragged: "nw" | "ne" | "sw" | "se". */
+  handle: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  fontSize: number;
+  letterSpacing?: number;
+  /** Pointer travel in document units since the drag started. */
+  deltaX: number;
+  deltaY: number;
+  minFontSize?: number;
+  maxFontSize?: number;
+};
+
+export type TextBoxScaleResult = {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  fontSize: number;
+  letterSpacing: number;
+};
+
+/**
+ * Corner-drag scaling for a text object: the GLYPHS grow, not just the frame.
+ *
+ * Dragging a corner applies one uniform factor to the box, the font size and
+ * the letter spacing, anchored on the opposite corner — the behaviour every
+ * professional editor gives a corner handle. Side handles keep resizing the
+ * box alone, which is how the wrap width and the block height are set.
+ *
+ * Pure geometry: no measurement is needed because the factor comes from the
+ * pointer, and the renderers re-resolve the real text box afterwards.
+ */
+export function scaleTextBox(input: TextBoxScaleInput): TextBoxScaleResult {
+  const startWidth = Math.max(1, Number(input.width) || 1);
+  const startHeight = Math.max(1, Number(input.height) || 1);
+  const minFontSize = Math.max(1, Number(input.minFontSize) || 4);
+  const maxFontSize = Math.max(minFontSize, Number(input.maxFontSize) || 500);
+  const startFontSize = Math.min(maxFontSize, Math.max(minFontSize, Number(input.fontSize) || 16));
+
+  const signX = input.handle.includes("e") ? 1 : input.handle.includes("w") ? -1 : 0;
+  const signY = input.handle.includes("s") ? 1 : input.handle.includes("n") ? -1 : 0;
+
+  // The factor is the pointer's travel projected onto the box diagonal that
+  // runs from the anchored corner to the dragged one. That is continuous in
+  // both axes — no jump when a diagonal drag changes which axis dominates —
+  // and it is exact whenever the pointer moves along the diagonal itself,
+  // which is the direction the corner cursor invites.
+  const deltaX = Number(input.deltaX) || 0;
+  const deltaY = Number(input.deltaY) || 0;
+  const diagonalX = signX * startWidth;
+  const diagonalY = signY * startHeight;
+  const diagonalLengthSquared = diagonalX * diagonalX + diagonalY * diagonalY;
+  const requested = diagonalLengthSquared > 0
+    ? 1 + (deltaX * diagonalX + deltaY * diagonalY) / diagonalLengthSquared
+    : 1;
+  const factor = Math.min(
+    maxFontSize / startFontSize,
+    Math.max(minFontSize / startFontSize, requested),
+  );
+
+  const width = Math.max(1, Math.round(startWidth * factor));
+  const height = Math.max(1, Math.round(startHeight * factor));
+  const left = input.x - startWidth / 2;
+  const right = input.x + startWidth / 2;
+  const top = input.y - startHeight / 2;
+  const bottom = input.y + startHeight / 2;
+
+  return {
+    x: Math.round(signX < 0 ? right - width / 2 : signX > 0 ? left + width / 2 : input.x),
+    y: Math.round(signY < 0 ? bottom - height / 2 : signY > 0 ? top + height / 2 : input.y),
+    width,
+    height,
+    fontSize: Math.min(maxFontSize, Math.max(minFontSize, Math.round(startFontSize * factor))),
+    // Letter spacing is stored in px, so it has to travel with the font size
+    // or the wording visibly loosens as the text grows.
+    letterSpacing: Number(((Number(input.letterSpacing) || 0) * factor).toFixed(2)),
+  };
 }
 
 /* ---------------------------------------------------------------- measurers */

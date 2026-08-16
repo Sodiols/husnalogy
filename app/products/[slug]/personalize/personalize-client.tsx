@@ -56,7 +56,7 @@ import { stripEphemeralAssetUrls } from "@/lib/customizer/v2/asset-references";
 import { createGridSlotsFromPreset, GRID_PRESETS } from "@/lib/customizer/v2/grids";
 import { alignCustomerLayers, arrangeLayers, removeCustomerLayers, reorderLayerByDrop, type AlignAction, type ArrangeAction } from "@/lib/customizer/v2/customer-actions";
 import { evaluateGroupAction, getDescendantIds, groupLayers, transformGroupChildren, ungroupLayers } from "@/lib/customizer/v2/groups";
-import { createCanvasMeasure, getSingleLineTextBox, isSingleLineAutoSizeText } from "@/lib/customizer/v2/text-layout";
+import { DEFAULT_LINE_HEIGHT, createCanvasMeasure, getSingleLineTextBox, isSingleLineAutoSizeText } from "@/lib/customizer/v2/text-layout";
 import { resolveLayerSelectionGeometry } from "@/lib/customizer/v2/selection-geometry";
 import { resolveSelection, sanitizeSelection } from "@/lib/customizer/v2/selection";
 import {
@@ -1497,7 +1497,6 @@ export default function PersonalizeClient({ product, template }: { product: any;
           return null;
         },
       }),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     [effectiveLayers, selectedLayerIds, customerGroupingEnabled],
   );
 
@@ -1589,9 +1588,16 @@ export default function PersonalizeClient({ product, template }: { product: any;
         if (transformPatch.height !== undefined) allowed.height = transformPatch.height;
       }
       if (permissions.rotate && transformPatch.rotation !== undefined) allowed.rotation = transformPatch.rotation;
-      const allowedTextStyle = requestedTextStyle && permissions.changeFontSize
-        ? { fontSize: requestedTextStyle.fontSize }
-        : null;
+      // Corner scaling carries the letter spacing with the font size, so each
+      // property is gated by its own administrator permission.
+      const styleUpdate: Record<string, unknown> = {};
+      if (requestedTextStyle?.fontSize !== undefined && permissions.changeFontSize) {
+        styleUpdate.fontSize = requestedTextStyle.fontSize;
+      }
+      if (requestedTextStyle?.letterSpacing !== undefined && permissions.changeLetterSpacing) {
+        styleUpdate.letterSpacing = requestedTextStyle.letterSpacing;
+      }
+      const allowedTextStyle = Object.keys(styleUpdate).length ? styleUpdate : null;
       if (!Object.keys(allowed).length && !allowedTextStyle) return;
       setEditorState((current) => {
         const existing = current.layerOverrides[layerId] || {};
@@ -1634,7 +1640,7 @@ export default function PersonalizeClient({ product, template }: { product: any;
         fontWeight: nextStyle.fontWeight || "400",
         fontStyle: nextStyle.fontStyle === "italic" ? "italic" : "normal",
         letterSpacing: Number(nextStyle.letterSpacing) || 0,
-        lineHeight: Number(nextStyle.lineHeight) || 1.15,
+        lineHeight: Number(nextStyle.lineHeight) || DEFAULT_LINE_HEIGHT,
         uppercase: Boolean(nextStyle.uppercase),
       }, customerTextMeasure);
       return { style: { ...stylePatch, fontSize: nextStyle.fontSize }, box };

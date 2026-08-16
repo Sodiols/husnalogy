@@ -33,7 +33,7 @@ import AdminUploadsPanel, { type AdminUploadAsset } from "./AdminUploadsPanel";
 import CustomerElementsPanel, { type LibraryElement } from "@/app/components/customizer/CustomerElementsPanel";
 import { createGridSlots } from "@/lib/customizer/v2/grids";
 import { evaluateGroupAction, groupLayers, ungroupLayers } from "@/lib/customizer/v2/groups";
-import { createCanvasMeasure, getTextResizeConstraints, isSingleLineAutoSizeText } from "@/lib/customizer/v2/text-layout";
+import { DEFAULT_LINE_HEIGHT, createCanvasMeasure, getTextResizeConstraints, isSingleLineAutoSizeText } from "@/lib/customizer/v2/text-layout";
 import { resolveLayerSelectionGeometry } from "@/lib/customizer/v2/selection-geometry";
 import { resolveSelection, sanitizeSelection, selectionsEqual, type SelectionIntent } from "@/lib/customizer/v2/selection";
 import {
@@ -99,7 +99,7 @@ function constrainTextLayerBox(template: any, layerId: string): any {
     fontWeight: style.fontWeight || "400",
     fontStyle: style.fontStyle === "italic" ? "italic" : "normal",
     letterSpacing: Number(style.letterSpacing) || 0,
-    lineHeight: Number(style.lineHeight) || 1.15,
+    lineHeight: Number(style.lineHeight) || DEFAULT_LINE_HEIGHT,
     multiline: Boolean(style.multiline),
     fitMode: style.fitMode === "shrink" ? "shrink" : style.fitMode === "auto-height" ? "auto-height" : "fixed",
   }, builderTextMeasure);
@@ -115,7 +115,7 @@ function constrainTextLayerBox(template: any, layerId: string): any {
     fontWeight: style.fontWeight || "400",
     fontStyle: style.fontStyle === "italic" ? "italic" : "normal",
     letterSpacing: Number(style.letterSpacing) || 0,
-    lineHeight: Number(style.lineHeight) || 1.15,
+    lineHeight: Number(style.lineHeight) || DEFAULT_LINE_HEIGHT,
     multiline: Boolean(style.multiline),
     fitMode: style.fitMode === "shrink" ? "shrink" : style.fitMode === "auto-height" ? "auto-height" : "fixed",
   }, builderTextMeasure);
@@ -636,7 +636,7 @@ export default function AdminDesignBuilder({
   // One entry point for every non-canvas selection source (layers panel, field
   // jumps). It shares the canvas's semantics through lib/customizer/v2/selection
   // so a click in the panel and a click on the card can never diverge.
-  const onCanvasSelect = (id: string | null, intent: SelectionIntent = "toggle") => {
+  const onCanvasSelect = (id: string | null, intent: SelectionIntent = "replace") => {
     if (!id) {
       setSelectedLayerIds([]);
       return;

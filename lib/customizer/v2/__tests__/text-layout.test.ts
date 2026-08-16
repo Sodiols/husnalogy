@@ -6,6 +6,7 @@ import {
   isSingleLineAutoSizeText,
   layoutText,
   scaleSingleLineText,
+  scaleTextBox,
   type MeasureFn,
 } from "../text-layout";
 
@@ -228,6 +229,76 @@ describe("text layout service", () => {
       expect(maximum.fontSize).toBe(120);
       expect(safe.x + safe.width / 2).toBeLessThanOrEqual(650.5);
       expect(safe.fontSize).toBeLessThan(120);
+    });
+  });
+
+  describe('corner-drag text scaling', () => {
+    // 200x100 box: the diagonal from the anchored corner is (200, 100), so a
+    // 100px horizontal drag projects to 20000/50000 = 0.4 of that diagonal.
+    const box = { x: 500, y: 400, width: 200, height: 100, fontSize: 50, letterSpacing: 4 };
+
+    it('grows the font, the box and the letter spacing by one factor', () => {
+      const result = scaleTextBox({ ...box, handle: 'se', deltaX: 100, deltaY: 0 });
+      expect(result.width).toBe(280);
+      expect(result.height).toBe(140);
+      expect(result.fontSize).toBe(70);
+      expect(result.letterSpacing).toBe(5.6);
+    });
+
+    it('anchors the opposite corner', () => {
+      const se = scaleTextBox({ ...box, handle: 'se', deltaX: 100, deltaY: 0 });
+      expect(se.x - se.width / 2).toBe(box.x - box.width / 2);
+      expect(se.y - se.height / 2).toBe(box.y - box.height / 2);
+
+      const nw = scaleTextBox({ ...box, handle: 'nw', deltaX: -100, deltaY: 0 });
+      expect(nw.x + nw.width / 2).toBe(box.x + box.width / 2);
+      expect(nw.y + nw.height / 2).toBe(box.y + box.height / 2);
+      expect(nw.fontSize).toBe(70);
+    });
+
+    it('shrinks the font and clamps to the configured limits', () => {
+      const smaller = scaleTextBox({ ...box, handle: 'se', deltaX: -100, deltaY: 0 });
+      expect(smaller.fontSize).toBe(30);
+      expect(smaller.width).toBe(120);
+
+      const floored = scaleTextBox({ ...box, handle: 'se', deltaX: -10000, deltaY: 0, minFontSize: 10 });
+      expect(floored.fontSize).toBe(10);
+      expect(floored.width).toBe(40);
+
+      const capped = scaleTextBox({ ...box, handle: 'se', deltaX: 10000, deltaY: 0, maxFontSize: 120 });
+      expect(capped.fontSize).toBe(120);
+    });
+
+    it('follows the pointer exactly along the diagonal it is dragged on', () => {
+      // (100, 50) is parallel to the (200, 100) diagonal: the corner lands
+      // precisely under the pointer, so the box grows by exactly half.
+      const exact = scaleTextBox({ ...box, handle: 'se', deltaX: 100, deltaY: 50 });
+      expect(exact.width).toBe(300);
+      expect(exact.height).toBe(150);
+      expect(exact.fontSize).toBe(75);
+    });
+
+    it('stays continuous as a diagonal drag crosses between the axes', () => {
+      const samples = [];
+      for (let step = 0; step <= 20; step += 1) {
+        const angle = (step / 20) * (Math.PI / 2);
+        samples.push(scaleTextBox({
+          ...box,
+          handle: 'se',
+          deltaX: Math.cos(angle) * 60,
+          deltaY: Math.sin(angle) * 60,
+        }).fontSize);
+      }
+      // No jump: sweeping the drag direction never steps the font size by more
+      // than a point, which is what made the old dominant-axis rule feel jerky.
+      for (let index = 1; index < samples.length; index += 1) {
+        expect(Math.abs(samples[index] - samples[index - 1])).toBeLessThanOrEqual(1);
+      }
+    });
+
+    it('leaves a zero drag untouched', () => {
+      const same = scaleTextBox({ ...box, handle: 'ne', deltaX: 0, deltaY: 0 });
+      expect(same).toMatchObject({ x: 500, y: 400, width: 200, height: 100, fontSize: 50, letterSpacing: 4 });
     });
   });
 });

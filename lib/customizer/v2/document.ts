@@ -74,6 +74,8 @@ function edgeInsets(value: unknown, fallback: EdgeInsets): EdgeInsets {
 
 /* -------------------------------------------------------------- permissions */
 
+import { DEFAULT_LETTER_SPACING, DEFAULT_LINE_HEIGHT } from "./text-layout";
+
 export function normalizePermissionsV2(
   _input: unknown,
   layer: { type?: string; customerEditable?: boolean; allowZoom?: boolean; allowReposition?: boolean } = {},
@@ -98,8 +100,8 @@ export function normalizeTextStyleV2(input: unknown): TextStyle {
     fontStyle: str(s.fontStyle) === "italic" ? "italic" : "normal",
     underline: bool(s.underline),
     color: str(s.color) || "#303839",
-    letterSpacing: num(s.letterSpacing, 0),
-    lineHeight: num(s.lineHeight, 1.15) || 1.15,
+    letterSpacing: num(s.letterSpacing, DEFAULT_LETTER_SPACING),
+    lineHeight: num(s.lineHeight, DEFAULT_LINE_HEIGHT) || DEFAULT_LINE_HEIGHT,
     textAlign: align === "left" || align === "right" ? (align as "left" | "right") : "center",
     verticalAlign: vAlign === "top" || vAlign === "bottom" ? (vAlign as "top" | "bottom") : "middle",
     uppercase: bool(s.uppercase),

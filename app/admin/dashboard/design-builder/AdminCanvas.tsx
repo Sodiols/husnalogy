@@ -10,11 +10,13 @@ import CustomizerPreview from "@/app/components/customizer/CustomizerPreview";
 import EditableNumericStepper from "@/app/components/customizer/EditableNumericStepper";
 import InlineCanvasTextEditor from "@/app/components/customizer/InlineCanvasTextEditor";
 import {
+  DEFAULT_LINE_HEIGHT,
   createCanvasMeasure,
   getTextResizeConstraints,
   isSingleLineAutoSizeText,
   layoutText,
   scaleSingleLineText,
+  scaleTextBox,
   type MeasureFn,
   type SafeBounds,
 } from "@/lib/customizer/v2/text-layout";
@@ -58,7 +60,13 @@ const HANDLES: Array<{ id: string; cx: number; cy: number; cursor: string }> = [
   { id: "w", cx: 0, cy: 0.5, cursor: "ew-resize" },
   { id: "e", cx: 1, cy: 0.5, cursor: "ew-resize" },
 ];
-const SINGLE_LINE_TEXT_HANDLES = HANDLES.filter((handle) => handle.id === "w" || handle.id === "e");
+// Corner handles scale a text object's real font size; side handles resize the
+// box (wrap width / block height). A single-line auto-sized object has no
+// independent height, so it offers the corners plus the two side handles only.
+const TEXT_SCALE_HANDLES = new Set(["nw", "ne", "sw", "se"]);
+const SINGLE_LINE_TEXT_HANDLES = HANDLES.filter(
+  (handle) => handle.id === "w" || handle.id === "e" || TEXT_SCALE_HANDLES.has(handle.id),
+);
 
 const SNAP_PX = 8; // screen pixels
 
@@ -237,7 +245,7 @@ export default function AdminCanvas({
       fontWeight: style.fontWeight || "400",
       fontStyle: style.fontStyle === "italic" ? "italic" as const : "normal" as const,
       letterSpacing: Number(style.letterSpacing) || 0,
-      lineHeight: Number(style.lineHeight) || 1.15,
+      lineHeight: Number(style.lineHeight) || DEFAULT_LINE_HEIGHT,
       multiline: Boolean(style.multiline),
       fitMode: style.fitMode === "shrink" ? "shrink" as const : style.fitMode === "auto-height" ? "auto-height" as const : "fixed" as const,
     };
@@ -271,7 +279,7 @@ export default function AdminCanvas({
       fontWeight: style.fontWeight || "400",
       fontStyle: style.fontStyle === "italic" ? "italic" : "normal",
       letterSpacing: Number(style.letterSpacing) || 0,
-      lineHeight: Number(style.lineHeight) || 1.15,
+      lineHeight: Number(style.lineHeight) || DEFAULT_LINE_HEIGHT,
       multiline: Boolean(style.multiline),
       fitMode: resolved.autoWidthClamped && !style.multiline
         ? "shrink"
@@ -441,7 +449,7 @@ export default function AdminCanvas({
         layerId: layer.id,
         startClientX: e.clientX,
         startClientY: e.clientY,
-        toggleOnRelease: decision.toggleOnRelease,
+        collapseOnRelease: decision.collapseOnRelease,
       };
       return;
     }
@@ -461,7 +469,7 @@ export default function AdminCanvas({
       startY: layer.y,
       startPositions,
       excludeIds: groupIds,
-      toggleOnRelease: decision.toggleOnRelease,
+      collapseOnRelease: decision.collapseOnRelease,
     };
   };
 
@@ -546,12 +554,16 @@ export default function AdminCanvas({
     e.stopPropagation();
     (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
     const interactionLayer = singleLineInteractionLayer(layer);
-    const textScale = interactionLayer.type === "text" && isSingleLineAutoSizeText(
+    const isText = interactionLayer.type === "text";
+    const singleLineScale = isText && isSingleLineAutoSizeText(
       interactionLayer.textStyle,
       interactionLayer.resolvedText ?? interactionLayer.text,
     );
     dragRef.current = {
-      mode: textScale ? "text-scale" : "resize",
+      // A corner scales the glyphs; a side still resizes the box.
+      mode: isText && TEXT_SCALE_HANDLES.has(handle)
+        ? "text-box-scale"
+        : singleLineScale ? "text-scale" : "resize",
       handle,
       layerId: layer.id,
       startClientX: e.clientX,
@@ -643,6 +655,36 @@ export default function AdminCanvas({
     const dx = (e.clientX - drag.startClientX) / scale;
     const dy = (e.clientY - drag.startClientY) / scale;
 
+    if (drag.mode === "text-box-scale") {
+      const style = drag.layer.textStyle || {};
+      // Work in the object's own frame so a rotated text box scales along the
+      // direction the handle actually points.
+      const radians = ((Number(drag.layer.rotation) || 0) * Math.PI) / 180;
+      const localDx = dx * Math.cos(radians) + dy * Math.sin(radians);
+      const localDy = -dx * Math.sin(radians) + dy * Math.cos(radians);
+      const scaled = scaleTextBox({
+        handle: drag.handle,
+        x: drag.startX,
+        y: drag.startY,
+        width: drag.startW,
+        height: drag.startH,
+        fontSize: Number(style.fontSize) || 48,
+        letterSpacing: Number(style.letterSpacing) || 0,
+        deltaX: localDx,
+        deltaY: localDy,
+        minFontSize: Number(style.minFontSize) || 4,
+        maxFontSize: Number(style.maxFontSize) || 500,
+      });
+      onLayerChange(drag.layerId, {
+        x: scaled.x,
+        y: scaled.y,
+        width: scaled.width,
+        height: scaled.height,
+        textStyle: { fontSize: scaled.fontSize, letterSpacing: scaled.letterSpacing },
+      });
+      return;
+    }
+
     if (drag.mode === "text-scale") {
       const style = drag.layer.textStyle || {};
       const rotation = Number(drag.layer.rotation) || 0;
@@ -660,7 +702,7 @@ export default function AdminCanvas({
         fontWeight: style.fontWeight || "400",
         fontStyle: style.fontStyle === "italic" ? "italic" : "normal",
         letterSpacing: Number(style.letterSpacing) || 0,
-        lineHeight: Number(style.lineHeight) || 1.15,
+        lineHeight: Number(style.lineHeight) || DEFAULT_LINE_HEIGHT,
         uppercase: Boolean(style.uppercase),
         rotation,
         handle: drag.handle,
@@ -748,12 +790,12 @@ export default function AdminCanvas({
     if (drag && !cancelled && !moved) {
       if (drag.clearOnRelease) {
         onSelectionChange?.([]);
-      } else if (drag.toggleOnRelease && drag.layerId) {
+      } else if (drag.collapseOnRelease && drag.layerId) {
         const next = resolvePointerUpSelection({
           current: selectionIds,
           id: drag.layerId,
           moved,
-          toggleOnRelease: true,
+          collapseOnRelease: true,
         });
         if (next) onSelectionChange?.(next);
       }
@@ -1132,13 +1174,16 @@ export default function AdminCanvas({
               )}
               {selected && !layer.locked && editingTextId !== layer.id && (
                 <>
-                  {(singleLineTextScale ? SINGLE_LINE_TEXT_HANDLES : HANDLES).map((h) => (
+                  {(singleLineTextScale ? SINGLE_LINE_TEXT_HANDLES : HANDLES).map((h) => {
+                    // A corner on any text object changes the real font size.
+                    const scalesText = layer.type === "text" && (TEXT_SCALE_HANDLES.has(h.id) || singleLineTextScale);
+                    return (
                     <button
                       type="button"
                       key={h.id}
                       data-canvas-handle={h.id}
-                      aria-label={singleLineTextScale ? `Scale text from ${h.id === "w" ? "left" : "right"}` : `Resize from ${h.id}`}
-                      title={singleLineTextScale ? "Drag to change font size. Hold Alt or Option to scale from the centre." : undefined}
+                      aria-label={scalesText ? `Scale text from ${h.id}` : `Resize from ${h.id}`}
+                      title={scalesText ? "Drag to change the font size." : undefined}
                       onPointerDown={(e) => onHandlePointerDown(e, interactionLayer, h.id)}
                       className="absolute z-20 flex h-11 w-11 items-center justify-center border-0 bg-transparent p-0 outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] focus-visible:ring-offset-1"
                       style={{
@@ -1150,10 +1195,11 @@ export default function AdminCanvas({
                     >
                       <span
                         aria-hidden
-                        className={`block bg-white ${singleLineTextScale ? "h-3.5 w-3.5 rounded-full border-2 border-[#303839]" : "h-2.5 w-2.5 rounded-sm border-2 border-[#303839]"}`}
+                        className={`block bg-white ${scalesText ? "h-3.5 w-3.5 rounded-full border-2 border-[#303839]" : "h-2.5 w-2.5 rounded-sm border-2 border-[#303839]"}`}
                       />
                     </button>
-                  ))}
+                    );
+                  })}
                   {/* Rotation handle */}
                   <span
                     onPointerDown={(e) => onRotatePointerDown(e, layer)}

@@ -15,6 +15,8 @@ import { getFontByFamily } from "./fonts";
 
 /** Canonical fallbacks. These MUST match the renderer fallbacks so the toolbar
  *  never shows a value the canvas is not actually drawing. */
+import { DEFAULT_LETTER_SPACING, DEFAULT_LINE_HEIGHT } from "./text-layout";
+
 export const TEXT_TOOLBAR_DEFAULTS = {
   fontFamily: "Cormorant Garamond",
   fontSize: 48,
@@ -23,8 +25,8 @@ export const TEXT_TOOLBAR_DEFAULTS = {
   color: "#303839",
   textAlign: "center",
   verticalAlign: "middle",
-  letterSpacing: 0,
-  lineHeight: 1.15,
+  letterSpacing: DEFAULT_LETTER_SPACING,
+  lineHeight: DEFAULT_LINE_HEIGHT,
 } as const;
 
 export const FONT_SIZE_RULES = { minimum: 4, maximum: 500, step: 1, largeStep: 10 } as const;

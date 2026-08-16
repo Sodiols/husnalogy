@@ -4,6 +4,8 @@
 // persistence/history, but both Admin and Customer use these exact placement
 // presets and newline rules.
 
+import { DEFAULT_LETTER_SPACING, DEFAULT_LINE_HEIGHT } from "./text-layout";
+
 export const TEXT_PLACEMENT_DRAG_THRESHOLD_PX = 4;
 
 export type TextPlacementPreset = "heading" | "subheading" | "body";
@@ -212,8 +214,8 @@ export function getTextPlacementStyle(
       height: Math.round(fontSize * 1.3),
       multiline: false,
       textAlign: "center",
-      lineHeight: 1.1,
-      letterSpacing: 1.5,
+      lineHeight: DEFAULT_LINE_HEIGHT,
+      letterSpacing: DEFAULT_LETTER_SPACING,
     };
   }
   if (preset === "subheading") {
@@ -225,8 +227,8 @@ export function getTextPlacementStyle(
       height: Math.round(fontSize * 1.35),
       multiline: false,
       textAlign: "center",
-      lineHeight: 1.15,
-      letterSpacing: 0.8,
+      lineHeight: DEFAULT_LINE_HEIGHT,
+      letterSpacing: DEFAULT_LETTER_SPACING,
     };
   }
   const fontSize = Math.max(28, Math.round(width / 28));
@@ -237,8 +239,8 @@ export function getTextPlacementStyle(
     height: Math.min(Math.round(height * 0.2), Math.round(fontSize * 4.8)),
     multiline: true,
     textAlign: "left",
-    lineHeight: 1.25,
-    letterSpacing: 0,
+    lineHeight: DEFAULT_LINE_HEIGHT,
+    letterSpacing: DEFAULT_LETTER_SPACING,
   };
 }
 

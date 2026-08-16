@@ -14,7 +14,7 @@ import {
   type EditorState,
 } from "@/app/components/customizer/customizer-utils";
 import { getLegacyMaskPath, getMaskPath } from "./masks";
-import { layoutText, fallbackMeasure, resolveTextBox, type MeasureFn, type SafeBounds } from "./text-layout";
+import { DEFAULT_LINE_HEIGHT, layoutText, fallbackMeasure, resolveTextBox, type MeasureFn, type SafeBounds } from "./text-layout";
 import { getGridSlotRect, normalizeGridSlot } from "./grids";
 import { hasImageFilters, imageFilterSvgPrimitives } from "./image-filters";
 import { normalizeQRCodeStyle, qrModuleRects } from "./qr";
@@ -104,7 +104,7 @@ function renderTextLayer(layer: any, field: any, values: Record<string, any>, me
       fontWeight: style.fontWeight || "400",
       fontStyle: style.fontStyle === "italic" ? "italic" : "normal",
       letterSpacing: Number(style.letterSpacing) || 0,
-      lineHeight: Number(style.lineHeight) || 1.15,
+      lineHeight: Number(style.lineHeight) || DEFAULT_LINE_HEIGHT,
       uppercase: Boolean(style.uppercase),
       multiline: Boolean(style.multiline),
       textAlign: style.textAlign || "center",
@@ -126,7 +126,7 @@ function renderTextLayer(layer: any, field: any, values: Record<string, any>, me
       fontWeight: style.fontWeight || "400",
       fontStyle: style.fontStyle === "italic" ? "italic" : "normal",
       letterSpacing: Number(style.letterSpacing) || 0,
-      lineHeight: Number(style.lineHeight) || 1.15,
+      lineHeight: Number(style.lineHeight) || DEFAULT_LINE_HEIGHT,
       textAlign: style.textAlign || "center",
       verticalAlign: style.verticalAlign || "middle",
       multiline: Boolean(style.multiline),

@@ -14,13 +14,27 @@ import {
 
 const read = (path: string) => readFileSync(join(process.cwd(), path), "utf8");
 
-describe("click multi-selection (spec §2, §3, §4, §6)", () => {
-  it("accumulates consecutive plain clicks without any modifier key", () => {
+describe("click selection (spec §2, §3, §4, §6)", () => {
+  it("selects exactly one object per plain click", () => {
     let selection: string[] = [];
     for (const id of ["textA", "textB", "photoA"]) {
       selection = resolvePointerDownSelection({ current: selection, id }).selection;
     }
+    // Clicking a second object replaces the first — it never accumulates.
+    expect(selection).toEqual(["photoA"]);
+    expect(resolvePointerDownSelection({ current: ["textA"], id: "textB" }).selection).toEqual(["textB"]);
+  });
+
+  it("builds and breaks down a multi-selection with Ctrl / Cmd / Shift", () => {
+    let selection: string[] = ["textA"];
+    selection = resolvePointerDownSelection({ current: selection, id: "textB", additive: true }).selection;
+    selection = resolvePointerDownSelection({ current: selection, id: "photoA", additive: true }).selection;
     expect(selection).toEqual(["textA", "textB", "photoA"]);
+
+    const removal = resolvePointerDownSelection({ current: selection, id: "textB", additive: true });
+    expect(removal.selection).toEqual(["textA", "photoA"]);
+    // A modifier click is a toggle, never the start of a drag.
+    expect(removal.allowDrag).toBe(false);
   });
 
   it("keeps the only selected object selected when it is clicked again", () => {
@@ -28,55 +42,37 @@ describe("click multi-selection (spec §2, §3, §4, §6)", () => {
     // click that starts a move — deselecting is empty canvas / Escape / modifier.
     const down = resolvePointerDownSelection({ current: ["photoA"], id: "photoA" });
     expect(down.selection).toEqual(["photoA"]);
-    expect(down.toggleOnRelease).toBe(false);
+    expect(down.collapseOnRelease).toBe(false);
     expect(down.allowDrag).toBe(true);
     expect(
-      resolvePointerUpSelection({ current: ["photoA"], id: "photoA", moved: false, toggleOnRelease: false }),
+      resolvePointerUpSelection({ current: ["photoA"], id: "photoA", moved: false, collapseOnRelease: false }),
     ).toBeNull();
-    // A modifier click stays an explicit "take this one out" gesture.
     expect(resolvePointerDownSelection({ current: ["photoA"], id: "photoA", additive: true }).selection).toEqual([]);
   });
 
-  it("removes only the clicked object when it is one of several selected", () => {
+  it("holds a multi-selection through the press so a drag moves all of it", () => {
     const current = ["textA", "textB", "photoA"];
     const down = resolvePointerDownSelection({ current, id: "textB" });
-    // The selection survives pointer down so the drag can move the whole set.
     expect(down.selection).toEqual(current);
-    expect(down.toggleOnRelease).toBe(true);
+    expect(down.collapseOnRelease).toBe(true);
+    // Dragged: every selected object moves and the selection is untouched.
     expect(
-      resolvePointerUpSelection({ current, id: "textB", moved: false, toggleOnRelease: true }),
-    ).toEqual(["textA", "photoA"]);
+      resolvePointerUpSelection({ current, id: "textB", moved: true, collapseOnRelease: true }),
+    ).toBeNull();
+    // Released without moving: it was a click, so it collapses to that object.
+    expect(
+      resolvePointerUpSelection({ current, id: "textB", moved: false, collapseOnRelease: true }),
+    ).toEqual(["textB"]);
   });
 
   it("never changes the selection when the gesture turned into a drag", () => {
     const current = ["textA", "photoA"];
     expect(
-      resolvePointerUpSelection({ current, id: "textA", moved: true, toggleOnRelease: true }),
+      resolvePointerUpSelection({ current, id: "textA", moved: true, collapseOnRelease: true }),
     ).toBeNull();
     expect(
-      resolvePointerUpSelection({ current, id: "textA", moved: false, toggleOnRelease: false }),
+      resolvePointerUpSelection({ current, id: "textA", moved: false, collapseOnRelease: false }),
     ).toBeNull();
-  });
-
-  it("keeps a newly added object selected when the click does not move", () => {
-    const down = resolvePointerDownSelection({ current: ["textA"], id: "shapeA" });
-    expect(down.selection).toEqual(["textA", "shapeA"]);
-    expect(down.toggleOnRelease).toBe(false);
-    expect(
-      resolvePointerUpSelection({
-        current: down.selection,
-        id: "shapeA",
-        moved: false,
-        toggleOnRelease: down.toggleOnRelease,
-      }),
-    ).toBeNull();
-  });
-
-  it("keeps Ctrl / Cmd / Shift working as an immediate toggle that never drags", () => {
-    const additive = resolvePointerDownSelection({ current: ["a", "b"], id: "b", additive: true });
-    expect(additive.selection).toEqual(["a"]);
-    expect(additive.allowDrag).toBe(false);
-    expect(resolvePointerDownSelection({ current: ["a"], id: "c", additive: true }).selection).toEqual(["a", "c"]);
   });
 
   it("clears on a background click and merges only an additive marquee", () => {
@@ -133,8 +129,14 @@ describe("both customizers consume the one shared selection reducer (spec §20, 
   it("feeds panel selection through the same reducer as the canvas", () => {
     expect(builder).toContain("resolveSelection(current, id, intent)");
     expect(personalize).toContain("additive && multiselectEnabled ? \"toggle\" : \"replace\"");
-    expect(read("app/components/customizer/CustomerLayersPanel.tsx")).toContain("onSelectionChange(layer.id, true)");
-    expect(read("app/admin/dashboard/design-builder/AdminLayersPanel.tsx")).toContain('onSelect(targetId, "toggle")');
+    // Panel rows read the same modifier as the canvas: plain click replaces,
+    // Ctrl / Cmd / Shift click toggles.
+    expect(read("app/components/customizer/CustomerLayersPanel.tsx")).toContain(
+      "onSelectionChange(layer.id, event.shiftKey || event.ctrlKey || event.metaKey)",
+    );
+    expect(read("app/admin/dashboard/design-builder/AdminLayersPanel.tsx")).toContain(
+      'event.shiftKey || event.ctrlKey || event.metaKey ? "toggle" : "replace"',
+    );
   });
 });
 

@@ -9,17 +9,19 @@
  * can never disagree about what "selected" means.
  *
  * Interaction contract:
- *   - A plain click on an unselected object ADDS it to the selection. No
- *     modifier key is required for multi-selection.
- *   - A plain click on an object inside a MULTI-selection removes only that
- *     object, and only when the pointer did not move (a drag is not a click).
+ *   - A plain click selects exactly ONE object. Clicking a second object does
+ *     not add it — it replaces the selection, the way every editor behaves.
+ *   - Ctrl / Cmd / Shift click is how a selection is built up and broken down:
+ *     it toggles the clicked object in or out and never arms a drag.
+ *   - A plain press on an object that is already part of a multi-selection
+ *     KEEPS the whole selection, so the drag moves every selected object. If
+ *     the gesture ends without movement it was a click after all, and the
+ *     selection collapses to that one object.
  *   - A plain click on the only selected object leaves it selected. Clicking
  *     the object you are working on must never take its handles, contextual
  *     toolbar and inspector away — deselecting is done on empty canvas, with
  *     Escape, or with a modifier click.
  *   - A plain click on empty canvas clears the selection.
- *   - Ctrl / Cmd / Shift click stays available and toggles immediately without
- *     arming a drag, matching the platform convention.
  *   - A marquee replaces the selection; an additive marquee merges into it.
  */
 
@@ -64,19 +66,18 @@ export type PointerDownSelection = {
   selection: string[];
   /**
    * True when the object was already part of a MULTI-selection: the selection
-   * is left untouched so the drag can move the whole group, and the object is
-   * only removed if the gesture turns out to be a click rather than a drag.
-   * Never true for a lone selected object — clicking the thing you are editing
-   * must not strip its handles and toolbar.
+   * is held intact so a drag moves the whole group, and only collapses to this
+   * one object if the gesture ends up being a click.
    */
-  toggleOnRelease: boolean;
+  collapseOnRelease: boolean;
   /** False for modifier clicks, which are selection toggles and never drags. */
   allowDrag: boolean;
 };
 
 /**
- * Pointer down on an object. Never clears the rest of the selection, so
- * consecutive clicks accumulate and dragging any member moves the whole set.
+ * Pointer down on an object. A plain press selects that object alone, except
+ * while it is part of a multi-selection, where the set is preserved so the
+ * drag can move all of it.
  */
 export function resolvePointerDownSelection({
   current,
@@ -88,33 +89,33 @@ export function resolvePointerDownSelection({
   additive?: boolean;
 }): PointerDownSelection {
   if (additive) {
-    return { selection: toggleSelection(current, id), toggleOnRelease: false, allowDrag: false };
+    return { selection: toggleSelection(current, id), collapseOnRelease: false, allowDrag: false };
   }
   if (current.includes(id)) {
-    return { selection: [...current], toggleOnRelease: current.length > 1, allowDrag: true };
+    return { selection: [...current], collapseOnRelease: current.length > 1, allowDrag: true };
   }
-  return { selection: [...current, id], toggleOnRelease: false, allowDrag: true };
+  return { selection: [id], collapseOnRelease: false, allowDrag: true };
 }
 
 /**
- * Pointer up after pressing an already selected object. Returns the next
- * selection, or null when nothing should change (the pointer moved, so the
- * gesture was a drag).
+ * Pointer up after pressing an object inside a multi-selection. Returns the
+ * next selection, or null when nothing should change (the pointer moved, so
+ * the gesture was a drag and the whole selection stays).
  */
 export function resolvePointerUpSelection({
   current,
   id,
   moved,
-  toggleOnRelease,
+  collapseOnRelease,
 }: {
   current: readonly string[];
   id: string;
   moved: boolean;
-  toggleOnRelease: boolean;
+  collapseOnRelease: boolean;
 }): string[] | null {
-  if (!toggleOnRelease || moved) return null;
+  if (!collapseOnRelease || moved) return null;
   if (!current.includes(id)) return null;
-  return current.filter((item) => item !== id);
+  return [id];
 }
 
 /**

@@ -4,6 +4,7 @@ import { customerEditablePermissionBundle } from "@/lib/customizer";
 import { distributeAlongAxis, getDescendantIds, rotatedAxisHalfExtents, transformGroupChildren } from "@/lib/customizer/v2/groups";
 import { marqueeSelectedLayerIds, type SelectionRect } from "@/lib/customizer/v2/selection-geometry";
 import { getTextPlacementStyle, type TextPlacementPreset } from "@/lib/customizer/v2/text-editing";
+import { DEFAULT_LETTER_SPACING, DEFAULT_LINE_HEIGHT } from "@/lib/customizer/v2/text-layout";
 
 // Shared helpers for the admin visual Design Builder. Pure functions that take a
 // template and return a new template — the builder owns undo/redo on top.
@@ -112,8 +113,8 @@ export function newTextLayer(
       fontSize: placed ? preset.fontSize : 72,
       fontWeight: "400",
       color: "#303839",
-      letterSpacing: placed ? preset.letterSpacing : 2,
-      lineHeight: placed ? preset.lineHeight : 1.15,
+      letterSpacing: placed ? preset.letterSpacing : DEFAULT_LETTER_SPACING,
+      lineHeight: placed ? preset.lineHeight : DEFAULT_LINE_HEIGHT,
       textAlign: placed ? preset.textAlign : "center",
       verticalAlign: "middle",
       uppercase: false,

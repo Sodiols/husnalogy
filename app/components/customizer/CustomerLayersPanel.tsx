@@ -121,11 +121,11 @@ export default function CustomerLayersPanel({ layers, selectedIds, selectedGridS
             ) : <span className="w-2 shrink-0" />}
             <button
               type="button"
-              onClick={() => {
+              onClick={(event) => {
                 if (layer.groupId) onEnterGroup?.(layer.groupId);
-                // Rows follow the canvas contract: a click adds the layer to
-                // the selection, clicking a selected row removes only that one.
-                onSelectionChange(layer.id, true);
+                // Rows follow the canvas contract: a click selects that layer
+                // alone, Ctrl / Cmd / Shift click builds up the selection.
+                onSelectionChange(layer.id, event.shiftKey || event.ctrlKey || event.metaKey);
               }}
               onDoubleClick={() => {
                 if (layer.type === "group") onEnterGroup?.(layer.id);

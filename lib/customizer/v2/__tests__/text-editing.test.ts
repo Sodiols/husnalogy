@@ -12,7 +12,7 @@ import {
 import { fallbackMeasure, layoutText, resolveTextBox } from "../text-layout";
 import { buildPageSvg } from "../svg";
 import { clientPointToDocument, resolveLayerSelectionGeometry } from "../selection-geometry";
-import { normalizeEditorState, normalizeUserLayer } from "@/lib/customizer";
+import { normalizeCustomizerTemplate, normalizeEditorState, normalizeUserLayer } from "@/lib/customizer";
 
 const template = {
   canvasWidthPx: 1500,
@@ -135,6 +135,42 @@ describe("click or tap text placement", () => {
     expect(getTextPlacementStyle("heading", 1500, 2100).multiline).toBe(false);
     expect(getTextPlacementStyle("subheading", 1500, 2100).multiline).toBe(false);
     expect(getTextPlacementStyle("body", 1500, 2100).multiline).toBe(true);
+  });
+
+  it("starts every new text object at line height 1 and letter spacing 1", () => {
+    for (const preset of ["heading", "subheading", "body"] as const) {
+      const style = getTextPlacementStyle(preset, 1500, 2100);
+      expect(style.lineHeight).toBe(1);
+      expect(style.letterSpacing).toBe(1);
+    }
+    const template = { canvasWidthPx: 1500, canvasHeightPx: 2100, layers: [] };
+    // Both the placed and the bare admin text factory paths.
+    expect(newTextLayer(template, "front", { x: 750, y: 1050 }).textStyle).toMatchObject({
+      lineHeight: 1,
+      letterSpacing: 1,
+    });
+    expect(newTextLayer(template, "front").textStyle).toMatchObject({
+      lineHeight: 1,
+      letterSpacing: 1,
+    });
+  });
+
+  it("only supplies the default — an explicit spacing is never overwritten", () => {
+    const layer = (textStyle: Record<string, unknown>) => ({
+      id: "t1", name: "T", page: "front", type: "text", text: "Hi",
+      x: 10, y: 10, width: 100, height: 40, textStyle,
+    });
+    const explicit = normalizeCustomizerTemplate({ enabled: true, layers: [layer({ letterSpacing: 2, lineHeight: 1.15 })] });
+    expect(explicit.layers[0].textStyle.letterSpacing).toBe(2);
+    expect(explicit.layers[0].textStyle.lineHeight).toBe(1.15);
+
+    const missing = normalizeCustomizerTemplate({ enabled: true, layers: [layer({})] });
+    expect(missing.layers[0].textStyle.letterSpacing).toBe(1);
+    expect(missing.layers[0].textStyle.lineHeight).toBe(1);
+
+    // A deliberate zero must survive: the default may not ride in on `||`.
+    const zero = normalizeCustomizerTemplate({ enabled: true, layers: [layer({ letterSpacing: 0 })] });
+    expect(zero.layers[0].textStyle.letterSpacing).toBe(0);
   });
 });
 

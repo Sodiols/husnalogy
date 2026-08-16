@@ -1,5 +1,5 @@
 import { resolveGroupBounds, rotatedAxisHalfExtents } from "./groups";
-import { resolveTextBox, type MeasureFn, type SafeBounds } from "./text-layout";
+import { DEFAULT_LINE_HEIGHT, resolveTextBox, type MeasureFn, type SafeBounds } from "./text-layout";
 
 export type SelectionRect = {
   left: number;
@@ -198,7 +198,7 @@ export function resolveLayerSelectionGeometry(
       fontWeight: style.fontWeight || "400",
       fontStyle: style.fontStyle === "italic" ? "italic" : "normal",
       letterSpacing: Number(style.letterSpacing) || 0,
-      lineHeight: Number(style.lineHeight) || 1.15,
+      lineHeight: Number(style.lineHeight) || DEFAULT_LINE_HEIGHT,
       uppercase: Boolean(style.uppercase),
       multiline: Boolean(style.multiline),
       textAlign: style.textAlign || "center",

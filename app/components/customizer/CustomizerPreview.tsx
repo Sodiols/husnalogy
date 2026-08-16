@@ -14,7 +14,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { getLegacyMaskPath, getMaskPath } from "@/lib/customizer/v2/masks";
 import { getGridSlotRect, normalizeGridSlot } from "@/lib/customizer/v2/grids";
-import { layoutText, createCanvasMeasure, fallbackMeasure, resolveTextBox, type MeasureFn } from "@/lib/customizer/v2/text-layout";
+import { DEFAULT_LINE_HEIGHT, layoutText, createCanvasMeasure, fallbackMeasure, resolveTextBox, type MeasureFn } from "@/lib/customizer/v2/text-layout";
 import { hasImageFilters, imageFilterSvgPrimitives } from "@/lib/customizer/v2/image-filters";
 import { normalizeQRCodeStyle, qrModuleRects } from "@/lib/customizer/v2/qr";
 import {
@@ -98,7 +98,7 @@ function TextLayer({ layer, field, values, fontsReady, idPrefix, safeBounds }: a
           fontWeight: style.fontWeight || "400",
           fontStyle: style.fontStyle === "italic" ? "italic" : "normal",
           letterSpacing: Number(style.letterSpacing) || 0,
-          lineHeight: Number(style.lineHeight) || 1.15,
+          lineHeight: Number(style.lineHeight) || DEFAULT_LINE_HEIGHT,
           uppercase: Boolean(style.uppercase),
           multiline: Boolean(style.multiline),
           textAlign: style.textAlign || "center",
@@ -125,7 +125,7 @@ function TextLayer({ layer, field, values, fontsReady, idPrefix, safeBounds }: a
           fontWeight: style.fontWeight || "400",
           fontStyle: style.fontStyle === "italic" ? "italic" : "normal",
           letterSpacing: Number(style.letterSpacing) || 0,
-          lineHeight: Number(style.lineHeight) || 1.15,
+          lineHeight: Number(style.lineHeight) || DEFAULT_LINE_HEIGHT,
           textAlign: style.textAlign || "center",
           verticalAlign: style.verticalAlign || "middle",
           multiline: Boolean(style.multiline),

@@ -22,12 +22,28 @@ describe("single-line text resize canvas contract", () => {
 
   it("changes font size through measured proportional scaling without glyph distortion", () => {
     for (const canvas of [adminCanvas, customerCanvas]) {
-      expect(canvas).toContain('mode: textScale ? "text-scale" : "resize"');
+      expect(canvas).toContain('"text-scale" : "resize"');
       expect(canvas).toContain("scaleSingleLineText({");
       expect(canvas).toContain("textStyle: { fontSize: result.fontSize }");
       expect(canvas).toContain("centered: e.altKey");
       expect(canvas).not.toContain("textStyle: { scaleX");
     }
+  });
+
+  it("scales the real font size from a corner handle on any text object", () => {
+    for (const canvas of [adminCanvas, customerCanvas]) {
+      expect(canvas).toContain('const TEXT_SCALE_HANDLES = new Set(["nw", "ne", "sw", "se"])');
+      expect(canvas).toContain('? "text-box-scale"');
+      expect(canvas).toContain("scaleTextBox({");
+      expect(canvas).toContain("textStyle: { fontSize: scaled.fontSize, letterSpacing: scaled.letterSpacing }");
+      // Corners join the handle set for single-line text too.
+      expect(canvas).toContain("TEXT_SCALE_HANDLES.has(handle.id)");
+    }
+    // The customer may only scale text the template lets them restyle, and
+    // each carried property is gated by its own permission.
+    expect(customerCanvas).toContain("const canScaleTextBox");
+    expect(customerEditor).toContain("permissions.changeFontSize");
+    expect(customerEditor).toContain("permissions.changeLetterSpacing");
   });
 
   it("keeps one history start while live geometry and toolbar values update", () => {

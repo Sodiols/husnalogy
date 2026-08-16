@@ -30,7 +30,13 @@ import {
   type ToolbarDensity,
 } from "../text-toolbar";
 import { defaultNumericFormat, parseNumericDraft, stepNumericValue } from "@/lib/customizer/numeric-stepper";
-import { getTextResizeConstraints, layoutText, type MeasureFn } from "../text-layout";
+import {
+  DEFAULT_LETTER_SPACING,
+  DEFAULT_LINE_HEIGHT,
+  getTextResizeConstraints,
+  layoutText,
+  type MeasureFn,
+} from "../text-layout";
 import { alignLayers, distributeLayers, updateLayerStyle } from "@/app/admin/dashboard/design-builder/builder-utils";
 
 const read = (relative: string) => readFileSync(relative, "utf8");
@@ -83,8 +89,12 @@ describe("admin text toolbar — value resolution", () => {
   });
 
   it("uses the same defaults the renderers use", () => {
-    expect(TEXT_TOOLBAR_DEFAULTS.lineHeight).toBe(1.15);
-    expect(TEXT_TOOLBAR_DEFAULTS.letterSpacing).toBe(0);
+    // New text starts at a line height and letter spacing of 1, and Reset
+    // returns to exactly that.
+    expect(TEXT_TOOLBAR_DEFAULTS.lineHeight).toBe(DEFAULT_LINE_HEIGHT);
+    expect(TEXT_TOOLBAR_DEFAULTS.letterSpacing).toBe(DEFAULT_LETTER_SPACING);
+    expect(DEFAULT_LINE_HEIGHT).toBe(1);
+    expect(DEFAULT_LETTER_SPACING).toBe(1);
     expect(TEXT_TOOLBAR_DEFAULTS.textAlign).toBe("center");
     expect(TEXT_TOOLBAR_DEFAULTS.verticalAlign).toBe("middle");
   });
@@ -366,7 +376,8 @@ describe("admin text toolbar — letter spacing and line height reach the canvas
       "lib/customizer/v2/selection-geometry.ts",
       "app/admin/dashboard/design-builder/AdminCanvas.tsx",
     ]) {
-      expect(read(file)).toContain("lineHeight: Number(style.lineHeight) || 1.15");
+      // One shared constant rather than a literal repeated per module.
+      expect(read(file)).toContain("lineHeight: Number(style.lineHeight) || DEFAULT_LINE_HEIGHT");
     }
   });
 });
