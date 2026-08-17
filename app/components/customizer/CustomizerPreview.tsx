@@ -16,6 +16,7 @@ import { getLegacyMaskPath, getMaskPath } from "@/lib/customizer/v2/masks";
 import { getGridSlotRect, normalizeGridSlot } from "@/lib/customizer/v2/grids";
 import { DEFAULT_LINE_HEIGHT, layoutText, createCanvasMeasure, fallbackMeasure, resolveTextBox, type MeasureFn } from "@/lib/customizer/v2/text-layout";
 import { hasImageFilters, imageFilterSvgPrimitives } from "@/lib/customizer/v2/image-filters";
+import { resolveImageDrawBoxFromTransform } from "@/lib/customizer/v2/image-crop";
 import { normalizeQRCodeStyle, qrModuleRects } from "@/lib/customizer/v2/qr";
 import {
   getEffectiveLayersForPage,
@@ -323,11 +324,16 @@ function ImageLayer({ layer, field, values, idPrefix }: any) {
 
   const imageHref = downgraded && fallbackUrl ? fallbackUrl : String(image.url);
 
-  const zoom = Number(image.zoom) > 0 ? Number(image.zoom) : 1;
-  const drawW = layer.width * zoom;
-  const drawH = layer.height * zoom;
-  const drawX = frameX - (drawW - layer.width) / 2 + (Number(image.offsetX) || 0);
-  const drawY = frameY - (drawH - layer.height) / 2 + (Number(image.offsetY) || 0);
+  // Identical formula to the server SVG renderer — one shared implementation so
+  // the on-screen preview and the printed sheet cannot disagree (spec §16).
+  const draw = resolveImageDrawBoxFromTransform(
+    { frameX, frameY, frameWidth: layer.width, frameHeight: layer.height },
+    { zoom: image.zoom, offsetX: image.offsetX, offsetY: image.offsetY, ...(image.crop || {}) },
+  );
+  const drawX = draw.x;
+  const drawY = draw.y;
+  const drawW = draw.width;
+  const drawH = draw.height;
 
   // In-frame transforms: rotation and flips apply around the frame centre,
   // inside the clip, so the mask stays put while the photo moves (spec §11).

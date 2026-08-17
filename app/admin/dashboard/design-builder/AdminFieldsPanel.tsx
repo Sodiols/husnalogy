@@ -43,7 +43,7 @@ export default function AdminFieldsPanel({
         <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700" role="alert">
           <p className="font-bold">These editable layers have no field yet (fixed automatically on save):</p>
           {editableWithoutField.map((layer: any) => (
-            <button key={layer.id} type="button" onClick={() => onSelectLayer(layer.id)} className="mt-1 block underline underline-offset-2">
+            <button key={layer.id} type="button" onClick={() => onSelectLayer(layer.id)} className="mt-1 block rounded underline underline-offset-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37]">
               {layer.name} · {layer.page}
             </button>
           ))}
@@ -98,7 +98,7 @@ export default function AdminFieldsPanel({
                   <button
                     type="button"
                     onClick={() => onSelectLayer(layer.id)}
-                    className="rounded-full border border-[#303839]/15 px-3 py-1 text-xs font-bold text-[#303839] hover:bg-[#F8F6F1]"
+                    className="min-h-11 rounded-full border border-[#303839]/15 px-3 py-1 text-xs font-bold text-[#303839] hover:bg-[#F8F6F1] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37]"
                   >
                     Open layer →
                   </button>

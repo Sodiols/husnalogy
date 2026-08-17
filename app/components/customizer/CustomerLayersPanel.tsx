@@ -1,6 +1,8 @@
 "use client";
 
 import { useMemo, useState, type DragEvent, type ReactNode } from "react";
+import { anyGridSlotGrantsPhotoEditing } from "@/lib/customizer/v2/grids";
+import { getLayerPermissions } from "./customizer-utils";
 
 const typeLabel: Record<string, string> = {
   text: "T",
@@ -29,7 +31,15 @@ export default function CustomerLayersPanel({ layers, selectedIds, selectedGridS
   const [draggingId, setDraggingId] = useState<string | null>(null);
 
   const customerLayers = useMemo(
-    () => layers.filter((layer: any) => layer.isUserLayer || (!layer.customerInteractionDisabled && layer.customerEditable)),
+    () => layers.filter((layer: any) => {
+      if (layer.isUserLayer) return true;
+      if (layer.customerInteractionDisabled) return false;
+      // A fixed grid with individually editable slots is something the customer
+      // may act on, so it belongs in their layer list (spec §17, §18) even
+      // though the container itself is not customer editable.
+      if (layer.type === "grid" && anyGridSlotGrantsPhotoEditing(layer)) return true;
+      return Boolean(layer.customerEditable);
+    }),
     [layers],
   );
   const visibleLayers = useMemo(() => {
@@ -87,9 +97,17 @@ export default function CustomerLayersPanel({ layers, selectedIds, selectedGridS
     const children = byParent.get(layer.id) || [];
     const expandable = layer.type === "group" || layer.type === "grid";
     const isCollapsed = collapsed.has(layer.id);
-    const canHide = layer.isUserLayer || layer.customerPermissions?.hide;
+    // Resolve through getLayerPermissions like every other consumer — including
+    // the save validator. Reading the raw `customerPermissions` object was
+    // wrong: for a non-grid layer that object is NOT the source of truth (the
+    // "Customer editable" switch expands into the full bundle), so a layer that
+    // stored no explicit object lost its Hide, Copy and reorder controls even
+    // though the server would have accepted all three.
+    const permissions = getLayerPermissions(layer);
+    const canHide = layer.isUserLayer || Boolean(permissions.hide);
+    const canDuplicate = layer.isUserLayer || Boolean(permissions.duplicate);
     const canReorder = !locked && !layer.customerInteractionDisabled
-      && (layer.isUserLayer || (layer.customerEditable && layer.customerPermissions?.changeLayerOrder !== false));
+      && (layer.isUserLayer || Boolean(permissions.changeLayerOrder));
     const selectedSurface = selected ? "border-[#303839] bg-[#303839] text-white" : "border-[#303839]/10 bg-white text-[#303839]";
     const quietButton = selected ? "hover:bg-white/10" : "hover:bg-[#303839]/5";
     return (
@@ -115,7 +133,7 @@ export default function CustomerLayersPanel({ layers, selectedIds, selectedGridS
           <div className="flex min-w-0 items-center gap-1">
             <span className={`grid h-11 w-5 shrink-0 place-items-center text-xs font-black ${canReorder ? "cursor-grab active:cursor-grabbing" : "opacity-25"}`} title={canReorder ? "Drag to reorder" : "Layer order is locked"} aria-hidden>⋮⋮</span>
             {expandable ? (
-              <button type="button" aria-label={`${isCollapsed ? "Expand" : "Collapse"} ${layer.name || layer.type}`} aria-expanded={!isCollapsed} onClick={() => toggleCollapsed(layer.id)} className={`grid h-11 w-8 shrink-0 place-items-center rounded-lg text-sm font-black ${quietButton}`}>
+              <button type="button" aria-label={`${isCollapsed ? "Expand" : "Collapse"} ${layer.name || layer.type}`} aria-expanded={!isCollapsed} onClick={() => toggleCollapsed(layer.id)} className={`grid h-11 w-8 shrink-0 place-items-center rounded-lg text-sm font-black focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] ${quietButton}`}>
                 {isCollapsed ? "+" : "-"}
               </button>
             ) : <span className="w-2 shrink-0" />}
@@ -134,7 +152,7 @@ export default function CustomerLayersPanel({ layers, selectedIds, selectedGridS
                   setName(layer.name || "");
                 }
               }}
-              className="flex min-h-11 min-w-0 flex-1 items-center gap-2 text-left"
+              className="flex min-h-11 min-w-0 flex-1 items-center gap-2 rounded-lg text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37]"
             >
               <span className={`grid h-9 w-9 shrink-0 place-items-center rounded-lg text-[8px] font-black ${selected ? "bg-white/12" : "bg-white"}`}>{typeLabel[layer.type] || "OB"}</span>
               <span className="min-w-0 flex-1">
@@ -148,14 +166,14 @@ export default function CustomerLayersPanel({ layers, selectedIds, selectedGridS
             </button>
           </div>
           <div className={`grid grid-cols-4 gap-1 border-t pt-1 ${selected ? "border-white/10" : "border-[#303839]/8"}`}>
-            {canHide ? <button type="button" aria-label={layer.hidden ? "Show layer" : "Hide layer"} onClick={() => onToggleVisibility(layer.id, !layer.hidden)} className={`min-h-10 rounded-lg px-1 text-[9px] font-bold ${quietButton}`}>{layer.hidden ? "Show" : "Hide"}</button> : <span />}
-            {layer.isUserLayer ? <button type="button" aria-label={locked ? "Unlock layer" : "Lock layer"} onClick={() => onToggleLock(layer.id, !locked)} className={`min-h-10 rounded-lg px-1 text-[9px] font-bold ${quietButton}`}>{locked ? "Unlock" : "Lock"}</button> : <span />}
-            {(layer.isUserLayer || layer.customerPermissions?.duplicate) ? <button type="button" aria-label="Duplicate layer" onClick={() => onDuplicate(layer.id)} className={`min-h-10 rounded-lg px-1 text-[9px] font-bold ${quietButton}`}>Copy</button> : <span />}
-            {layer.isUserLayer ? <button type="button" aria-label="Delete layer" onClick={() => onDelete(layer.id)} className={`min-h-10 rounded-lg px-1 text-[9px] font-bold ${selected ? "text-red-200 hover:bg-white/10" : "text-red-700 hover:bg-red-50"}`}>Delete</button> : <span />}
+            {canHide ? <button type="button" aria-label={layer.hidden ? "Show layer" : "Hide layer"} onClick={() => onToggleVisibility(layer.id, !layer.hidden)} className={`min-h-11 rounded-lg px-1 text-[9px] font-bold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] ${quietButton}`}>{layer.hidden ? "Show" : "Hide"}</button> : <span />}
+            {layer.isUserLayer ? <button type="button" aria-label={locked ? "Unlock layer" : "Lock layer"} onClick={() => onToggleLock(layer.id, !locked)} className={`min-h-11 rounded-lg px-1 text-[9px] font-bold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] ${quietButton}`}>{locked ? "Unlock" : "Lock"}</button> : <span />}
+            {canDuplicate ? <button type="button" aria-label="Duplicate layer" onClick={() => onDuplicate(layer.id)} className={`min-h-11 rounded-lg px-1 text-[9px] font-bold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] ${quietButton}`}>Copy</button> : <span />}
+            {layer.isUserLayer ? <button type="button" aria-label="Delete layer" onClick={() => onDelete(layer.id)} className={`min-h-11 rounded-lg px-1 text-[9px] font-bold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400 ${selected ? "text-red-200 hover:bg-white/10" : "text-red-700 hover:bg-red-50"}`}>Delete</button> : <span />}
           </div>
         </article>
         {!isCollapsed && layer.type === "grid" && (layer.slots || []).map((slot: any, index: number) => (
-          <button key={slot.id} type="button" aria-pressed={selectedGridSlotId === slot.id} onClick={() => { onSelectionChange(layer.id, false); onGridSlotSelect?.(layer.id, slot.id); }} className={`ml-7 flex min-h-11 items-center gap-2 rounded-lg border px-3 text-left text-[10px] font-bold ${selectedGridSlotId === slot.id ? "border-[#D4AF37] bg-white text-[#303839]" : "border-[#303839]/8 bg-white text-[#303839]/60"}`} style={{ marginLeft: 28 + depth * 14 }}>
+          <button key={slot.id} type="button" aria-pressed={selectedGridSlotId === slot.id} onClick={() => { onSelectionChange(layer.id, false); onGridSlotSelect?.(layer.id, slot.id); }} className={`ml-7 flex min-h-11 items-center gap-2 rounded-lg border px-3 text-left text-[10px] font-bold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] ${selectedGridSlotId === slot.id ? "border-[#D4AF37] bg-white text-[#303839]" : "border-[#303839]/8 bg-white text-[#303839]/60"}`} style={{ marginLeft: 28 + depth * 14 }}>
             <span className="grid h-7 w-7 place-items-center rounded-md bg-white">{index + 1}</span>
             <span>{slot.src || slot.assetId ? `Photo slot ${index + 1}` : `Empty slot ${index + 1}`}</span>
           </button>
@@ -178,7 +196,7 @@ export default function CustomerLayersPanel({ layers, selectedIds, selectedGridS
       </div>
       <div className="flex flex-wrap gap-1.5" role="toolbar" aria-label="Layer order">
         {orderActions.map(([action, label]) => (
-          <button key={action} type="button" disabled={!selectedIds.length} onClick={() => onArrange(action)} className="min-h-11 flex-1 rounded-lg border border-[#303839]/12 bg-white px-2 text-[10px] font-extrabold text-[#303839] transition hover:border-[#D4AF37] hover:bg-[#303839]/5 disabled:opacity-35">{label}</button>
+          <button key={action} type="button" disabled={!selectedIds.length} onClick={() => onArrange(action)} className="min-h-11 flex-1 rounded-lg border border-[#303839]/12 bg-white px-2 text-[10px] font-extrabold text-[#303839] transition hover:border-[#D4AF37] hover:bg-[#303839]/5 disabled:opacity-35 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37]">{label}</button>
         ))}
       </div>
       <p className="text-[10px] leading-4 text-[#303839]/45">Drag unlocked layers to reorder. Double-click a customer layer name to rename it.</p>

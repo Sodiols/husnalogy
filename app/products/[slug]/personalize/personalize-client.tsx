@@ -53,7 +53,10 @@ import {
 } from "@/lib/customizer/save-queue";
 import { isCustomizerFeatureEnabled } from "@/lib/customizer/v2/feature-flags";
 import { stripEphemeralAssetUrls } from "@/lib/customizer/v2/asset-references";
-import { createGridSlotsFromPreset, GRID_PRESETS } from "@/lib/customizer/v2/grids";
+import { anyGridSlotGrantsPhotoEditing, createGridSlotsFromPreset, GRID_PRESETS } from "@/lib/customizer/v2/grids";
+import CustomerCanvasContextMenu from "@/app/components/customizer/CustomerCanvasContextMenu";
+import { buildCustomerContextMenu, type ContextMenuActionId } from "@/lib/customizer/v2/context-menu";
+import { resolveImageCropCapabilities } from "@/lib/customizer/v2/image-permissions";
 import { alignCustomerLayers, arrangeLayers, removeCustomerLayers, reorderLayerByDrop, type AlignAction, type ArrangeAction } from "@/lib/customizer/v2/customer-actions";
 import { evaluateGroupAction, getDescendantIds, groupLayers, transformGroupChildren, ungroupLayers } from "@/lib/customizer/v2/groups";
 import { DEFAULT_LINE_HEIGHT, createCanvasMeasure, getSingleLineTextBox, isSingleLineAutoSizeText } from "@/lib/customizer/v2/text-layout";
@@ -848,6 +851,75 @@ export default function PersonalizeClient({ product, template }: { product: any;
     [selectedLayer],
   );
 
+  /* ---- canvas context menu (spec §20) ------------------------------------ */
+  // The canvas already suppresses the browser menu for copy protection, so a
+  // right click used to do nothing. Every capability below is the same flag the
+  // toolbars use, so the menu can never offer more than the rest of the editor.
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
+  // A menu must never outlive the object it acts on: switching page, changing
+  // the selection, or entering preview closes it.
+  useEffect(() => {
+    setContextMenu(null);
+  }, [activePage, selectedLayerIds, previewMode]);
+  const contextMenuGroups = useMemo(() => {
+    if (!contextMenu || !selectedLayer) return [];
+    const imageLike = selectedLayer.type === "image" || selectedLayer.type === "frame";
+    const cropCapabilities = resolveImageCropCapabilities(selectedPermissions as any);
+    return buildCustomerContextMenu({
+      selectionCount: selectedLayerIds.length,
+      primaryType: selectedLayer.type,
+      canEditText:
+        selectedLayer.type === "text" && (selectedIsUser || Boolean((selectedPermissions as any).editContent)),
+      canReplacePhoto: imageLike && (selectedIsUser || Boolean((selectedPermissions as any).replaceImage)),
+      canCrop: imageLike && cropCapabilities.canEnterCrop,
+      canEnterGroup: selectedLayerIds.length === 1 && selectedLayer.type === "group",
+      canDuplicate: canDuplicateSelection,
+      canDelete: canDeleteSelection,
+      canArrange: canArrangeSelection,
+      canGroup: canGroupSelection,
+      canUngroup: canUngroupSelection,
+      canHide: selectedIsUser || Boolean((selectedPermissions as any).hide),
+      isHidden: Boolean(selectedLayer.hidden),
+      // Locking is a customer-layer affordance; template layers are governed by
+      // the administrator's own lock state.
+      canLock: selectedIsUser,
+      isLocked: Boolean(selectedLayer.locked),
+    });
+  }, [
+    contextMenu,
+    selectedLayer,
+    selectedLayerIds.length,
+    selectedPermissions,
+    selectedIsUser,
+    canDuplicateSelection,
+    canDeleteSelection,
+    canArrangeSelection,
+    canGroupSelection,
+    canUngroupSelection,
+  ]);
+
+  const runContextMenuAction = (id: ContextMenuActionId) => {
+    if (!selectedLayer) return;
+    switch (id) {
+      case "editText": onEditTextAction(); break;
+      case "replacePhoto": setActiveTool("uploads"); setMobilePanelOpen(true); break;
+      case "crop": enterCropMode(selectedLayer.id); break;
+      case "enterGroup": enterGroup(selectedLayer.id); break;
+      case "duplicate": duplicateSelection(); break;
+      case "delete": deleteSelection(); break;
+      case "bringToFront": arrangeSelection("bringToFront"); break;
+      case "bringForward": arrangeSelection("bringForward"); break;
+      case "sendBackward": arrangeSelection("sendBackward"); break;
+      case "sendToBack": arrangeSelection("sendToBack"); break;
+      case "group": groupSelection(); break;
+      case "ungroup": ungroupSelection(); break;
+      case "hide": toggleLayerVisibility(selectedLayer.id, true); break;
+      case "show": toggleLayerVisibility(selectedLayer.id, false); break;
+      case "lock": toggleLayerLock(selectedLayer.id, true); break;
+      case "unlock": toggleLayerLock(selectedLayer.id, false); break;
+    }
+  };
+
   const applySelection = (ids: string[]) => {
     const permitted = multiselectEnabled ? ids : ids.slice(-1);
     setSelectedLayerIds(permitted);
@@ -1240,7 +1312,11 @@ export default function PersonalizeClient({ product, template }: { product: any;
     if (!gridsEnabled) return;
     const layer = effectiveLayers.find((item: any) => item.id === layerId);
     const slot = layer?.type === "grid" ? (layer.slots || []).find((item: any) => item.id === slotId) : null;
-    if (!layer || !slot || !layer.customerEditable) return;
+    // Deliberately NOT gated on the container's own customerEditable: a fixed
+    // grid may still expose editable slots (spec §17). The merged permissions
+    // below are the real gate, and they already refuse a slot that grants
+    // nothing — matching applyGridSlotAsset and the save validator.
+    if (!layer || !slot || layer.customerInteractionDisabled) return;
     const permissions = { ...getLayerPermissions(layer), ...(slot.permissions || {}) };
     if (phase === "start") {
       recordHistory(`grid-crop-${layerId}-${slotId}`);
@@ -1433,7 +1509,11 @@ export default function PersonalizeClient({ product, template }: { product: any;
     Boolean(selectedLayer) &&
     selectedLayers.length === 1 &&
     selectedLayer?.type === "grid" &&
-    selectedLayer?.customerEditable &&
+    // A fixed container with individually editable slots still needs its
+    // toolbar — that is where Replace and Crop live (spec §17). The toolbar
+    // merges the slot's own permissions, so each control stays correctly gated.
+    (selectedLayer?.customerEditable || anyGridSlotGrantsPhotoEditing(selectedLayer)) &&
+    !selectedLayer?.customerInteractionDisabled &&
     !selectedLayer?.hidden;
 
   const showElementToolbar =
@@ -1588,6 +1668,13 @@ export default function PersonalizeClient({ product, template }: { product: any;
         if (transformPatch.height !== undefined) allowed.height = transformPatch.height;
       }
       if (permissions.rotate && transformPatch.rotation !== undefined) allowed.rotation = transformPatch.rotation;
+      // Template layers obey the template's position/size/rotation limits too.
+      // Only user layers were being constrained here, while the save validator
+      // constrains BOTH — so dragging a template object past the limits looked
+      // fine on screen and then came back clamped, with a
+      // `customer-object-limit` violation, once the server had its say.
+      const constrained = applyCustomerObjectLimits(layer, allowed, layer.page || activePage);
+      Object.assign(allowed, constrained);
       // Corner scaling carries the letter spacing with the font size, so each
       // property is gated by its own administrator permission.
       const styleUpdate: Record<string, unknown> = {};
@@ -2709,8 +2796,19 @@ export default function PersonalizeClient({ product, template }: { product: any;
       showBleed={Boolean(template?.settings?.showBleed) && !previewMode}
       editingGroupId={editingGroupId}
       onEnterGroup={enterGroup}
+      onLayerContextMenu={(_layerId, position) => setContextMenu(position)}
     />
   );
+
+  const canvasContextMenu = contextMenu && contextMenuGroups.length ? (
+    <CustomerCanvasContextMenu
+      groups={contextMenuGroups}
+      x={contextMenu.x}
+      y={contextMenu.y}
+      onAction={runContextMenuAction}
+      onClose={() => setContextMenu(null)}
+    />
+  ) : null;
 
   return (
     <div data-customizer-root className="fixed inset-0 z-[100] flex flex-col bg-[#F0EDED] text-[#303839]">
@@ -2757,6 +2855,22 @@ export default function PersonalizeClient({ product, template }: { product: any;
               onApprove={setApproved}
               requireApproval={requireApproval}
               validationErrors={attemptedNext ? validation.errors : {}}
+              onFixIssue={(issue) => {
+                // Take the customer straight to the object that needs work
+                // rather than leaving them to find it (spec §28).
+                setStep("design");
+                setPreviewMode(false);
+                // Go through the normal page-change path so crop mode, group
+                // scope and any in-progress text edit from the page we are
+                // leaving are cleared, then select the object that needs work.
+                if (issue.pageId) onActivePageChange(issue.pageId);
+                if (issue.layerId) {
+                  setSelectedLayerId(issue.layerId);
+                  setSelectedLayerIds([issue.layerId]);
+                }
+                setActiveTool("edit");
+                setMobilePanelOpen(true);
+              }}
               uploading={uploading}
               saveStatus={saveStatus}
               currency={product.currency}
@@ -3086,6 +3200,8 @@ export default function PersonalizeClient({ product, template }: { product: any;
           </p>
         </div>
       )}
+
+      {canvasContextMenu}
 
       {protectionEnabled && <CustomizerProtectionOverlay covered={covered} />}
     </div>

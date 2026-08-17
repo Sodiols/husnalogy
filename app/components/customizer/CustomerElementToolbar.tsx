@@ -26,7 +26,7 @@ export default function CustomerElementToolbar({ layer, onPatch, onDuplicate, on
 
       {layer.tintColor !== undefined && layer.tintColor !== "" && (
         <label
-          className="relative grid h-8 w-8 shrink-0 cursor-pointer place-items-center rounded-md border border-[#303839]/12 hover:bg-[#303839]/5"
+          className="relative grid h-11 w-11 shrink-0 cursor-pointer place-items-center rounded-lg border border-[#303839]/12 hover:bg-[#303839]/5 focus-within:ring-2 focus-within:ring-[#D4AF37]"
           title="Element colour"
         >
           <span className="sr-only">Element colour</span>
@@ -41,14 +41,14 @@ export default function CustomerElementToolbar({ layer, onPatch, onDuplicate, on
         </label>
       )}
 
-      <EditableNumericStepper label="Element opacity" value={Math.round((layer.opacity === undefined ? 1 : Number(layer.opacity)) * 100)} minimum={10} maximum={100} step={5} largeStep={25} allowNegative={false} allowDecimal={false} formatValue={(value) => `${Math.round(value)}%`} onCommit={(value) => onPatch({ opacity: value / 100 }, "element-opacity")} showLabel className="h-12 w-32 shrink-0 rounded-lg bg-white px-1" />
+      <EditableNumericStepper label="Element opacity" value={Math.round((layer.opacity === undefined ? 1 : Number(layer.opacity)) * 100)} minimum={10} maximum={100} step={5} largeStep={25} allowNegative={false} allowDecimal={false} formatValue={(value) => `${Math.round(value)}%`} onCommit={(value) => onPatch({ opacity: value / 100 }, "element-opacity")} showLabel className="h-11 w-32 shrink-0 rounded-lg bg-white px-1" />
 
       <button
         type="button"
         aria-label="Flip horizontally"
         aria-pressed={Boolean(layer.flipX)}
         onClick={() => onPatch({ flipX: !layer.flipX })}
-        className={`grid h-8 w-8 shrink-0 place-items-center rounded-md transition ${
+        className={`grid h-11 w-11 shrink-0 place-items-center rounded-lg transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] ${
           layer.flipX ? "bg-[#303839] text-white" : "text-[#303839] hover:bg-[#303839]/5"
         }`}
       >
@@ -61,7 +61,7 @@ export default function CustomerElementToolbar({ layer, onPatch, onDuplicate, on
         aria-label="Flip vertically"
         aria-pressed={Boolean(layer.flipY)}
         onClick={() => onPatch({ flipY: !layer.flipY })}
-        className={`grid h-8 w-8 shrink-0 place-items-center rounded-md transition ${
+        className={`grid h-11 w-11 shrink-0 place-items-center rounded-lg transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] ${
           layer.flipY ? "bg-[#303839] text-white" : "text-[#303839] hover:bg-[#303839]/5"
         }`}
       >
@@ -76,7 +76,7 @@ export default function CustomerElementToolbar({ layer, onPatch, onDuplicate, on
         type="button"
         aria-label="Duplicate element"
         onClick={onDuplicate}
-        className="grid h-8 w-8 shrink-0 place-items-center rounded-md text-[#303839] hover:bg-[#303839]/5"
+        className="grid h-11 w-11 shrink-0 place-items-center rounded-lg text-[#303839] hover:bg-[#303839]/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37]"
       >
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" aria-hidden>
           <rect x="9" y="9" width="12" height="12" rx="2" />
@@ -87,7 +87,7 @@ export default function CustomerElementToolbar({ layer, onPatch, onDuplicate, on
         type="button"
         aria-label="Delete element"
         onClick={onDelete}
-        className="grid h-8 w-8 shrink-0 place-items-center rounded-md text-red-700 hover:bg-red-50"
+        className="grid h-11 w-11 shrink-0 place-items-center rounded-lg text-red-700 hover:bg-red-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400"
       >
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
           <path d="M3 6h18M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />

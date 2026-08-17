@@ -41,10 +41,10 @@ function MultiChoice({ value, options, onChange, emptyLabel = "All available opt
         {options.map((option: any) => {
           const item = String(option.value);
           const active = selected.includes(item);
-          return <button key={item} type="button" aria-pressed={active} onClick={() => toggle(item)} className={`min-h-9 rounded-lg border px-2.5 text-left text-xs font-semibold transition ${active ? "border-[#303839] bg-[#303839] text-white" : "border-[#303839]/10 bg-white text-[#303839] hover:border-[#D4AF37]"}`}>{option.label}</button>;
+          return <button key={item} type="button" aria-pressed={active} onClick={() => toggle(item)} className={`min-h-9 rounded-lg border px-2.5 text-left text-xs font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] ${active ? "border-[#303839] bg-[#303839] text-white" : "border-[#303839]/10 bg-white text-[#303839] hover:border-[#D4AF37]"}`}>{option.label}</button>;
         })}
       </div>
-      <div className="mt-1 flex items-center justify-between gap-2 text-[10px] text-[#303839]/45"><span>{selected.length ? `${selected.length} allowed` : emptyLabel}</span>{selected.length > 0 && <button type="button" onClick={() => onChange([])} className="font-bold text-[#303839] hover:underline">Allow all</button>}</div>
+      <div className="mt-1 flex items-center justify-between gap-2 text-[10px] text-[#303839]/45"><span>{selected.length ? `${selected.length} allowed` : emptyLabel}</span>{selected.length > 0 && <button type="button" onClick={() => onChange([])} className="rounded px-0.5 font-bold text-[#303839] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37]">Allow all</button>}</div>
     </div>
   );
 }

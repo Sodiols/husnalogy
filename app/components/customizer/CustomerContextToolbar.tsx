@@ -8,6 +8,11 @@ import { CUSTOMIZER_APPROVED_FONTS } from "@/lib/customizer";
 import EditableNumericStepper from "./EditableNumericStepper";
 import TextAlignmentDropdown from "./TextAlignmentDropdown";
 import ToolbarDropdown, { type ToolbarDropdownOption } from "./ToolbarDropdown";
+import {
+  LETTER_SPACING_RULES,
+  LINE_HEIGHT_RULES,
+  resolveFontSizeBounds,
+} from "@/lib/customizer/v2/text-toolbar";
 
 type Props = {
   layer: any;
@@ -50,6 +55,8 @@ export default function CustomerContextToolbar({
   const canEditContent = isUserLayer || Boolean(permissions.editContent);
 
   const fontSize = Number(style.fontSize ?? 48);
+  // Honour the layer's own limits, exactly as the save validator does.
+  const fontSizeBounds = resolveFontSizeBounds(style);
   const weight = String(style.fontWeight || "400");
   const italic = style.fontStyle === "italic";
   const align = style.textAlign || "center";
@@ -124,8 +131,8 @@ export default function CustomerContextToolbar({
         <EditableNumericStepper
           label="Font size"
           value={fontSize}
-          minimum={10}
-          maximum={400}
+          minimum={fontSizeBounds.minimum}
+          maximum={fontSizeBounds.maximum}
           step={1}
           largeStep={10}
           allowNegative={false}
@@ -193,11 +200,11 @@ export default function CustomerContextToolbar({
       )}
 
       {canSpacing && (
-        <EditableNumericStepper label="Letter spacing" value={Number(style.letterSpacing ?? 0)} minimum={-2} maximum={20} step={0.1} largeStep={1} allowNegative allowDecimal onCommit={(letterSpacing) => onStyleChange({ letterSpacing }, "letterSpacing")} showLabel showStepButtons={false} className="h-10 w-[76px] shrink-0 px-1" inputClassName={numericInput} />
+        <EditableNumericStepper label="Letter spacing" value={Number(style.letterSpacing ?? 0)} minimum={LETTER_SPACING_RULES.minimum} maximum={LETTER_SPACING_RULES.maximum} step={LETTER_SPACING_RULES.step} largeStep={LETTER_SPACING_RULES.largeStep} allowNegative allowDecimal onCommit={(letterSpacing) => onStyleChange({ letterSpacing }, "letterSpacing")} showLabel showStepButtons={false} className="h-10 w-[76px] shrink-0 px-1" inputClassName={numericInput} />
       )}
 
       {canLineHeight && (
-        <EditableNumericStepper label="Line height" value={lineHeight} minimum={0.7} maximum={3} step={0.1} largeStep={0.5} allowNegative={false} allowDecimal onCommit={(lineHeight) => onStyleChange({ lineHeight }, "line-height")} showLabel showStepButtons={false} className="h-10 w-[76px] shrink-0 px-1" inputClassName={numericInput} />
+        <EditableNumericStepper label="Line height" value={lineHeight} minimum={LINE_HEIGHT_RULES.minimum} maximum={LINE_HEIGHT_RULES.maximum} step={LINE_HEIGHT_RULES.step} largeStep={LINE_HEIGHT_RULES.largeStep} allowNegative={false} allowDecimal onCommit={(lineHeight) => onStyleChange({ lineHeight }, "line-height")} showLabel showStepButtons={false} className="h-10 w-[76px] shrink-0 px-1" inputClassName={numericInput} />
       )}
 
       {!editingText && (canDuplicate || canDelete) && divider}

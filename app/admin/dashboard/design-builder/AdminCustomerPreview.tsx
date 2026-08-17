@@ -341,14 +341,14 @@ export default function AdminCustomerPreview({ template, product }: { template: 
           <button
             type="button"
             onClick={() => setStep("design")}
-            className={`rounded-full px-3 py-1 text-xs font-bold ${step === "design" ? "bg-[#303839] text-white" : "text-[#303839]/60 hover:text-[#303839]"}`}
+            className={`rounded-full px-3 py-1 text-xs font-bold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] ${step === "design" ? "bg-[#303839] text-white" : "text-[#303839]/60 hover:text-[#303839]"}`}
           >
             Design
           </button>
           <button
             type="button"
             onClick={() => setStep("review")}
-            className={`rounded-full px-3 py-1 text-xs font-bold ${step === "review" ? "bg-[#303839] text-white" : "text-[#303839]/60 hover:text-[#303839]"}`}
+            className={`rounded-full px-3 py-1 text-xs font-bold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] ${step === "review" ? "bg-[#303839] text-white" : "text-[#303839]/60 hover:text-[#303839]"}`}
           >
             Review
           </button>

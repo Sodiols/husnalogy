@@ -143,6 +143,43 @@ export function createGridSlotsFromPreset(presetId: string): GridSlot[] {
   return createGridSlots(preset.columns, preset.rows);
 }
 
+/**
+ * Photo permissions a SLOT can grant on its own (spec §17).
+ *
+ * A photo grid is the one deliberate exception to the all-or-nothing customer
+ * permission bundle: the admin may fix the container — no move, no resize, the
+ * container's own "Customer editable" switch off — while still letting the
+ * customer swap and crop the pictures inside individual slots. That is what the
+ * per-slot "Customer editable" checkbox in the properties panel writes, what
+ * `applyGridSlotAsset` honours, and what the save validator honours via
+ * `{ ...permissions, ...slot.permissions }`.
+ */
+export const GRID_SLOT_PHOTO_PERMISSIONS = [
+  "replaceImage",
+  "cropImage",
+  "zoomImage",
+  "repositionImage",
+  "flipImage",
+] as const;
+
+export function gridSlotGrantsPhotoEditing(slot: unknown): boolean {
+  const permissions = (slot as { permissions?: Record<string, unknown> })?.permissions;
+  if (!permissions || typeof permissions !== "object") return false;
+  return GRID_SLOT_PHOTO_PERMISSIONS.some((key) => Boolean(permissions[key]));
+}
+
+/**
+ * Does ANY slot grant photo editing? Callers use this to keep a fixed grid
+ * reachable on the canvas and visible in the layers panel: without it the
+ * container's own `customerEditable: false` hides the whole grid, and the slot
+ * permissions the admin set — and the server accepts — can never be exercised.
+ */
+export function anyGridSlotGrantsPhotoEditing(layer: unknown): boolean {
+  const slots = (layer as { slots?: unknown[] })?.slots;
+  if (!Array.isArray(slots)) return false;
+  return slots.some((slot) => gridSlotGrantsPhotoEditing(slot));
+}
+
 export type GridSlotRect = { x: number; y: number; width: number; height: number; centerX: number; centerY: number };
 
 export function getGridSlotRect(layer: Pick<GridLayer, "x" | "y" | "width" | "height" | "padding" | "gap">, slot: GridSlot): GridSlotRect {

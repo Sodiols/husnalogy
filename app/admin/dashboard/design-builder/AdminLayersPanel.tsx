@@ -122,7 +122,7 @@ export default function AdminLayersPanel({
                 aria-label={`${isCollapsed ? "Expand" : "Collapse"} ${layer.name || "group"}`}
                 aria-expanded={!isCollapsed}
                 onClick={() => toggleCollapsed(layer.id)}
-                className="grid h-5 w-4 shrink-0 place-items-center text-[9px] opacity-60 transition-transform hover:opacity-100"
+                className="grid h-6 w-6 shrink-0 place-items-center rounded text-[9px] opacity-60 transition-transform hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] focus-visible:ring-offset-1 focus-visible:ring-offset-[#2A3132]"
               >
                 {isCollapsed ? "▶" : "▼"}
               </button>
@@ -181,7 +181,7 @@ export default function AdminLayersPanel({
                 aria-label={`Move ${layer.name} up`}
                 disabled={index === 0}
                 onClick={() => onReorder(layer.id, "up")}
-                className="grid h-6 w-5 place-items-center text-[10px] opacity-60 hover:opacity-100 disabled:opacity-20"
+                className="grid h-6 w-6 place-items-center rounded text-[10px] opacity-60 hover:opacity-100 disabled:opacity-20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] focus-visible:ring-offset-1 focus-visible:ring-offset-[#2A3132]"
               >
                 ▲
               </button>
@@ -190,7 +190,7 @@ export default function AdminLayersPanel({
                 aria-label={`Move ${layer.name} down`}
                 disabled={index === rows.length - 1}
                 onClick={() => onReorder(layer.id, "down")}
-                className="grid h-6 w-5 place-items-center text-[10px] opacity-60 hover:opacity-100 disabled:opacity-20"
+                className="grid h-6 w-6 place-items-center rounded text-[10px] opacity-60 hover:opacity-100 disabled:opacity-20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] focus-visible:ring-offset-1 focus-visible:ring-offset-[#2A3132]"
               >
                 ▼
               </button>
@@ -198,7 +198,7 @@ export default function AdminLayersPanel({
                 type="button"
                 aria-label={layer.hidden ? `Show ${layer.name}` : `Hide ${layer.name}`}
                 onClick={() => onLayerPatch(layer.id, { hidden: !layer.hidden })}
-                className={`grid h-6 w-6 place-items-center text-[11px] ${layer.hidden ? "opacity-100" : "opacity-50 hover:opacity-100"}`}
+                className={`grid h-6 w-6 place-items-center rounded text-[11px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] focus-visible:ring-offset-1 focus-visible:ring-offset-[#2A3132] ${layer.hidden ? "opacity-100" : "opacity-50 hover:opacity-100"}`}
                 title={layer.hidden ? "Hidden" : "Visible"}
               >
                 {layer.hidden ? "🚫" : "👁"}
@@ -207,7 +207,7 @@ export default function AdminLayersPanel({
                 type="button"
                 aria-label={layer.locked ? `Unlock ${layer.name}` : `Lock ${layer.name}`}
                 onClick={() => onLayerPatch(layer.id, { locked: !layer.locked })}
-                className={`grid h-6 w-6 place-items-center text-[11px] ${layer.locked ? "opacity-100" : "opacity-40 hover:opacity-100"}`}
+                className={`grid h-6 w-6 place-items-center rounded text-[11px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] focus-visible:ring-offset-1 focus-visible:ring-offset-[#2A3132] ${layer.locked ? "opacity-100" : "opacity-40 hover:opacity-100"}`}
                 title={layer.locked ? "Locked" : "Unlocked"}
               >
                 {layer.locked ? "🔒" : "🔓"}
@@ -216,7 +216,7 @@ export default function AdminLayersPanel({
                 type="button"
                 aria-label={`Duplicate ${layer.name}`}
                 onClick={() => onDuplicate(layer.id)}
-                className="grid h-6 w-6 place-items-center text-[11px] opacity-50 hover:opacity-100"
+                className="grid h-6 w-6 place-items-center rounded text-[11px] opacity-50 hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] focus-visible:ring-offset-1 focus-visible:ring-offset-[#2A3132]"
                 title="Duplicate"
               >
                 ⧉
@@ -225,7 +225,7 @@ export default function AdminLayersPanel({
                 type="button"
                 aria-label={`Delete ${layer.name}`}
                 onClick={() => onRemove(layer.id)}
-                className="grid h-6 w-6 place-items-center text-[11px] text-red-500 opacity-60 hover:opacity-100"
+                className="grid h-6 w-6 place-items-center rounded text-[11px] text-red-500 opacity-60 hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400 focus-visible:ring-offset-1 focus-visible:ring-offset-[#2A3132]"
                 title="Delete"
               >
                 ✕

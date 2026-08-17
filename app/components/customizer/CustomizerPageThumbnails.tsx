@@ -45,7 +45,7 @@ export default function CustomizerPageThumbnails({
             // width — `sm:w-full` used to apply to both, so on a 768px tablet
             // each "thumbnail" grew to ~744px wide and ~1040px tall, collapsing
             // the canvas to a 64px sliver.
-            className={`group shrink-0 text-left transition ${
+            className={`group shrink-0 rounded-md text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] ${
               orientation === "horizontal" ? "w-24 sm:w-28" : "w-24 sm:w-full"
             } ${active ? "" : "opacity-75 hover:opacity-100"}`}
           >

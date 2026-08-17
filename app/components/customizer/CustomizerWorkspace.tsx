@@ -6,7 +6,7 @@
 // the administrator made customer editable (plus the customer's own added
 // layers). Locked and decorative layers never receive pointer interaction.
 
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import CustomizerPreview from "./CustomizerPreview";
 import InlineCanvasTextEditor from "./InlineCanvasTextEditor";
 import { getGridSlotRect, normalizeGridSlot } from "@/lib/customizer/v2/grids";
@@ -46,6 +46,12 @@ import {
 } from "@/lib/customizer/v2/selection";
 import { getDescendantIds } from "@/lib/customizer/v2/groups";
 import { isEmptyText } from "@/lib/customizer/v2/text-editing";
+import {
+  buildSnapTargets,
+  layerHalfExtents,
+  snapMove,
+  type SmartGuide,
+} from "@/lib/customizer/v2/snapping";
 import { ZOOM_MAX, ZOOM_MIN, clampZoom, computeFitZoom } from "@/lib/customizer/v2/zoom";
 
 const HANDLES: Array<{ id: string; cx: number; cy: number; cursor: string }> = [
@@ -68,7 +74,7 @@ const SINGLE_LINE_TEXT_HANDLES = HANDLES.filter(
 
 const SNAP_PX = 8; // screen pixels
 
-type Guide = { type: "v" | "h"; at: number };
+type Guide = SmartGuide;
 
 type Props = {
   template: any;
@@ -120,6 +126,9 @@ type Props = {
   interactionRotation?: number;
   editingGroupId?: string | null;
   onEnterGroup?: (groupId: string) => void;
+  // Right click on an object (spec §20). The canvas resolves which object was
+  // hit and selects it; the parent owns the menu and its permitted actions.
+  onLayerContextMenu?: (layerId: string, position: { x: number; y: number }) => void;
 };
 
 export default function CustomizerWorkspace({
@@ -161,12 +170,15 @@ export default function CustomizerWorkspace({
   interactionRotation = 0,
   editingGroupId = null,
   onEnterGroup,
+  onLayerContextMenu,
 }: Props) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const surfaceRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<any>(null);
   const textMeasureRef = useRef<MeasureFn>(fallbackMeasure);
-  const [, setTextMetricsRevision] = useState(0);
+  // Bumped once when webfonts finish loading and the real canvas measurer
+  // replaces the fallback; memoized geometry depends on it.
+  const [textMetricsRevision, setTextMetricsRevision] = useState(0);
   const gestureRef = useRef<any>(null);
   const touchPointsRef = useRef(new Map<number, { x: number; y: number }>());
   const [containerWidth, setContainerWidth] = useState(0);
@@ -255,15 +267,26 @@ export default function CustomizerWorkspace({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fitZoom]);
 
-  const layers = getEffectiveLayersForPage(template, pageId, editorState);
+  // Resolving a page's layers walks the template, applies every customer
+  // override and merges user layers. A drag pushes a state update on every
+  // pointermove, so leaving this bare re-derived the whole page's geometry
+  // dozens of times a second for a gesture that only moves one object (spec
+  // §30).
+  const layers = useMemo(
+    () => getEffectiveLayersForPage(template, pageId, editorState),
+    [template, pageId, editorState],
+  );
 
   // Auto-width text may grow only up to the safe area.
-  const safeBounds: SafeBounds = {
-    left: Number(template?.safeArea?.left) || 0,
-    top: Number(template?.safeArea?.top) || 0,
-    right: canvasW - (Number(template?.safeArea?.right) || 0),
-    bottom: canvasH - (Number(template?.safeArea?.bottom) || 0),
-  };
+  const safeBounds: SafeBounds = useMemo(
+    () => ({
+      left: Number(template?.safeArea?.left) || 0,
+      top: Number(template?.safeArea?.top) || 0,
+      right: canvasW - (Number(template?.safeArea?.right) || 0),
+      bottom: canvasH - (Number(template?.safeArea?.bottom) || 0),
+    }),
+    [template?.safeArea?.left, template?.safeArea?.top, template?.safeArea?.right, template?.safeArea?.bottom, canvasW, canvasH],
+  );
 
   // Shared with the renderers via resolveTextBox, so the customer's selection
   // box and handles always sit exactly on the rendered glyphs.
@@ -338,23 +361,27 @@ export default function CustomizerWorkspace({
   const cropGridLayer = cropGridSlotId ? layers.find((layer: any) => layer.type === "grid" && (layer.slots || []).some((slot: any) => slot.id === cropGridSlotId)) : null;
   const cropGridSlot = cropGridLayer ? normalizeGridSlot(cropGridLayer.slots.find((slot: any) => slot.id === cropGridSlotId)) : null;
   const cropGridRect = cropGridLayer && cropGridSlot ? getGridSlotRect(cropGridLayer, cropGridSlot) : null;
-  const interactiveLayers = previewMode
-    ? []
-    : cropLayer
-      ? [] // while cropping, the crop surface owns all interaction
-      : cropGridLayer
+  const interactiveLayers = useMemo(
+    () =>
+      previewMode
         ? []
-      : layers
-        .filter((layer: any) => !layer.hidden)
-        .filter((layer: any) => layer.isUserLayer || isLayerCustomerInteractive(layer))
-        .filter((layer: any) => {
-          if (layer.type === "group" && editingGroupId === layer.id) return false;
-          if (layer.groupId && layer.groupId !== editingGroupId) {
-            const parent = layers.find((candidate: any) => candidate.id === layer.groupId);
-            if (parent && (parent.isUserLayer || isLayerCustomerInteractive(parent))) return false;
-          }
-          return true;
-        });
+        : cropLayer
+          ? [] // while cropping, the crop surface owns all interaction
+          : cropGridLayer
+            ? []
+          : layers
+            .filter((layer: any) => !layer.hidden)
+            .filter((layer: any) => layer.isUserLayer || isLayerCustomerInteractive(layer))
+            .filter((layer: any) => {
+              if (layer.type === "group" && editingGroupId === layer.id) return false;
+              if (layer.groupId && layer.groupId !== editingGroupId) {
+                const parent = layers.find((candidate: any) => candidate.id === layer.groupId);
+                if (parent && (parent.isUserLayer || isLayerCustomerInteractive(parent))) return false;
+              }
+              return true;
+            }),
+    [layers, previewMode, cropLayer, cropGridLayer, editingGroupId],
+  );
 
   const activeSelection = selectedLayerIds?.length ? selectedLayerIds : selectedLayerId ? [selectedLayerId] : [];
 
@@ -463,7 +490,16 @@ export default function CustomizerWorkspace({
     (candidate: any) => !isTransformLocked(candidate) && (candidate.isUserLayer || getLayerPermissions(candidate).rotate),
   );
   const selectedInteractiveLayers = interactiveLayers.filter((layer: any) => activeSelection.includes(layer.id));
-  const resolvedInteractiveLayers = interactiveLayers.map((layer: any) => resolveLayerBox(layer));
+  // The expensive one: every text layer here is measured on a canvas context to
+  // find its real glyph box. Recomputing that for the whole page on each
+  // pointermove was the single biggest cost in a drag (spec §30).
+  // `textMetricsRevision` bumps once when webfonts finish loading, which is the
+  // only time the measure function itself changes.
+  const resolvedInteractiveLayers = useMemo(
+    () => interactiveLayers.map((layer: any) => resolveLayerBox(layer)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [interactiveLayers, template, values, safeBounds, textMetricsRevision],
+  );
   const resolvedSelectedInteractiveLayers = resolvedInteractiveLayers.filter((layer: any) => activeSelection.includes(layer.id));
   const multiBounds = activeSelection.length > 1 ? selectionBounds(resolvedSelectedInteractiveLayers, activeSelection) : null;
   const multiCanMove = Boolean(
@@ -474,44 +510,35 @@ export default function CustomizerWorkspace({
   const multiCanResize = Boolean(multiBounds && selectedInteractiveLayers.length === activeSelection.length && selectedInteractiveLayers.every((layer: any) => canMove(layer) && canResize(layer)));
   const multiCanRotate = Boolean(multiBounds && selectedInteractiveLayers.length === activeSelection.length && selectedInteractiveLayers.every((layer: any) => canMove(layer) && canRotate(layer)));
 
-  /* ---- snapping (canvas centre/edges, safe area, other object centres) ---- */
-  const buildSnapTargets = (excludeId: string) => {
-    const safe = template?.safeArea || {};
-    const xs = [canvasW / 2, 0, canvasW, Number(safe.left || 0), canvasW - Number(safe.right || 0)];
-    const ys = [canvasH / 2, 0, canvasH, Number(safe.top || 0), canvasH - Number(safe.bottom || 0)];
-    layers.forEach((l: any) => {
-      if (l.id === excludeId || l.hidden) return;
-      xs.push(l.x, l.x - l.width / 2, l.x + l.width / 2);
-      ys.push(l.y, l.y - l.height / 2, l.y + l.height / 2);
+  /* ---- snapping (page centre/edges, safe area, guides, neighbours) ---- */
+  // Every EDGE and centre of the dragged object is matched against every
+  // candidate line (shared engine, spec §12). Snapping the centre alone — as
+  // this did — made left-to-left alignment unreachable and parked page-edge
+  // snaps half off the page.
+  const applySnap = (x: number, y: number, excludeIds: string | string[]) => {
+    const excluded = Array.isArray(excludeIds) ? excludeIds : [excludeIds];
+    const moving = resolvedInteractiveLayers.find((layer: any) => layer.id === excluded[0])
+      ?? layers.find((layer: any) => layer.id === excluded[0]);
+    const { halfWidth, halfHeight } = layerHalfExtents(moving || {});
+    const targets = buildSnapTargets({
+      pageWidth: canvasW,
+      pageHeight: canvasH,
+      safeArea: template?.safeArea,
+      // The customer only ever snaps to guides the template chose to expose.
+      guides: (template?.guides || []).filter((guide: any) => guide?.customerVisible !== false),
+      pageId,
+      objects: layers,
+      excludeIds: excluded,
     });
-    return { xs, ys };
-  };
-
-  const applySnap = (x: number, y: number, excludeId: string) => {
-    if (!snappingEnabled) return { x: Math.round(x), y: Math.round(y), guides: [] as Guide[] };
-    const { xs, ys } = buildSnapTargets(excludeId);
-    let outX = x;
-    let outY = y;
-    const activeGuides: Guide[] = [];
-    let bestDx = snapTolerance;
-    xs.forEach((target) => {
-      const d = Math.abs(x - target);
-      if (d < bestDx) {
-        bestDx = d;
-        outX = target;
-      }
+    return snapMove({
+      x,
+      y,
+      halfWidth,
+      halfHeight,
+      targets,
+      tolerance: snapTolerance,
+      enabled: snappingEnabled,
     });
-    if (outX !== x) activeGuides.push({ type: "v", at: outX });
-    let bestDy = snapTolerance;
-    ys.forEach((target) => {
-      const d = Math.abs(y - target);
-      if (d < bestDy) {
-        bestDy = d;
-        outY = target;
-      }
-    });
-    if (outY !== y) activeGuides.push({ type: "h", at: outY });
-    return { x: Math.round(outX), y: Math.round(outY), guides: activeGuides };
   };
 
   /* ---- pointer interactions ---- */
@@ -898,12 +925,20 @@ export default function CustomizerWorkspace({
     }
 
     if (drag.mode === "move") {
-      const snapped = applySnap(drag.startX + dx, drag.startY + dy, drag.layerId);
-      setGuides(snapped.guides);
       const selected = Array.isArray(drag.selected) && drag.selected.length ? drag.selected : [{ id: drag.layerId, x: drag.startX, y: drag.startY }];
+      // Nothing being dragged may attract the object doing the dragging, or a
+      // multi-selection would snap to its own members.
+      const movingIds = [drag.layerId, ...selected.map((item: any) => item.id).filter((id: string) => id !== drag.layerId)];
+      const snapped = applySnap(drag.startX + dx, drag.startY + dy, movingIds);
+      setGuides(snapped.guides);
+      // The whole selection moves by the SNAPPED delta. Applying the raw delta
+      // to the followers, as this did, silently changed their spacing relative
+      // to the grabbed object every time a snap engaged.
+      const effectiveDx = snapped.x - drag.startX;
+      const effectiveDy = snapped.y - drag.startY;
       selected.forEach((item: any) => {
         if (item.id === drag.layerId) onLayerTransform?.(item.id, { x: snapped.x, y: snapped.y }, "move");
-        else onLayerTransform?.(item.id, { x: Math.round(item.x + dx), y: Math.round(item.y + dy) }, "move");
+        else onLayerTransform?.(item.id, { x: Math.round(item.x + effectiveDx), y: Math.round(item.y + effectiveDy) }, "move");
       });
       return;
     }
@@ -1161,21 +1196,30 @@ export default function CustomizerWorkspace({
 
         {showWatermark && <CustomizerWatermark />}
 
-        {/* Alignment guides while dragging */}
+        {/* Smart guides while dragging. Overlay only — they are drawn here and
+            never by the shared renderer, so they cannot reach print output. */}
         {guides.map((guide, index) =>
           guide.type === "v" ? (
             <span
               key={`g${index}`}
               aria-hidden
-              className="pointer-events-none absolute inset-y-0 z-40 w-px bg-[#D4AF37]"
-              style={{ left: guide.at * scale }}
+              className="pointer-events-none absolute z-40 w-px bg-[#D4AF37]"
+              style={{
+                left: guide.at * scale,
+                top: guide.start * scale,
+                height: Math.max(1, (guide.end - guide.start) * scale),
+              }}
             />
           ) : (
             <span
               key={`g${index}`}
               aria-hidden
-              className="pointer-events-none absolute inset-x-0 z-40 h-px bg-[#D4AF37]"
-              style={{ top: guide.at * scale }}
+              className="pointer-events-none absolute z-40 h-px bg-[#D4AF37]"
+              style={{
+                top: guide.at * scale,
+                left: guide.start * scale,
+                width: Math.max(1, (guide.end - guide.start) * scale),
+              }}
             />
           ),
         )}
@@ -1322,6 +1366,15 @@ export default function CustomizerWorkspace({
               tabIndex={0}
               aria-label={`Edit ${layer.name || (isText ? "text" : "photo")}`}
               onPointerDown={(e) => onLayerPointerDown(e, layer)}
+              onContextMenu={(event) => {
+                if (previewMode || editingTextId) return;
+                event.preventDefault();
+                event.stopPropagation();
+                // Right-clicking outside the current selection works on the
+                // object under the cursor, the way every editor behaves.
+                if (!activeSelection.includes(layer.id)) applySelection([layer.id]);
+                onLayerContextMenu?.(layer.id, { x: event.clientX, y: event.clientY });
+              }}
               onDoubleClick={() => {
                 // Double click is an explicit "work on this one object" action:
                 // it replaces the selection rather than toggling it.

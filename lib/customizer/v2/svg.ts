@@ -17,6 +17,7 @@ import { getLegacyMaskPath, getMaskPath } from "./masks";
 import { DEFAULT_LINE_HEIGHT, layoutText, fallbackMeasure, resolveTextBox, type MeasureFn, type SafeBounds } from "./text-layout";
 import { getGridSlotRect, normalizeGridSlot } from "./grids";
 import { hasImageFilters, imageFilterSvgPrimitives } from "./image-filters";
+import { resolveImageDrawBoxFromTransform } from "./image-crop";
 import { normalizeQRCodeStyle, qrModuleRects } from "./qr";
 
 export type SvgBuildOptions = {
@@ -249,11 +250,16 @@ function renderImageLayer(
     );
   }
 
-  const zoom = Number(image.zoom) > 0 ? Number(image.zoom) : 1;
-  const drawW = layer.width * zoom;
-  const drawH = layer.height * zoom;
-  const drawX = frameX - (drawW - layer.width) / 2 + (Number(image.offsetX) || 0);
-  const drawY = frameY - (drawH - layer.height) / 2 + (Number(image.offsetY) || 0);
+  // One shared formula with the browser preview, so print and screen cannot
+  // drift. Honours the crop rectangle, which nothing read before (spec §16).
+  const draw = resolveImageDrawBoxFromTransform(
+    { frameX, frameY, frameWidth: layer.width, frameHeight: layer.height },
+    { zoom: image.zoom, offsetX: image.offsetX, offsetY: image.offsetY, ...(image.crop || {}) },
+  );
+  const drawX = draw.x;
+  const drawY = draw.y;
+  const drawW = draw.width;
+  const drawH = draw.height;
 
   const inner: string[] = [];
   if (image.imageRotation) inner.push(`rotate(${image.imageRotation} ${layer.x} ${layer.y})`);

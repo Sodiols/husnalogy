@@ -5,7 +5,7 @@
 // The overlay adds selection, drag, resize, rotation, snapping with alignment
 // guides, and a live position/size readout.
 
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import CustomizerPreview from "@/app/components/customizer/CustomizerPreview";
 import EditableNumericStepper from "@/app/components/customizer/EditableNumericStepper";
 import InlineCanvasTextEditor from "@/app/components/customizer/InlineCanvasTextEditor";
@@ -47,6 +47,12 @@ import {
   resolvePointerUpSelection,
 } from "@/lib/customizer/v2/selection";
 import { isEmptyText } from "@/lib/customizer/v2/text-editing";
+import {
+  buildSnapTargets,
+  layerHalfExtents,
+  snapMove,
+  type SmartGuide,
+} from "@/lib/customizer/v2/snapping";
 import { actualSizeZoom, computeWorkspaceFit, resolveWorkspacePadding } from "@/lib/customizer/v2/zoom";
 import { layersForPage, selectableLayersForPage } from "./builder-utils";
 
@@ -70,7 +76,7 @@ const SINGLE_LINE_TEXT_HANDLES = HANDLES.filter(
 
 const SNAP_PX = 8; // screen pixels
 
-type Guide = { type: "v" | "h"; at: number };
+type Guide = SmartGuide;
 
 export default function AdminCanvas({
   template,
@@ -206,8 +212,13 @@ export default function AdminCanvas({
     displayHeight: displayH,
   };
 
-  const layers = layersForPage(template, pageId);
-  const selectableLayers = selectableLayersForPage(template, pageId, editingGroupId);
+  // Re-derived on every render, including every pointermove of a drag. Same
+  // cost profile as the customer workspace (spec §30).
+  const layers = useMemo(() => layersForPage(template, pageId), [template, pageId]);
+  const selectableLayers = useMemo(
+    () => selectableLayersForPage(template, pageId, editingGroupId),
+    [template, pageId, editingGroupId],
+  );
 
   // Auto-width text may grow only up to the safe area.
   const safeBounds: SafeBounds = {
@@ -288,45 +299,41 @@ export default function AdminCanvas({
     return layout.overflowWidth || layout.overflowHeight || layout.truncatedLines;
   };
 
-  // Snap targets: page centre, page edges, safe-area edges, other layer centres.
-  const buildSnapTargets = (excludeIds: string | string[]) => {
-    const excluded = new Set(Array.isArray(excludeIds) ? excludeIds : [excludeIds]);
-    const safe = template?.safeArea || {};
-    const xs = [canvasW / 2, 0, canvasW, Number(safe.left || 0), canvasW - Number(safe.right || 0)];
-    const ys = [canvasH / 2, 0, canvasH, Number(safe.top || 0), canvasH - Number(safe.bottom || 0)];
-    layers.forEach((l: any) => {
-      if (excluded.has(l.id) || l.hidden) return;
-      xs.push(l.x);
-      ys.push(l.y);
+  // Snap targets: page centre/edges, safe area, saved guides, and every
+  // neighbour's edges AND centre. Matching is done edge-to-edge by the shared
+  // engine (spec §12) — comparing only the dragged object's centre, as this
+  // did, cannot align two objects by their edges at all.
+  // `extents` is supplied when the thing being dragged is not a single layer —
+  // dragging the combined frame snaps the SELECTION box, whose size has nothing
+  // to do with whichever member happens to be first.
+  const applySnap = (
+    x: number,
+    y: number,
+    excludeIds: string | string[],
+    extents?: { halfWidth: number; halfHeight: number } | null,
+  ) => {
+    const excluded = Array.isArray(excludeIds) ? excludeIds : [excludeIds];
+    const moving = resolvedSelectableLayers.find((layer: any) => layer.id === excluded[0])
+      ?? layers.find((layer: any) => layer.id === excluded[0]);
+    const { halfWidth, halfHeight } = extents ?? layerHalfExtents(moving || {});
+    const targets = buildSnapTargets({
+      pageWidth: canvasW,
+      pageHeight: canvasH,
+      safeArea: template?.safeArea,
+      guides: savedGuides,
+      pageId,
+      objects: layers,
+      excludeIds: excluded,
     });
-    return { xs, ys };
-  };
-
-  const applySnap = (x: number, y: number, excludeIds: string | string[]) => {
-    if (!snapEnabled) return { x, y, guides: [] as Guide[] };
-    const { xs, ys } = buildSnapTargets(excludeIds);
-    let outX = x;
-    let outY = y;
-    const activeGuides: Guide[] = [];
-    let bestDx = snapTolerance;
-    xs.forEach((target) => {
-      const d = Math.abs(x - target);
-      if (d < bestDx) {
-        bestDx = d;
-        outX = target;
-      }
+    return snapMove({
+      x,
+      y,
+      halfWidth,
+      halfHeight,
+      targets,
+      tolerance: snapTolerance,
+      enabled: snapEnabled,
     });
-    if (outX !== x) activeGuides.push({ type: "v", at: outX });
-    let bestDy = snapTolerance;
-    ys.forEach((target) => {
-      const d = Math.abs(y - target);
-      if (d < bestDy) {
-        bestDy = d;
-        outY = target;
-      }
-    });
-    if (outY !== y) activeGuides.push({ type: "h", at: outY });
-    return { x: Math.round(outX), y: Math.round(outY), guides: activeGuides };
   };
 
   const selectionIds: string[] = selectedLayerIds.length
@@ -334,7 +341,15 @@ export default function AdminCanvas({
     : selectedLayerId
       ? [selectedLayerId]
       : [];
-  const resolvedSelectableLayers = selectableLayers.map((layer: any) => resolveLayerBox(layer));
+  // Canvas text measurement for every selectable layer — memoized so a drag
+  // does not re-measure the whole page on each pointermove.
+  const resolvedSelectableLayers = useMemo(
+    () => selectableLayers.map((layer: any) => resolveLayerBox(layer)),
+    // The measurer here is created once and never swapped, so the geometry
+    // depends only on the layers and the text they resolve to.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [selectableLayers, template, values],
+  );
   const multiBounds = selectionIds.length > 1
     ? selectionBounds(resolvedSelectableLayers, selectionIds)
     : null;
@@ -515,6 +530,7 @@ export default function AdminCanvas({
       startY: multiBounds.y,
       startPositions,
       excludeIds: selectionIds,
+      snapExtents: { halfWidth: multiBounds.width / 2, halfHeight: multiBounds.height / 2 },
       // Empty space inside the frame is still empty canvas: a click that never
       // moves clears the selection (spec §4).
       clearOnRelease: true,
@@ -727,7 +743,7 @@ export default function AdminCanvas({
 
     if (drag.mode === "move-multi") {
       // Snap the grabbed layer; the rest follow with the same delta.
-      const snapped = applySnap(drag.startX + dx, drag.startY + dy, drag.excludeIds || drag.layerId);
+      const snapped = applySnap(drag.startX + dx, drag.startY + dy, drag.excludeIds || drag.layerId, drag.snapExtents);
       setGuides(snapped.guides);
       const effectiveDx = snapped.x - drag.startX;
       const effectiveDy = snapped.y - drag.startY;
@@ -992,15 +1008,23 @@ export default function AdminCanvas({
             <span
               key={`g${index}`}
               aria-hidden
-              className="pointer-events-none absolute inset-y-0 w-px bg-[#D4AF37]"
-              style={{ left: guide.at * scale }}
+              className="pointer-events-none absolute w-px bg-[#D4AF37]"
+              style={{
+                left: guide.at * scale,
+                top: guide.start * scale,
+                height: Math.max(1, (guide.end - guide.start) * scale),
+              }}
             />
           ) : (
             <span
               key={`g${index}`}
               aria-hidden
-              className="pointer-events-none absolute inset-x-0 h-px bg-[#D4AF37]"
-              style={{ top: guide.at * scale }}
+              className="pointer-events-none absolute h-px bg-[#D4AF37]"
+              style={{
+                top: guide.at * scale,
+                left: guide.start * scale,
+                width: Math.max(1, (guide.end - guide.start) * scale),
+              }}
             />
           ),
         )}

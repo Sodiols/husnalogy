@@ -277,7 +277,7 @@ export default function CustomerEditPanel({
                 <button
                   type="button"
                   onClick={() => onFocusPage?.(page.id)}
-                  className="text-xs font-bold text-[#303839]/50 underline-offset-2 hover:underline"
+                  className="rounded-md px-1 text-xs font-bold text-[#303839]/50 underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37]"
                 >
                   View page
                 </button>
@@ -313,7 +313,7 @@ export default function CustomerEditPanel({
                             onSelectLayer?.(layer.id);
                             onOpenUploads?.();
                           }}
-                          className="rounded-full border border-[#303839]/15 px-3 py-1 text-xs font-bold text-[#303839] hover:bg-[#303839]/5"
+                          className="min-h-11 rounded-full border border-[#303839]/15 px-3 py-1 text-xs font-bold text-[#303839] hover:bg-[#303839]/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37]"
                         >
                           {hasPhoto ? "Edit photo" : "Upload photo"}
                         </button>

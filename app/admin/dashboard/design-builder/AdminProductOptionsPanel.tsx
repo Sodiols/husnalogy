@@ -180,7 +180,7 @@ function OptionEditor({ initial, supportsImage, onSave, onCancel }: any) {
       </div>
 
       <div className="flex justify-end gap-2">
-        <button type="button" onClick={onCancel} className="rounded-full border border-[#303839]/15 px-4 py-1.5 text-xs font-bold text-[#303839] hover:bg-white">
+        <button type="button" onClick={onCancel} className="rounded-full border border-[#303839]/15 px-4 py-1.5 text-xs font-bold text-[#303839] hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37]">
           Cancel
         </button>
         <button

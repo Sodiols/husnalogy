@@ -30,6 +30,24 @@ export const TEXT_TOOLBAR_DEFAULTS = {
 } as const;
 
 export const FONT_SIZE_RULES = { minimum: 4, maximum: 500, step: 1, largeStep: 10 } as const;
+
+/**
+ * Font-size bounds for ONE layer (spec §15).
+ *
+ * A layer may narrow the range with its own `minFontSize` / `maxFontSize`, and
+ * the save validator clamps to exactly this window before raising
+ * `font-size-out-of-range`. The customer toolbar used to hardcode 10–400
+ * instead, which was wrong at both ends: it refused sizes the template allowed
+ * (above 400) and offered sizes the server would clamp away (below a layer's
+ * own minimum, or under 10 where the template permitted 4).
+ */
+export function resolveFontSizeBounds(
+  style: Record<string, unknown> | null | undefined,
+): { minimum: number; maximum: number } {
+  const minimum = Math.max(FONT_SIZE_RULES.minimum, Number(style?.minFontSize) || FONT_SIZE_RULES.minimum);
+  const maximum = Math.max(minimum, Number(style?.maxFontSize) || FONT_SIZE_RULES.maximum);
+  return { minimum, maximum };
+}
 export const LETTER_SPACING_RULES = { minimum: -20, maximum: 100, step: 0.1, largeStep: 1 } as const;
 export const LINE_HEIGHT_RULES = { minimum: 0.5, maximum: 4, step: 0.05, largeStep: 0.25 } as const;
 

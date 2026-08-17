@@ -12,6 +12,8 @@ import { CUSTOMIZER_APPROVED_FONTS } from "@/lib/customizer";
 import { listFonts } from "./fonts";
 import { isValidQRValue, normalizeQRCodeStyle } from "./qr";
 import { normalizeImageFilters } from "./image-filters";
+import { resolveImageCropCapabilities } from "./image-permissions";
+import { resolveFontSizeBounds } from "./text-toolbar";
 import { normalizeCanonicalText, promoteTextStyleForValue } from "./text-editing";
 
 /* ------------------------------------------------------------- zod schemas */
@@ -636,8 +638,8 @@ export function validateCustomerState(
         gate("fontStyle", Boolean(permissions.editStyle), "style-not-allowed");
 
         if (s.fontSize !== undefined) {
-          const minFontSize = Math.max(4, Number(layer.textStyle?.minFontSize) || 4);
-          const maxFontSize = Math.max(minFontSize, Number(layer.textStyle?.maxFontSize) || 500);
+          // Same bounds the customer toolbar builds its stepper from.
+          const { minimum: minFontSize, maximum: maxFontSize } = resolveFontSizeBounds(layer.textStyle);
           const clampedFontSize = Math.min(maxFontSize, Math.max(minFontSize, Number(s.fontSize) || minFontSize));
           if (clampedFontSize !== s.fontSize) {
             violations.push({
@@ -670,25 +672,28 @@ export function validateCustomerState(
       } else {
         const t: any = {};
         const it = override.imageTransform;
-        const cropAllowed = Boolean((permissions as any).cropImage ?? (permissions.zoomImage || permissions.repositionImage));
+        // Same rule object the photo toolbar builds its controls from, so the
+        // UI can never offer an action this validator will reject.
+        const capabilities = resolveImageCropCapabilities(permissions as any);
+        const { cropAllowed } = capabilities;
         if (it.zoom !== undefined) {
-          if (permissions.zoomImage || cropAllowed) t.zoom = it.zoom;
+          if (capabilities.canZoom) t.zoom = it.zoom;
           else violations.push({ code: "zoom-not-allowed", layerId, message: `Zooming "${layer.name || layerId}" is not allowed.` });
         }
         if (it.offsetX !== undefined || it.offsetY !== undefined) {
-          if (permissions.repositionImage || cropAllowed) {
+          if (capabilities.canReposition) {
             if (it.offsetX !== undefined) t.offsetX = it.offsetX;
             if (it.offsetY !== undefined) t.offsetY = it.offsetY;
           } else violations.push({ code: "reposition-not-allowed", layerId, message: `Repositioning "${layer.name || layerId}" is not allowed.` });
         }
         if (it.flipX !== undefined || it.flipY !== undefined) {
-          if ((permissions as any).flipImage) {
+          if (capabilities.canFlip) {
             if (it.flipX !== undefined) t.flipX = it.flipX;
             if (it.flipY !== undefined) t.flipY = it.flipY;
           } else violations.push({ code: "flip-not-allowed", layerId, message: `Flipping "${layer.name || layerId}" is not allowed.` });
         }
         if (it.rotation !== undefined) {
-          if (cropAllowed) t.rotation = it.rotation;
+          if (capabilities.canRotateImage) t.rotation = it.rotation;
           else violations.push({ code: "image-rotate-not-allowed", layerId, message: `Rotating the photo in "${layer.name || layerId}" is not allowed.` });
         }
         if (it.fitMode !== undefined && cropAllowed) t.fitMode = it.fitMode;

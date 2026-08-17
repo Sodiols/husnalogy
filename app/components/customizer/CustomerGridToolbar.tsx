@@ -3,6 +3,10 @@
 import { useRef } from "react";
 import { getLayerPermissions } from "./customizer-utils";
 import EditableNumericStepper from "./EditableNumericStepper";
+import {
+  resetImageTransformPatch,
+  resolveImageCropCapabilities,
+} from "@/lib/customizer/v2/image-permissions";
 
 export default function CustomerGridToolbar({
   layer,
@@ -21,7 +25,11 @@ export default function CustomerGridToolbar({
   const inputRef = useRef<HTMLInputElement>(null);
   const slot = (layer?.slots || []).find((item: any) => item.id === selectedSlotId) || layer?.slots?.[0];
   const transform = slot?.transform || {};
+  // Slot permissions override the container's — a fixed grid may still expose
+  // editable slots (spec §17).
   const permissions = { ...getLayerPermissions(layer), ...(slot?.permissions || {}) };
+  const capabilities = resolveImageCropCapabilities(permissions);
+  const resetPatch = resetImageTransformPatch(permissions);
   const width = Number(slot?.metadata?.width) || 0;
   const height = Number(slot?.metadata?.height) || 0;
   const quality = Math.min(width, height) >= 1200 ? "High quality" : width && height ? "Check resolution" : "";
@@ -33,7 +41,16 @@ export default function CustomerGridToolbar({
     <div className="pointer-events-auto flex max-w-[calc(100vw-1rem)] items-center gap-1.5 overflow-x-auto rounded-2xl border border-[#303839]/12 bg-white/95 p-1.5 shadow-[0_16px_45px_rgba(48,56,57,0.16)] backdrop-blur-md">
       <div className="flex items-center gap-1 border-r border-[#303839]/10 pr-1.5">
         {(layer.slots || []).map((item: any, index: number) => (
-          <button key={item.id} type="button" aria-pressed={item.id === slot.id} onClick={() => onSelectSlot(item.id)} className={`${button} ${item.id === slot.id ? "border-[#303839] bg-[#303839] text-white hover:bg-[#303839]" : ""}`}>
+          // The visible label is just a number; assistive technology needs to
+          // hear what the number refers to, and whether the slot has a photo.
+          <button
+            key={item.id}
+            type="button"
+            aria-pressed={item.id === slot.id}
+            aria-label={`${item.src || item.assetId ? "Photo" : "Empty"} slot ${index + 1} of ${(layer.slots || []).length}`}
+            onClick={() => onSelectSlot(item.id)}
+            className={`${button} ${item.id === slot.id ? "border-[#303839] bg-[#303839] text-white hover:bg-[#303839]" : ""}`}
+          >
             {index + 1}
           </button>
         ))}
@@ -48,9 +65,17 @@ export default function CustomerGridToolbar({
           <EditableNumericStepper label="Grid image rotation" value={Number(transform.rotation) || 0} minimum={-360} maximum={360} step={1} largeStep={15} allowNegative allowDecimal={false} disabled={!(permissions.cropImage || permissions.zoomImage || permissions.repositionImage)} onCommit={(rotation) => onTransform({ rotation })} className="h-11 w-36 shrink-0 rounded-lg border border-[#303839]/12 bg-white" />
           <EditableNumericStepper label="Grid crop X position" value={Number(transform.offsetX) || 0} minimum={-10000} maximum={10000} step={1} largeStep={10} allowNegative allowDecimal={false} disabled={!(permissions.repositionImage || permissions.cropImage)} onCommit={(offsetX) => onTransform({ offsetX })} className="h-11 w-36 shrink-0 rounded-lg border border-[#303839]/12 bg-white" />
           <EditableNumericStepper label="Grid crop Y position" value={Number(transform.offsetY) || 0} minimum={-10000} maximum={10000} step={1} largeStep={10} allowNegative allowDecimal={false} disabled={!(permissions.repositionImage || permissions.cropImage)} onCommit={(offsetY) => onTransform({ offsetY })} className="h-11 w-36 shrink-0 rounded-lg border border-[#303839]/12 bg-white" />
-          <button type="button" onClick={() => onTransform({ rotation: (Number(transform.rotation || 0) + 90) % 360 })} className={button}>Rotate</button>
-          <button type="button" onClick={() => onTransform({ flipX: !transform.flipX })} className={button}>Flip</button>
-          <button type="button" onClick={onReset} className={button}>Reset</button>
+          {/* Gated on the same capabilities as the steppers above, so the
+              toolbar never offers a slot edit the save validator will reject. */}
+          {capabilities.canRotateImage && (
+            <button type="button" aria-label="Rotate photo 90 degrees" onClick={() => onTransform({ rotation: (Number(transform.rotation || 0) + 90) % 360 })} className={button}>Rotate</button>
+          )}
+          {capabilities.canFlip && (
+            <button type="button" aria-label="Flip photo horizontally" onClick={() => onTransform({ flipX: !transform.flipX })} className={button}>Flip</button>
+          )}
+          {Object.keys(resetPatch).length > 0 && (
+            <button type="button" aria-label="Reset photo crop" onClick={onReset} className={button}>Reset</button>
+          )}
           <button type="button" onClick={onCancelCrop} className={button}>Cancel</button>
           <button type="button" onClick={onConfirmCrop} className={`${button} !border-[#303839] !bg-[#303839] !text-white`}>Done</button>
         </>

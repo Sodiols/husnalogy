@@ -6,7 +6,14 @@
 // required before Add to Cart.
 
 import CustomizerPreview from "./CustomizerPreview";
-import { getEnabledPages, getImageUrl, isValueEmpty, type EditorState } from "./customizer-utils";
+import {
+  getEnabledPages,
+  getImageUrl,
+  isValueEmpty,
+  resolveReviewIssues,
+  type EditorState,
+  type ReviewIssue,
+} from "./customizer-utils";
 import { formatCurrency } from "@/lib/currency";
 import CustomerMockupPreview from "./CustomerMockupPreview";
 
@@ -57,6 +64,8 @@ type Props = {
   saveStatus?: string;
   currency?: string;
   customizationId?: string;
+  /** Jump to the page/object an issue refers to (spec §28). */
+  onFixIssue?: (issue: ReviewIssue) => void;
 };
 
 export default function CustomizerReviewStep({
@@ -76,11 +85,12 @@ export default function CustomizerReviewStep({
   saveStatus = "",
   currency = "BDT",
   customizationId = "",
+  onFixIssue,
 }: Props) {
   const pages = getEnabledPages(template);
   const fields = template?.fields || [];
   const lineTotal = Number((unitPrice * quantity).toFixed(2));
-  const issues = Object.values(validationErrors);
+  const issues = resolveReviewIssues(template, validationErrors);
 
   const optionEntries = Object.entries(options || {}).filter(
     ([key, v]) => key !== "logo" && typeof v === "string" && v,
@@ -119,12 +129,30 @@ export default function CustomizerReviewStep({
               Please complete before adding to cart
             </p>
             <ul className="mt-2 grid gap-1 text-sm text-red-700">
-              {issues.map((issue) => (
-                <li key={String(issue)} className="flex gap-2">
-                  <span aria-hidden>•</span>
-                  <span>{String(issue)}</span>
-                </li>
-              ))}
+              {issues.map((issue) => {
+                // Only offer a jump when the issue actually resolves to an
+                // object on a page — never a control that goes nowhere.
+                const canJump = Boolean(onFixIssue && issue.layerId && issue.pageId);
+                return (
+                  <li key={issue.fieldId} className="flex gap-2">
+                    <span aria-hidden>•</span>
+                    {canJump ? (
+                      <button
+                        type="button"
+                        onClick={() => onFixIssue!(issue)}
+                        className="text-left font-semibold underline decoration-red-300 underline-offset-2 transition-colors hover:text-red-900 hover:decoration-red-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400"
+                      >
+                        {issue.message}
+                        <span className="ml-1 whitespace-nowrap text-[11px] font-bold">
+                          {issue.pageLabel ? `Fix on ${issue.pageLabel} →` : "Fix this →"}
+                        </span>
+                      </button>
+                    ) : (
+                      <span>{issue.message}</span>
+                    )}
+                  </li>
+                );
+              })}
             </ul>
           </div>
         )}
