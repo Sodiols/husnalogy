@@ -1,6 +1,8 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { canvasOwnsKeyboard } from "../interaction/tool-mode";
+import { isTypingTarget } from "../viewport-pan";
 import {
   applyTextEditLimits,
   insertTextNewline,
@@ -231,8 +233,32 @@ describe("global shortcuts never steal a keystroke while typing", () => {
     ["app/admin/dashboard/design-builder/AdminDesignBuilder.tsx"],
   ])("%s bails out of its window keydown handler for INPUT/TEXTAREA", (path) => {
     const source = read(path);
-    expect(source).toMatch(/tagName === "INPUT" \|\| \w+\.tagName === "TEXTAREA"/);
+    // Both editors now share ONE typing rule instead of two hand-written copies
+    // of the same tagName check.
+    expect(source).toContain("isTypingTarget");
+    expect(source).toMatch(/const typing = isTypingTarget\(\w+\.target\) \|\| isTypingTarget\(document\.activeElement\);/);
     expect(source).toMatch(/if \(typing(?: \|\| tab !== "design")?\) return;/);
+  });
+
+  it("the shared rule recognises every field a caret can live in", () => {
+    const input = { tagName: "INPUT" } as unknown as EventTarget;
+    const textarea = { tagName: "TEXTAREA" } as unknown as EventTarget;
+    const editable = { tagName: "DIV", isContentEditable: true } as unknown as EventTarget;
+    const plain = { tagName: "DIV" } as unknown as EventTarget;
+    expect(isTypingTarget(input)).toBe(true);
+    expect(isTypingTarget(textarea)).toBe(true);
+    expect(isTypingTarget(editable)).toBe(true);
+    expect(isTypingTarget(plain)).toBe(false);
+    expect(isTypingTarget(null)).toBe(false);
+  });
+
+  it("hands the keyboard to the text editor while it is open (spec §33)", () => {
+    // Delete and the arrow keys are caret controls while typing; routing them
+    // to the canvas would delete the object being edited.
+    expect(canvasOwnsKeyboard("select", true)).toBe(false);
+    expect(canvasOwnsKeyboard("text-edit", false)).toBe(false);
+    expect(canvasOwnsKeyboard("select", false)).toBe(true);
+    expect(canvasOwnsKeyboard("crop", false)).toBe(true);
   });
 });
 

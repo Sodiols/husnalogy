@@ -31,8 +31,13 @@ describe("customer workspace geometry is memoized", () => {
   });
 
   it("memoizes the text-measuring geometry pass", () => {
-    expect(workspace).toContain("const resolvedInteractiveLayers = useMemo(");
-    expect(workspace).toContain("[interactiveLayers, template, values, safeBounds, textMetricsRevision]");
+    // The measurement pass moved into the shared `useInteractionNodes` hook, so
+    // BOTH canvases get the memoization instead of each maintaining its own.
+    const hook = read("app/components/customizer/interaction/useInteractionNodes.ts");
+    expect(workspace).toContain("const interactionNodes = useInteractionNodes({");
+    expect(workspace).toContain("metricsRevision: textMetricsRevision");
+    expect(hook).toContain("return useMemo(");
+    expect(hook).toContain("[surface, layers, isTargetable, safeBounds, editingGroupId, metricsRevision]");
   });
 
   it("tracks the font-load revision so measurements refresh once webfonts land", () => {
@@ -54,20 +59,23 @@ describe("admin canvas geometry is memoized", () => {
   });
 
   it("memoizes the text-measuring geometry pass", () => {
-    expect(adminCanvas).toContain("const resolvedSelectableLayers = useMemo(");
-    expect(adminCanvas).toContain("[selectableLayers, template, values],");
+    // Same shared hook as the customer workspace.
+    expect(adminCanvas).toContain("const interactionNodes = useInteractionNodes({");
+    expect(adminCanvas).toContain('surface: "admin"');
   });
 
   it("does not depend on a font revision it does not have", () => {
     // The admin measurer is created once eagerly, unlike the customer one.
     expect(adminCanvas).toContain("if (!textMeasureRef.current) textMeasureRef.current = createCanvasMeasure();");
-    expect(adminCanvas).not.toContain("[selectableLayers, template, values, textMetricsRevision]");
+    expect(adminCanvas).not.toContain("metricsRevision:");
   });
 });
 
 describe("both canvases still import useMemo", () => {
   it("customer workspace", () => {
-    expect(workspace).toContain('import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";');
+    expect(workspace).toContain(
+      'import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";',
+    );
   });
 
   it("admin canvas", () => {

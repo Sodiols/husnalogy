@@ -11,6 +11,7 @@ import {
 const read = (relative: string) => readFileSync(path.join(process.cwd(), relative), "utf8");
 const workspaceSource = read("app/components/customizer/CustomizerWorkspace.tsx");
 const menuSource = read("app/components/customizer/CustomerCanvasContextMenu.tsx");
+const stageSource = read("app/components/customizer/interaction/CustomizerInteractionStage.tsx");
 const personalizeSource = read("app/products/[slug]/personalize/personalize-client.tsx");
 
 const ids = (capabilities: ContextMenuCapabilities) =>
@@ -128,8 +129,12 @@ describe("buildCustomerContextMenu", () => {
 
 describe("canvas wiring", () => {
   it("opens on right click over an object and suppresses the browser menu", () => {
-    expect(workspaceSource).toContain("onContextMenu={(event) => {");
-    expect(workspaceSource).toContain("onLayerContextMenu?.(layer.id, { x: event.clientX, y: event.clientY });");
+    // The right click is resolved by the shared interaction layer, which hands
+    // the workspace the object that was hit plus the screen position.
+    expect(stageSource).toContain("onContextMenu={(event) => {");
+    expect(stageSource).toContain("event.evt.preventDefault();");
+    expect(stageSource).toContain("onContextMenuNode?.(node.id, { x: source.clientX, y: source.clientY });");
+    expect(workspaceSource).toContain("onLayerContextMenu?.(layerId, position);");
   });
 
   it("does not open in preview mode or while editing text", () => {
@@ -138,8 +143,11 @@ describe("canvas wiring", () => {
 
   it("selects the right-clicked object when it is outside the current selection", () => {
     expect(workspaceSource).toContain(
-      "if (!activeSelection.includes(layer.id)) applySelection([layer.id]);",
+      "if (!activeSelection.includes(layerId)) applySelection([layerId]);",
     );
+    // The interaction layer does the same on its side, so a right click never
+    // acts on an object the customer cannot see is selected.
+    expect(stageSource).toContain("if (!selection.includes(node.id)) onSelectionChange([node.id]);");
   });
 
   it("closes when the page, selection or preview state changes", () => {

@@ -23,6 +23,7 @@ import CustomizerWorkspace from "@/app/components/customizer/CustomizerWorkspace
 import CustomizerPageThumbnails from "@/app/components/customizer/CustomizerPageThumbnails";
 import CustomizerZoomControls from "@/app/components/customizer/CustomizerZoomControls";
 import { ZOOM_MAX, ZOOM_MIN, clampZoom } from "@/lib/customizer/v2/zoom";
+import { isTypingTarget } from "@/lib/customizer/v2/viewport-pan";
 import CustomizerReviewStep from "@/app/components/customizer/CustomizerReviewStep";
 import CustomerCustomizerHeader from "@/app/components/customizer/CustomerCustomizerHeader";
 import CustomerToolRail, { getCustomerTools, type CustomerTool } from "@/app/components/customizer/CustomerToolRail";
@@ -2274,8 +2275,11 @@ export default function PersonalizeClient({ product, template }: { product: any;
   /* ----- keyboard shortcuts ----- */
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
-      const el = event.target as HTMLElement | null;
-      const typing = el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.isContentEditable);
+      // ONE shared rule for "is the user typing" (spec §33). While the DOM text
+      // editor has focus, Delete, Backspace and the arrow keys are caret
+      // controls — routing them to the canvas would delete the object being
+      // edited instead of a character.
+      const typing = isTypingTarget(event.target) || isTypingTarget(document.activeElement);
       const key = String(event.key).toLowerCase();
 
       if ((event.ctrlKey || event.metaKey) && !typing) {
@@ -2312,6 +2316,9 @@ export default function PersonalizeClient({ product, template }: { product: any;
           applySelection(copies.map((copy: any) => copy.id));
           return;
         }
+        // Ctrl/Cmd+G groups, Ctrl/Cmd+Shift+G ungroups. Both run through the
+        // same permission-checked handlers as the buttons, so a shortcut can
+        // never bypass a template restriction.
         if (key === "g") {
           event.preventDefault();
           if (event.shiftKey) ungroupSelection(); else groupSelection();
@@ -2325,15 +2332,6 @@ export default function PersonalizeClient({ product, template }: { product: any;
         if (key === "[") {
           event.preventDefault();
           arrangeSelection(event.shiftKey ? "sendToBack" : "sendBackward");
-          return;
-        }
-        // Ctrl/Cmd+G groups, Ctrl/Cmd+Shift+G ungroups. Both run through the
-        // same permission-checked handlers as the buttons, so a shortcut can
-        // never bypass a template restriction.
-        if (key === "g") {
-          event.preventDefault();
-          if (event.shiftKey) ungroupSelection();
-          else groupSelection();
           return;
         }
       }

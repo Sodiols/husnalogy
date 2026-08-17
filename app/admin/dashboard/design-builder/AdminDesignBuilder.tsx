@@ -8,14 +8,18 @@
 // Collapsed: a launch card with a live summary. Open: a full-screen
 // professional editor (fixed overlay, no site chrome).
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
   validateCustomizerTemplateDetailed,
 } from "@/lib/customizer";
 import CustomizerPreview from "@/app/components/customizer/CustomizerPreview";
 import CustomizerZoomControls from "@/app/components/customizer/CustomizerZoomControls";
-import { fitViewport, INITIAL_VIEWPORT, type ViewportState } from "@/lib/customizer/v2/viewport-pan";
+import { fitViewport, INITIAL_VIEWPORT, isTypingTarget, type ViewportState } from "@/lib/customizer/v2/viewport-pan";
+import {
+  INITIAL_TOOL_STATE,
+  toolReducer,
+} from "@/lib/customizer/v2/interaction/tool-mode";
 import AdminBuilderHeader from "./AdminBuilderHeader";
 import AdminContextToolbar from "./AdminContextToolbar";
 import AdminToolRail from "./AdminToolRail";
@@ -149,11 +153,19 @@ export default function AdminDesignBuilder({
 }: any) {
   const t = template || {};
   const [studioOpen, setStudioOpen] = useState(false);
-  // activeTool is the canvas INTERACTION mode only — Select (the resting
-  // state) or Pan. Insertion tools are one-shot commands, and library panels
-  // are inspector content, so neither can leave the editor stuck in a mode
-  // that keeps creating objects on every canvas click (spec §10–§12, §35).
-  const [activeTool, setActiveTool] = useState<"select" | "pan">("select");
+  // The canvas INTERACTION mode, owned by the shared tool state machine
+  // (spec §44). Insertion tools are one-shot commands and library panels are
+  // inspector content, so neither can leave the editor stuck in a mode that
+  // keeps creating objects on every canvas click (spec §22).
+  //
+  // Going through a reducer rather than a bare `useState` is what makes that a
+  // guarantee: every insertion dispatches `objectCreated`, and the machine —
+  // not six separate call sites each remembering to do it — is what returns the
+  // canvas to Select.
+  const [toolState, dispatchTool] = useReducer(toolReducer, INITIAL_TOOL_STATE);
+  const activeTool: "select" | "pan" = toolState.mode === "pan" ? "pan" : "select";
+  /** A one-shot insertion finished: hand the canvas back to Select. */
+  const finishInsertion = () => dispatchTool({ type: "objectCreated" });
   const [activePanel, setActivePanel] = useState<"properties" | "text" | "uploads" | "elements">("properties");
   const [textPlacementPreset, setTextPlacementPreset] = useState<TextPlacementPreset>("body");
   const [editingTextLayerId, setEditingTextLayerId] = useState<string | null>(null);
@@ -274,8 +286,8 @@ export default function AdminDesignBuilder({
   useEffect(() => {
     if (!studioOpen) return;
     const onKey = (e: KeyboardEvent) => {
-      const el = e.target as HTMLElement | null;
-      const typing = el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || (el as any).isContentEditable);
+      // Same shared typing rule as the customer editor (spec §33).
+      const typing = isTypingTarget(e.target) || isTypingTarget(document.activeElement);
       const k = String(e.key).toLowerCase();
       if ((e.ctrlKey || e.metaKey) && !typing) {
         if (k === "z" && !e.shiftKey) {
@@ -312,7 +324,7 @@ export default function AdminDesignBuilder({
       if (typing || tab !== "design") return;
       if (e.key === "Escape" && activeTool !== "select") {
         e.preventDefault();
-        setActiveTool("select");
+        dispatchTool({ type: "escape" });
         return;
       }
       if (e.key === "Escape" && editingGroupIdRef.current) {
@@ -402,7 +414,7 @@ export default function AdminDesignBuilder({
     apply(addLayer(current, layer));
     activeTextHistoryIdRef.current = layer.id;
     setSelectedLayerIds([layer.id]);
-    setActiveTool("select");
+    finishInsertion();
     // The canvas owns the inline editor, so the new object is handed to it for
     // immediate typing. Leaving it empty discards it again.
     setEditTextRequest((request) => ({ layerId: layer.id, requestId: (request?.requestId || 0) + 1, created: true }));
@@ -419,7 +431,7 @@ export default function AdminDesignBuilder({
     next = setCustomerEditable(next, layer.id, true);
     commit(next);
     setSelectedLayerId(layer.id);
-    setActiveTool("select");
+    finishInsertion();
     setActivePanel("properties");
   };
   const addShape = (shape: string) => {
@@ -427,7 +439,7 @@ export default function AdminDesignBuilder({
     if (shape === "rounded-rectangle") layer.borderRadius = 48;
     commit(addLayer(t, layer));
     setSelectedLayerId(layer.id);
-    setActiveTool("select");
+    finishInsertion();
     setActivePanel("properties");
   };
   const addLine = () => addShape("line");
@@ -435,14 +447,14 @@ export default function AdminDesignBuilder({
     const layer = newQRCodeLayer(t, activePage);
     commit(addLayer(t, layer));
     setSelectedLayerId(layer.id);
-    setActiveTool("select");
+    finishInsertion();
     setActivePanel("properties");
   };
   const addElement = (element: LibraryElement) => {
     const layer = newElementLayer(tRef.current, activePage, element);
     commit(addLayer(tRef.current, layer));
     setSelectedLayerId(layer.id);
-    setActiveTool("select");
+    finishInsertion();
   };
   const addBackground = () => {
     const existing = layersForPage(tRef.current, activePage).find((layer: any) => layer.type === "background");
@@ -453,7 +465,7 @@ export default function AdminDesignBuilder({
       commit(addLayer(tRef.current, layer));
       setSelectedLayerId(layer.id);
     }
-    setActiveTool("select");
+    finishInsertion();
     setActivePanel("properties");
   };
   const addGuide = (axis: "horizontal" | "vertical") => {
@@ -1034,7 +1046,7 @@ export default function AdminDesignBuilder({
               activePanel={activePanel}
               onSelectTool={(tool) => {
                 if (tool === "select") {
-                  setActiveTool("select");
+                  dispatchTool({ type: "escape" });
                   setActivePanel("properties");
                   setSelectedLayerId(null);
                   return;
@@ -1049,7 +1061,7 @@ export default function AdminDesignBuilder({
               onOpenElements={() => setActivePanel("elements")}
               onAddBackground={addBackground}
               onAddGuide={addGuide}
-              onPan={() => setActiveTool((current) => current === "pan" ? "select" : "pan")}
+              onPan={() => dispatchTool({ type: "togglePan" })}
               // Pages now live permanently in the left sidebar, so the rail
               // button brings that section into view rather than swapping panels.
               onOpenPanel={() => {
@@ -1153,7 +1165,7 @@ export default function AdminDesignBuilder({
                   onTextCancel={onCanvasTextCancel}
                   onTextDiscard={onCanvasTextDiscard}
                 onEditingTextChange={setEditingTextLayerId}
-                onExitTextTool={() => setActiveTool("select")}
+                onExitTextTool={() => dispatchTool({ type: "escape" })}
                 onTextCommit={onCanvasTextCommit}
                 editingGroupId={editingGroupId}
                 onEnterGroup={enterAdminGroup}

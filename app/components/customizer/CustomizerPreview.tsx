@@ -536,7 +536,14 @@ export default function CustomizerPreview({
             null
           );
         return (
-          <g key={layer.id} opacity={layer.opacity === undefined ? 1 : layer.opacity}>
+          // `data-layer-id` is what lets the shared Konva interaction layer
+          // apply a TRANSIENT transform to this exact group during a drag or a
+          // rotation (spec §9). Moving the real artwork node costs one style
+          // write per frame instead of a full React + SVG re-render, and it is
+          // pixel-accurate by construction because it IS the production
+          // renderer. The attribute is presentational metadata only: it is not
+          // part of the document and never reaches `buildPageSvg`.
+          <g key={layer.id} data-layer-id={layer.id} opacity={layer.opacity === undefined ? 1 : layer.opacity}>
             {content}
           </g>
         );

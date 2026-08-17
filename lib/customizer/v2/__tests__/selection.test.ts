@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { INITIAL_TOOL_STATE, toolReducer } from "../interaction/tool-mode";
 import {
   resolveMarqueeSelection,
   resolvePointerDownSelection,
@@ -105,25 +106,31 @@ describe("click selection (spec §2, §3, §4, §6)", () => {
 describe("both customizers consume the one shared selection reducer (spec §20, §23)", () => {
   const adminCanvas = read("app/admin/dashboard/design-builder/AdminCanvas.tsx");
   const customerCanvas = read("app/components/customizer/CustomizerWorkspace.tsx");
+const stage = read("app/components/customizer/interaction/CustomizerInteractionStage.tsx");
   const builder = read("app/admin/dashboard/design-builder/AdminDesignBuilder.tsx");
   const personalize = read("app/products/[slug]/personalize/personalize-client.tsx");
 
   it("routes every canvas pointer gesture through lib/customizer/v2/selection", () => {
+    // Both canvases now mount the SAME interaction layer, so there is exactly
+    // one pointer path to audit instead of two that happened to agree.
     for (const source of [adminCanvas, customerCanvas]) {
-      expect(source).toContain('from "@/lib/customizer/v2/selection"');
-      expect(source).toContain("resolvePointerDownSelection");
-      expect(source).toContain("resolvePointerUpSelection");
-      expect(source).toContain("resolveMarqueeSelection");
-      // One entry point for a direct hit and for a hit through the combined
-      // selection frame, so both behave identically.
-      expect(source).toContain("const beginObjectInteraction");
-      expect(source).toContain("beginObjectInteraction(e, target)");
+      expect(source).toContain("<InteractionStageClient");
+      expect(source).toContain("onSelectionChange=");
     }
+    expect(stage).toContain('from "@/lib/customizer/v2/selection"');
+    expect(stage).toContain("resolvePointerDownSelection");
+    expect(stage).toContain("resolvePointerUpSelection");
+    expect(stage).toContain("resolveMarqueeSelection");
   });
 
   it("keeps the whole selection while dragging any member", () => {
-    expect(adminCanvas).toContain("decision.selection.includes(layer.id) && decision.selection.length > 1");
-    expect(customerCanvas).toContain("selected: selectedTargets.map((item: any) => ({ id: item.id, x: item.x, y: item.y }))");
+    // The press decision is taken once, in the shared layer, and the whole
+    // decided selection becomes the drag's members.
+    expect(stage).toContain("const decision = resolvePointerDownSelection({");
+    expect(stage).toContain("members: movable");
+    expect(stage).toContain("collapseOnRelease: decision.collapseOnRelease");
+    // Followers take the SNAPPED delta, so a snap cannot change their spacing.
+    expect(stage).toContain("applySelectionDelta(session.members, session.leadId, snapped.x, snapped.y");
   });
 
   it("feeds panel selection through the same reducer as the canvas", () => {
@@ -146,7 +153,11 @@ describe("insertion tools are one-shot commands (spec §10–§12, §35)", () =>
   const personalize = read("app/products/[slug]/personalize/personalize-client.tsx");
 
   it("separates the canvas interaction mode from inspector panels in the admin builder", () => {
-    expect(builder).toContain('useState<"select" | "pan">("select")');
+    // The canvas mode is owned by the shared tool state machine; inspector
+    // panels remain ordinary UI state, so opening a panel can never arm a
+    // creation mode.
+    expect(builder).toContain("useReducer(toolReducer, INITIAL_TOOL_STATE)");
+    expect(builder).toContain('const activeTool: "select" | "pan" = toolState.mode === "pan" ? "pan" : "select";');
     expect(builder).toContain('useState<"properties" | "text" | "uploads" | "elements">("properties")');
     expect(rail).toContain("activePanel");
   });
@@ -154,8 +165,18 @@ describe("insertion tools are one-shot commands (spec §10–§12, §35)", () =>
   it("returns the admin builder to Select after every insertion", () => {
     for (const action of ["const insertTextLayer", "const addPhotoArea", "const addShape", "const addQRCode", "const addBackground"]) {
       const body = builder.slice(builder.indexOf(action), builder.indexOf(action) + 900);
-      expect(body).toContain('setActiveTool("select")');
+      expect(body).toContain("finishInsertion()");
     }
+    // And the machine, not the call site, is what enforces it.
+    expect(builder).toContain('const finishInsertion = () => dispatchTool({ type: "objectCreated" });');
+    let state = toolReducer(INITIAL_TOOL_STATE, { type: "requestTextCreate" });
+    expect(state.mode).toBe("text-create");
+    state = toolReducer(state, { type: "objectCreated" });
+    expect(state.mode).toBe("select");
+    // ...unless the tool was deliberately armed to persist.
+    let sticky = toolReducer(INITIAL_TOOL_STATE, { type: "requestTextCreate", persistent: true });
+    sticky = toolReducer(sticky, { type: "objectCreated" });
+    expect(sticky.mode).toBe("text-create");
   });
 
   it("never leaves a text placement mode armed in either editor", () => {

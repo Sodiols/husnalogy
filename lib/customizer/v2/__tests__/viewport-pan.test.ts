@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
+import { INITIAL_TOOL_STATE, toolReducer } from "../interaction/tool-mode";
 import {
   clampPan,
   createPanGesture,
@@ -23,6 +24,10 @@ const read = (relative: string) => readFileSync(path.join(root, relative), "utf8
 const stripComments = (source: string) =>
   source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "").replace(/\/\/.*$/gm, "");
 const adminCanvas = read("app/admin/dashboard/design-builder/AdminCanvas.tsx");
+const stage = readFileSync(
+  path.join(process.cwd(), "app/components/customizer/interaction/CustomizerInteractionStage.tsx"),
+  "utf8",
+);
 const adminCanvasCode = stripComments(adminCanvas);
 const adminBuilder = read("app/admin/dashboard/design-builder/AdminDesignBuilder.tsx");
 const adminBuilderCode = stripComments(adminBuilder);
@@ -281,22 +286,23 @@ describe("AdminCanvas pan wiring", () => {
   });
 
   it("does not clear the selection when the pan gesture owns the pointer", () => {
-    expect(adminCanvas).toContain("if (panOwnsPointer(event) || event.button !== 0 || editingTextId) return;");
-    expect(adminCanvas).toContain('if (activeTool !== "select") return;');
-    expect(adminCanvas).toContain("originalSelection: selectionIds.slice()");
+    // The whole interaction layer stands down while pan owns the pointer, so a
+    // pan can no longer clear or alter the selection as a side effect.
+    expect(adminCanvas).toContain("disabled={panToolActive || isPanning}");
     // A background gesture that never moved is a plain click, which clears the
     // selection; a marquee that moved replaces or merges it.
-    expect(adminCanvas).toContain("resolveMarqueeSelection({");
-    expect(adminCanvas).toContain("moved: Boolean(drag.began)");
+    expect(stage).toContain("resolveMarqueeSelection({");
+    expect(stage).toContain("moved: session.moved");
   });
 
   it("stands down layer, handle, rotation and guide gestures during pan", () => {
-    expect(adminCanvas).toContain("if (panOwnsPointer(e)) return;");
+    // Object gestures: the shared stage stops listening entirely, which is a
+    // stronger guarantee than each handler remembering to check.
+    expect(adminCanvas).toContain("disabled={panToolActive || isPanning}");
+    expect(stage).toContain('pointerEvents: interactive ? "auto" : "none"');
+    expect(stage).toContain("const interactive = !disabled && !textEditingId;");
+    // Ruler guides keep a DOM gesture and still defer to pan explicitly.
     expect(adminCanvas).toContain("if (panOwnsPointer(event)) return;");
-    // Pan is checked before stopPropagation so the event still reaches the
-    // workspace and pans.
-    const layerHandler = adminCanvasCode.slice(adminCanvasCode.indexOf("const onLayerPointerDown"));
-    expect(layerHandler.indexOf("panOwnsPointer")).toBeLessThan(layerHandler.indexOf("stopPropagation"));
   });
 
   it("drives the cursor from real pan state, not only the CSS active selector", () => {
@@ -354,7 +360,12 @@ describe("AdminDesignBuilder viewport wiring", () => {
   });
 
   it("toggles the Pan tool on and back to Select", () => {
-    expect(adminBuilder).toContain('current === "pan" ? "select" : "pan"');
+    expect(adminBuilder).toContain('dispatchTool({ type: "togglePan" })');
+    // Toggling twice returns to the mode the canvas was in, not blindly to
+    // Select — the machine remembers what pan interrupted.
+    const panned = toolReducer(INITIAL_TOOL_STATE, { type: "togglePan" });
+    expect(panned.mode).toBe("pan");
+    expect(toolReducer(panned, { type: "togglePan" }).mode).toBe("select");
     expect(toolRail).toContain('id="pan"');
     expect(toolRail).toContain('props.activeTool === "pan"');
     expect(toolRail).toContain("onClick={props.onPan}");

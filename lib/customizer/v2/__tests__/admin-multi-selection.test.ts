@@ -147,14 +147,22 @@ describe("admin multi-object selection and alignment", () => {
     const canvas = readFileSync("app/admin/dashboard/design-builder/AdminCanvas.tsx", "utf8");
     const toolbar = readFileSync("app/admin/dashboard/design-builder/AdminContextToolbar.tsx", "utf8");
     const renderer = readFileSync("app/components/customizer/CustomizerPreview.tsx", "utf8");
+    const stage = readFileSync("app/components/customizer/interaction/CustomizerInteractionStage.tsx", "utf8");
 
-    expect(canvas).toContain("data-admin-selection-marquee");
-    expect(canvas).toContain("clientPointToDocument");
-    expect(canvas).toContain("pointerExceededDragThreshold");
-    expect(canvas).toContain("onEnterGroup?.(layer.id)");
-    expect(canvas).toContain("if (!drag.began)");
+    // The marquee, the combined selection frame and the drag threshold moved to
+    // the shared Konva interaction layer, which both canvases mount. What this
+    // guards is unchanged: the editor-only chrome is not in the renderer, and a
+    // gesture still takes exactly one history snapshot.
+    expect(canvas).toContain("<InteractionStageClient");
+    expect(canvas).toContain("onGestureStart={handleGestureStart}");
     expect(canvas).toContain("onBeginChange?.()");
+    expect(canvas).toContain("onEnterGroup?.(layer.id)");
+    expect(stage).toContain("marqueeRef");
+    expect(stage).toContain("hitTestMarquee");
+    // Selection chrome is drawn on the Konva overlay and never by the shared
+    // renderer, so it cannot reach the PNG/PDF pipeline.
     expect(renderer).not.toContain("data-admin-selection-marquee");
+    expect(renderer).not.toContain("Transformer");
     // Distribution, spacing, match size and grouping moved out of the toolbar
     // row into the structured Layout menu; their gating now lives in the pure
     // layoutActionAvailability helper (asserted in admin-text-toolbar.test.ts).

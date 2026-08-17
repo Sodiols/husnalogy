@@ -2,21 +2,25 @@
 
 // Interactive admin editing canvas. The base render is the SHARED renderer
 // (CustomizerPreview) so what admin arranges is exactly what customers get.
-// The overlay adds selection, drag, resize, rotation, snapping with alignment
-// guides, and a live position/size readout.
+//
+// Selection, dragging, transform handles, marquee and smart guides come from
+// the SHARED Konva interaction layer — the very same component the customer
+// workspace mounts (spec §7, §40). Admin passes `surface: "admin"`, and that
+// permission difference is now the only behavioural difference between the two
+// canvases. What stays here is what is genuinely admin-only or genuinely DOM:
+// ruler guides, the inline text editor, panning, and the workspace fit maths.
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import CustomizerPreview from "@/app/components/customizer/CustomizerPreview";
+import InteractionStageClient from "@/app/components/customizer/interaction/InteractionStageClient";
+import { useInteractionNodes } from "@/app/components/customizer/interaction/useInteractionNodes";
 import EditableNumericStepper from "@/app/components/customizer/EditableNumericStepper";
 import InlineCanvasTextEditor from "@/app/components/customizer/InlineCanvasTextEditor";
 import {
   DEFAULT_LINE_HEIGHT,
   createCanvasMeasure,
   getTextResizeConstraints,
-  isSingleLineAutoSizeText,
   layoutText,
-  scaleSingleLineText,
-  scaleTextBox,
   type MeasureFn,
   type SafeBounds,
 } from "@/lib/customizer/v2/text-layout";
@@ -33,50 +37,11 @@ import {
   type PanBounds,
   type PanGesture,
 } from "@/lib/customizer/v2/viewport-pan";
-import {
-  clientPointToDocument,
-  marqueeSelectedLayerIds,
-  pointInsideTransformedLayer,
-  pointerExceededDragThreshold,
-  resolveLayerSelectionGeometry,
-  selectionBounds,
-} from "@/lib/customizer/v2/selection-geometry";
-import {
-  resolveMarqueeSelection,
-  resolvePointerDownSelection,
-  resolvePointerUpSelection,
-} from "@/lib/customizer/v2/selection";
+import { resolveLayerSelectionGeometry } from "@/lib/customizer/v2/selection-geometry";
 import { isEmptyText } from "@/lib/customizer/v2/text-editing";
-import {
-  buildSnapTargets,
-  layerHalfExtents,
-  snapMove,
-  type SmartGuide,
-} from "@/lib/customizer/v2/snapping";
 import { actualSizeZoom, computeWorkspaceFit, resolveWorkspacePadding } from "@/lib/customizer/v2/zoom";
 import { layersForPage, selectableLayersForPage } from "./builder-utils";
 
-const HANDLES: Array<{ id: string; cx: number; cy: number; cursor: string }> = [
-  { id: "nw", cx: 0, cy: 0, cursor: "nwse-resize" },
-  { id: "ne", cx: 1, cy: 0, cursor: "nesw-resize" },
-  { id: "sw", cx: 0, cy: 1, cursor: "nesw-resize" },
-  { id: "se", cx: 1, cy: 1, cursor: "nwse-resize" },
-  { id: "n", cx: 0.5, cy: 0, cursor: "ns-resize" },
-  { id: "s", cx: 0.5, cy: 1, cursor: "ns-resize" },
-  { id: "w", cx: 0, cy: 0.5, cursor: "ew-resize" },
-  { id: "e", cx: 1, cy: 0.5, cursor: "ew-resize" },
-];
-// Corner handles scale a text object's real font size; side handles resize the
-// box (wrap width / block height). A single-line auto-sized object has no
-// independent height, so it offers the corners plus the two side handles only.
-const TEXT_SCALE_HANDLES = new Set(["nw", "ne", "sw", "se"]);
-const SINGLE_LINE_TEXT_HANDLES = HANDLES.filter(
-  (handle) => handle.id === "w" || handle.id === "e" || TEXT_SCALE_HANDLES.has(handle.id),
-);
-
-const SNAP_PX = 8; // screen pixels
-
-type Guide = SmartGuide;
 
 export default function AdminCanvas({
   template,
@@ -117,7 +82,6 @@ export default function AdminCanvas({
   const [containerWidth, setContainerWidth] = useState(0);
   const [containerHeight, setContainerHeight] = useState(0);
   const dragRef = useRef<any>(null);
-  const [guides, setGuides] = useState<Guide[]>([]);
   const [selectedGuideId, setSelectedGuideId] = useState<string | null>(null);
   const [editingTextId, setEditingTextId] = useState<string | null>(null);
   const newTextIdsRef = useRef(new Set<string>());
@@ -133,15 +97,11 @@ export default function AdminCanvas({
   const panRef = useRef<PanGesture | null>(null);
   const [isPanning, setIsPanning] = useState(false);
   const [spacePanActive, setSpacePanActive] = useState(false);
-  const [selectionBox, setSelectionBox] = useState<null | {
-    startX: number;
-    startY: number;
-    x: number;
-    y: number;
-    additive: boolean;
-  }>(null);
   const textMeasureRef = useRef<MeasureFn | null>(null);
   if (!textMeasureRef.current) textMeasureRef.current = createCanvasMeasure();
+  // Wraps the rendered SVG. The interaction layer writes transient gesture
+  // transforms onto the layer groups inside it (spec §9).
+  const previewRootRef = useRef<HTMLDivElement>(null);
 
   const canvasW = template?.canvasWidthPx || 1500;
   const canvasH = template?.canvasHeightPx || 2100;
@@ -191,7 +151,7 @@ export default function AdminCanvas({
   const displayW = baseWidth * zoom;
   const displayH = displayW * (canvasH / canvasW);
   const scale = displayW / canvasW;
-  const snapTolerance = SNAP_PX / scale;
+
 
   // Publish the physical-scale zoom so the 1:1 control stays a distinct action
   // from Fit. Fit itself is simply zoom 1 now, so it needs no separate value.
@@ -239,9 +199,10 @@ export default function AdminCanvas({
       safeBounds,
     });
   };
-  const singleLineInteractionLayer = resolveLayerBox;
 
-  const constrainTextSize = (layer: any, requestedWidth: number, requestedHeight: number) => {
+  // Wrapped so the gesture-commit callback keeps a stable identity: an unstable
+  // dependency there would re-render the interaction layer on every render.
+  const constrainTextSize = useCallback((layer: any, requestedWidth: number, requestedHeight: number) => {
     if (layer?.type !== "text") return { width: requestedWidth, height: requestedHeight };
     const style = layer.textStyle || {};
     const field = layer.fieldId ? getFieldById(template, layer.fieldId) : null;
@@ -267,7 +228,7 @@ export default function AdminCanvas({
       ? constraints.requiredHeight
       : Math.max(constraints.minHeight, requestedHeight);
     return { width: Math.ceil(width), height: Math.ceil(height) };
-  };
+  }, [template, values]);
 
   // A stored width that is merely smaller than the text is NOT a problem for an
   // auto-width layer — the box simply grows. The warning is reserved for text
@@ -299,67 +260,11 @@ export default function AdminCanvas({
     return layout.overflowWidth || layout.overflowHeight || layout.truncatedLines;
   };
 
-  // Snap targets: page centre/edges, safe area, saved guides, and every
-  // neighbour's edges AND centre. Matching is done edge-to-edge by the shared
-  // engine (spec §12) — comparing only the dragged object's centre, as this
-  // did, cannot align two objects by their edges at all.
-  // `extents` is supplied when the thing being dragged is not a single layer —
-  // dragging the combined frame snaps the SELECTION box, whose size has nothing
-  // to do with whichever member happens to be first.
-  const applySnap = (
-    x: number,
-    y: number,
-    excludeIds: string | string[],
-    extents?: { halfWidth: number; halfHeight: number } | null,
-  ) => {
-    const excluded = Array.isArray(excludeIds) ? excludeIds : [excludeIds];
-    const moving = resolvedSelectableLayers.find((layer: any) => layer.id === excluded[0])
-      ?? layers.find((layer: any) => layer.id === excluded[0]);
-    const { halfWidth, halfHeight } = extents ?? layerHalfExtents(moving || {});
-    const targets = buildSnapTargets({
-      pageWidth: canvasW,
-      pageHeight: canvasH,
-      safeArea: template?.safeArea,
-      guides: savedGuides,
-      pageId,
-      objects: layers,
-      excludeIds: excluded,
-    });
-    return snapMove({
-      x,
-      y,
-      halfWidth,
-      halfHeight,
-      targets,
-      tolerance: snapTolerance,
-      enabled: snapEnabled,
-    });
-  };
-
   const selectionIds: string[] = selectedLayerIds.length
     ? selectedLayerIds
     : selectedLayerId
       ? [selectedLayerId]
       : [];
-  // Canvas text measurement for every selectable layer — memoized so a drag
-  // does not re-measure the whole page on each pointermove.
-  const resolvedSelectableLayers = useMemo(
-    () => selectableLayers.map((layer: any) => resolveLayerBox(layer)),
-    // The measurer here is created once and never swapped, so the geometry
-    // depends only on the layers and the text they resolve to.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [selectableLayers, template, values],
-  );
-  const multiBounds = selectionIds.length > 1
-    ? selectionBounds(resolvedSelectableLayers, selectionIds)
-    : null;
-  const multiCanMove =
-    selectionIds.length > 1 &&
-    selectionIds.every((id) => {
-      const target = selectableLayers.find((layer: any) => layer.id === id);
-      return Boolean(target && !target.locked && target.adminEditable !== false);
-    });
-
   const beginTextEditing = (layerId: string, created = false) => {
     if (editingTextId === layerId) return;
     const layer = selectableLayers.find((candidate: any) => candidate.id === layerId);
@@ -424,420 +329,93 @@ export default function AdminCanvas({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editTextRequest?.requestId]);
 
+  /* ---- gesture -> document, through the SHARED interaction layer ---- */
+
+  // Interaction nodes for the shared Konva layer. Admin passes
+  // `surface: "admin"`, which is the ONLY difference between the two canvases'
+  // interaction behaviour now (spec §40): identical selection semantics,
+  // identical transform mathematics, different permissions.
+  const interactionNodes = useInteractionNodes({
+    surface: "admin",
+    layers: selectableLayers,
+    resolveText: useCallback(
+      (layer: any) =>
+        String(resolveLayerText(layer, layer.fieldId ? getFieldById(template, layer.fieldId) : null, values)),
+      [template, values],
+    ),
+    measure: textMeasureRef.current!,
+    safeBounds,
+    editingGroupId,
+  });
+
+  const handleGestureStart = useCallback(() => {
+    // One history entry per gesture (spec §45).
+    onBeginChange?.();
+  }, [onBeginChange]);
+
   /**
-   * One pointer-down path for every object, whether it was hit directly or
-   * through the combined selection frame. Plain clicks accumulate the
-   * selection; an object that is already selected keeps the whole selection
-   * intact so the drag moves it as one block, and is only removed again if the
-   * gesture ends without movement (spec §2, §3, §7).
+   * Text keeps its layout constraints on THIS side of the boundary, where the
+   * shared text engine lives. The interaction layer deals in rectangles; the
+   * minimum width a particular string needs is a typography question.
    */
-  const beginObjectInteraction = (e: React.PointerEvent, layer: any) => {
-    if (editingTextId && editingTextId !== layer.id) return;
-    if (editingGroupId && String(layer.groupId || "") !== editingGroupId) onExitGroup?.(false);
-    const additive = e.shiftKey || e.ctrlKey || e.metaKey;
-    const decision = resolvePointerDownSelection({ current: selectionIds, id: layer.id, additive });
-    onSelectionChange?.(decision.selection);
-    // Modifier clicks are selection toggles, never accidental drags.
-    if (!decision.allowDrag) return;
+  const withTextConstraints = useCallback(
+    (layerId: string, patch: Record<string, unknown>) => {
+      const layer = layers.find((candidate: any) => candidate.id === layerId);
+      if (layer?.type !== "text" || (patch.width === undefined && patch.height === undefined)) return patch;
+      const constrained = constrainTextSize(
+        layer,
+        Number(patch.width ?? layer.width),
+        Number(patch.height ?? layer.height),
+      );
+      return { ...patch, width: constrained.width, height: constrained.height };
+    },
+    [layers, constrainTextSize],
+  );
 
-    const immovable = layer.locked || layer.adminEditable === false;
-    // Dragging a layer that is part of a multi-selection moves the whole
-    // selection together (spec §7).
-    const groupIds = decision.selection.includes(layer.id) && decision.selection.length > 1
-      ? decision.selection
-      : [layer.id];
-    const selectedTargets = groupIds
-      .map((id) => layers.find((candidate: any) => candidate.id === id))
-      .filter(Boolean);
-    // A multi-selection is one logical command: never move an allowed subset.
-    const movable =
-      !immovable &&
-      selectedTargets.length === groupIds.length &&
-      !selectedTargets.some((target: any) => target.locked || target.adminEditable === false);
-
-    if (!movable) {
-      // Still track the gesture so a click on a locked/undraggable object can
-      // toggle itself back out of the selection on release.
-      (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
-      dragRef.current = {
-        mode: "select-click",
-        layerId: layer.id,
-        startClientX: e.clientX,
-        startClientY: e.clientY,
-        collapseOnRelease: decision.collapseOnRelease,
-      };
-      return;
-    }
-
-    (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
-    const startPositions: Record<string, { x: number; y: number }> = {};
-    for (const target of selectedTargets) {
-      startPositions[target.id] = { x: target.x, y: target.y };
-    }
-
-    dragRef.current = {
-      mode: Object.keys(startPositions).length > 1 ? "move-multi" : "move",
-      layerId: layer.id,
-      startClientX: e.clientX,
-      startClientY: e.clientY,
-      startX: layer.x,
-      startY: layer.y,
-      startPositions,
-      excludeIds: groupIds,
-      collapseOnRelease: decision.collapseOnRelease,
-    };
-  };
-
-  const onLayerPointerDown = (e: React.PointerEvent, layer: any) => {
-    // Let the workspace pan instead — no stopPropagation, no selection change.
-    if (panOwnsPointer(e)) return;
-    e.stopPropagation();
-    beginObjectInteraction(e, layer);
-  };
-
-  const onMultiSelectionPointerDown = (e: React.PointerEvent) => {
-    if (panOwnsPointer(e) || !multiBounds || e.button !== 0) return;
-    e.stopPropagation();
-    const rect = surfaceRef.current?.getBoundingClientRect();
-    if (!rect) return;
-    const point = clientPointToDocument(e.clientX, e.clientY, rect, displayW, displayH, scale);
-    // The frame spans the whole bounding box, including the gaps between
-    // objects — resolve what is actually under the pointer first.
-    const hit = resolvedSelectableLayers
-      .filter((layer: any) => pointInsideTransformedLayer(point.x, point.y, layer))
-      .at(-1);
-    if (hit) {
-      const target = selectableLayers.find((layer: any) => layer.id === hit.id);
-      if (target) {
-        beginObjectInteraction(e, target);
+  /**
+   * Commit normalised Husnalogy geometry for a finished (or in-flight) gesture.
+   *
+   * A multi-object change goes through `onLayersChange` so the whole set lands
+   * in ONE document application — and therefore one history step (spec §45).
+   * A change carrying `textStyle` cannot use that path, because the batch
+   * handler applies plain layer patches only, so those commit individually.
+   */
+  const commitChanges = useCallback(
+    (changes: Array<{ id: string; patch: Record<string, unknown> }>) => {
+      if (!changes.length) return;
+      const carriesStyle = changes.some((change) => change.patch.textStyle);
+      if (changes.length > 1 && !carriesStyle && onLayersChange) {
+        const patches: Record<string, unknown> = {};
+        for (const change of changes) patches[change.id] = withTextConstraints(change.id, change.patch);
+        onLayersChange(patches);
         return;
       }
-    }
-    if (e.shiftKey || e.ctrlKey || e.metaKey) return;
-    if (!multiCanMove) return;
-    (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
-    const startPositions: Record<string, { x: number; y: number }> = {};
-    for (const id of selectionIds) {
-      const target = selectableLayers.find((layer: any) => layer.id === id);
-      if (target) startPositions[id] = { x: target.x, y: target.y };
-    }
-    dragRef.current = {
-      mode: "move-multi",
-      layerId: selectionIds[0],
-      startClientX: e.clientX,
-      startClientY: e.clientY,
-      startX: multiBounds.x,
-      startY: multiBounds.y,
-      startPositions,
-      excludeIds: selectionIds,
-      snapExtents: { halfWidth: multiBounds.width / 2, halfHeight: multiBounds.height / 2 },
-      // Empty space inside the frame is still empty canvas: a click that never
-      // moves clears the selection (spec §4).
-      clearOnRelease: true,
-    };
-  };
+      for (const change of changes) onLayerChange?.(change.id, withTextConstraints(change.id, change.patch));
+    },
+    [onLayerChange, onLayersChange, withTextConstraints],
+  );
 
-  const beginSurfaceInteraction = (event: React.PointerEvent) => {
-    if (panOwnsPointer(event) || event.button !== 0 || editingTextId) return;
-    if (event.target !== surfaceRef.current) return;
-    const rect = surfaceRef.current?.getBoundingClientRect();
-    if (!rect) return;
-    const point = clientPointToDocument(event.clientX, event.clientY, rect, displayW, displayH, scale);
-    if (activeTool !== "select") return;
-    if (editingGroupId) {
-      const group = layers.find((layer: any) => layer.id === editingGroupId);
-      const resolvedGroup = group ? resolveLayerBox(group) : null;
-      if (!resolvedGroup || !pointInsideTransformedLayer(point.x, point.y, resolvedGroup)) onExitGroup?.(false);
-    }
-    const additive = event.shiftKey || event.ctrlKey || event.metaKey;
-    dragRef.current = {
-      mode: "marquee",
-      startClientX: event.clientX,
-      startClientY: event.clientY,
-      startX: point.x,
-      startY: point.y,
-      x: point.x,
-      y: point.y,
-      additive,
-      originalSelection: selectionIds.slice(),
-      began: false,
-    };
-    (event.currentTarget as HTMLElement).setPointerCapture?.(event.pointerId);
-  };
-
-  const onHandlePointerDown = (e: React.PointerEvent, layer: any, handle: string) => {
-    if (panOwnsPointer(e)) return;
-    e.stopPropagation();
-    (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
-    const interactionLayer = singleLineInteractionLayer(layer);
-    const isText = interactionLayer.type === "text";
-    const singleLineScale = isText && isSingleLineAutoSizeText(
-      interactionLayer.textStyle,
-      interactionLayer.resolvedText ?? interactionLayer.text,
-    );
-    dragRef.current = {
-      // A corner scales the glyphs; a side still resizes the box.
-      mode: isText && TEXT_SCALE_HANDLES.has(handle)
-        ? "text-box-scale"
-        : singleLineScale ? "text-scale" : "resize",
-      handle,
-      layerId: layer.id,
-      startClientX: e.clientX,
-      startClientY: e.clientY,
-      startX: interactionLayer.x,
-      startY: interactionLayer.y,
-      startW: interactionLayer.width,
-      startH: interactionLayer.height,
-      layer: interactionLayer,
-      shiftLock: false,
-    };
-  };
-
-  const onRotatePointerDown = (e: React.PointerEvent, layer: any) => {
-    if (panOwnsPointer(e)) return;
-    e.stopPropagation();
-    (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
-    dragRef.current = {
-      mode: "rotate",
-      layerId: layer.id,
-      startRotation: Number(layer.rotation || 0),
-      centerX: layer.x,
-      centerY: layer.y,
-    };
-  };
-
-  const onPointerMove = (e: React.PointerEvent) => {
+  /**
+   * Ruler guides keep a DOM gesture of their own. They are editor chrome rather
+   * than design objects — they live outside the document's layer list, never
+   * reach the renderer, and are dragged from a thin strip that has no business
+   * in the object hit graph.
+   */
+  const onGuidePointerMove = (event: React.PointerEvent) => {
     const drag = dragRef.current;
-    if (!drag) return;
-    if (drag.mode === "select-click") {
-      if (pointerExceededDragThreshold(drag.startClientX, drag.startClientY, e.clientX, e.clientY)) {
-        drag.moved = true;
-      }
-      return;
-    }
-    if (drag.mode === "marquee") {
-      const rect = surfaceRef.current?.getBoundingClientRect();
-      if (!rect) return;
-      const point = clientPointToDocument(e.clientX, e.clientY, rect, displayW, displayH, scale);
-      drag.x = point.x;
-      drag.y = point.y;
-      if (
-        !drag.began &&
-        !pointerExceededDragThreshold(drag.startClientX, drag.startClientY, e.clientX, e.clientY)
-      ) return;
-      drag.began = true;
-      setSelectionBox({
-        startX: drag.startX,
-        startY: drag.startY,
-        x: drag.x,
-        y: drag.y,
-        additive: drag.additive,
-      });
-      return;
-    }
-    if (drag.mode === "guide") {
-      const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-      const position = drag.axis === "vertical" ? (e.clientX - rect.left) / scale : (e.clientY - rect.top) / scale;
-      onGuideChange?.(drag.guideId, { position: Math.round(Math.max(0, drag.axis === "vertical" ? Math.min(canvasW, position) : Math.min(canvasH, position))) });
-      return;
-    }
-    if (
-      (drag.mode === "move" || drag.mode === "move-multi") &&
-      !drag.began &&
-      !pointerExceededDragThreshold(drag.startClientX, drag.startClientY, e.clientX, e.clientY)
-    ) return;
-    if (!drag.began) {
-      drag.began = true;
-      onBeginChange?.();
-    }
-
-    if (drag.mode === "rotate") {
-      const rect = (wrapRef.current?.querySelector("[data-canvas-surface]") as HTMLElement)?.getBoundingClientRect();
-      if (!rect) return;
-      const cx = rect.left + drag.centerX * scale;
-      const cy = rect.top + drag.centerY * scale;
-      const angle = (Math.atan2(e.clientY - cy, e.clientX - cx) * 180) / Math.PI + 90;
-      let rotation = Math.round(angle);
-      // Snap to 15° increments near them; Shift disables snapping.
-      if (!e.shiftKey) {
-        const nearest = Math.round(rotation / 15) * 15;
-        if (Math.abs(rotation - nearest) <= 4) rotation = nearest;
-      }
-      rotation = ((rotation % 360) + 360) % 360;
-      onLayerChange(drag.layerId, { rotation });
-      return;
-    }
-
-    const dx = (e.clientX - drag.startClientX) / scale;
-    const dy = (e.clientY - drag.startClientY) / scale;
-
-    if (drag.mode === "text-box-scale") {
-      const style = drag.layer.textStyle || {};
-      // Work in the object's own frame so a rotated text box scales along the
-      // direction the handle actually points.
-      const radians = ((Number(drag.layer.rotation) || 0) * Math.PI) / 180;
-      const localDx = dx * Math.cos(radians) + dy * Math.sin(radians);
-      const localDy = -dx * Math.sin(radians) + dy * Math.cos(radians);
-      const scaled = scaleTextBox({
-        handle: drag.handle,
-        x: drag.startX,
-        y: drag.startY,
-        width: drag.startW,
-        height: drag.startH,
-        fontSize: Number(style.fontSize) || 48,
-        letterSpacing: Number(style.letterSpacing) || 0,
-        deltaX: localDx,
-        deltaY: localDy,
-        minFontSize: Number(style.minFontSize) || 4,
-        maxFontSize: Number(style.maxFontSize) || 500,
-      });
-      onLayerChange(drag.layerId, {
-        x: scaled.x,
-        y: scaled.y,
-        width: scaled.width,
-        height: scaled.height,
-        textStyle: { fontSize: scaled.fontSize, letterSpacing: scaled.letterSpacing },
-      });
-      return;
-    }
-
-    if (drag.mode === "text-scale") {
-      const style = drag.layer.textStyle || {};
-      const rotation = Number(drag.layer.rotation) || 0;
-      const radians = (rotation * Math.PI) / 180;
-      const localDelta = dx * Math.cos(radians) + dy * Math.sin(radians);
-      const safe = template?.safeArea || {};
-      const result = scaleSingleLineText({
-        text: String(drag.layer.resolvedText ?? drag.layer.text ?? ""),
-        x: drag.startX,
-        y: drag.startY,
-        fontFamily: style.fontFamily || "Cormorant Garamond",
-        fontSize: Number(style.fontSize) || 48,
-        minFontSize: Number(style.minFontSize) || 4,
-        maxFontSize: Number(style.maxFontSize) || 500,
-        fontWeight: style.fontWeight || "400",
-        fontStyle: style.fontStyle === "italic" ? "italic" : "normal",
-        letterSpacing: Number(style.letterSpacing) || 0,
-        lineHeight: Number(style.lineHeight) || DEFAULT_LINE_HEIGHT,
-        uppercase: Boolean(style.uppercase),
-        rotation,
-        handle: drag.handle,
-        delta: localDelta,
-        centered: e.altKey,
-        safeBounds: drag.layer.customerEditable ? {
-          left: Number(safe.left) || 0,
-          top: Number(safe.top) || 0,
-          right: canvasW - (Number(safe.right) || 0),
-          bottom: canvasH - (Number(safe.bottom) || 0),
-        } : undefined,
-      }, textMeasureRef.current!);
-      onLayerChange(drag.layerId, {
-        x: result.x,
-        y: result.y,
-        width: result.width,
-        height: result.height,
-        textStyle: { fontSize: result.fontSize },
-      });
-      return;
-    }
-
-    if (drag.mode === "move-multi") {
-      // Snap the grabbed layer; the rest follow with the same delta.
-      const snapped = applySnap(drag.startX + dx, drag.startY + dy, drag.excludeIds || drag.layerId, drag.snapExtents);
-      setGuides(snapped.guides);
-      const effectiveDx = snapped.x - drag.startX;
-      const effectiveDy = snapped.y - drag.startY;
-      const patches: Record<string, { x: number; y: number }> = {};
-      for (const [id, start] of Object.entries(drag.startPositions as Record<string, { x: number; y: number }>)) {
-        patches[id] = { x: Math.round(start.x + effectiveDx), y: Math.round(start.y + effectiveDy) };
-      }
-      onLayersChange?.(patches);
-      return;
-    }
-
-    if (drag.mode === "move") {
-      const snapped = applySnap(drag.startX + dx, drag.startY + dy, drag.layerId);
-      setGuides(snapped.guides);
-      onLayerChange(drag.layerId, { x: snapped.x, y: snapped.y });
-      return;
-    }
-
-    // Resize anchoring the opposite corner. Shift keeps the aspect ratio.
-    const left = drag.startX - drag.startW / 2;
-    const top = drag.startY - drag.startH / 2;
-    const right = drag.startX + drag.startW / 2;
-    const bottom = drag.startY + drag.startH / 2;
-    const min = 20;
-    let nl = left, nt = top, nr = right, nb = bottom;
-    if (drag.handle.includes("w")) nl = Math.min(left + dx, right - min);
-    if (drag.handle.includes("e")) nr = Math.max(right + dx, left + min);
-    if (drag.handle.includes("n")) nt = Math.min(top + dy, bottom - min);
-    if (drag.handle.includes("s")) nb = Math.max(bottom + dy, top + min);
-    let w = Math.round(nr - nl);
-    let h = Math.round(nb - nt);
-    if (e.shiftKey && drag.startW > 0 && drag.startH > 0) {
-      const ratio = drag.startW / drag.startH;
-      if (w / h > ratio) w = Math.round(h * ratio);
-      else h = Math.round(w / ratio);
-      if (drag.handle.includes("w")) nl = nr - w;
-      else nr = nl + w;
-      if (drag.handle.includes("n")) nt = nb - h;
-      else nb = nt + h;
-    }
-    const constrained = constrainTextSize(drag.layer, w, h);
-    if (constrained.width !== w) {
-      w = constrained.width;
-      if (drag.handle.includes("w")) nl = nr - w;
-      else nr = nl + w;
-    }
-    if (constrained.height !== h) {
-      h = constrained.height;
-      if (drag.handle.includes("n")) nt = nb - h;
-      else nb = nt + h;
-    }
-    onLayerChange(drag.layerId, { x: Math.round(nl + w / 2), y: Math.round(nt + h / 2), width: w, height: h });
+    if (drag?.mode !== "guide") return;
+    const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
+    const position =
+      drag.axis === "vertical" ? (event.clientX - rect.left) / scale : (event.clientY - rect.top) / scale;
+    onGuideChange?.(drag.guideId, {
+      position: Math.round(
+        Math.max(0, drag.axis === "vertical" ? Math.min(canvasW, position) : Math.min(canvasH, position)),
+      ),
+    });
   };
 
-  const endDrag = (cancelled = false) => {
-    const drag = dragRef.current;
-    // A gesture that moved is a drag, never a click: it must not change the
-    // selection on release (spec §39).
-    const moved = Boolean(drag?.began || drag?.moved);
-    if (drag && !cancelled && !moved) {
-      if (drag.clearOnRelease) {
-        onSelectionChange?.([]);
-      } else if (drag.collapseOnRelease && drag.layerId) {
-        const next = resolvePointerUpSelection({
-          current: selectionIds,
-          id: drag.layerId,
-          moved,
-          collapseOnRelease: true,
-        });
-        if (next) onSelectionChange?.(next);
-      }
-    }
-    if (drag?.mode === "marquee" && !cancelled) {
-      const found = drag.began
-        ? marqueeSelectedLayerIds(
-            {
-              left: drag.startX,
-              top: drag.startY,
-              right: drag.x,
-              bottom: drag.y,
-            },
-            resolvedSelectableLayers,
-          )
-        : [];
-      onSelectionChange?.(resolveMarqueeSelection({
-        original: drag.originalSelection || [],
-        found,
-        additive: drag.additive,
-        moved: Boolean(drag.began),
-      }));
-    }
+  const endGuideDrag = () => {
     dragRef.current = null;
-    setGuides([]);
-    setSelectionBox(null);
   };
 
   const onGuidePointerDown = (event: React.PointerEvent, guide: any) => {
@@ -946,7 +524,6 @@ export default function AdminCanvas({
   const cursor = panCursor({ isPanning, panToolActive });
   // While a temporary pan is armed or running, overlays stay rendered (so the
   // selection does not flicker away) but stop intercepting pointer events.
-  const overlayInert = spacePanActive || isPanning;
 
   return (
     <div
@@ -989,88 +566,52 @@ export default function AdminCanvas({
           transform: `translate3d(${panX}px, ${panY}px, 0)`,
           cursor: undefined,
         }}
-        onPointerMove={onPointerMove}
-        onPointerUp={() => endDrag(false)}
-        onPointerCancel={() => endDrag(true)}
+        onPointerMove={onGuidePointerMove}
+        onPointerUp={endGuideDrag}
+        onPointerCancel={endGuideDrag}
         onPointerLeave={(event) => {
-          if (!(event.currentTarget as HTMLElement).hasPointerCapture?.(event.pointerId)) endDrag(false);
+          if (!(event.currentTarget as HTMLElement).hasPointerCapture?.(event.pointerId)) endGuideDrag();
         }}
-        onPointerDown={beginSurfaceInteraction}
       >
         {/* Base render (shared with the customer) */}
-        <div className="pointer-events-none absolute inset-0">
+        <div ref={previewRootRef} className="pointer-events-none absolute inset-0">
           <CustomizerPreview template={template} values={values} page={pageId} showSafeArea={showSafeArea} showBleed={showBleed} hiddenLayerIds={[]} />
         </div>
 
-        {/* Alignment guides */}
-        {guides.map((guide, index) =>
-          guide.type === "v" ? (
-            <span
-              key={`g${index}`}
-              aria-hidden
-              className="pointer-events-none absolute w-px bg-[#D4AF37]"
-              style={{
-                left: guide.at * scale,
-                top: guide.start * scale,
-                height: Math.max(1, (guide.end - guide.start) * scale),
-              }}
-            />
-          ) : (
-            <span
-              key={`g${index}`}
-              aria-hidden
-              className="pointer-events-none absolute h-px bg-[#D4AF37]"
-              style={{
-                top: guide.at * scale,
-                left: guide.start * scale,
-                width: Math.max(1, (guide.end - guide.start) * scale),
-              }}
-            />
-          ),
-        )}
-
-        {/* Drag marquee and combined selection are editor-only DOM overlays.
-            Neither enters template state or the shared PNG/PDF renderer. */}
-        {selectionBox && (
-          <span
-            aria-hidden
-            data-admin-selection-marquee
-            className="pointer-events-none absolute z-50 border border-[#D4AF37] bg-[#D4AF37]/12 shadow-[0_0_0_1px_rgba(255,255,255,0.7)]"
-            style={{
-              left: Math.min(selectionBox.startX, selectionBox.x) * scale,
-              top: Math.min(selectionBox.startY, selectionBox.y) * scale,
-              width: Math.abs(selectionBox.x - selectionBox.startX) * scale,
-              height: Math.abs(selectionBox.y - selectionBox.startY) * scale,
-            }}
-          />
-        )}
-
-        {activeTool === "select" && multiBounds && (
-          <div
-            role="group"
-            aria-label={`${selectionIds.length} selected objects. Drag to move the selection.`}
-            aria-disabled={!multiCanMove}
-            data-admin-multi-selection
-            onPointerDown={onMultiSelectionPointerDown}
-            className={`absolute border-2 border-[#D4AF37] bg-transparent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] ${multiCanMove ? "cursor-move" : "cursor-not-allowed"}`}
-            style={{
-              left: multiBounds.left * scale,
-              top: multiBounds.top * scale,
-              width: multiBounds.width * scale,
-              height: multiBounds.height * scale,
-              touchAction: "none",
-              pointerEvents: overlayInert ? "none" : undefined,
-            }}
-          >
-            <span className="pointer-events-none absolute -top-7 left-0 whitespace-nowrap rounded-md bg-[#303839] px-2 py-1 text-[9px] font-extrabold uppercase tracking-[0.08em] text-white shadow-sm">
-              {selectionIds.length} selected
-            </span>
-            <span aria-hidden className="pointer-events-none absolute left-[-4px] top-[-4px] h-2 w-2 rounded-sm border border-[#D4AF37] bg-white" />
-            <span aria-hidden className="pointer-events-none absolute right-[-4px] top-[-4px] h-2 w-2 rounded-sm border border-[#D4AF37] bg-white" />
-            <span aria-hidden className="pointer-events-none absolute bottom-[-4px] left-[-4px] h-2 w-2 rounded-sm border border-[#D4AF37] bg-white" />
-            <span aria-hidden className="pointer-events-none absolute bottom-[-4px] right-[-4px] h-2 w-2 rounded-sm border border-[#D4AF37] bg-white" />
-          </div>
-        )}
+        {/* Shared Konva interaction layer — the SAME component the customer
+            workspace mounts (spec §7, §40). Admin differs only by the
+            capabilities it resolves. Ruler guides, the inline text editor and
+            the panel chrome stay in the DOM, where they belong. */}
+        <InteractionStageClient
+          documentWidth={canvasW}
+          documentHeight={canvasH}
+          scale={scale}
+          nodes={interactionNodes}
+          selectedIds={selectionIds}
+          editingGroupId={editingGroupId}
+          textEditingId={editingTextId}
+          disabled={panToolActive || isPanning}
+          snapping={{
+            enabled: snapEnabled,
+            safeArea: template?.safeArea,
+            guides: savedGuides,
+            pageId,
+            neighbours: layers,
+          }}
+          previewRootRef={previewRootRef}
+          onSelectionChange={(ids) => onSelectionChange?.(ids)}
+          onGestureStart={handleGestureStart}
+          onGestureCommit={commitChanges}
+          onDoubleClickNode={(layerId) => {
+            const layer = selectableLayers.find((candidate: any) => candidate.id === layerId);
+            if (!layer) return;
+            onSelectionChange?.([layer.id]);
+            if (layer.type === "group") onEnterGroup?.(layer.id);
+            else if (layer.type === "text" && !layer.locked && layer.adminEditable !== false) {
+              beginTextEditing(layer.id);
+            }
+          }}
+        />
 
         {/* Saved template guides. They are editor-only and never enter the SVG renderer. */}
         {savedGuides.filter((guide: any) => !guide.hidden).map((guide: any) => {
@@ -1101,162 +642,50 @@ export default function AdminCanvas({
           );
         })}
 
-        {/* Interactive overlay */}
-        {activeTool !== "pan" && selectableLayers.map((layer: any) => {
-          const inSelection = selectionIds.includes(layer.id);
-          const selected = selectionIds.length === 1 && layer.id === selectedLayerId;
-          const interactionLayer = layer.type === "text" ? singleLineInteractionLayer(layer) : layer;
-          const boxLeft = (interactionLayer.x - interactionLayer.width / 2) * scale;
-          const boxTop = (interactionLayer.y - interactionLayer.height / 2) * scale;
-          const boxW = interactionLayer.width * scale;
-          const boxH = interactionLayer.height * scale;
-           const singleLineTextScale = selected && layer.type === "text" && isSingleLineAutoSizeText(
-             layer.textStyle,
-             interactionLayer.resolvedText ?? layer.text,
-           );
-           const textOverflow = selected && textOverflowForLayer(layer);
-           const connectedField = layer.type === "text" && layer.fieldId ? getFieldById(template, layer.fieldId) : null;
-           const characterLimits = [
-             Number(connectedField?.maxLength) || 0,
-             Number(layer.maxChars) || 0,
-           ].filter((limit) => limit > 0);
-
+        {/* DOM overlay, now limited to the inline text editor and the
+            text-overflow warning. Selection chrome, handles and hit targets
+            live on the Konva layer above — one interaction engine, shared with
+            the customer canvas (spec §61). */}
+        {activeTool !== "pan" && interactionNodes.map((node) => {
+          const layer = selectableLayers.find((candidate: any) => candidate.id === node.id);
+          if (!layer) return null;
+          const isEditing = editingTextId === node.id;
+          const showOverflow = selectionIds.includes(node.id) && !isEditing && textOverflowForLayer(layer);
+          if (!isEditing && !showOverflow) return null;
           return (
             <div
-              key={layer.id}
-              data-canvas-layer={layer.id}
-              role="button"
-              tabIndex={0}
-              onPointerDown={(e) => onLayerPointerDown(e, layer)}
-              onDoubleClick={(event) => {
-                event.stopPropagation();
-                // Double click is an explicit "work on this one object" action:
-                // it replaces the selection rather than toggling it.
-                onSelectionChange?.([layer.id]);
-                if (layer.type === "group") onEnterGroup?.(layer.id);
-                else if (layer.type === "text" && !layer.locked && layer.adminEditable !== false) beginTextEditing(layer.id);
-              }}
-               onKeyDown={(event) => {
-                 if (event.key === "Enter" && layer.type === "group") {
-                   event.preventDefault();
-                   event.stopPropagation();
-                   onEnterGroup?.(layer.id);
-                   return;
-                 }
-                 if (event.key === "Enter" && layer.type === "text" && !layer.locked && layer.adminEditable !== false) {
-                  event.preventDefault();
-                  event.stopPropagation();
-                  beginTextEditing(layer.id);
-                }
-              }}
+              key={node.id}
+              data-canvas-layer={node.id}
+              className="pointer-events-none absolute"
               style={{
-                position: "absolute",
-                left: boxLeft,
-                top: boxTop,
-                width: boxW,
-                height: boxH,
-                transform: layer.rotation ? `rotate(${layer.rotation}deg)` : undefined,
-                cursor: layer.locked ? "default" : "move",
-                 outline: editingTextId === layer.id
-                   ? "1px solid rgba(212,175,55,0.9)"
-                   : selected
-                   ? "2px solid #303839"
-                   // Every member of a multi-selection is outlined, so click
-                   // selection shows exactly what is in the set (spec §22).
-                   : inSelection
-                     ? "1.5px solid #D4AF37"
-                     : "1px dashed rgba(48,56,57,0.22)",
-                background: "transparent",
-                touchAction: "none",
-                // Space/middle-mouse pan keeps the selection visible but lets
-                // the gesture through to the workspace.
-                pointerEvents: overlayInert ? "none" : undefined,
+                left: (node.x - node.width / 2) * scale,
+                top: (node.y - node.height / 2) * scale,
+                width: node.width * scale,
+                height: node.height * scale,
+                transform: node.rotation ? `rotate(${node.rotation}deg)` : undefined,
+                zIndex: 60,
               }}
             >
-              {editingTextId === layer.id && (
-                <InlineCanvasTextEditor
-                   value={String(resolveLayerText(layer, layer.fieldId ? getFieldById(template, layer.fieldId) : null, values))}
-                   multiline={Boolean(layer.textStyle?.multiline)}
-                   allowMultiline
-                   maxLines={Number(layer.maxLines) || 0}
-                   maxLength={characterLimits.length ? Math.min(...characterLimits) : 0}
-                   scale={scale}
-                   textStyle={layer.textStyle}
-                   onDraftChange={(text) => onTextDraftChange?.(layer.id, text)}
-                   onMultilineActivate={() => onTextMultilineActivate?.(layer.id)}
-                   onCommit={(text) => finishTextEditing(layer.id, text)}
-                   onCancel={() => cancelTextEditing(layer.id)}
-                   onEscape={onExitTextTool}
-                 />
-              )}
-              {selected && editingTextId !== layer.id && (
-                <span className="pointer-events-none absolute -top-6 left-0 z-10 whitespace-nowrap rounded bg-[#303839] px-1.5 py-0.5 text-[9px] font-bold text-white">
-                  {layer.locked ? "🔒 " : ""}
-                  {layer.name} · {Math.round(layer.x)},{Math.round(layer.y)} · {Math.round(layer.width)}×{Math.round(layer.height)}
-                  {layer.rotation ? ` · ${Math.round(layer.rotation)}°` : ""}
-                </span>
-              )}
-              {selected && !layer.locked && editingTextId !== layer.id && (
-                <>
-                  {(singleLineTextScale ? SINGLE_LINE_TEXT_HANDLES : HANDLES).map((h) => {
-                    // A corner on any text object changes the real font size.
-                    const scalesText = layer.type === "text" && (TEXT_SCALE_HANDLES.has(h.id) || singleLineTextScale);
-                    return (
-                    <button
-                      type="button"
-                      key={h.id}
-                      data-canvas-handle={h.id}
-                      aria-label={scalesText ? `Scale text from ${h.id}` : `Resize from ${h.id}`}
-                      title={scalesText ? "Drag to change the font size." : undefined}
-                      onPointerDown={(e) => onHandlePointerDown(e, interactionLayer, h.id)}
-                      className="absolute z-20 flex h-11 w-11 items-center justify-center border-0 bg-transparent p-0 outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] focus-visible:ring-offset-1"
-                      style={{
-                        left: `calc(${h.cx * 100}% - 22px)`,
-                        top: `calc(${h.cy * 100}% - 22px)`,
-                        cursor: h.cursor,
-                        touchAction: "none",
-                      }}
-                    >
-                      <span
-                        aria-hidden
-                        className={`block bg-white ${scalesText ? "h-3.5 w-3.5 rounded-full border-2 border-[#303839]" : "h-2.5 w-2.5 rounded-sm border-2 border-[#303839]"}`}
-                      />
-                    </button>
-                    );
-                  })}
-                  {/* Rotation handle */}
-                  <span
-                    onPointerDown={(e) => onRotatePointerDown(e, layer)}
-                    title="Rotate"
-                    style={{
-                      position: "absolute",
-                      left: "calc(50% - 6px)",
-                      top: -26,
-                      width: 12,
-                      height: 12,
-                      background: "#fff",
-                      border: "2px solid #303839",
-                      borderRadius: "50%",
-                      cursor: "grab",
-                      touchAction: "none",
-                    }}
+              {isEditing && (
+                <div className="pointer-events-auto absolute inset-0" style={{ touchAction: "manipulation" }}>
+                  <InlineCanvasTextEditor
+                    value={String(resolveLayerText(layer, layer.fieldId ? getFieldById(template, layer.fieldId) : null, values))}
+                    multiline={Boolean(layer.textStyle?.multiline)}
+                    allowMultiline
+                    maxLines={Number(layer.maxLines) || 0}
+                    maxLength={Number(layer.maxChars) || 0}
+                    scale={scale}
+                    textStyle={layer.textStyle}
+                    onDraftChange={(text) => onTextDraftChange?.(layer.id, text)}
+                    onMultilineActivate={() => onTextMultilineActivate?.(layer.id)}
+                    onCommit={(text) => finishTextEditing(layer.id, text)}
+                    onCancel={() => cancelTextEditing(layer.id)}
+                    onEscape={onExitTextTool}
                   />
-                  <span
-                    aria-hidden
-                    style={{
-                      position: "absolute",
-                      left: "calc(50% - 0.5px)",
-                      top: -14,
-                      width: 1,
-                      height: 14,
-                      background: "rgba(48,56,57,0.4)",
-                      pointerEvents: "none",
-                    }}
-                  />
-                </>
+                </div>
               )}
-              {textOverflow && (
-                <span className="pointer-events-none absolute left-0 top-full z-20 mt-2 whitespace-nowrap rounded-md border border-amber-300 bg-amber-50 px-2 py-1 text-[10px] font-bold text-amber-900 shadow-sm" role="status">
+              {showOverflow && (
+                <span className="absolute left-0 top-full z-20 mt-2 whitespace-nowrap rounded-md border border-amber-300 bg-amber-50 px-2 py-1 text-[10px] font-bold text-amber-900 shadow-sm" role="status">
                   This text is too long for the available space. Reduce the text or use fewer lines.
                 </span>
               )}

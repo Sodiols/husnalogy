@@ -23,6 +23,47 @@ export function clampZoom(zoom: unknown, min = ZOOM_MIN, max = ZOOM_MAX): number
   return Math.min(max, Math.max(min, value));
 }
 
+/**
+ * What 100% MEANS on the customer surface (spec §35).
+ *
+ * The two surfaces answer this differently, on purpose, and both answers now
+ * live in this file rather than as an inline expression inside a component:
+ *
+ *   admin    — zoom 1 is FIT: the whole page inside the measured workspace
+ *              (`computeWorkspaceFit`). A template author works on the whole
+ *              artboard, so that is the useful resting view.
+ *   customer — zoom 1 is the READING SIZE: the product drawn as wide as the
+ *              workspace allows, capped at `maxCanvasWidth`, so a card is
+ *              presented at a comfortable, consistent size across devices
+ *              instead of ballooning on a large monitor.
+ *
+ * Fit remains a separate, distinct action on both surfaces (`computeFitZoom`),
+ * and 1:1 — true physical size — is a third (`actualSizeZoom`). Three rules,
+ * three functions, none of them a hardcoded `setZoom(1)`.
+ *
+ * The lower clamp keeps the page usable in a very narrow column; the upper
+ * clamp is what stops a 27" display from rendering a greetings card a foot
+ * wide.
+ */
+export const CUSTOMER_MIN_BASE_WIDTH = 220;
+
+export function resolveCustomerBaseWidth(input: {
+  /** Measured workspace width, in CSS pixels. */
+  availableWidth: number;
+  /** Breathing room kept on each side. */
+  padding?: number;
+  /** Upper bound on the on-screen page width at 100%. */
+  maxCanvasWidth: number;
+}): number {
+  const padding = Math.max(0, Number(input?.padding) || 0);
+  const available = Number(input?.availableWidth);
+  const maximum = Math.max(1, Number(input?.maxCanvasWidth) || 0);
+  // Before the first measurement, fall back to a sensible width so the very
+  // first frame is not zero-sized; the ResizeObserver replaces it immediately.
+  const width = Number.isFinite(available) && available > 0 ? available : 480;
+  return Math.min(Math.max(width - padding * 2, CUSTOMER_MIN_BASE_WIDTH), maximum);
+}
+
 export type FitInput = {
   /** Content-box width of the workspace, in CSS pixels. */
   availableWidth: number;

@@ -1,11 +1,13 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
+  CUSTOMER_MIN_BASE_WIDTH,
   SCREEN_CSS_DPI,
   ZOOM_PRESETS,
   actualSizeZoom,
   computeWorkspaceFit,
   nextZoomPreset,
+  resolveCustomerBaseWidth,
   resolveWorkspacePadding,
 } from "../zoom";
 import { createDefaultCustomizerTemplate } from "@/lib/customizer";
@@ -268,7 +270,12 @@ describe("zoom is a viewport transform only", () => {
     expect(adminCanvas).toContain("const scale = displayW / canvasW;");
     expect(adminCanvas).toContain("const displayW = baseWidth * zoom;");
     expect(adminCanvas).toContain("const displayH = displayW * (canvasH / canvasW);");
-    expect(adminCanvas).toContain("const snapTolerance = SNAP_PX / scale;");
+    // Snap tolerance is now derived from the same scale inside the shared
+    // interaction layer, as a SCREEN distance converted to document units, so
+    // it feels identical at every zoom level.
+    const handles = readFileSync("lib/customizer/v2/interaction/handles.ts", "utf8");
+    expect(handles).toContain("SNAP_SCREEN_TOLERANCE / safeScale");
+    expect(adminCanvas).toContain("scale={scale}");
     // One transform on one element carries artwork and every overlay together.
     expect(adminCanvas).toContain("transform: `translate3d(${panX}px, ${panY}px, 0)`");
   });
@@ -339,5 +346,54 @@ describe("canvas viewport wiring", () => {
     const workspaceSource = read("app/components/customizer/CustomizerWorkspace.tsx");
     expect(workspaceSource).toContain("computeFitZoom");
     expect(workspaceSource).not.toContain("computeWorkspaceFit");
+  });
+});
+
+describe("100% is a defined rule on each surface, not a hardcoded 1 (spec §35)", () => {
+  it("customer 100% is the reading size: workspace width, capped", () => {
+    // Wide monitor: the cap is what stops a greetings card rendering a foot wide.
+    expect(
+      resolveCustomerBaseWidth({ availableWidth: 2400, padding: 32, maxCanvasWidth: 620 }),
+    ).toBe(620);
+    // Ordinary laptop column: the workspace width, minus its padding.
+    expect(
+      resolveCustomerBaseWidth({ availableWidth: 500, padding: 32, maxCanvasWidth: 620 }),
+    ).toBe(436);
+    // Very narrow: never collapses below a usable minimum.
+    expect(
+      resolveCustomerBaseWidth({ availableWidth: 200, padding: 32, maxCanvasWidth: 620 }),
+    ).toBe(CUSTOMER_MIN_BASE_WIDTH);
+    // Unmeasured first frame: a sensible width rather than zero.
+    expect(
+      resolveCustomerBaseWidth({ availableWidth: 0, padding: 32, maxCanvasWidth: 620 }),
+    ).toBe(416);
+  });
+
+  it("admin 100% is Fit, which is a different number from the customer rule", () => {
+    const fit = computeWorkspaceFit({
+      availableWidth: 1200,
+      availableHeight: 800,
+      canvasWidth: 1500,
+      canvasHeight: 2100,
+    })!;
+    // Constrained by HEIGHT for a portrait card, which the customer rule ignores.
+    expect(fit.baseWidth).toBeLessThan(
+      resolveCustomerBaseWidth({ availableWidth: 1200, padding: 32, maxCanvasWidth: 2000 }),
+    );
+    expect(fit.baseHeight).toBeLessThanOrEqual(fit.usableHeight + 0.001);
+  });
+
+  it("1:1 stays a third, physically defined action", () => {
+    const fit = computeWorkspaceFit({
+      availableWidth: 1200,
+      availableHeight: 800,
+      canvasWidth: 1500,
+      canvasHeight: 2100,
+    })!;
+    // A 300 DPI document on a 96 DPI screen is drawn at 96/300 of document size.
+    const oneToOne = actualSizeZoom(fit.fitScale, 300);
+    expect(fit.fitScale * oneToOne).toBeCloseTo(96 / 300, 10);
+    // And it is genuinely distinct from Fit.
+    expect(oneToOne).not.toBeCloseTo(1, 3);
   });
 });

@@ -345,13 +345,16 @@ describe("resolved multiline bounds and rendering parity", () => {
       expect(source).not.toContain('mode: "text-placement"');
       expect(source).toContain("editTextRequest");
       expect(source).toContain("beginTextEditing(layer.id, Boolean(editTextRequest.created))");
-      expect(source).toContain("pointerExceededDragThreshold");
+      // The drag threshold moved into the shared interaction layer, which is
+      // now the only place a pointer gesture is interpreted.
+      expect(source).toContain("<InteractionStageClient");
       expect(source).toContain("onTextDraftChange");
       expect(source).toContain("onTextDiscard");
       expect(source).toContain("<InlineCanvasTextEditor");
     }
-    // Both editors return to their resting state as part of the insertion.
-    expect(builder).toContain('setActiveTool("select")');
+    // Both editors return to their resting state as part of the insertion —
+    // in the admin builder that is now enforced by the shared tool machine.
+    expect(builder).toContain("finishInsertion()");
     expect(builder).toContain("const insertTextLayer = ");
     expect(personalize).toContain("const insertCustomerText = ");
     expect(inline).toContain("setSelectionRange");

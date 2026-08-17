@@ -44,9 +44,12 @@ describe("admin properties sidebar contract", () => {
       expect(canvas).toContain("<InlineCanvasTextEditor");
       expect(canvas).toContain("This text is too long for the available space.");
     }
-    expect(adminCanvas).toContain('id: "n"');
-    expect(adminCanvas).toContain('id: "e"');
-    expect(customerCanvas).toContain('id: "n"');
-    expect(customerCanvas).toContain('id: "e"');
+    // Handle definitions moved into the shared interaction module, so both
+    // canvases now offer the same set by construction rather than by two
+    // hand-maintained copies.
+    const handles = readFileSync("lib/customizer/v2/interaction/handles.ts", "utf8");
+    for (const id of ["nw", "n", "ne", "e", "se", "s", "sw", "w"]) {
+      expect(handles).toContain(`id: "${id}"`);
+    }
   });
 });
