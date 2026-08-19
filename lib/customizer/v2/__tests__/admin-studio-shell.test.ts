@@ -21,7 +21,10 @@ const shell = sources.get("AdminDesignBuilder.tsx")!;
 
 describe("the studio shell keeps the canvas the hero", () => {
   it("clamps the left workspace sidebar rather than fixing it wide", () => {
-    expect(shell).toContain("w-[clamp(168px,16vw,280px)]");
+    // The lower bound leaves room for the drag grip, the layer name and the
+    // three row controls, so a narrow panel truncates the name instead of
+    // overflowing and growing a horizontal scrollbar.
+    expect(shell).toContain("w-[clamp(200px,16vw,280px)]");
   });
 
   it("clamps the inspector and caps it well under half the viewport", () => {
@@ -71,9 +74,37 @@ describe("admin row controls meet the AA target size", () => {
 });
 
 describe("destructive admin actions are not signalled by colour alone", () => {
-  it("gives Delete its own focus ring and an accessible name", () => {
-    const source = sources.get("AdminLayersPanel.tsx")!;
-    expect(source).toContain("focus-visible:ring-red-400");
-    expect(source).toContain("aria-label={`Delete ${layer.name}`}");
+  it("gives Delete an accessible name so it is not signalled by colour alone", () => {
+    // Delete moved off the layer row and onto the context toolbar. The rule it
+    // has to satisfy is unchanged: the destructive action must be identifiable
+    // without seeing that it is red.
+    const source = sources.get("AdminContextToolbar.tsx")!;
+    expect(source).toContain('props.selectionCount === 1 ? "Delete the selected object"');
+    expect(source).toContain("label={deleteLabel}");
+    expect(source).toContain("hint={deleteLabel}");
+    // The red treatment is an ADDITION to the name, never the only signal.
+    expect(source).toContain("if (options.danger) return");
   });
 });
+
+describe("dark-sidebar controls use an offset focus ring", () => {
+  // A plain gold ring on the charcoal sidebar has far less separation than one
+  // lifted off the surface, so the sidebar panels use the offset variant.
+  const DARK_PANELS = ["AdminLayersPanel.tsx", "AdminPagesPanel.tsx"];
+
+  it.each(DARK_PANELS)("%s", (name) => {
+    const source = sources.get(name)!;
+    expect(source).toContain("focus-visible:ring-offset-[#2A3132]");
+  });
+});
+
+describe("admin row controls meet the AA target size", () => {
+  // These are dense desktop list controls, so the applicable bar is WCAG 2.5.8
+  // AA (24x24) rather than the 44px the customer editor standardises on.
+  it("has no sub-24px interactive control left in the layers panel", () => {
+    const source = sources.get("AdminLayersPanel.tsx")!;
+    expect(source).not.toMatch(/\bh-6 w-5\b/);
+    expect(source).not.toMatch(/\bh-5 w-4\b/);
+  });
+});
+

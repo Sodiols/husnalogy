@@ -193,6 +193,36 @@ export function getEffectiveLayersForPage(template: any, pageId: string, editorS
   return getRenderableLayers([...templateLayers, ...userLayers]);
 }
 
+/**
+ * Merge transient gesture geometry over resolved layers.
+ *
+ * Used to preview a live resize or rotation: the affected layers are re-rendered
+ * at their real in-progress values so text re-wraps and photos re-fit exactly as
+ * they will once committed. Applied LAST, so an in-flight gesture always wins
+ * over the persisted value it is replacing, and `textStyle` is merged rather
+ * than replaced so a font-size preview does not drop the layer's font family.
+ *
+ * Pure and override-shaped so both canvases share it and it stays testable.
+ */
+export function applyGeometryOverrides(
+  layers: any[],
+  overrides?: Record<string, Record<string, any>> | null,
+): any[] {
+  if (!overrides) return layers;
+  const ids = Object.keys(overrides);
+  if (!ids.length) return layers;
+  return layers.map((layer: any) => {
+    const override = layer?.id ? overrides[layer.id] : null;
+    if (!override) return layer;
+    const { textStyle, ...geometry } = override;
+    return {
+      ...layer,
+      ...geometry,
+      ...(textStyle ? { textStyle: { ...(layer.textStyle || {}), ...textStyle } } : {}),
+    };
+  });
+}
+
 export function getEnabledPages(template: any): any[] {
   return (template?.pages || []).filter((page: any) => page && page.enabled !== false);
 }

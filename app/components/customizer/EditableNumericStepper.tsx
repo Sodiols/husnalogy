@@ -39,6 +39,20 @@ export type EditableNumericStepperProps = {
   /** Exact pixel width for each arrow button. Overrides `compact`, so a
    *  toolbar can guarantee the value column keeps a known readable width. */
   stepButtonWidth?: number;
+  /**
+   * Pair the numeric field with a drag slider (opacity, zoom).
+   *
+   * The slider lives INSIDE this component on purpose: the editor's numeric
+   * contract is that every number the customer can change is one control with
+   * one set of rules, formatting and permission handling. A second, ad-hoc
+   * `type="range"` somewhere else would drift from those rules the first time
+   * min/max or the disabled state changed.
+   *
+   * Dragging streams through `onPreviewChange` for a live preview and commits
+   * once on release, so a drag is one history step rather than one per pixel.
+   */
+  slider?: boolean;
+  sliderClassName?: string;
 };
 
 export default function EditableNumericStepper({
@@ -66,6 +80,8 @@ export default function EditableNumericStepper({
   showStepButtons = true,
   mixed = false,
   stepButtonWidth,
+  slider = false,
+  sliderClassName = "h-11 min-w-0 flex-1 accent-[#D4AF37] disabled:opacity-35",
 }: EditableNumericStepperProps) {
   const rules: NumericStepperRules = { minimum, maximum, step, largeStep, allowNegative, allowDecimal };
   const format = (next: number) => formatValue ? formatValue(next) : defaultNumericFormat(next, step);
@@ -125,7 +141,7 @@ export default function EditableNumericStepper({
   const rowClass = showLabel ? `grid ${columns} grid-rows-[13px_1fr] items-center overflow-hidden` : `grid ${columns} items-center overflow-hidden`;
   const resolvedLabelClassName = showStepButtons ? labelClassName : labelClassName.replace("col-span-3", "");
 
-  return (
+  const stepperBody = (
     <div
       role="group"
       aria-label={label}
@@ -196,6 +212,33 @@ export default function EditableNumericStepper({
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="m9 18 6-6-6-6" /></svg>
         </button>
       )}
+    </div>
+  );
+
+  if (!slider) return stepperBody;
+
+  return (
+    <div className="flex items-center gap-2">
+      <input
+        type="range"
+        min={minimum ?? 0}
+        max={maximum ?? 100}
+        step={step}
+        value={mixed ? (minimum ?? 0) : value}
+        disabled={disabled || readOnly}
+        aria-label={label}
+        // Streaming preview while the thumb moves, one commit on release, so
+        // the drag lands as a single undo step.
+        onChange={(event) => {
+          const next = Number(event.target.value);
+          if (onPreviewChange) onPreviewChange(next);
+          else onCommit(next);
+        }}
+        onPointerUp={(event) => onCommit(Number((event.target as HTMLInputElement).value))}
+        onKeyUp={(event) => onCommit(Number((event.target as HTMLInputElement).value))}
+        className={sliderClassName}
+      />
+      <div className="w-[74px] shrink-0">{stepperBody}</div>
     </div>
   );
 }

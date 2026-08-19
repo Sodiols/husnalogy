@@ -63,23 +63,65 @@ export function handleFromKonvaAnchor(anchor: string): HandleId | null {
  * Zoom-independent sizing
  * ------------------------------------------------------------------------ */
 
-/** Handle box drawn on screen, in CSS pixels. Comfortable with a mouse. */
-export const HANDLE_SCREEN_SIZE = 10;
-/** Larger square on touch, where the finger is the pointer (spec §38). */
-export const HANDLE_SCREEN_SIZE_TOUCH = 16;
-/** Invisible grab area around each handle, so near-misses still land. */
-export const HANDLE_SCREEN_HIT_PADDING = 8;
-export const HANDLE_SCREEN_HIT_PADDING_TOUCH = 14;
-/** Distance from the top edge to the rotation handle. */
-export const ROTATE_HANDLE_SCREEN_OFFSET = 28;
-/** Selection outline weight. */
-export const SELECTION_STROKE_SCREEN_WIDTH = 1.5;
+/**
+ * Handle chrome is deliberately SMALL and the grab area deliberately large.
+ *
+ * A resize handle is a control, not a decoration: at 10-12px it started to
+ * compete with the artwork it sits on, which is the opposite of what a design
+ * tool should do. The visible square is now 8px on a mouse, and the comfort
+ * comes from `hitPadding` instead — an invisible margin around each anchor, so
+ * the target a customer can actually hit is ~24px while the thing they SEE is
+ * a discreet 8px dot.
+ */
+export const HANDLE_SCREEN_SIZE = 2;
+/*
+ * 2px plus a 0.8px border: a marker rather than a button. The same size is used
+ * on touch, because a finger needs a bigger TARGET, not a bigger drawing.
+ *
+ * This is close to the practical floor. A screen cannot draw less than one
+ * device pixel, so below about 1px a value stops producing a smaller handle and
+ * starts producing a faint antialiased smudge whose weight varies with the
+ * display's pixel ratio.
+ *
+ * None of the usability lives in this number — it lives in
+ * `HANDLE_SCREEN_HIT_PADDING` below, which is what the pointer actually tests
+ * against and which stays generous however small the drawing gets.
+ */
+/** Slightly larger square on touch — still small, just legible on a phone. */
+export const HANDLE_SCREEN_SIZE_TOUCH = 2;
+/**
+ * Invisible grab margin around each anchor, added on every side.
+ *
+ * This carries the usability, not the drawing: it is deliberately larger than
+ * the handle so shrinking the visible dot costs nothing in hit accuracy.
+ */
+export const HANDLE_SCREEN_HIT_PADDING = 10;
+export const HANDLE_SCREEN_HIT_PADDING_TOUCH = 16;
+/**
+ * The rotation control is smaller again and sits closer in. It is used far less
+ * often than resize, so it should not be the loudest thing on the selection.
+ */
+export const ROTATE_HANDLE_SCREEN_SIZE = 2;
+export const ROTATE_HANDLE_SCREEN_SIZE_TOUCH = 2;
+export const ROTATE_HANDLE_SCREEN_OFFSET = 20;
+/**
+ * Selection outline weight — and the handle border.
+ *
+ * A hairline keeps the handles reading as precise markers rather than solid
+ * chips: at 1.5px the border was a third of a 6px handle and made it look
+ * chunkier than its actual footprint.
+ */
+export const SELECTION_STROKE_SCREEN_WIDTH = 0.8;
 /** Snap radius, in screen pixels — matches the legacy `SNAP_PX`. */
 export const SNAP_SCREEN_TOLERANCE = 8;
 
 export type HandleMetrics = {
   size: number;
+  /** Invisible margin added around each anchor, in document units. */
   hitPadding: number;
+  /** Total grab area of one anchor, in SCREEN pixels. For assertions. */
+  screenHitSize: number;
+  rotateSize: number;
   rotateOffset: number;
   strokeWidth: number;
   cornerRadius: number;
@@ -96,12 +138,16 @@ export type HandleMetrics = {
 export function resolveHandleMetrics(scale: number, pointerType: "mouse" | "touch" = "mouse"): HandleMetrics {
   const safeScale = Math.max(Math.abs(Number(scale) || 0), 1e-6);
   const touch = pointerType === "touch";
+  const size = touch ? HANDLE_SCREEN_SIZE_TOUCH : HANDLE_SCREEN_SIZE;
+  const padding = touch ? HANDLE_SCREEN_HIT_PADDING_TOUCH : HANDLE_SCREEN_HIT_PADDING;
   return {
-    size: (touch ? HANDLE_SCREEN_SIZE_TOUCH : HANDLE_SCREEN_SIZE) / safeScale,
-    hitPadding: (touch ? HANDLE_SCREEN_HIT_PADDING_TOUCH : HANDLE_SCREEN_HIT_PADDING) / safeScale,
+    size: size / safeScale,
+    hitPadding: padding / safeScale,
+    screenHitSize: size + padding * 2,
+    rotateSize: (touch ? ROTATE_HANDLE_SCREEN_SIZE_TOUCH : ROTATE_HANDLE_SCREEN_SIZE) / safeScale,
     rotateOffset: ROTATE_HANDLE_SCREEN_OFFSET / safeScale,
     strokeWidth: SELECTION_STROKE_SCREEN_WIDTH / safeScale,
-    cornerRadius: 2 / safeScale,
+    cornerRadius: 1 / safeScale,
     snapTolerance: SNAP_SCREEN_TOLERANCE / safeScale,
   };
 }

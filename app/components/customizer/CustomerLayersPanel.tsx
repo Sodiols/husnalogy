@@ -2,6 +2,7 @@
 
 import { useMemo, useState, type DragEvent, type ReactNode } from "react";
 import { anyGridSlotGrantsPhotoEditing } from "@/lib/customizer/v2/grids";
+import { isValidLayerDrop, resolveDropEdge } from "@/lib/customizer/v2/interaction/layer-reorder";
 import { getLayerPermissions } from "./customizer-utils";
 
 const typeLabel: Record<string, string> = {
@@ -23,12 +24,14 @@ const orderActions = [
   ["sendToBack", "Back"],
 ] as const;
 
-export default function CustomerLayersPanel({ layers, selectedIds, selectedGridSlotId, onSelectionChange, onGridSlotSelect, onEnterGroup, onArrange, onReorder, onToggleVisibility, onToggleLock, onRename, onDuplicate, onDelete }: any) {
+export default function CustomerLayersPanel({ layers, selectedIds, selectedGridSlotId, onSelectionChange, onGridSlotSelect, onEnterGroup, onArrange, onReorder, onToggleVisibility, onToggleLock, onRename, onDuplicate }: any) {
   const [renaming, setRenaming] = useState<string | null>(null);
   const [name, setName] = useState("");
   const [query, setQuery] = useState("");
   const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set());
   const [draggingId, setDraggingId] = useState<string | null>(null);
+  // Drives the drop indicator, so the customer sees where the layer will land.
+  const [dropTarget, setDropTarget] = useState<{ id: string; edge: "before" | "after" } | null>(null);
 
   const customerLayers = useMemo(
     () => layers.filter((layer: any) => {
@@ -84,10 +87,12 @@ export default function CustomerLayersPanel({ layers, selectedIds, selectedGridS
   const onDrop = (event: DragEvent, target: any) => {
     event.preventDefault();
     const sourceId = draggingId || event.dataTransfer.getData("text/plain");
-    const source = customerLayers.find((layer: any) => layer.id === sourceId);
     setDraggingId(null);
-    if (!source || source.id === target.id || String(source.groupId || "") !== String(target.groupId || "")) return;
-    onReorder?.(source.id, target.id);
+    setDropTarget(null);
+    // Validity — same parent, never into its own group — is the shared rule the
+    // admin panel uses, so both panels refuse exactly the same drops.
+    if (!sourceId || !isValidLayerDrop(customerLayers, sourceId, target.id)) return;
+    onReorder?.(sourceId, target.id);
   };
 
   const renderLayer = (layer: any, depth = 0): ReactNode => {
@@ -113,25 +118,41 @@ export default function CustomerLayersPanel({ layers, selectedIds, selectedGridS
     return (
       <div key={layer.id} className="grid gap-1.5">
         <article
-          draggable={canReorder}
-          onDragStart={(event) => {
-            setDraggingId(layer.id);
-            event.dataTransfer.effectAllowed = "move";
-            event.dataTransfer.setData("text/plain", layer.id);
+          onDragEnd={() => {
+            setDraggingId(null);
+            setDropTarget(null);
           }}
-          onDragEnd={() => setDraggingId(null)}
           onDragOver={(event) => {
-            if (draggingId && draggingId !== layer.id) {
-              event.preventDefault();
-              event.dataTransfer.dropEffect = "move";
-            }
+            if (!draggingId || draggingId === layer.id) return;
+            if (!isValidLayerDrop(customerLayers, draggingId, layer.id)) return;
+            event.preventDefault();
+            event.dataTransfer.dropEffect = "move";
+            const rect = event.currentTarget.getBoundingClientRect();
+            setDropTarget({ id: layer.id, edge: resolveDropEdge(event.clientY, rect.top, rect.height) });
           }}
+          onDragLeave={() => setDropTarget((current) => (current?.id === layer.id ? null : current))}
           onDrop={(event) => onDrop(event, layer)}
-          className={`grid gap-1.5 rounded-xl border p-1.5 transition ${selectedSurface} ${draggingId === layer.id ? "opacity-45" : "opacity-100"}`}
+          className={`relative grid min-w-0 gap-1.5 rounded-xl border p-1.5 transition ${selectedSurface} ${draggingId === layer.id ? "opacity-45" : "opacity-100"}`}
           style={{ marginLeft: depth * 14 }}
         >
-          <div className="flex min-w-0 items-center gap-1">
-            <span className={`grid h-11 w-5 shrink-0 place-items-center text-xs font-black ${canReorder ? "cursor-grab active:cursor-grabbing" : "opacity-25"}`} title={canReorder ? "Drag to reorder" : "Layer order is locked"} aria-hidden>⋮⋮</span>
+          {dropTarget?.id === layer.id && (
+            <span aria-hidden className={`pointer-events-none absolute inset-x-1 h-0.5 rounded bg-[#D4AF37] ${dropTarget.edge === "before" ? "top-0" : "bottom-0"}`} />
+          )}
+          <div className="flex min-w-0 items-center gap-1 overflow-hidden">
+            {/* Dragging is armed from the grip alone. Making the whole row
+                draggable meant an ordinary click that twitched a few pixels
+                could restack the design — and on touch it fought scrolling. */}
+            <span
+              draggable={canReorder}
+              onDragStart={(event) => {
+                setDraggingId(layer.id);
+                event.dataTransfer.effectAllowed = "move";
+                event.dataTransfer.setData("text/plain", layer.id);
+              }}
+              className={`grid h-11 w-5 shrink-0 place-items-center text-xs font-black ${canReorder ? "cursor-grab active:cursor-grabbing" : "opacity-25"}`}
+              title={canReorder ? "Drag to reorder" : "Layer order is locked"}
+              aria-hidden
+            >⋮⋮</span>
             {expandable ? (
               <button type="button" aria-label={`${isCollapsed ? "Expand" : "Collapse"} ${layer.name || layer.type}`} aria-expanded={!isCollapsed} onClick={() => toggleCollapsed(layer.id)} className={`grid h-11 w-8 shrink-0 place-items-center rounded-lg text-sm font-black focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] ${quietButton}`}>
                 {isCollapsed ? "+" : "-"}
@@ -165,11 +186,10 @@ export default function CustomerLayersPanel({ layers, selectedIds, selectedGridS
               </span>
             </button>
           </div>
-          <div className={`grid grid-cols-4 gap-1 border-t pt-1 ${selected ? "border-white/10" : "border-[#303839]/8"}`}>
+          <div className={`grid grid-cols-3 gap-1 border-t pt-1 ${selected ? "border-white/10" : "border-[#303839]/8"}`}>
             {canHide ? <button type="button" aria-label={layer.hidden ? "Show layer" : "Hide layer"} onClick={() => onToggleVisibility(layer.id, !layer.hidden)} className={`min-h-11 rounded-lg px-1 text-[9px] font-bold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] ${quietButton}`}>{layer.hidden ? "Show" : "Hide"}</button> : <span />}
             {layer.isUserLayer ? <button type="button" aria-label={locked ? "Unlock layer" : "Lock layer"} onClick={() => onToggleLock(layer.id, !locked)} className={`min-h-11 rounded-lg px-1 text-[9px] font-bold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] ${quietButton}`}>{locked ? "Unlock" : "Lock"}</button> : <span />}
             {canDuplicate ? <button type="button" aria-label="Duplicate layer" onClick={() => onDuplicate(layer.id)} className={`min-h-11 rounded-lg px-1 text-[9px] font-bold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] ${quietButton}`}>Copy</button> : <span />}
-            {layer.isUserLayer ? <button type="button" aria-label="Delete layer" onClick={() => onDelete(layer.id)} className={`min-h-11 rounded-lg px-1 text-[9px] font-bold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400 ${selected ? "text-red-200 hover:bg-white/10" : "text-red-700 hover:bg-red-50"}`}>Delete</button> : <span />}
           </div>
         </article>
         {!isCollapsed && layer.type === "grid" && (layer.slots || []).map((slot: any, index: number) => (

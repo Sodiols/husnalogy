@@ -44,7 +44,9 @@ const RAIL_ICONS: Record<string, React.ReactNode> = {
   layers: <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" aria-hidden><path d="m12 3 9 5-9 5-9-5 9-5Z"/><path d="m3 13 9 5 9-5M3 18l9 4 9-4"/></svg>,
 };
 
-export type CustomerTool = "edit" | "addText" | "uploads" | "elements" | "shapes" | "lines" | "frames" | "grids" | "qr" | "background" | "layers" | "options";
+// "lines" is deliberately absent: a line is drawn from the Shapes panel now.
+// The DOCUMENT still has its own line object type — this is UI grouping only.
+export type CustomerTool = "edit" | "addText" | "uploads" | "elements" | "shapes" | "frames" | "grids" | "qr" | "background" | "layers" | "options";
 
 type ToolDef = { id: CustomerTool; label: string };
 
@@ -75,8 +77,9 @@ export function getCustomerTools({
   if (allowAddText) tools.push({ id: "addText", label: "Text" });
   if (hasUploads) tools.push({ id: "uploads", label: "Photos" });
   if (allowElements) tools.push({ id: "elements", label: "Elements" });
-  if (allowShapes) tools.push({ id: "shapes", label: "Shapes" });
-  if (allowLines) tools.push({ id: "lines", label: "Lines" });
+  // One entry for everything you can draw. It appears when the template allows
+  // shapes OR lines, and the panel itself shows only the permitted half.
+  if (allowShapes || allowLines) tools.push({ id: "shapes", label: "Shapes" });
   if (allowFrames) tools.push({ id: "frames", label: "Frames" });
   if (allowGrids) tools.push({ id: "grids", label: "Grids" });
   if (allowQRCode) tools.push({ id: "qr", label: "QR Code" });

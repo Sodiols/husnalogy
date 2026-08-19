@@ -135,6 +135,13 @@ export type InteractionStageProps = {
   /** One history entry per gesture (spec §45). */
   onGestureStart?: () => void;
   onGestureCommit: (changes: GestureCommit[]) => void;
+  /**
+   * Live, exact geometry for the objects being transformed, or null when the
+   * gesture ends. The owner hands this straight to `CustomizerPreview` so the
+   * artwork re-renders at its real in-progress values — the document, history
+   * and autosave are untouched.
+   */
+  onTransientGeometry?: (overrides: Record<string, Record<string, unknown>> | null) => void;
   onDoubleClickNode?: (id: string) => void;
   onContextMenuNode?: (id: string, position: { x: number; y: number }) => void;
   onGridSlotSelect?: (layerId: string, slotId: string) => void;
@@ -190,6 +197,7 @@ export default function CustomizerInteractionStage({
   onSelectionChange,
   onGestureStart,
   onGestureCommit,
+  onTransientGeometry,
   onDoubleClickNode,
   onContextMenuNode,
   onGridSlotSelect,
@@ -410,6 +418,7 @@ export default function CustomizerInteractionStage({
       proxy.scaleX(1);
       proxy.scaleY(1);
     }
+    onTransientGeometry?.(null);
     clearTransientTransforms(previewRootRef?.current);
     clearGuides();
     if (angleLabelRef.current?.visible()) angleLabelRef.current.visible(false);
@@ -420,7 +429,7 @@ export default function CustomizerInteractionStage({
     transformStartRef.current = new Map();
     gestureActiveRef.current = false;
     stageRef.current?.batchDraw();
-  }, [clearGuides, previewRootRef]);
+  }, [clearGuides, previewRootRef, onTransientGeometry]);
 
   /**
    * Touch bookkeeping, on the stage container in the CAPTURE phase.
@@ -764,32 +773,21 @@ export default function CustomizerInteractionStage({
    * real text wrapping — lands exactly once, on release. That is also what
    * makes the gesture cheap: no React render at all while the pointer moves.
    */
-  const paintTransformPreview = useCallback(() => {
-    const root = previewRootRef?.current;
-    if (!root) return;
-    for (const id of selection) {
-      const before = transformStartRef.current.get(id);
-      const proxy = proxyRefs.current.get(id);
-      if (!before || !proxy) continue;
-      applyTransientTransform(root, id, {
-        dx: proxy.x() - before.x,
-        dy: proxy.y() - before.y,
-        rotation: proxy.rotation(),
-        baseRotation: Number(before.rotation) || 0,
-        pivotX: before.x,
-        pivotY: before.y,
-        scaleX: Math.abs(proxy.scaleX()) || 1,
-        scaleY: Math.abs(proxy.scaleY()) || 1,
-      });
-    }
-  }, [selection, previewRootRef]);
+  const publishTransformPreview = useCallback(() => {
+    if (!onTransientGeometry) return;
+    const changes = collectTransformChanges();
+    if (!changes.length) return;
+    const overrides: Record<string, Record<string, unknown>> = {};
+    for (const change of changes) overrides[change.id] = change.patch;
+    onTransientGeometry(overrides);
+  }, [collectTransformChanges, onTransientGeometry]);
 
   const handleTransform = useCallback(() => {
     schedulerRef.current!.schedule(() => {
-      paintTransformPreview();
+      publishTransformPreview();
       paintAngleReadout();
     });
-  }, [paintTransformPreview, paintAngleReadout]);
+  }, [publishTransformPreview, paintAngleReadout]);
 
   const handleTransformEnd = useCallback(() => {
     if (abortedRef.current) {
@@ -807,7 +805,8 @@ export default function CustomizerInteractionStage({
       proxy.scaleY(1);
     }
     // Drop the preview in the same turn as the commit: the renderer is about to
-    // draw the real geometry, and leaving the transform on would double it.
+    // draw the real geometry from the document instead.
+    onTransientGeometry?.(null);
     clearTransientTransforms(previewRootRef?.current, selection);
     if (angleLabelRef.current?.visible()) {
       angleLabelRef.current.visible(false);
@@ -816,7 +815,7 @@ export default function CustomizerInteractionStage({
     transformStartRef.current = new Map();
     gestureActiveRef.current = false;
     if (changes.length) onGestureCommit(changes);
-  }, [collectTransformChanges, selection, previewRootRef, onGestureCommit]);
+  }, [collectTransformChanges, selection, previewRootRef, onTransientGeometry, onGestureCommit]);
 
   /* ---------------------------------------------------------------------- */
   /* Marquee                                                                 */
@@ -1174,6 +1173,29 @@ export default function CustomizerInteractionStage({
           borderStroke={GOLD}
           borderStrokeWidth={metrics.strokeWidth}
           rotateAnchorOffset={metrics.rotateOffset}
+          /**
+           * Small chrome, generous target.
+           *
+           * Konva sizes an anchor's hit area from its width/height, so a
+           * visually discreet 8px handle would also be an 8px target — fine
+           * with a trackpad, miserable with a finger or a shaky hand. Konva
+           * lets a shape's hit region be grown independently via
+           * `hitStrokeWidth`, so the painted square stays 8px while the region
+           * that responds to a pointer is ~24px. The rotation control is
+           * smaller again and drawn as a circle, so it reads as a different
+           * kind of control rather than a ninth resize handle.
+           */
+          anchorStyleFunc={(anchor) => {
+            const isRotater = anchor.hasName("rotater");
+            const size = isRotater ? metrics.rotateSize : metrics.size;
+            anchor.width(size);
+            anchor.height(size);
+            anchor.offsetX(size / 2);
+            anchor.offsetY(size / 2);
+            anchor.cornerRadius(isRotater ? size / 2 : metrics.cornerRadius);
+            anchor.hitStrokeWidth(metrics.hitPadding * 2);
+            anchor.strokeWidth(metrics.strokeWidth);
+          }}
           ignoreStroke
           shouldOverdrawWholeArea={false}
           flipEnabled={false}

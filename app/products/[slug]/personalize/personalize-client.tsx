@@ -1208,11 +1208,25 @@ export default function PersonalizeClient({ product, template }: { product: any;
     onSelectionChange([]);
   };
 
+  /**
+   * Opacity for the whole selection.
+   *
+   * Every permitted member is updated, and every member shares ONE history
+   * group key, so dragging the slider across a multi-selection collapses into a
+   * single undo step instead of one per object per frame. Members the customer
+   * may not restyle are skipped rather than blocking the others: unlike a
+   * geometric transform, changing one object's opacity does not disturb the
+   * arrangement of the rest.
+   */
   const setSelectionOpacity = (opacity: number) => {
-    if (selectedLayers.length !== 1) return;
-    const layer = selectedLayers[0];
-    if (layer.isUserLayer) updateUserLayer(layer.id, { opacity }, `opacity-${layer.id}`);
-    else if (getLayerPermissions(layer).changeOpacity) updateLayerOverride(layer.id, "transform", { opacity }, `opacity-${layer.id}`);
+    if (!selectedLayers.length) return;
+    const historyGroup = `opacity-${selectedLayers.map((layer: any) => layer.id).join("-")}`;
+    for (const layer of selectedLayers) {
+      if (layer.isUserLayer) updateUserLayer(layer.id, { opacity }, historyGroup);
+      else if (getLayerPermissions(layer).changeOpacity) {
+        updateLayerOverride(layer.id, "transform", { opacity }, historyGroup);
+      }
+    }
   };
 
   const patchSelectedProperties = (patch: Record<string, any>) => {
@@ -1616,7 +1630,7 @@ export default function PersonalizeClient({ product, template }: { product: any;
       if (layer.type === "text") setActiveTool("addText");
       else if (layer.type === "element") setActiveTool("elements");
       else if (layer.type === "image" || layer.type === "frame" || layer.type === "grid") setActiveTool("uploads");
-      else if (layer.type === "shape") setActiveTool(layer.shape === "line" ? "lines" : "shapes");
+      else if (layer.type === "shape") setActiveTool("shapes");
       else if (layer.type === "qrCode") setActiveTool("qr");
       else if (layer.type === "background") setActiveTool("background");
       else if (layer.type === "group") setActiveTool("layers");
@@ -2615,9 +2629,7 @@ export default function PersonalizeClient({ product, template }: { product: any;
           ? "Layers"
           : activeTool === "shapes"
             ? "Shapes"
-            : activeTool === "lines"
-              ? "Lines"
-              : activeTool === "frames"
+            : activeTool === "frames"
                 ? "Frames"
                 : activeTool === "grids"
                   ? "Photo grids"
@@ -2703,7 +2715,7 @@ export default function PersonalizeClient({ product, template }: { product: any;
         onDuplicate={duplicateLayer}
         onDelete={deleteUserLayer}
       />
-    ) : ["shapes", "lines", "frames", "grids", "qr", "background"].includes(activeTool) ? (
+    ) : ["shapes", "frames", "grids", "qr", "background"].includes(activeTool) ? (
       <CustomerInsertPanel
         tool={activeTool}
         onAddShape={addCustomerShape}
@@ -2712,6 +2724,8 @@ export default function PersonalizeClient({ product, template }: { product: any;
         onAddGrid={addCustomerGrid}
         onAddQRCode={addCustomerQRCode}
         onSetBackground={setCustomerBackground}
+        allowShapes={pageAllowsCustomerObjects && customerShapesEnabled}
+        allowLines={pageAllowsCustomerObjects && customerLinesEnabled}
         allowedShapes={allowedCustomerShapes}
         allowedFrameMasks={allowedCustomerFrameMasks}
         allowedGridPresets={allowedCustomerGridPresets}
@@ -2914,7 +2928,7 @@ export default function PersonalizeClient({ product, template }: { product: any;
                     )}
                   </div>
                 </div>
-                <div className="min-h-0 flex-1 overflow-y-auto [scrollbar-color:rgba(48,56,57,0.18)_transparent] [scrollbar-width:thin]">{panelBody}</div>
+                <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden [scrollbar-color:rgba(48,56,57,0.18)_transparent] [scrollbar-width:thin]">{panelBody}</div>
               </aside>
             )}
 
@@ -3175,7 +3189,7 @@ export default function PersonalizeClient({ product, template }: { product: any;
                   </button>
                 </div>
               </div>
-              <div className="max-h-[58vh] overflow-y-auto">{panelBody}</div>
+              <div className="max-h-[58vh] overflow-y-auto overflow-x-hidden">{panelBody}</div>
             </div>
           )}
         </div>

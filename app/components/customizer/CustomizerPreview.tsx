@@ -19,6 +19,7 @@ import { hasImageFilters, imageFilterSvgPrimitives } from "@/lib/customizer/v2/i
 import { resolveImageDrawBoxFromTransform } from "@/lib/customizer/v2/image-crop";
 import { normalizeQRCodeStyle, qrModuleRects } from "@/lib/customizer/v2/qr";
 import {
+  applyGeometryOverrides,
   getEffectiveLayersForPage,
   getFieldById,
   getPageById,
@@ -41,6 +42,22 @@ type Props = {
   // exports because they all pass the same editorState here.
   editorState?: EditorState | null;
   hiddenLayerIds?: string[];
+  /**
+   * Transient geometry for layers being transformed right now, keyed by layer
+   * id (spec: live resize/rotation must be accurate, not approximated).
+   *
+   * A resize is previewed by re-rendering the affected layers at their real
+   * in-progress geometry rather than by scaling the drawn result. That matters
+   * because scaling is only faithful for a uniform corner drag: dragging a side
+   * handle stretches glyphs and squashes photos, so the customer would watch a
+   * distorted object that "corrected itself" on release. Feeding real values
+   * through the real renderer means text re-wraps and images re-fit live, and
+   * what is on screen mid-gesture is exactly what lands in the document.
+   *
+   * These never touch the document, history or autosave — they are cleared the
+   * moment the gesture ends.
+   */
+  geometryOverrides?: Record<string, Record<string, any>> | null;
 };
 
 let sharedMeasure: MeasureFn | null = null;
@@ -468,14 +485,21 @@ export default function CustomizerPreview({
   background,
   editorState,
   hiddenLayerIds = [],
+  geometryOverrides = null,
 }: Props) {
   const width = template?.canvasWidthPx || 1500;
   const height = template?.canvasHeightPx || 2100;
   const fontsReady = useFontsReady();
   const activePage = useMemo(() => getPageById(template, page || template?.defaultPage), [template, page]);
-  const layers = useMemo(
+  const resolvedLayers = useMemo(
     () => getEffectiveLayersForPage(template, activePage?.id, editorState),
     [template, activePage, editorState],
+  );
+  // Applied last, on top of every override the document already carries, so an
+  // in-flight gesture always wins over the persisted value it is replacing.
+  const layers = useMemo(
+    () => applyGeometryOverrides(resolvedLayers, geometryOverrides),
+    [resolvedLayers, geometryOverrides],
   );
 
   const safe = template?.safeArea || {};

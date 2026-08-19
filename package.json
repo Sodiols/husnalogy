@@ -4,8 +4,9 @@
   "private": true,
   "scripts": {
     "dev": "next dev -H 0.0.0.0",
-    "build": "npm run validate:fonts && next build",
+    "build": "npm run validate:fonts && npm run repair:next-types && next build",
     "validate:fonts": "node scripts/validate-customizer-fonts.mjs",
+    "repair:next-types": "node scripts/repair-next-types.mjs",
     "validate:customizer:database": "node scripts/validate-customizer-database.mjs",
     "generate:customizer:schema": "node scripts/generate-customizer-schema.mjs",
     "generate:customizer:types": "node scripts/generate-customizer-types.mjs",
@@ -16,6 +17,7 @@
     "test:e2e": "playwright test",
     "test:e2e:public": "playwright test e2e/public-build-smoke.spec.ts",
     "seed:customizer:test": "node scripts/seed-customizer-test.mjs",
+    "pretypecheck": "npm run repair:next-types",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

@@ -230,6 +230,41 @@ function PlaceholderImageControl({ layer, onLayerPatch }: any) {
   );
 }
 
+/**
+ * Layer opacity — admin side.
+ *
+ * Uses the document's existing `opacity` property, the same one the customer
+ * panel and the SVG renderer read, so there is one opacity in the system rather
+ * than two. Absent means fully opaque, which is why a missing value reads as
+ * 100 rather than 0.
+ *
+ * Slider plus exact value, both from the shared numeric control: dragging
+ * streams a live preview and commits once, so a drag is one history step.
+ */
+function OpacityField({ layer, onLayerPatch }: any) {
+  const raw = Number(layer?.opacity);
+  const percent = Math.round((Number.isFinite(raw) ? raw : 1) * 100);
+  return (
+    <div className="grid gap-1.5">
+      <Lbl>Opacity</Lbl>
+      <EditableNumericStepper
+        slider
+        label="Layer opacity"
+        value={percent}
+        minimum={0}
+        maximum={100}
+        step={1}
+        largeStep={10}
+        formatValue={(next: number) => `${Math.round(next)}%`}
+        onPreviewChange={(value: number) => onLayerPatch(layer.id, { opacity: value / 100 })}
+        onCommit={(value: number) => onLayerPatch(layer.id, { opacity: value / 100 })}
+        showStepButtons={false}
+        className="h-11 w-full rounded-md border border-[#303839]/15 bg-white px-1"
+      />
+    </div>
+  );
+}
+
 const INSPECTOR_TABS = [
   { id: "design", label: "Design" },
   { id: "settings", label: "Settings" },
@@ -293,6 +328,16 @@ export default function AdminPropertiesPanel({
           <Lbl>Layer name</Lbl>
           <Txt value={layer.name} onChange={(v: string) => onLayerPatch(layer.id, { name: v })} />
         </div>
+      )}
+
+      {/* Opacity for every visual layer type EXCEPT images, which get their own
+          copy inside the photo section next to the crop controls. Admin had no
+          opacity control at all before, so this is the other half of the
+          customer-side control rather than a second system. */}
+      {inspectorTab === "design"
+        && !["image", "frame"].includes(layer.type)
+        && ["text", "shape", "element", "group", "qrCode", "grid", "background"].includes(layer.type) && (
+        <OpacityField layer={layer} onLayerPatch={onLayerPatch} />
       )}
 
       {inspectorTab === "design" && layer.type === "text" && (
@@ -436,34 +481,20 @@ export default function AdminPropertiesPanel({
               </div>
             </div>
           </div>
-        </Section>
-      )}
-
-      {inspectorTab === "advanced" && (layer.type === "image" || layer.type === "frame") && (
-        <Section title="Image crop defaults" collapsible defaultOpen={false}>
-          <div className="grid grid-cols-2 gap-2">
-            <div><Lbl>Crop zoom</Lbl><CarouselStepper ariaLabel="Image crop zoom" value={Math.round((Number(layer.imageTransform?.zoom) || 1) * 100)} min={100} max={800} step={5} onChange={(value: number) => onLayerPatch(layer.id, { imageTransform: { ...(layer.imageTransform || {}), zoom: value / 100 } })} /></div>
-            <div><Lbl>Image rotation</Lbl><CarouselStepper ariaLabel="Image crop rotation" value={Number(layer.imageTransform?.rotation) || 0} min={-360} max={360} onChange={(rotation: number) => onLayerPatch(layer.id, { imageTransform: { ...(layer.imageTransform || {}), rotation } })} /></div>
-            <div><Lbl>Crop X</Lbl><CarouselStepper ariaLabel="Image crop X position" value={Number(layer.imageTransform?.offsetX) || 0} min={-10000} max={10000} onChange={(offsetX: number) => onLayerPatch(layer.id, { imageTransform: { ...(layer.imageTransform || {}), offsetX } })} /></div>
-            <div><Lbl>Crop Y</Lbl><CarouselStepper ariaLabel="Image crop Y position" value={Number(layer.imageTransform?.offsetY) || 0} min={-10000} max={10000} onChange={(offsetY: number) => onLayerPatch(layer.id, { imageTransform: { ...(layer.imageTransform || {}), offsetY } })} /></div>
-          </div>
-        </Section>
-      )}
-
-      {inspectorTab === "advanced" && (layer.type === "image" || layer.type === "frame") && (
-        <Section title="Image filters" collapsible defaultOpen={false}>
-          <div className="grid grid-cols-2 gap-2">
-            {[
-              ["brightness", "Brightness", 0, 2, 0.05, 1],
-              ["contrast", "Contrast", 0, 2, 0.05, 1],
-              ["saturation", "Saturation", 0, 2, 0.05, 1],
-              ["grayscale", "Grayscale", 0, 1, 0.05, 0],
-              ["sepia", "Sepia", 0, 1, 0.05, 0],
-            ].map(([key, label, min, max, step, fallback]: any) => (
-              <div key={key}><Lbl>{label}</Lbl><CarouselStepper ariaLabel={label} value={layer.filters?.[key] ?? fallback} min={min} max={max} step={step} onChange={(value: number) => onLayerPatch(layer.id, { filters: { ...(layer.filters || {}), [key]: value } })} /></div>
-            ))}
-          </div>
-          <button type="button" onClick={() => onLayerPatch(layer.id, { filters: { brightness: 1, contrast: 1, saturation: 1, grayscale: 0, sepia: 0, tintAmount: 0 } })} className="min-h-10 rounded-lg border border-[#303839]/15 text-xs font-bold hover:bg-[#F8F6F1]">Reset filters</button>
+          {/* Crop and opacity belong with the image they act on, not in a
+              separate Advanced tab: you are looking at the photo when you want
+              to reframe or fade it. Both write the SAME document properties as
+              before — `imageTransform` and `opacity` — so existing templates and
+              saved customer crops are unaffected. */}
+          <Section title="Crop" collapsible defaultOpen={false}>
+            <div className="grid grid-cols-2 gap-2">
+              <div><Lbl>Crop zoom</Lbl><CarouselStepper ariaLabel="Image crop zoom" value={Math.round((Number(layer.imageTransform?.zoom) || 1) * 100)} min={100} max={800} step={5} onChange={(value: number) => onLayerPatch(layer.id, { imageTransform: { ...(layer.imageTransform || {}), zoom: value / 100 } })} /></div>
+              <div><Lbl>Image rotation</Lbl><CarouselStepper ariaLabel="Image crop rotation" value={Number(layer.imageTransform?.rotation) || 0} min={-360} max={360} onChange={(rotation: number) => onLayerPatch(layer.id, { imageTransform: { ...(layer.imageTransform || {}), rotation } })} /></div>
+              <div><Lbl>Crop X</Lbl><CarouselStepper ariaLabel="Image crop X position" value={Number(layer.imageTransform?.offsetX) || 0} min={-10000} max={10000} onChange={(offsetX: number) => onLayerPatch(layer.id, { imageTransform: { ...(layer.imageTransform || {}), offsetX } })} /></div>
+              <div><Lbl>Crop Y</Lbl><CarouselStepper ariaLabel="Image crop Y position" value={Number(layer.imageTransform?.offsetY) || 0} min={-10000} max={10000} onChange={(offsetY: number) => onLayerPatch(layer.id, { imageTransform: { ...(layer.imageTransform || {}), offsetY } })} /></div>
+            </div>
+          </Section>
+          <OpacityField layer={layer} onLayerPatch={onLayerPatch} />
         </Section>
       )}
 
@@ -632,10 +663,10 @@ export default function AdminPropertiesPanel({
         </Section>
       )}
 
-      {inspectorTab === "advanced" && !["image", "frame", "group"].includes(layer.type) && (
+      {inspectorTab === "advanced" && layer.type !== "group" && (
         <p className="text-xs leading-relaxed text-[#303839]/45">
-          This layer type has no advanced settings. Crop defaults and filters appear here for
-          images and photo areas, and grouping behaviour for groups.
+          This layer type has no advanced settings. Photo crop and opacity now sit with the
+          image itself under Design, and grouping behaviour appears here for groups.
         </p>
       )}
     </div>

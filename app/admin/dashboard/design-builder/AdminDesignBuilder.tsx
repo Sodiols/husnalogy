@@ -75,7 +75,7 @@ import {
   patchPage,
   removeLayer,
   renamePage,
-  reorderLayer,
+  reorderLayerToTarget,
   selectableLayersForPage,
   sendLayerToBack,
   setCustomerEditable,
@@ -542,7 +542,16 @@ export default function AdminDesignBuilder({
     commit(removeLayer(t, id));
     setSelectedLayerId(null);
   };
-  const onReorder = (id: string, dir: "up" | "down") => commit(reorderLayer(t, id, dir));
+  /**
+   * Drag reorder from the Layers panel. `reorderLayerToTarget` returns the
+   * template unchanged when the drop is refused, so a rejected drag takes no
+   * history snapshot and wakes no autosave.
+   */
+  const onReorderToTarget = (sourceId: string, targetId: string) => {
+    const next = reorderLayerToTarget(t, sourceId, targetId);
+    if (next === t) return;
+    commit(next);
+  };
   const onCanvasLayerChange = (id: string, patch: any) => {
     const { textStyle, ...layerPatch } = patch || {};
     let next = Object.keys(layerPatch).length ? updateLayer(tRef.current, id, layerPatch) : tRef.current;
@@ -1071,10 +1080,10 @@ export default function AdminDesignBuilder({
 
             {/* Left workspace sidebar: layers over pages, sharing the tool
                 rail's dark surface so the editor reads as one unit. */}
-            <aside className="flex w-[clamp(168px,16vw,280px)] shrink-0 flex-col border-r border-white/8 bg-[#2A3132]">
+            <aside className="flex w-[clamp(200px,16vw,280px)] shrink-0 flex-col border-r border-white/8 bg-[#2A3132]">
               <div className="flex min-h-0 flex-1 flex-col">
                 <p className="shrink-0 px-4 pb-2 pt-4 text-[10px] font-bold uppercase tracking-[0.14em] text-white/35">Layers</p>
-                <div className="min-h-0 flex-1 overflow-y-auto [scrollbar-color:rgba(255,255,255,0.18)_transparent] [scrollbar-width:thin]" data-admin-dark-panel>
+                <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden [scrollbar-color:rgba(255,255,255,0.18)_transparent] [scrollbar-width:thin]" data-admin-dark-panel>
                   <AdminLayersPanel
                     template={t}
                     pageId={activePage}
@@ -1084,7 +1093,7 @@ export default function AdminDesignBuilder({
                     onSelect={onCanvasSelect}
                     onEnterGroup={enterAdminGroup}
                     onLayerPatch={onLayerPatch}
-                    onReorder={onReorder}
+                    onReorderToTarget={onReorderToTarget}
                     onDuplicate={onDuplicate}
                     onRemove={onRemove}
                   />
@@ -1092,7 +1101,7 @@ export default function AdminDesignBuilder({
               </div>
               <div id="admin-pages-section" className="flex max-h-[42%] min-h-0 shrink-0 flex-col border-t border-white/8">
                 <p className="shrink-0 px-4 pb-2 pt-3 text-[10px] font-bold uppercase tracking-[0.14em] text-white/35">Pages</p>
-                <div className="min-h-0 flex-1 overflow-y-auto [scrollbar-color:rgba(255,255,255,0.18)_transparent] [scrollbar-width:thin]" data-admin-dark-panel>
+                <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden [scrollbar-color:rgba(255,255,255,0.18)_transparent] [scrollbar-width:thin]" data-admin-dark-panel>
                   <AdminPagesPanel
                     template={t}
                     activePage={activePage}
@@ -1270,7 +1279,7 @@ export default function AdminDesignBuilder({
                   onToggleCustomerEditable={onToggleCustomerEditable}
                   onDuplicate={onDuplicate}
                   onRemove={onRemove}
-                  onReorder={onReorder}
+                  onReorderToTarget={onReorderToTarget}
                   onBringToFront={(id: string) => commit(bringLayerToFront(t, id))}
                   onSendToBack={(id: string) => commit(sendLayerToBack(t, id))}
                 />}

@@ -3,8 +3,9 @@
 // Layers panel (Section 29): every layer on the active page, top-most first,
 // with select / rename / reorder / lock / hide / duplicate / delete.
 
-import { useState } from "react";
+import { useState, type DragEvent } from "react";
 import { layersForPage } from "./builder-utils";
+import { isValidLayerDrop, resolveDropEdge } from "@/lib/customizer/v2/interaction/layer-reorder";
 
 function typeIcon(layer: any) {
   if (layer.type === "text") return "T";
@@ -61,9 +62,8 @@ export default function AdminLayersPanel({
   onSelect,
   onEnterGroup,
   onLayerPatch,
-  onReorder,
+  onReorderToTarget,
   onDuplicate,
-  onRemove,
 }: any) {
   const layers = layersForPage(template, pageId).slice().reverse(); // top first
   const byId = new Map<string, any>(layers.map((layer: any) => [layer.id, layer]));
@@ -80,6 +80,10 @@ export default function AdminLayersPanel({
     return current?.id || layer.id;
   };
   const [renamingId, setRenamingId] = useState<string | null>(null);
+  // Drag reorder state. `dropTarget` drives the indicator line, so the admin
+  // can see exactly where the layer will land before releasing.
+  const [draggingId, setDraggingId] = useState<string | null>(null);
+  const [dropTarget, setDropTarget] = useState<{ id: string; edge: "before" | "after" } | null>(null);
   const [renameValue, setRenameValue] = useState("");
   const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set());
 
@@ -99,7 +103,7 @@ export default function AdminLayersPanel({
 
   return (
     <div className="grid gap-0.5 px-2 pb-2">
-      {rows.map(({ layer, depth, hasChildren }, index) => {
+      {rows.map(({ layer, depth, hasChildren }) => {
         const targetId = logicalSelectionId(layer);
         const selected = selectedLayerIds.length
           ? selectedLayerIds.includes(targetId)
@@ -112,10 +116,61 @@ export default function AdminLayersPanel({
             data-layer-row
             data-layer-depth={depth}
             style={{ paddingLeft: 8 + depth * 12 }}
-            className={`group flex items-center gap-1.5 rounded-lg py-1.5 pr-2 transition-colors ${
+            onDragOver={(event: DragEvent) => {
+              if (!draggingId || draggingId === layer.id) return;
+              if (!isValidLayerDrop(layers, draggingId, layer.id)) return;
+              // A drop is only legal within one parent, so refusing here is
+              // what stops a drag from silently re-parenting a grouped layer.
+              event.preventDefault();
+              event.dataTransfer.dropEffect = "move";
+              const rect = event.currentTarget.getBoundingClientRect();
+              setDropTarget({ id: layer.id, edge: resolveDropEdge(event.clientY, rect.top, rect.height) });
+            }}
+            onDragLeave={() => setDropTarget((current) => (current?.id === layer.id ? null : current))}
+            onDrop={(event: DragEvent) => {
+              event.preventDefault();
+              const sourceId = draggingId || event.dataTransfer.getData("text/plain");
+              setDraggingId(null);
+              setDropTarget(null);
+              if (!sourceId || !isValidLayerDrop(layers, sourceId, layer.id)) return;
+              onReorderToTarget?.(sourceId, layer.id);
+            }}
+            className={`group relative flex min-w-0 items-center gap-1 rounded-lg py-1.5 pr-1.5 transition-colors ${
               selected ? "bg-white/[0.14] text-white" : "text-white/65 hover:bg-white/[0.07] hover:text-white"
-            }`}
+            } ${draggingId === layer.id ? "opacity-40" : ""}`}
           >
+            {dropTarget?.id === layer.id && (
+              <span
+                aria-hidden
+                className={`pointer-events-none absolute inset-x-1 h-0.5 rounded bg-[#D4AF37] ${
+                  dropTarget.edge === "before" ? "top-0" : "bottom-0"
+                }`}
+              />
+            )}
+            {/* Dragging is armed from this grip only. Making the whole row
+                draggable turns every click-and-twitch into a reorder, which is
+                how a layers panel starts restacking a design by accident. */}
+            <span
+              draggable={!layer.locked && layer.adminEditable !== false}
+              onDragStart={(event: DragEvent) => {
+                setDraggingId(layer.id);
+                event.dataTransfer.effectAllowed = "move";
+                event.dataTransfer.setData("text/plain", layer.id);
+              }}
+              onDragEnd={() => {
+                setDraggingId(null);
+                setDropTarget(null);
+              }}
+              title={!layer.locked && layer.adminEditable !== false ? "Drag to reorder" : "Layer order is locked"}
+              aria-hidden
+              className={`grid h-6 w-3 shrink-0 place-items-center text-[10px] leading-none ${
+                !layer.locked && layer.adminEditable !== false
+                  ? "cursor-grab opacity-45 hover:opacity-90 active:cursor-grabbing"
+                  : "opacity-15"
+              }`}
+            >
+              ⋮⋮
+            </span>
             {hasChildren ? (
               <button
                 type="button"
@@ -143,7 +198,7 @@ export default function AdminLayersPanel({
                 setRenamingId(layer.id);
                 setRenameValue(layer.name || "");
               }}
-              className="flex min-w-0 flex-1 items-center gap-1.5 text-left"
+              className="flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden text-left"
             >
               <span className={`shrink-0 text-[11px] ${selected ? "opacity-80" : "opacity-50"}`}>{typeIcon(layer)}</span>
               {renamingId === layer.id ? (
@@ -164,36 +219,18 @@ export default function AdminLayersPanel({
                 <span className="truncate text-xs font-medium">{layer.name}</span>
               )}
               {isGroup && !renamingId && (
-                <span className="shrink-0 rounded bg-white/10 px-1 text-[8px] font-bold uppercase tracking-wide text-white/60">
+                <span className="shrink rounded bg-white/10 px-1 text-[8px] font-bold uppercase tracking-wide text-white/60">
                   Group
                 </span>
               )}
               {layer.customerEditable && !renamingId && (
-                <span className="shrink-0 rounded px-1 text-[8px] font-bold uppercase text-[#D4AF37]">
+                <span className="shrink rounded px-1 text-[8px] font-bold uppercase text-[#D4AF37]">
                   Edit
                 </span>
               )}
             </button>
 
-            <span className="flex shrink-0 items-center">
-              <button
-                type="button"
-                aria-label={`Move ${layer.name} up`}
-                disabled={index === 0}
-                onClick={() => onReorder(layer.id, "up")}
-                className="grid h-6 w-6 place-items-center rounded text-[10px] opacity-60 hover:opacity-100 disabled:opacity-20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] focus-visible:ring-offset-1 focus-visible:ring-offset-[#2A3132]"
-              >
-                ▲
-              </button>
-              <button
-                type="button"
-                aria-label={`Move ${layer.name} down`}
-                disabled={index === rows.length - 1}
-                onClick={() => onReorder(layer.id, "down")}
-                className="grid h-6 w-6 place-items-center rounded text-[10px] opacity-60 hover:opacity-100 disabled:opacity-20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] focus-visible:ring-offset-1 focus-visible:ring-offset-[#2A3132]"
-              >
-                ▼
-              </button>
+            <span className="flex shrink-0 items-center gap-0.5">
               <button
                 type="button"
                 aria-label={layer.hidden ? `Show ${layer.name}` : `Hide ${layer.name}`}
@@ -220,15 +257,6 @@ export default function AdminLayersPanel({
                 title="Duplicate"
               >
                 ⧉
-              </button>
-              <button
-                type="button"
-                aria-label={`Delete ${layer.name}`}
-                onClick={() => onRemove(layer.id)}
-                className="grid h-6 w-6 place-items-center rounded text-[11px] text-red-500 opacity-60 hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400 focus-visible:ring-offset-1 focus-visible:ring-offset-[#2A3132]"
-                title="Delete"
-              >
-                ✕
               </button>
             </span>
           </div>

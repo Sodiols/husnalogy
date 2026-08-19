@@ -1,4 +1,5 @@
 import { distributeAlongAxis, groupLayers, resolveGroupBounds, rotatedAxisHalfExtents, ungroupLayers } from "./groups";
+import { reorderLayersByDrop } from "./interaction/layer-reorder";
 import {
   marqueeSelectedLayerIds,
   selectionBounds as resolveSelectionBounds,
@@ -56,27 +57,23 @@ export function arrangeLayers(layers: any[], selectedIds: string[], action: Arra
 // Reorder a single layer from the layers panel without allowing it to cross an
 // administrator-protected layer. The returned z-indexes remain deterministic,
 // which keeps undo/redo and persisted customer overrides stable.
+/**
+ * Customer-side drop reorder. The maths lives in the shared reorder module —
+ * admin uses the same function with its own policy — and only the PERMISSION
+ * rule is customer-specific: a customer may move their own objects and any
+ * template layer the admin marked reorderable, and may not jump a layer they
+ * are not allowed to touch.
+ */
 export function reorderLayerByDrop(layers: any[], sourceId: string, targetId: string): any[] {
-  if (!sourceId || !targetId || sourceId === targetId) return layers;
-  const ordered = layers.slice().sort((a, b) => Number(a.zIndex || 0) - Number(b.zIndex || 0));
-  const sourceIndex = ordered.findIndex((layer) => layer.id === sourceId);
-  const targetIndex = ordered.findIndex((layer) => layer.id === targetId);
-  if (sourceIndex < 0 || targetIndex < 0) return layers;
-
-  const source = ordered[sourceIndex];
-  const movable = source.isUserLayer
-    || (source.customerEditable && source.customerPermissions?.changeLayerOrder !== false);
-  if (!movable || source.customerInteractionDisabled) return layers;
-
-  const direction = targetIndex > sourceIndex ? 1 : -1;
-  for (let index = sourceIndex + direction; direction > 0 ? index <= targetIndex : index >= targetIndex; index += direction) {
-    const crossed = ordered[index];
-    if ((!crossed.isUserLayer && !crossed.customerEditable) || crossed.customerInteractionDisabled) return layers;
-  }
-
-  ordered.splice(sourceIndex, 1);
-  ordered.splice(targetIndex, 0, source);
-  return ordered.map((layer, index) => ({ ...layer, zIndex: index + 1 }));
+  return reorderLayersByDrop(layers, sourceId, targetId, {
+    canMove: (layer) =>
+      Boolean(
+        (layer.isUserLayer || (layer.customerEditable && layer.customerPermissions?.changeLayerOrder !== false)) &&
+          !layer.customerInteractionDisabled,
+      ),
+    canCross: (layer) =>
+      Boolean((layer.isUserLayer || layer.customerEditable) && !layer.customerInteractionDisabled),
+  });
 }
 
 export function groupCustomerLayers(layers: any[], selectedIds: string[], groupId: string): any[] {

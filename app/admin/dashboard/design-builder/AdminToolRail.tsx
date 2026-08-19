@@ -60,6 +60,21 @@ function RailButton({ id, label, active = false, onClick, disabled = false, disa
   );
 }
 
+/**
+ * One menu for everything you can draw. `line` is a Husnalogy object type of
+ * its own, not a shape variant — it appears here purely as a UI grouping.
+ */
+export const SHAPE_MENU_ITEMS = [
+  "rectangle",
+  "rounded-rectangle",
+  "circle",
+  "oval",
+  "triangle",
+  "polygon",
+  "arch",
+  "line",
+] as const;
+
 export default function AdminToolRail(props: Props) {
   const [menu, setMenu] = useState<"shape" | "guide" | null>(null);
   const closeAnd = (action: () => void) => {
@@ -74,7 +89,6 @@ export default function AdminToolRail(props: Props) {
       <RailButton id="image" label="Uploads" active={props.activePanel === "uploads"} onClick={() => props.onSelectTool("uploads")} />
       <RailButton id="photo" label="Frame" onClick={props.onAddPhotoArea} />
       <RailButton id="shape" label="Shape" active={menu === "shape"} onClick={() => setMenu((value) => value === "shape" ? null : "shape")} />
-      <RailButton id="line" label="Line" onClick={props.onAddLine} />
       <RailButton id="qr" label="QR Code" onClick={props.onAddQRCode} />
       <RailButton id="elements" label="Elements" active={props.activePanel === "elements"} onClick={props.onOpenElements} />
       <RailButton id="background" label="Background" onClick={props.onAddBackground} />
@@ -89,8 +103,17 @@ export default function AdminToolRail(props: Props) {
             {menu === "shape" ? "Shape" : "Canvas guide"}
           </p>
           <div className="grid grid-cols-2 gap-1.5">
-            {menu === "shape" && ["rectangle", "rounded-rectangle", "circle", "oval", "triangle", "polygon", "arch"].map((shape) => (
-              <button key={shape} type="button" onClick={() => closeAnd(() => props.onAddShape(shape))} className="min-h-11 cursor-pointer rounded-lg border border-[#303839]/10 px-2 text-xs font-bold capitalize transition-colors hover:border-[#D4AF37] hover:bg-[#F8F6F1] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37]">
+            {/* Line lives in the Shape menu rather than on the rail: it is one
+                more thing you can draw, not a separate mode. It still routes to
+                `onAddLine`, so the document keeps its own `line` object type
+                and existing templates are untouched. */}
+            {menu === "shape" && SHAPE_MENU_ITEMS.map((shape) => (
+              <button
+                key={shape}
+                type="button"
+                onClick={() => closeAnd(() => (shape === "line" ? props.onAddLine() : props.onAddShape(shape)))}
+                className="min-h-11 cursor-pointer rounded-lg border border-[#303839]/10 px-2 text-xs font-bold capitalize transition-colors hover:border-[#D4AF37] hover:bg-[#F8F6F1] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37]"
+              >
                 {shape.replace("-", " ")}
               </button>
             ))}

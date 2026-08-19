@@ -102,6 +102,9 @@ export default function AdminCanvas({
   // Wraps the rendered SVG. The interaction layer writes transient gesture
   // transforms onto the layer groups inside it (spec §9).
   const previewRootRef = useRef<HTMLDivElement>(null);
+  // Exact in-progress geometry during a resize/rotation — see the customer
+  // workspace for the reasoning. Same shared mechanism, same renderer.
+  const [transientGeometry, setTransientGeometry] = useState<Record<string, Record<string, any>> | null>(null);
 
   const canvasW = template?.canvasWidthPx || 1500;
   const canvasH = template?.canvasHeightPx || 2100;
@@ -575,7 +578,7 @@ export default function AdminCanvas({
       >
         {/* Base render (shared with the customer) */}
         <div ref={previewRootRef} className="pointer-events-none absolute inset-0">
-          <CustomizerPreview template={template} values={values} page={pageId} showSafeArea={showSafeArea} showBleed={showBleed} hiddenLayerIds={[]} />
+          <CustomizerPreview template={template} values={values} page={pageId} showSafeArea={showSafeArea} showBleed={showBleed} hiddenLayerIds={[]} geometryOverrides={transientGeometry} />
         </div>
 
         {/* Shared Konva interaction layer — the SAME component the customer
@@ -602,6 +605,7 @@ export default function AdminCanvas({
           onSelectionChange={(ids) => onSelectionChange?.(ids)}
           onGestureStart={handleGestureStart}
           onGestureCommit={commitChanges}
+          onTransientGeometry={setTransientGeometry}
           onDoubleClickNode={(layerId) => {
             const layer = selectableLayers.find((candidate: any) => candidate.id === layerId);
             if (!layer) return;

@@ -1,6 +1,11 @@
 "use client";
 
 import { customerEditablePermissionBundle } from "@/lib/customizer";
+import {
+  ADMIN_REORDER_POLICY,
+  isValidLayerDrop,
+  reorderLayersByDrop,
+} from "@/lib/customizer/v2/interaction/layer-reorder";
 import { distributeAlongAxis, getDescendantIds, rotatedAxisHalfExtents, transformGroupChildren } from "@/lib/customizer/v2/groups";
 import { marqueeSelectedLayerIds, type SelectionRect } from "@/lib/customizer/v2/selection-geometry";
 import { getTextPlacementStyle, type TextPlacementPreset } from "@/lib/customizer/v2/text-editing";
@@ -351,25 +356,33 @@ export function duplicateLayer(template: any, layerId: string) {
   return { template: { ...template, layers: [...(template.layers || []), copy] }, newId: copy.id };
 }
 
-// Move a layer up/down in stacking order within its page.
-export function reorderLayer(template: any, layerId: string, direction: "up" | "down") {
-  const layer = getLayer(template, layerId);
-  if (!layer) return template;
-  const siblings = layersForPage(template, layer.page);
-  const index = siblings.findIndex((l: any) => l.id === layerId);
-  const swapWith = direction === "up" ? siblings[index + 1] : siblings[index - 1];
-  if (!swapWith) return template;
-  const z1 = layer.zIndex;
-  const z2 = swapWith.zIndex;
-  const swapped = {
+/**
+ * Drop one layer onto another's slot (drag reorder in the Layers panel).
+ *
+ * Shares its maths with the customer panel through `reorderLayersByDrop`; only
+ * the policy differs — admin may reorder anything that is not locked or marked
+ * non-editable. Returns the template unchanged when the move is refused, so the
+ * caller can skip the history snapshot entirely.
+ */
+export function reorderLayerToTarget(template: any, sourceId: string, targetId: string) {
+  const source = getLayer(template, sourceId);
+  const target = getLayer(template, targetId);
+  if (!source || !target || source.page !== target.page) return template;
+
+  const siblings = layersForPage(template, source.page);
+  if (!isValidLayerDrop(siblings, sourceId, targetId)) return template;
+
+  const reordered = reorderLayersByDrop(siblings, sourceId, targetId, ADMIN_REORDER_POLICY);
+  if (reordered === siblings) return template;
+
+  const zById = new Map(reordered.map((layer: any) => [layer.id, Number(layer.zIndex) || 0]));
+  const next = {
     ...template,
-    layers: (template.layers || []).map((l: any) => {
-      if (l.id === layer.id) return { ...l, zIndex: z2 };
-      if (l.id === swapWith.id) return { ...l, zIndex: z1 };
-      return l;
-    }),
+    layers: (template.layers || []).map((layer: any) =>
+      zById.has(layer.id) ? { ...layer, zIndex: zById.get(layer.id) } : layer,
+    ),
   };
-  return normalizeZIndexes(swapped, layer.page);
+  return normalizeZIndexes(next, source.page);
 }
 
 /* ---------- field <-> layer linking (the two-controls model) ---------- */

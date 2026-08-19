@@ -75,6 +75,58 @@ function SectionTitle({ children }: { children: React.ReactNode }) {
   );
 }
 
+/**
+ * Opacity: a slider for feel, a number for precision (spec item 5).
+ *
+ * `onInput` fires continuously while the thumb moves so the artwork previews
+ * live; both it and the final change route to the same handler, which groups
+ * them under one history key — so a drag is one undo step, not forty.
+ *
+ * Applies to every visual layer type the document supports, including a
+ * multi-selection, and reads the shared `opacity` property rather than
+ * inventing a parallel one.
+ */
+function OpacityControl({
+  value,
+  disabled,
+  onChange,
+  onPreview,
+  multiple,
+}: {
+  value: number;
+  disabled: boolean;
+  onChange: (next: number) => void;
+  onPreview: (next: number) => void;
+  multiple: boolean;
+}) {
+  return (
+    <div className="grid gap-1.5">
+      <div className="flex items-center justify-between">
+        <span className="text-[9px] font-extrabold uppercase tracking-[0.15em] text-[#303839]/50">
+          Opacity{multiple ? " · all selected" : ""}
+        </span>
+        <span className="text-[10px] font-bold tabular-nums text-[#303839]/70">{Math.round(value)}%</span>
+      </div>
+      {/* Slider + exact value, both from the one shared numeric control. */}
+      <EditableNumericStepper
+        slider
+        label="Opacity"
+        value={Math.round(value)}
+        minimum={0}
+        maximum={100}
+        step={1}
+        largeStep={10}
+        disabled={disabled}
+        formatValue={(next: number) => `${Math.round(next)}%`}
+        onPreviewChange={onPreview}
+        onCommit={onChange}
+        showStepButtons={false}
+        className="h-11 w-full rounded-lg border border-[#303839]/15 bg-white px-1"
+      />
+    </div>
+  );
+}
+
 function PanelStepper({
   label,
   value,
@@ -187,9 +239,16 @@ export default function CustomerSelectionPanel({
   if (!layers?.length) return null;
 
   const layer = layers[0];
-  const opacity = Math.round((Number(layer?.opacity) || 0) * 100);
+  // `opacity` is optional in the document and absent means fully opaque, so an
+  // untouched layer must read 100 rather than 0.
+  const rawOpacity = Number(layer?.opacity);
+  const opacity = Math.round((Number.isFinite(rawOpacity) ? rawOpacity : 1) * 100);
   const allow = (permission: string) => isUserLayer || Boolean(permissions[permission]);
   const canOpacity = allow("changeOpacity");
+  // Every visual type the renderer draws. Groups included: the document stores
+  // opacity on the group layer and the renderer applies it to the whole branch.
+  const OPACITY_TYPES = new Set(["text", "image", "frame", "shape", "element", "group", "qrCode", "grid", "background"]);
+  const opacityApplies = layers.every((item: any) => OPACITY_TYPES.has(String(item?.type)));
   const canStyle = allow("editStyle");
   const layerLabel =
     layers.length > 1
@@ -219,17 +278,16 @@ export default function CustomerSelectionPanel({
         </span>
       </div>
 
-      {layers.length === 1 && (
+      {/* Opacity applies to every visual layer type, and to a multi-selection
+          where at least one member permits it. */}
+      {opacityApplies && (
         <div className="mt-4">
-          <PanelStepper
-            label="Opacity"
+          <OpacityControl
             value={opacity}
-            minimum={0}
-            maximum={100}
-            step={5}
             disabled={!canOpacity}
-            percent
-            onCommit={(value: number) => onOpacity(value / 100)}
+            multiple={layers.length > 1}
+            onPreview={(value: number) => onOpacity(value / 100)}
+            onChange={(value: number) => onOpacity(value / 100)}
           />
         </div>
       )}

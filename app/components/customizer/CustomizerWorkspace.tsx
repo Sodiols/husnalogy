@@ -159,6 +159,11 @@ export default function CustomizerWorkspace({
   // drag costs one attribute write per frame instead of a document update
   // (spec §9).
   const previewRootRef = useRef<HTMLDivElement>(null);
+  // Exact in-progress geometry while a resize or rotation is running. Held in
+  // React (not the document) so the shared renderer can draw the real values —
+  // real text wrapping, real photo fit — without a document write, a history
+  // entry or an autosave.
+  const [transientGeometry, setTransientGeometry] = useState<Record<string, Record<string, any>> | null>(null);
   const [editingTextId, setEditingTextId] = useState<string | null>(null);
   const newTextIdsRef = useRef(new Set<string>());
   const textEditSessionRef = useRef<{
@@ -661,13 +666,31 @@ export default function CustomizerWorkspace({
   };
 
   return (
+    /**
+     * Scroll container for a canvas that can be larger than the viewport.
+     *
+     * The centring is done with `margin: auto` on the page itself, NOT with
+     * `justify-center` / `items-center` on this flex container. That is the
+     * whole fix for zoomed-in navigation: when a flex container centres an item
+     * that overflows, the overflow is split evenly across BOTH sides, and the
+     * leading half ends up at a negative scroll offset that no scrollbar can
+     * reach — so at 150% or 200% the top and left of the card were simply
+     * unreachable. Auto margins collapse to zero once free space runs out, so
+     * the page is centred while it fits and scrolls edge to edge once it does
+     * not.
+     *
+     * Wheel scrolling is the browser's own: nothing here calls preventDefault
+     * on wheel, and the Konva stage does not listen for it, so vertical wheel,
+     * Shift+wheel and trackpad panning all behave natively. Crop mode is the
+     * one deliberate exception and owns its wheel while it is active.
+     */
     <div
       ref={wrapRef}
-      className={embedded ? "flex h-full w-full items-start justify-center overflow-hidden" : "flex h-full w-full items-start justify-center overflow-auto p-4 sm:p-8"}
+      className={embedded ? "flex h-full w-full items-start justify-center overflow-hidden" : "flex h-full w-full overflow-auto p-4 sm:p-8"}
     >
       <div
         ref={surfaceRef}
-        className="relative shrink-0 bg-white shadow-[0_10px_40px_rgba(48,56,57,0.12)]"
+        className={`relative shrink-0 bg-white shadow-[0_10px_40px_rgba(48,56,57,0.12)]${embedded ? "" : " m-auto"}`}
         style={{
           width: displayW,
           height: displayH,
@@ -713,6 +736,7 @@ export default function CustomizerWorkspace({
             showSafeArea={previewMode ? false : showSafeArea}
             showBleed={previewMode ? false : showBleed}
             hiddenLayerIds={[]}
+            geometryOverrides={transientGeometry}
           />
         </div>
 
@@ -744,6 +768,7 @@ export default function CustomizerWorkspace({
           onSelectionChange={applySelection}
           onGestureStart={handleGestureStart}
           onGestureCommit={commitChanges}
+          onTransientGeometry={setTransientGeometry}
           onDoubleClickNode={(layerId) => {
             const layer = layers.find((candidate: any) => candidate.id === layerId);
             if (!layer) return;

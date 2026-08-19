@@ -76,6 +76,16 @@ describe("inspector tabs route rather than remove settings", () => {
     expect(panel).toContain('{ id: "advanced", label: "Advanced" }');
   });
 
+  it("puts photo crop and opacity with the image, not in a separate tab", () => {
+    // Crop moved out of Advanced and next to the photo it acts on; the filters
+    // section is gone from the panel entirely. Both still write the SAME
+    // document properties, so saved templates are unaffected.
+    expect(panel).toContain('<Section title="Crop" collapsible');
+    expect(panel).toContain("<OpacityField layer={layer} onLayerPatch={onLayerPatch} />");
+    expect(panel).not.toContain('<Section title="Image filters"');
+    expect(panel).not.toContain('<Section title="Image crop defaults"');
+  });
+
   it("keeps every layer-type section, just tab-routed", () => {
     for (const section of [
       '<Section title="Text">',
@@ -84,8 +94,6 @@ describe("inspector tabs route rather than remove settings", () => {
       '<Section title="Element">',
       '<Section title="QR code">',
       '<Section title="Background">',
-      '<Section title="Image crop defaults"',
-      '<Section title="Image filters"',
       '<Section title="Group behaviour"',
       '<Section title="Customer access" subtle>',
     ]) {
@@ -121,17 +129,37 @@ describe("dark panels are readable on the sidebar surface", () => {
     for (const handler of ["onAddPage", "onDuplicatePage", "onRenamePage", "onMovePage", "onDeletePage", "onPatchPage"]) {
       expect(pages).toContain(handler);
     }
-    for (const handler of ["onSelect", "onLayerPatch", "onReorder", "onDuplicate", "onRemove"]) {
+    // The Layers panel organises; it no longer destroys. Deleting lives on the
+    // context toolbar, where it acts on the selected object deliberately.
+    for (const handler of ["onSelect", "onLayerPatch", "onReorderToTarget", "onDuplicate"]) {
       expect(layers).toContain(handler);
     }
+    expect(layers).not.toContain("onRemove");
+  });
+
+  it("offers exactly hide, lock and copy on a layer row", () => {
+    expect(layers).toContain("aria-label={layer.hidden ? `Show ${layer.name}` : `Hide ${layer.name}`}");
+    expect(layers).toContain("aria-label={layer.locked ? `Unlock ${layer.name}` : `Lock ${layer.name}`}");
+    expect(layers).toContain("aria-label={`Duplicate ${layer.name}`}");
+    expect(layers).not.toContain("aria-label={`Delete ${layer.name}`}");
   });
 });
 
 describe("tool rail keeps every tool", () => {
   it("retains the full tool set", () => {
-    for (const tool of ["select", "text", "image", "photo", "shape", "line", "qr", "elements", "background", "guide", "pan", "pages"]) {
+    // Line moved off the rail and into the Shape menu — one place for
+    // everything you can draw — so it is no longer a top-level button.
+    for (const tool of ["select", "text", "image", "photo", "shape", "qr", "elements", "background", "guide", "pan", "pages"]) {
       expect(rail).toContain(`id="${tool}"`);
     }
+    expect(rail).not.toContain('id="line"');
+  });
+
+  it("offers Line inside the Shape menu without changing the document model", () => {
+    expect(rail).toContain('"line",');
+    expect(rail).toContain("SHAPE_MENU_ITEMS");
+    // Still routed to the line creator, so the `line` object type survives.
+    expect(rail).toContain('shape === "line" ? props.onAddLine() : props.onAddShape(shape)');
   });
 
   it("gives the Pages button real behaviour now that pages are always visible", () => {

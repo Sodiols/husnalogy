@@ -1,10 +1,10 @@
 # Customizer Dependency Map
 
-Generated: 2026-08-17T11:12:59.301Z
+Generated: 2026-08-18T09:16:15.318Z
 
 This inventory covers static imports, dynamic `import()`/`require()` calls, Next.js route entry points, package scripts, tests, migrations, Supabase functions, worker/configuration strings, and route URL references. A zero-import file is not automatically unused: framework and deployment entry points are retained explicitly.
 
-Files audited: 222
+Files audited: 227
 
 | File | Category | Static importers | Dynamic importers | Runtime/string references | Audit decision |
 | --- | --- | ---: | ---: | ---: | --- |
@@ -21,7 +21,7 @@ Files audited: 222
 | `app/admin/dashboard/design-builder/AdminPropertiesPanel.tsx` | admin UI | 1 | 0 | 5 | KEEP: referenced |
 | `app/admin/dashboard/design-builder/AdminTemplateSettings.tsx` | admin UI | 1 | 0 | 1 | KEEP: referenced |
 | `app/admin/dashboard/design-builder/AdminTextToolPanel.tsx` | admin UI | 1 | 0 | 1 | KEEP: referenced |
-| `app/admin/dashboard/design-builder/AdminToolRail.tsx` | admin UI | 1 | 0 | 6 | KEEP: referenced |
+| `app/admin/dashboard/design-builder/AdminToolRail.tsx` | admin UI | 1 | 0 | 7 | KEEP: referenced |
 | `app/admin/dashboard/design-builder/AdminUploadsPanel.tsx` | admin UI | 1 | 0 | 4 | KEEP: referenced |
 | `app/admin/dashboard/design-builder/builder-utils.ts` | admin UI | 19 | 0 | 10 | KEEP: referenced |
 | `app/admin/dashboard/design-builder/ToolbarPopover.tsx` | admin UI | 1 | 0 | 2 | KEEP: referenced |
@@ -60,23 +60,23 @@ Files audited: 222
 | `app/components/customizer/CustomerGridToolbar.tsx` | customer/shared UI | 1 | 0 | 3 | KEEP: referenced |
 | `app/components/customizer/CustomerGroupToolbar.tsx` | customer/shared UI | 1 | 0 | 3 | KEEP: referenced |
 | `app/components/customizer/CustomerImageToolbar.tsx` | customer/shared UI | 1 | 0 | 2 | KEEP: referenced |
-| `app/components/customizer/CustomerInsertPanel.tsx` | customer/shared UI | 1 | 0 | 3 | KEEP: referenced |
+| `app/components/customizer/CustomerInsertPanel.tsx` | customer/shared UI | 1 | 0 | 4 | KEEP: referenced |
 | `app/components/customizer/CustomerLayersPanel.tsx` | customer/shared UI | 1 | 0 | 5 | KEEP: referenced |
 | `app/components/customizer/CustomerMockupPreview.tsx` | customer/shared UI | 2 | 0 | 2 | KEEP: referenced |
 | `app/components/customizer/CustomerOptionsPanel.tsx` | customer/shared UI | 2 | 0 | 3 | KEEP: referenced |
 | `app/components/customizer/CustomerProductEditingPreview.tsx` | customer/shared UI | 1 | 0 | 3 | KEEP: referenced |
-| `app/components/customizer/CustomerSelectionPanel.tsx` | customer/shared UI | 1 | 0 | 3 | KEEP: referenced |
+| `app/components/customizer/CustomerSelectionPanel.tsx` | customer/shared UI | 1 | 0 | 4 | KEEP: referenced |
 | `app/components/customizer/CustomerShortcutHelp.tsx` | customer/shared UI | 1 | 0 | 3 | KEEP: referenced |
-| `app/components/customizer/CustomerToolRail.tsx` | customer/shared UI | 2 | 0 | 3 | KEEP: referenced |
+| `app/components/customizer/CustomerToolRail.tsx` | customer/shared UI | 3 | 0 | 4 | KEEP: referenced |
 | `app/components/customizer/CustomerUploadsPanel.tsx` | customer/shared UI | 2 | 0 | 5 | KEEP: referenced |
-| `app/components/customizer/customizer-utils.ts` | customer/shared UI | 22 | 0 | 15 | KEEP: referenced |
+| `app/components/customizer/customizer-utils.ts` | customer/shared UI | 23 | 0 | 16 | KEEP: referenced |
 | `app/components/customizer/CustomizerPageThumbnails.tsx` | customer/shared UI | 2 | 0 | 3 | KEEP: referenced |
 | `app/components/customizer/CustomizerPreview.tsx` | customer/shared UI | 9 | 0 | 8 | KEEP: referenced |
 | `app/components/customizer/CustomizerProtectionOverlay.tsx` | customer/shared UI | 2 | 0 | 2 | KEEP: referenced |
 | `app/components/customizer/CustomizerReviewStep.tsx` | customer/shared UI | 2 | 0 | 4 | KEEP: referenced |
 | `app/components/customizer/CustomizerWorkspace.tsx` | customer/shared UI | 3 | 0 | 12 | KEEP: referenced |
 | `app/components/customizer/CustomizerZoomControls.tsx` | customer/shared UI | 3 | 0 | 6 | KEEP: referenced |
-| `app/components/customizer/EditableNumericStepper.tsx` | customer/shared UI | 14 | 0 | 10 | KEEP: referenced |
+| `app/components/customizer/EditableNumericStepper.tsx` | customer/shared UI | 14 | 0 | 11 | KEEP: referenced |
 | `app/components/customizer/InlineCanvasTextEditor.tsx` | customer/shared UI | 2 | 0 | 4 | KEEP: referenced |
 | `app/components/customizer/interaction/CustomizerInteractionStage.tsx` | customer/shared UI | 2 | 1 | 6 | KEEP: referenced |
 | `app/components/customizer/interaction/InteractionStageClient.tsx` | customer/shared UI | 2 | 0 | 2 | KEEP: referenced |
@@ -87,7 +87,7 @@ Files audited: 222
 | `app/components/customizer/useCustomizerHistory.ts` | customer/shared UI | 1 | 0 | 2 | KEEP: referenced |
 | `app/components/customizer/useCustomizerProtection.ts` | customer/shared UI | 1 | 0 | 2 | KEEP: referenced |
 | `app/products/[slug]/personalize/page.tsx` | Next route entry | 0 | 0 | 1 | KEEP: framework/script/test/migration entry point |
-| `app/products/[slug]/personalize/personalize-client.tsx` | support | 1 | 0 | 16 | KEEP: referenced |
+| `app/products/[slug]/personalize/personalize-client.tsx` | support | 1 | 0 | 17 | KEEP: referenced |
 | `CUSTOMIZER_DATABASE.md` | documentation | 0 | 0 | 4 | KEEP: referenced |
 | `CUSTOMIZER_DEPENDENCY_MAP.md` | documentation | 0 | 0 | 1 | KEEP: referenced |
 | `docs/CUSTOMIZER_ADMIN_GUIDE.md` | documentation | 0 | 0 | 1 | KEEP: referenced |
@@ -150,12 +150,14 @@ Files audited: 222
 | `lib/customizer/v2/__tests__/image-crop.test.ts` | test | 0 | 0 | 1 | KEEP: framework/script/test/migration entry point |
 | `lib/customizer/v2/__tests__/image-permissions.test.ts` | test | 0 | 0 | 1 | KEEP: framework/script/test/migration entry point |
 | `lib/customizer/v2/__tests__/interaction-engine.test.ts` | test | 0 | 0 | 1 | KEEP: framework/script/test/migration entry point |
+| `lib/customizer/v2/__tests__/layer-reorder.test.ts` | test | 0 | 0 | 1 | KEEP: framework/script/test/migration entry point |
 | `lib/customizer/v2/__tests__/layers-panel-permission-source.test.ts` | test | 0 | 0 | 1 | KEEP: framework/script/test/migration entry point |
 | `lib/customizer/v2/__tests__/linked-fields.test.ts` | test | 0 | 0 | 1 | KEEP: framework/script/test/migration entry point |
 | `lib/customizer/v2/__tests__/masks.test.ts` | test | 0 | 0 | 1 | KEEP: framework/script/test/migration entry point |
 | `lib/customizer/v2/__tests__/mockups-render-jobs.test.ts` | test | 0 | 0 | 1 | KEEP: framework/script/test/migration entry point |
 | `lib/customizer/v2/__tests__/numeric-stepper-component.test.ts` | test | 0 | 0 | 1 | KEEP: framework/script/test/migration entry point |
 | `lib/customizer/v2/__tests__/numeric-stepper.test.ts` | test | 0 | 0 | 1 | KEEP: framework/script/test/migration entry point |
+| `lib/customizer/v2/__tests__/opacity-control.test.ts` | test | 0 | 0 | 1 | KEEP: framework/script/test/migration entry point |
 | `lib/customizer/v2/__tests__/parity.test.ts` | test | 0 | 0 | 2 | KEEP: framework/script/test/migration entry point |
 | `lib/customizer/v2/__tests__/photo-replace-crop-reset.test.ts` | test | 0 | 0 | 1 | KEEP: framework/script/test/migration entry point |
 | `lib/customizer/v2/__tests__/pricing-preflight.test.ts` | test | 0 | 0 | 1 | KEEP: framework/script/test/migration entry point |
@@ -166,6 +168,7 @@ Files audited: 222
 | `lib/customizer/v2/__tests__/selection.test.ts` | test | 0 | 0 | 1 | KEEP: framework/script/test/migration entry point |
 | `lib/customizer/v2/__tests__/server-customization-image.test.ts` | test | 0 | 0 | 1 | KEEP: framework/script/test/migration entry point |
 | `lib/customizer/v2/__tests__/server-render.test.ts` | test | 0 | 0 | 1 | KEEP: framework/script/test/migration entry point |
+| `lib/customizer/v2/__tests__/shape-line-grouping.test.ts` | test | 0 | 0 | 1 | KEEP: framework/script/test/migration entry point |
 | `lib/customizer/v2/__tests__/single-line-text-resize.test.ts` | test | 0 | 0 | 1 | KEEP: framework/script/test/migration entry point |
 | `lib/customizer/v2/__tests__/snapping.test.ts` | test | 0 | 0 | 1 | KEEP: framework/script/test/migration entry point |
 | `lib/customizer/v2/__tests__/text-auto-width-render.test.ts` | test | 0 | 0 | 1 | KEEP: framework/script/test/migration entry point |
@@ -174,12 +177,13 @@ Files audited: 222
 | `lib/customizer/v2/__tests__/text-editor-keys.test.ts` | test | 0 | 0 | 1 | KEEP: framework/script/test/migration entry point |
 | `lib/customizer/v2/__tests__/text-layout.test.ts` | test | 0 | 0 | 1 | KEEP: framework/script/test/migration entry point |
 | `lib/customizer/v2/__tests__/text-toolbar-bounds-parity.test.ts` | test | 0 | 0 | 1 | KEEP: framework/script/test/migration entry point |
+| `lib/customizer/v2/__tests__/transient-geometry-preview.test.ts` | test | 0 | 0 | 1 | KEEP: framework/script/test/migration entry point |
 | `lib/customizer/v2/__tests__/validate.test.ts` | test | 0 | 0 | 1 | KEEP: framework/script/test/migration entry point |
 | `lib/customizer/v2/__tests__/viewport-pan.test.ts` | test | 0 | 0 | 1 | KEEP: framework/script/test/migration entry point |
 | `lib/customizer/v2/__tests__/zoom.test.ts` | test | 0 | 0 | 1 | KEEP: framework/script/test/migration entry point |
 | `lib/customizer/v2/asset-references.ts` | engine/service | 8 | 0 | 6 | KEEP: referenced |
 | `lib/customizer/v2/context-menu.ts` | engine/service | 3 | 0 | 3 | KEEP: referenced |
-| `lib/customizer/v2/customer-actions.ts` | engine/service | 3 | 0 | 3 | KEEP: referenced |
+| `lib/customizer/v2/customer-actions.ts` | engine/service | 4 | 0 | 3 | KEEP: referenced |
 | `lib/customizer/v2/customer-fields.ts` | engine/service | 2 | 0 | 2 | KEEP: referenced |
 | `lib/customizer/v2/design-tokens.ts` | engine/service | 2 | 0 | 2 | KEEP: referenced |
 | `lib/customizer/v2/document.ts` | engine/service | 9 | 0 | 7 | KEEP: referenced |
@@ -196,6 +200,7 @@ Files audited: 222
 | `lib/customizer/v2/interaction/handles.ts` | engine/service | 5 | 0 | 4 | KEEP: referenced |
 | `lib/customizer/v2/interaction/hit-test.ts` | engine/service | 2 | 0 | 2 | KEEP: referenced |
 | `lib/customizer/v2/interaction/konva-adapter.ts` | engine/service | 4 | 0 | 2 | KEEP: referenced |
+| `lib/customizer/v2/interaction/layer-reorder.ts` | engine/service | 5 | 0 | 4 | KEEP: referenced |
 | `lib/customizer/v2/interaction/node-identity.ts` | engine/service | 1 | 0 | 1 | KEEP: referenced |
 | `lib/customizer/v2/interaction/tool-mode.ts` | engine/service | 6 | 0 | 3 | KEEP: referenced |
 | `lib/customizer/v2/interaction/transient-preview.ts` | engine/service | 2 | 0 | 2 | KEEP: referenced |

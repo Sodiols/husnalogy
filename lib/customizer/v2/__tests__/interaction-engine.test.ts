@@ -299,7 +299,9 @@ describe("handles", () => {
   });
 
   it("offers larger targets for touch", () => {
-    expect(resolveHandleMetrics(1, "touch").size).toBeGreaterThan(resolveHandleMetrics(1, "mouse").size);
+    // The visible dot is the same sub-pixel size on both — a finger needs a
+    // bigger TARGET, not a bigger drawing.
+    expect(resolveHandleMetrics(1, "touch").size).toBe(resolveHandleMetrics(1, "mouse").size);
     expect(resolveHandleMetrics(1, "touch").hitPadding).toBeGreaterThan(
       resolveHandleMetrics(1, "mouse").hitPadding,
     );
@@ -786,5 +788,57 @@ describe("transient resize preview", () => {
     const result = transientTransformString({ dx: 7, dy: -3, scaleX: 2, scaleY: 2, pivotX: 0, pivotY: 0 });
     expect(result.startsWith("translate(7 -3)")).toBe(true);
     expect(result).toContain("scale(2 2)");
+  });
+});
+
+/* ========================================================================== */
+/* Handle chrome sizing (small visible control, generous target)              */
+/* ========================================================================== */
+
+describe("handle chrome", () => {
+  it("draws a small handle but offers a large target", () => {
+    const metrics = resolveHandleMetrics(1);
+    // Visible chrome stays discreet so it does not compete with the artwork.
+    expect(metrics.size).toBeLessThanOrEqual(3);
+    // Never sub-pixel: below one device pixel a handle stops getting smaller
+    // and just becomes a faint smudge, which is harder to aim at, not tidier.
+    expect(metrics.size).toBeGreaterThanOrEqual(1);
+    // ...while the region that actually responds to a pointer is far bigger.
+    // This is the whole trick: shrinking the dot costs nothing in hit accuracy.
+    expect(metrics.screenHitSize).toBeGreaterThanOrEqual(20);
+    // The grab area is many times the drawing: that is what lets the visible
+    // handle shrink this far without becoming fiddly.
+    expect(metrics.screenHitSize).toBeGreaterThan(metrics.size * 5);
+    expect(metrics.hitPadding).toBeGreaterThan(0);
+  });
+
+  it("keeps the rotation control no larger than the resize handles", () => {
+    const metrics = resolveHandleMetrics(1);
+    expect(metrics.rotateSize).toBeLessThanOrEqual(metrics.size);
+  });
+
+  it("draws a hairline border so a small handle does not read as a solid chip", () => {
+    const metrics = resolveHandleMetrics(1);
+    // A 1.5px border on a 6px handle is a quarter of it, which is what made
+    // the old handles look heavier than their real footprint.
+    expect(metrics.strokeWidth).toBeLessThanOrEqual(0.8);
+  });
+
+  it("holds both sizes constant on screen at every zoom", () => {
+    for (const scale of [0.25, 0.5, 1, 2, 4]) {
+      const metrics = resolveHandleMetrics(scale);
+      expect(metrics.size * scale).toBeCloseTo(2, 6);
+      expect(metrics.rotateSize * scale).toBeCloseTo(2, 6);
+      expect(metrics.hitPadding * scale).toBeCloseTo(10, 6);
+    }
+  });
+
+  it("grows the target on touch without inflating the visible handle much", () => {
+    const mouse = resolveHandleMetrics(1, "mouse");
+    const touch = resolveHandleMetrics(1, "touch");
+    // The drawing is the same on both — a finger needs a bigger TARGET, not a
+    // bigger drawing.
+    expect(touch.size).toBe(mouse.size);
+    expect(touch.screenHitSize).toBeGreaterThan(mouse.screenHitSize);
   });
 });
