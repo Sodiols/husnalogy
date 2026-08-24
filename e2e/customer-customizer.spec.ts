@@ -12,8 +12,9 @@ test.describe("seeded customer Customizer V2 journey", () => {
     const root = page.locator("[data-customizer-root]");
     await expect(root).toBeVisible();
 
-    await root.getByRole("button", { name: "Shapes", exact: true }).click();
-    await root.getByRole("button", { name: "rectangle", exact: true }).click();
+    // Shapes, lines, frames and QR all live inside the one Elements tool now.
+    await root.getByRole("button", { name: "Elements", exact: true }).click();
+    await root.getByRole("button", { name: "Add Square", exact: true }).click();
     const shapeToolbar = root.getByRole("toolbar", { name: "1 selected objects" });
     await expect(shapeToolbar).toBeVisible();
     const opacity = shapeToolbar.locator('input[aria-label="Opacity"]');
@@ -36,9 +37,10 @@ test.describe("seeded customer Customizer V2 journey", () => {
     await opacity.press("Enter");
     await expect(opacity).toHaveValue("100%");
 
-    // Lines intentionally live inside the Shapes panel; there is no separate
-    // Lines tool in the current customer UI.
-    await root.getByRole("button", { name: "solid line", exact: true }).click();
+    // Lines live in the Borders / Lines section of Elements; there is no
+    // separate Lines tool in the customer UI.
+    await root.getByRole("button", { name: "Elements", exact: true }).click();
+    await root.getByRole("button", { name: "Add Solid line", exact: true }).click();
     await expect(root.getByLabel("Line start cap")).toBeVisible();
 
     // Marquee selection: a drag across the canvas should pick up both the
@@ -80,8 +82,9 @@ test.describe("seeded customer Customizer V2 journey", () => {
       expect(orderAfter).not.toEqual(orderBefore);
     }
 
-    await root.getByRole("button", { name: "QR Code", exact: true }).click();
-    await root.getByLabel("Destination URL").fill("https://husnalogy.com/playwright");
+    await root.getByRole("button", { name: "Elements", exact: true }).click();
+    await root.getByRole("button", { name: "Add QR Code", exact: true }).click();
+    await root.getByLabel("QR code destination URL").fill("https://husnalogy.com/playwright");
     await root.getByRole("button", { name: "Add QR code", exact: true }).click();
     await expect(root.getByRole("status")).toContainText("Readable");
     await expect(root.getByLabel("QR error correction")).toBeVisible();

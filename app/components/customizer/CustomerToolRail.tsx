@@ -35,20 +35,48 @@ const RAIL_ICONS: Record<string, React.ReactNode> = {
       <path d="M12 3l2.4 4.9 5.4.8-3.9 3.8.9 5.4-4.8-2.5-4.8 2.5.9-5.4L4.2 8.7l5.4-.8Z" />
     </svg>
   ),
-  shapes: <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden><rect x="3" y="4" width="9" height="9" rx="2"/><circle cx="17" cy="17" r="4"/></svg>,
-  lines: <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden><path d="M4 18 20 6"/></svg>,
-  frames: <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="12" cy="12" r="4"/></svg>,
   grids: <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden><rect x="3" y="3" width="8" height="8"/><rect x="13" y="3" width="8" height="8"/><rect x="3" y="13" width="8" height="8"/><rect x="13" y="13" width="8" height="8"/></svg>,
-  qr: <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><path d="M14 14h3v3h-3zM19 14h2v7h-7v-2"/></svg>,
   background: <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden><rect x="3" y="4" width="18" height="16" rx="2"/><path d="m3 16 5-5 4 4 3-3 6 6"/></svg>,
   layers: <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" aria-hidden><path d="m12 3 9 5-9 5-9-5 9-5Z"/><path d="m3 13 9 5 9-5M3 18l9 4 9-4"/></svg>,
 };
 
-// "lines" is deliberately absent: a line is drawn from the Shapes panel now.
-// The DOCUMENT still has its own line object type — this is UI grouping only.
-export type CustomerTool = "edit" | "addText" | "uploads" | "elements" | "shapes" | "frames" | "grids" | "qr" | "background" | "layers" | "options";
+// ONE "elements" tool now covers the whole insertion library: Dynamic Shapes,
+// Graphics, Text presets, Borders/Lines, Shapes, Frames and QR Code. The
+// separate "shapes", "frames" and "qr" primary tools are gone — their features
+// are reached through Elements instead.
+//
+// This is UI grouping only. The DOCUMENT keeps its distinct object types:
+// ShapeLayer, LineLayer, FrameLayer, QRCodeLayer, TextLayer, ElementLayer.
+export type CustomerTool = "edit" | "addText" | "uploads" | "elements" | "grids" | "background" | "layers" | "options";
 
 type ToolDef = { id: CustomerTool; label: string };
+
+/** Which Elements sections a template permits. Any one of them shows the tool. */
+export type ElementsCapabilities = {
+  allowElements?: boolean;
+  allowShapes?: boolean;
+  allowLines?: boolean;
+  allowFrames?: boolean;
+  allowQRCode?: boolean;
+  /** Text presets live in Elements, but Add Text remains its own tool too. */
+  allowTextPresets?: boolean;
+};
+
+/**
+ * Elements is available whenever at least ONE section inside it is permitted —
+ * never tied to `allowElements` alone, because native Shapes/Lines/Frames/QR
+ * can be enabled while local/remote graphics are switched off.
+ */
+export function hasAnyElementsCapability(capabilities: ElementsCapabilities): boolean {
+  return Boolean(
+    capabilities.allowElements
+    || capabilities.allowShapes
+    || capabilities.allowLines
+    || capabilities.allowFrames
+    || capabilities.allowQRCode
+    || capabilities.allowTextPresets,
+  );
+}
 
 export function getCustomerTools({
   allowAddText,
@@ -59,6 +87,7 @@ export function getCustomerTools({
   allowFrames = false,
   allowGrids = false,
   allowQRCode = false,
+  allowTextPresets = false,
   allowBackground = false,
   showLayers = false,
 }: {
@@ -70,19 +99,24 @@ export function getCustomerTools({
   allowFrames?: boolean;
   allowGrids?: boolean;
   allowQRCode?: boolean;
+  /**
+   * Text presets inside Elements. Declared separately from `allowAddText`,
+   * which drives the standalone Text tool: a surface may offer one and not the
+   * other, and a caller that renders no Elements panel must never be handed an
+   * Elements button by implication.
+   */
+  allowTextPresets?: boolean;
   allowBackground?: boolean;
   showLayers?: boolean;
 }): ToolDef[] {
   const tools: ToolDef[] = [{ id: "edit", label: "Edit" }];
   if (allowAddText) tools.push({ id: "addText", label: "Text" });
   if (hasUploads) tools.push({ id: "uploads", label: "Photos" });
-  if (allowElements) tools.push({ id: "elements", label: "Elements" });
-  // One entry for everything you can draw. It appears when the template allows
-  // shapes OR lines, and the panel itself shows only the permitted half.
-  if (allowShapes || allowLines) tools.push({ id: "shapes", label: "Shapes" });
-  if (allowFrames) tools.push({ id: "frames", label: "Frames" });
+  // One unified insertion library. An empty Elements tool is never shown.
+  if (hasAnyElementsCapability({ allowElements, allowShapes, allowLines, allowFrames, allowQRCode, allowTextPresets })) {
+    tools.push({ id: "elements", label: "Elements" });
+  }
   if (allowGrids) tools.push({ id: "grids", label: "Grids" });
-  if (allowQRCode) tools.push({ id: "qr", label: "QR Code" });
   if (allowBackground) tools.push({ id: "background", label: "Background" });
   if (showLayers) tools.push({ id: "layers", label: "Layers" });
   tools.push({ id: "options", label: "Options" });

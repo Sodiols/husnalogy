@@ -1,4 +1,5 @@
 import { createServiceRoleClient } from "@/lib/supabase/server";
+import { hydrateAdminAssetUrls } from "@/lib/customizer/server/admin-assets";
 import {
   CUSTOMER_ASSET_BUCKET,
   collectCustomerAssetReferences,
@@ -146,11 +147,26 @@ export async function resolvePrivateAssetsForDelivery<T>(
   variant: AssetVariant = "editor",
   supabase: any = createServiceRoleClient(),
 ): Promise<T> {
-  return hydratePrivateAssetUrls(
+  const withCustomerUploads = await hydratePrivateAssetUrls(
     value,
     (reference, requestedVariant) => resolvePrivateAssetUrl({ reference, actor, variant: requestedVariant, supabase }),
     { fallbackOwnerId: actor.userId || "", variant },
   );
+
+  // Element layers reference PERMANENT Husnalogy library assets (including
+  // graphics imported from Iconify) by assetId. Re-sign them from that
+  // identity on every read, so a saved design, cart preview, order snapshot
+  // and production render all keep working after the previous signed URL has
+  // expired — and without any dependency on the original upstream source
+  // (spec §43, §55).
+  try {
+    return await hydrateAdminAssetUrls(withCustomerUploads, supabase);
+  } catch (error) {
+    // A hydration failure must not take down a read path; the layer simply
+    // keeps whatever it already had.
+    console.error("[customizer] Could not hydrate library asset URLs:", error instanceof Error ? error.message : error);
+    return withCustomerUploads;
+  }
 }
 
 export async function validatePrivateAssetOwnership(value: unknown, userId: string): Promise<void> {

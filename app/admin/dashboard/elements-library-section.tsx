@@ -28,6 +28,15 @@ type AssetRow = {
   usageCount: number;
   createdAt: string;
   updatedAt: string;
+  // Provenance for externally imported graphics (Iconify). Empty for local
+  // uploads, which remain fully valid without it.
+  sourceProvider?: string;
+  sourceKey?: string;
+  sourceCollection?: string;
+  sourceLicense?: string;
+  sourceLicenseUrl?: string;
+  sourceLicenseSpdx?: string;
+  sourceAuthor?: string;
 };
 
 type CategoryRow = { id: string; name: string; slug: string; active: boolean };
@@ -273,6 +282,30 @@ export default function ElementsLibrarySection({ onAction }: { onAction?: (messa
               </button>
               <div className="mt-2 flex items-start justify-between gap-2"><div className="min-w-0"><h4 className="truncate text-sm font-extrabold" title={asset.title}>{asset.title}</h4><p className="truncate text-[10px] text-[#303839]/50" title={asset.originalFilename}>{asset.originalFilename}</p></div><span className={`rounded-full px-2 py-1 text-[9px] font-extrabold ${asset.archived ? "bg-amber-100 text-amber-900" : "bg-emerald-50 text-emerald-800"}`}>{asset.status}</span></div>
               <p className="mt-1 text-[10px] text-[#303839]/55">{asset.assetType} · {String(asset.mimeType || "unknown").replace("image/", "").toUpperCase()} · {asset.width || 0}×{asset.height || 0} · {(asset.fileSizeBytes / 1024).toFixed(0)}KB</p>
+
+              {/* Provenance for an externally imported graphic (spec §26).
+                  Recorded at import time, so it stays accurate even if the
+                  upstream collection later changes its licence. Admin-only —
+                  customers never see these technical details. */}
+              {asset.sourceProvider && (
+                <dl className="mt-2 grid gap-0.5 rounded-lg bg-[#F8F6F1] p-2 text-[10px] leading-4 text-[#303839]/70">
+                  <div className="flex gap-1"><dt className="font-bold">Source</dt><dd className="truncate">{asset.sourceProvider}{asset.sourceKey ? ` · ${asset.sourceKey}` : ""}</dd></div>
+                  {asset.sourceCollection && <div className="flex gap-1"><dt className="font-bold">Collection</dt><dd className="truncate">{asset.sourceCollection}</dd></div>}
+                  {asset.sourceAuthor && <div className="flex gap-1"><dt className="font-bold">Author</dt><dd className="truncate">{asset.sourceAuthor}</dd></div>}
+                  <div className="flex gap-1">
+                    <dt className="font-bold">License</dt>
+                    <dd className="truncate">
+                      {asset.sourceLicenseUrl
+                        ? <a href={asset.sourceLicenseUrl} target="_blank" rel="noopener noreferrer" className="underline">{asset.sourceLicenseSpdx || asset.sourceLicense || "View"}</a>
+                        : (asset.sourceLicenseSpdx || asset.sourceLicense || "Unknown")}
+                    </dd>
+                  </div>
+                  <div className="flex gap-1">
+                    <dt className="font-bold">Customer use</dt>
+                    <dd>{asset.customerAvailable ? "Permitted" : "Withheld by licence policy"}</dd>
+                  </div>
+                </dl>
+              )}
 
               {editingId === asset.id ? (
                 <div className="mt-3 grid gap-2 rounded-xl bg-[#F8F6F1] p-2">

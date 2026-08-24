@@ -42,6 +42,17 @@ export function assetFromRow(
     createdBy: row.created_by || "",
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+    // Provenance for externally imported assets (Iconify). Null/empty for
+    // locally uploaded Husnalogy assets, which remain fully valid without it.
+    // Captured at import time and never refreshed from upstream, so a placed
+    // order keeps the licence terms that applied when it was purchased.
+    sourceProvider: row.source_provider || "",
+    sourceKey: row.source_key || "",
+    sourceCollection: row.source_collection || "",
+    sourceLicense: row.source_license || "",
+    sourceLicenseUrl: row.source_license_url || "",
+    sourceLicenseSpdx: row.source_license_spdx || "",
+    sourceAuthor: row.source_author || "",
   };
 }
 

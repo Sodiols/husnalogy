@@ -9,6 +9,7 @@
 import { getTrustedTemplateForCustomization } from "@/lib/customizer/versions";
 import { validateCustomerState, assertOwnedUploadPath, knownFamilySet, type ValidationViolation } from "@/lib/customizer/v2/validate";
 import { getFontCatalogSafe } from "@/lib/customizer/v2/server/google-fonts-catalog";
+import { applyElementAssetVerdict, collectElementAssetIds, verifyElementAssets } from "@/lib/customizer/server/element-assets";
 import { collectCustomerAssetReferences, stripEphemeralAssetUrls } from "@/lib/customizer/v2/asset-references";
 import { validatePrivateAssetOwnership } from "@/lib/customizer/server/private-assets";
 import { resolveFlagsIntoTemplate } from "@/lib/customizer/v2/feature-flags.server";
@@ -218,6 +219,28 @@ export async function validateCustomizationSave(
           message: `The upload used by grid slot "${slotId}" does not belong to this account.`,
         });
       }
+    }
+  }
+
+  // Element layers name a permanent Husnalogy asset. Verify every assetId
+  // against customizer_assets and drop any that does not resolve to a ready,
+  // customer-available asset — a forged UUID or a client-supplied src must
+  // never survive into a saved design (spec §44, §45).
+  const elementAssetIds = collectElementAssetIds(result.sanitizedEditorState);
+  if (elementAssetIds.length) {
+    const verdict = await verifyElementAssets(elementAssetIds);
+    if (verdict.rejected.size) {
+      const applied = applyElementAssetVerdict(result.sanitizedEditorState, verdict);
+      result.sanitizedEditorState = applied.editorState;
+      console.warn(`[customizer] Dropped unverifiable element assets for user ${userId}: ${applied.removed.join(", ")}`);
+      ownershipViolations.push({
+        code: "user-element-not-allowed-by-template",
+        message: "A decorative element is no longer available and was removed.",
+      });
+    } else {
+      // Even when all assets verify, the browser's display URLs are stripped:
+      // they expire, and the permanent asset is re-signed on read.
+      result.sanitizedEditorState = applyElementAssetVerdict(result.sanitizedEditorState, verdict).editorState;
     }
   }
 

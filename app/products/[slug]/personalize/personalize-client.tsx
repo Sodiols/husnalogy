@@ -349,7 +349,7 @@ export default function PersonalizeClient({ product, template }: { product: any;
   const allowElements = Boolean(template?.settings?.allowCustomerElements);
   const pageAllowsCustomerObjects = !allowedCustomerPages.length || allowedCustomerPages.includes(activePage);
   const tools = useMemo(
-    () => getCustomerTools({ allowAddText: pageAllowsCustomerObjects && anyPageAllowsText, hasUploads: hasUploadFields, allowElements: pageAllowsCustomerObjects && allowElements, allowShapes: pageAllowsCustomerObjects && customerShapesEnabled, allowLines: pageAllowsCustomerObjects && customerLinesEnabled, allowFrames: pageAllowsCustomerObjects && customerFramesEnabled, allowGrids: pageAllowsCustomerObjects && customerGridsEnabled, allowQRCode: pageAllowsCustomerObjects && qrEnabled, allowBackground: pageAllowsCustomerObjects && Boolean(template?.settings?.allowCustomerBackground), showLayers: customerLayersEnabled }),
+    () => getCustomerTools({ allowAddText: pageAllowsCustomerObjects && anyPageAllowsText, hasUploads: hasUploadFields, allowElements: pageAllowsCustomerObjects && allowElements, allowShapes: pageAllowsCustomerObjects && customerShapesEnabled, allowLines: pageAllowsCustomerObjects && customerLinesEnabled, allowFrames: pageAllowsCustomerObjects && customerFramesEnabled, allowGrids: pageAllowsCustomerObjects && customerGridsEnabled, allowQRCode: pageAllowsCustomerObjects && qrEnabled, allowTextPresets: pageAllowsCustomerObjects && anyPageAllowsText, allowBackground: pageAllowsCustomerObjects && Boolean(template?.settings?.allowCustomerBackground), showLayers: customerLayersEnabled }),
     [pageAllowsCustomerObjects, anyPageAllowsText, hasUploadFields, allowElements, customerShapesEnabled, customerLinesEnabled, customerFramesEnabled, customerGridsEnabled, qrEnabled, customerLayersEnabled, template?.settings?.allowCustomerBackground],
   );
 
@@ -557,6 +557,7 @@ export default function PersonalizeClient({ product, template }: { product: any;
   const addUserTextLayer = (
     position?: { x: number; y: number },
     preset: TextPlacementPreset = textPlacementPreset,
+    presetText = "",
   ): string | null => {
     if (!pageAllowsCustomerText(template, activePage) || !canAddCustomerObject()) return null;
     const canvasW = template?.canvasWidthPx || 1500;
@@ -572,7 +573,7 @@ export default function PersonalizeClient({ product, template }: { product: any;
     const draft = {
       page: activePage,
       name: style.name,
-      text: "",
+      text: presetText,
       x: placement.x,
       y: placement.y,
       width: style.width,
@@ -606,16 +607,16 @@ export default function PersonalizeClient({ product, template }: { product: any;
     setActiveTool("addText");
     // Hand the new object to the canvas so typing can start straight away; an
     // object left empty is discarded again.
-    setEditTextRequest((request) => ({ layerId: layer.id, requestId: (request?.requestId || 0) + 1, created: true }));
+    setEditTextRequest((request) => ({ layerId: layer.id, requestId: (request?.requestId || 0) + 1, created: !presetText }));
     return layer.id;
   };
 
   /** Toolbar action: insert one text object and stay in the resting state. */
-  const insertCustomerText = (preset: TextPlacementPreset = textPlacementPreset) => {
+  const insertCustomerText = (preset: TextPlacementPreset = textPlacementPreset, presetText = "") => {
     setWorkspaceMode("print");
     setActiveTool("addText");
     if (step === "options") setStep("design");
-    addUserTextLayer(undefined, preset);
+    addUserTextLayer(undefined, preset, presetText);
   };
 
   const addElementLayer = (element: LibraryElement, position?: { x: number; y: number }) => {
@@ -1667,8 +1668,9 @@ export default function PersonalizeClient({ product, template }: { product: any;
       if (layer.type === "text") setActiveTool("addText");
       else if (layer.type === "element") setActiveTool("elements");
       else if (layer.type === "image" || layer.type === "frame" || layer.type === "grid") setActiveTool("uploads");
-      else if (layer.type === "shape") setActiveTool("shapes");
-      else if (layer.type === "qrCode") setActiveTool("qr");
+      // Shapes, lines and QR codes are INSERTED from Elements but EDITED
+      // through their contextual toolbar. Re-opening the insertion library on
+      // every selection would fight the user, so the panel is left alone.
       else if (layer.type === "background") setActiveTool("background");
       else if (layer.type === "group") setActiveTool("layers");
       setMobilePanelOpen(layer.type !== "group");
@@ -2664,16 +2666,10 @@ export default function PersonalizeClient({ product, template }: { product: any;
         ? "Elements"
         : activeTool === "layers"
           ? "Layers"
-          : activeTool === "shapes"
-            ? "Shapes"
-            : activeTool === "frames"
-                ? "Frames"
-                : activeTool === "grids"
-                  ? "Photo grids"
-                  : activeTool === "qr"
-                    ? "QR code"
-                    : activeTool === "background"
-                      ? "Background"
+          : activeTool === "grids"
+            ? "Photo grids"
+            : activeTool === "background"
+              ? "Background"
         : "Product options";
 
   const panelContent =
@@ -2735,7 +2731,25 @@ export default function PersonalizeClient({ product, template }: { product: any;
         onPickUserFrame={(asset: any) => selectedLayer?.isUserLayer && updateUserLayer(selectedLayer.id, { src: asset.signedUrl || asset.url || "", assetId: asset.id || asset.assetId || "", bucket: asset.bucket || "customer-uploads", path: asset.path || "", assetReference: asset.assetReference, imageTransform: { zoom: 1, offsetX: 0, offsetY: 0, rotation: 0, flipX: false, flipY: false, fitMode: "cover" } }, `frame-photo-${selectedLayer.id}`)}
       />
     ) : activeTool === "elements" ? (
-      <CustomerElementsPanel onInsertElement={addElementLayer} allowedElementIds={allowedCustomerElementIds} />
+      <CustomerElementsPanel
+        onInsertElement={addElementLayer}
+        onClose={() => { setActiveTool("edit"); setMobilePanelOpen(false); }}
+        allowedElementIds={allowedCustomerElementIds}
+        // Shapes, lines and text stay NATIVE Husnalogy objects — the Elements
+        // panel only routes to the existing creators (spec §29, §33, §34).
+        onAddShape={addCustomerShape}
+        onAddLine={addCustomerLine}
+        onAddTextPreset={(preset, text) => insertCustomerText(preset, text)}
+        allowShapes={pageAllowsCustomerObjects && customerShapesEnabled}
+        allowLines={pageAllowsCustomerObjects && customerLinesEnabled}
+        allowText={pageAllowsCustomerObjects && anyPageAllowsText}
+        onAddFrame={addCustomerFrame}
+        onAddQRCode={addCustomerQRCode}
+        allowFrames={pageAllowsCustomerObjects && customerFramesEnabled}
+        allowQRCode={pageAllowsCustomerObjects && qrEnabled}
+        allowedShapes={allowedCustomerShapes}
+        allowedFrameMasks={allowedCustomerFrameMasks}
+      />
     ) : activeTool === "layers" ? (
       <CustomerLayersPanel
         layers={effectiveLayers}
@@ -2752,19 +2766,11 @@ export default function PersonalizeClient({ product, template }: { product: any;
         onDuplicate={duplicateLayer}
         onDelete={deleteUserLayer}
       />
-    ) : ["shapes", "frames", "grids", "qr", "background"].includes(activeTool) ? (
+    ) : ["grids", "background"].includes(activeTool) ? (
       <CustomerInsertPanel
         tool={activeTool}
-        onAddShape={addCustomerShape}
-        onAddLine={addCustomerLine}
-        onAddFrame={addCustomerFrame}
         onAddGrid={addCustomerGrid}
-        onAddQRCode={addCustomerQRCode}
         onSetBackground={setCustomerBackground}
-        allowShapes={pageAllowsCustomerObjects && customerShapesEnabled}
-        allowLines={pageAllowsCustomerObjects && customerLinesEnabled}
-        allowedShapes={allowedCustomerShapes}
-        allowedFrameMasks={allowedCustomerFrameMasks}
         allowedGridPresets={allowedCustomerGridPresets}
         allowedColors={allowedCustomerColors}
       />

@@ -1,15 +1,15 @@
 /**
- * Line lives inside Shape.
+ * Shapes, Lines, Frames and QR live inside the unified Elements library.
  *
- * This is a UI grouping change only: `line` remains its own Husnalogy object
- * type, created by its own code path, so existing documents containing lines
- * keep loading and rendering exactly as before.
+ * This is a UI grouping change only: `shape`, `line`, `frame` and `qrCode`
+ * remain their own Husnalogy object types, created by their own code paths, so
+ * existing documents keep loading and rendering exactly as before.
  */
 
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { getCustomerTools } from "@/app/components/customizer/CustomerToolRail";
+import { getCustomerTools, hasAnyElementsCapability } from "@/app/components/customizer/CustomerToolRail";
 
 const read = (relative: string) => readFileSync(path.join(process.cwd(), relative), "utf8");
 
@@ -17,48 +17,138 @@ const base = {
   allowAddText: false,
   hasUploads: false,
   allowElements: false,
+  allowShapes: false,
+  allowLines: false,
   allowFrames: false,
   allowGrids: false,
   allowQRCode: false,
+  allowTextPresets: false,
   allowBackground: false,
   showLayers: false,
 };
 const ids = (options: Record<string, boolean>) =>
   getCustomerTools({ ...base, ...options }).map((tool) => tool.id);
 
-describe("customer tool rail", () => {
-  it("never offers a separate Lines tool", () => {
-    expect(ids({ allowShapes: true, allowLines: true })).not.toContain("lines");
+describe("customer tool rail is consolidated", () => {
+  it.each(["shapes", "lines", "frames", "qr"])("never offers a separate %s tool", (removed) => {
+    const everything = ids({
+      allowAddText: true, hasUploads: true, allowElements: true, allowShapes: true,
+      allowLines: true, allowFrames: true, allowGrids: true, allowQRCode: true,
+      allowBackground: true, showLayers: true,
+    });
+    expect(everything).not.toContain(removed);
   });
 
-  it("offers one Shapes entry when either shapes or lines are permitted", () => {
-    expect(ids({ allowShapes: true, allowLines: false })).toContain("shapes");
-    // A template that allows ONLY lines must still expose the entry, or the
-    // customer would have no way to draw one at all.
-    expect(ids({ allowShapes: false, allowLines: true })).toContain("shapes");
-    expect(ids({ allowShapes: true, allowLines: true }).filter((id) => id === "shapes")).toHaveLength(1);
+  it("offers exactly one Elements entry when everything is permitted", () => {
+    const everything = ids({
+      allowAddText: true, hasUploads: true, allowElements: true, allowShapes: true,
+      allowLines: true, allowFrames: true, allowGrids: true, allowQRCode: true,
+      allowBackground: true, showLayers: true,
+    });
+    expect(everything.filter((id) => id === "elements")).toHaveLength(1);
   });
 
-  it("hides it entirely when neither is permitted", () => {
-    expect(ids({ allowShapes: false, allowLines: false })).not.toContain("shapes");
+  it("keeps the unrelated tools", () => {
+    const everything = ids({
+      allowAddText: true, hasUploads: true, allowElements: true, allowGrids: true,
+      allowBackground: true, showLayers: true,
+    });
+    for (const kept of ["edit", "addText", "uploads", "grids", "background", "layers", "options"]) {
+      expect(everything).toContain(kept);
+    }
   });
 });
 
-describe("customer insert panel", () => {
-  const panel = read("app/components/customizer/CustomerInsertPanel.tsx");
-
-  it("renders shapes and lines from the one shapes panel", () => {
-    expect(panel).toContain('if (tool === "shapes")');
-    expect(panel).not.toContain('if (tool === "lines")');
-    // Each half keeps its own permission gate.
-    expect(panel).toContain("allowShapes");
-    expect(panel).toContain("allowLines");
+describe("Elements appears when ANY contained capability is permitted", () => {
+  it.each([
+    ["graphics only", { allowElements: true }],
+    ["shapes only", { allowShapes: true }],
+    ["lines only", { allowLines: true }],
+    ["frames only", { allowFrames: true }],
+    ["QR only", { allowQRCode: true }],
+  ])("shows Elements with %s", (_label, options) => {
+    expect(ids(options)).toContain("elements");
   });
 
-  it("still creates lines through the line code path", () => {
-    // Not converted into a shape variant — the document model is unchanged.
-    expect(panel).toContain("onAddLine(style)");
-    expect(panel).toContain('["solid", "dashed", "dotted"]');
+  it("shows Elements when graphics are OFF but a native section is ON", () => {
+    // Graphics false / Shapes true → Elements still appears (spec §3).
+    expect(ids({ allowElements: false, allowShapes: true })).toContain("elements");
+    // Graphics false / QR true → Elements still appears.
+    expect(ids({ allowElements: false, allowQRCode: true })).toContain("elements");
+  });
+
+  it("shows Elements for text presets only when the caller asks for them", () => {
+    expect(ids({ allowTextPresets: true })).toContain("elements");
+  });
+
+  it("hides Elements entirely when every contained capability is off", () => {
+    expect(ids({})).not.toContain("elements");
+  });
+
+  it("never infers Elements from the standalone Text tool", () => {
+    // A surface can offer Add Text without rendering an Elements panel — the
+    // admin's customer preview does exactly that. Implying Elements from
+    // allowAddText would give it a button that opens the wrong panel.
+    expect(ids({ allowAddText: true })).toContain("addText");
+    expect(ids({ allowAddText: true })).not.toContain("elements");
+  });
+
+  it("the admin customer preview gets no Elements button it cannot service", () => {
+    const preview = read("app/admin/dashboard/design-builder/AdminCustomerPreview.tsx");
+    // It renders no Elements panel...
+    expect(preview).not.toContain('activeTool === "elements"');
+    // ...so it must not request any Elements capability either.
+    const call = preview.slice(preview.indexOf("getCustomerTools({"), preview.indexOf("getCustomerTools({") + 300);
+    for (const capability of ["allowElements", "allowShapes", "allowLines", "allowFrames", "allowQRCode", "allowTextPresets"]) {
+      expect(call, `${capability} must not be requested`).not.toContain(capability);
+    }
+  });
+
+  it("exposes the capability rule on its own for reuse", () => {
+    expect(hasAnyElementsCapability({})).toBe(false);
+    expect(hasAnyElementsCapability({ allowShapes: true })).toBe(true);
+    expect(hasAnyElementsCapability({ allowQRCode: true })).toBe(true);
+    expect(hasAnyElementsCapability({ allowElements: true })).toBe(true);
+  });
+});
+
+describe("customer insert panel keeps only its unrelated routes", () => {
+  const panel = read("app/components/customizer/CustomerInsertPanel.tsx");
+
+  it.each(["shapes", "frames", "qr"])("no longer handles the %s tool", (tool) => {
+    expect(panel).not.toContain(`if (tool === "${tool}")`);
+  });
+
+  it("still handles Photo Grids and Background", () => {
+    expect(panel).toContain('if (tool === "grids")');
+    expect(panel).toContain('if (tool === "background")');
+  });
+});
+
+describe("no dead tool state remains", () => {
+  const client = read("app/products/[slug]/personalize/personalize-client.tsx");
+  const rail = read("app/components/customizer/CustomerToolRail.tsx");
+
+  it.each(["shapes", "frames", "qr"])("the %s tool is gone from the CustomerTool union", (removed) => {
+    const union = rail.slice(rail.indexOf("export type CustomerTool"), rail.indexOf("type ToolDef"));
+    expect(union).not.toContain(`"${removed}"`);
+  });
+
+  it("selecting a shape or QR layer never activates a removed tool", () => {
+    expect(client).not.toContain('setActiveTool("shapes")');
+    expect(client).not.toContain('setActiveTool("qr")');
+    expect(client).not.toContain('setActiveTool("frames")');
+  });
+
+  it("routes only the remaining tools to the insert panel", () => {
+    expect(client).toContain('["grids", "background"].includes(activeTool)');
+  });
+
+  it("drops the removed rail icons", () => {
+    const icons = rail.slice(rail.indexOf("RAIL_ICONS"), rail.indexOf("export type CustomerTool"));
+    for (const removed of ["  shapes:", "  frames:", "  qr:", "  lines:"]) {
+      expect(icons).not.toContain(removed);
+    }
   });
 });
 
