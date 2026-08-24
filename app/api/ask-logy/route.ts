@@ -1,5 +1,5 @@
 import OpenAI from "openai";
-import { rateLimit, rejectLargeRequest } from "@/lib/security/rate-limit";
+import { rateLimitDistributed, rejectLargeRequest } from "@/lib/security/rate-limit";
 import { BUSINESS_INFO, ORDER_POLICY } from "@/lib/launch-config";
 
 export const runtime = "nodejs";
@@ -313,7 +313,7 @@ export async function POST(request) {
     const largeRequest = rejectLargeRequest(request, 24 * 1024);
     if (largeRequest) return largeRequest;
 
-    const limited = rateLimit(request, {
+    const limited = await rateLimitDistributed(request, {
       name: "ask-logy",
       limit: 30,
       windowMs: 60 * 1000,

@@ -78,6 +78,7 @@ function orderFromSupabaseRow(row: any = {}) {
       address: row.address || metadata.address || {},
       customizationDetails: row.customization_details || metadata.customizationDetails || {},
       uploadedFiles: row.uploaded_files || metadata.uploadedFiles || {},
+      checkoutSubmissionId: row.checkout_submission_id || metadata.checkoutSubmissionId || "",
       createdAt: row.created_at,
       updatedAt: row.updated_at,
     },
@@ -85,14 +86,52 @@ function orderFromSupabaseRow(row: any = {}) {
   );
 }
 
+// Shared compensation cleanup for a partially created order.
+//
+// CRITICAL: the Supabase JS client RESOLVES with `{ error }` rather than
+// throwing, so wrapping a delete in try/catch proves nothing — the catch
+// never fires and a failed rollback looks identical to a successful one.
+// Every rollback path goes through here so the returned error is actually
+// inspected and a stuck partial order is always loud in the server logs.
+//
+// Returns whether the order row is genuinely gone. order_items and
+// order_design_snapshots cascade on orders.id, so deleting the order row
+// removes the whole partial tree.
+async function rollbackPartialOrder(
+  supabase: ReturnType<typeof createServiceRoleClient>,
+  orderId: string,
+  stage: string,
+): Promise<{ rolledBack: boolean }> {
+  try {
+    const { error } = await supabase.from("orders").delete().eq("id", orderId);
+    if (error) {
+      console.error(
+        `[orders] ORDER_ROLLBACK_FAILED order=${orderId} stage=${stage}: a partial order row still exists and needs manual review.`,
+        error,
+      );
+      return { rolledBack: false };
+    }
+    return { rolledBack: true };
+  } catch (thrown) {
+    // Network/transport level failure (the client does throw for these).
+    console.error(
+      `[orders] ORDER_ROLLBACK_FAILED order=${orderId} stage=${stage}: a partial order row still exists and needs manual review.`,
+      thrown,
+    );
+    return { rolledBack: false };
+  }
+}
+
 // Insert the order, then freeze every personalized design before the order is
 // allowed to stand (spec §14).
 //
 // Supabase's REST client has no cross-table transaction, so this uses the
-// compensation strategy the spec allows: the customizations are only marked
-// "ordered" AFTER the snapshots exist, and a snapshot failure deletes the
-// half-created order (order_items and snapshots cascade) so the customer can
-// retry cleanly instead of ending up with an unprintable order.
+// compensation strategy the spec allows: the order row is only left standing
+// once its items AND its permanent design snapshots exist. Either failure
+// deletes the half-created order (order_items and snapshots cascade) so the
+// customer can retry cleanly instead of ending up with an incomplete or
+// unprintable order. A checkout_submission_id unique-index violation (a
+// duplicate/retried request racing itself) is handled by the caller, not here.
 async function insertSupabaseOrder(order) {
   const supabase = createServiceRoleClient();
   const { data, error } = await supabase
@@ -115,6 +154,7 @@ async function insertSupabaseOrder(order) {
       address: order.address || {},
       customization_details: order.customizationDetails || {},
       uploaded_files: order.uploadedFiles || {},
+      checkout_submission_id: order.checkoutSubmissionId || null,
       metadata: order,
       created_at: order.createdAt,
       updated_at: order.updatedAt,
@@ -150,7 +190,16 @@ async function insertSupabaseOrder(order) {
       )
       .select("id,metadata");
 
-    if (itemError) throw itemError;
+    if (itemError) {
+      // An order with no items is unusable — never leave it standing.
+      console.error(`[orders] order_items insert failed for order ${data.id}:`, itemError);
+      const { rolledBack } = await rollbackPartialOrder(supabase, data.id, "order_items");
+      const wrapped: any = new Error("Could not save the order items. Please try again.");
+      wrapped.code = "ORDER_ITEMS_FAILED";
+      wrapped.cause = itemError;
+      wrapped.rolledBack = rolledBack;
+      throw wrapped;
+    }
 
     for (const row of insertedItems || []) {
       const customizationId = (row as any)?.metadata?.customizationId;
@@ -185,29 +234,74 @@ async function insertSupabaseOrder(order) {
     if (!verdict.ok) {
       // Compensate: remove the order so no half-frozen order reaches production.
       // order_items and order_design_snapshots cascade on orders.id.
-      try {
-        await supabase.from("orders").delete().eq("id", data.id);
-      } catch (rollbackError) {
-        console.error(`Order ${data.id}: snapshot rollback failed; needs manual review.`, rollbackError);
-      }
+      const { rolledBack } = await rollbackPartialOrder(supabase, data.id, "order_design_snapshots");
       const error: any = new Error(verdict.error);
       error.code = "ORDER_SNAPSHOT_FAILED";
       error.snapshotFailures = outcome.failures;
+      error.rolledBack = rolledBack;
       throw error;
     }
 
     // Only now is the design genuinely ordered.
-    try {
-      await supabase
-        .from("product_customizations")
-        .update({ status: "ordered", order_id: data.id, updated_at: nowIso() })
-        .in("id", customizationIds);
-    } catch (updateError) {
-      console.error("Could not mark customizations as ordered:", updateError);
+    //
+    // The immutable order_design_snapshots row is the production source of
+    // truth, and it already exists at this point — so a failure to flip the
+    // ORIGINAL customization to "ordered" must NOT destroy an otherwise
+    // valid, fully snapshotted customer order. It is instead recorded so
+    // Admin can resynchronise, and the customization is re-locked below.
+    const { error: lockError } = await supabase
+      .from("product_customizations")
+      .update({ status: "ordered", order_id: data.id, updated_at: nowIso() })
+      .in("id", customizationIds);
+
+    if (lockError) {
+      console.error(
+        `[orders] CUSTOMIZATION_LOCK_FAILED order=${data.id} customizations=${customizationIds.join(",")}: the order and its immutable snapshot are valid, but the source customizations were not marked "ordered" and may still look editable.`,
+        lockError,
+      );
+      // Make the desynchronisation visible to Admin instead of silent, and
+      // retryable, without touching the valid order itself.
+      await recordOrderProductionIssue(supabase, data.id, {
+        code: "CUSTOMIZATION_LOCK_FAILED",
+        customizationIds: customizationIds.map(String),
+        message: lockError.message || "Could not mark customizations as ordered.",
+      });
     }
   }
 
   return order;
+}
+
+// Record a non-fatal production problem on an order that is otherwise valid
+// (customization lock desync, render enqueue failure, ...). Written into the
+// order's metadata so Admin order details can surface it and a retry can
+// clear it — never a reason to delete a placed order.
+async function recordOrderProductionIssue(
+  supabase: ReturnType<typeof createServiceRoleClient>,
+  orderId: string,
+  issue: { code: string; message: string; customizationIds?: string[] },
+) {
+  try {
+    const { data: current, error: readError } = await supabase
+      .from("orders")
+      .select("metadata")
+      .eq("id", orderId)
+      .maybeSingle();
+    if (readError || !current) {
+      console.error(`[orders] Could not read order ${orderId} to record production issue ${issue.code}.`, readError);
+      return;
+    }
+    const metadata = { ...(current.metadata || {}) };
+    const issues = Array.isArray(metadata.productionIssues) ? metadata.productionIssues : [];
+    issues.push({ ...issue, at: nowIso() });
+    metadata.productionIssues = issues.slice(-20);
+    const { error: writeError } = await supabase.from("orders").update({ metadata }).eq("id", orderId);
+    if (writeError) {
+      console.error(`[orders] Could not record production issue ${issue.code} on order ${orderId}.`, writeError);
+    }
+  } catch (thrown) {
+    console.error(`[orders] Could not record production issue ${issue.code} on order ${orderId}.`, thrown);
+  }
 }
 
 async function readSupabaseOrders(filters: any = {}) {
@@ -334,6 +428,7 @@ function normalizeOrderRequest(input: any, existing: any = {}) {
     customerName: clampString(input.customerName ?? existing.customerName, 160),
     customerEmail: clampString(input.customerEmail ?? existing.customerEmail, 254).toLowerCase(),
     customerPhone: clampString(input.customerPhone ?? existing.customerPhone, 40),
+    checkoutSubmissionId: clampString(input.checkoutSubmissionId ?? existing.checkoutSubmissionId, 100),
     address: deliveryMethod === "delivery" ? normalizeAddress(input, existing.address || {}) : {},
     deliveryMethod,
     deliveryChargeConfirmed: deliveryMethod === "store" ? true : Boolean(input.deliveryChargeConfirmed ?? existing.deliveryChargeConfirmed),
@@ -408,18 +503,63 @@ async function validateOrderCustomizations(order: any): Promise<Record<string, s
       const first = preflight.issues.find((issue) => issue.severity === "error");
       return { customization: first?.message || "A personalized design has a problem that must be fixed before checkout." };
     }
-    await supabase.from("customizer_preflight_results").insert({
+    // Audit row only — a logging failure must not block a valid checkout.
+    const { error: preflightLogError } = await supabase.from("customizer_preflight_results").insert({
       customization_id: customization.id,
       context: "checkout",
       ok: preflight.ok,
       blocking: preflight.blocking,
       issues: preflight.issues,
     });
+    if (preflightLogError) {
+      console.error(`[orders] Could not persist the checkout preflight audit row for customization ${customization.id}.`, preflightLogError);
+    }
   }
   return {};
 }
 
+// Checkout idempotency (spec: double-click, slow network, or a resent
+// request must never create a second order).
+//
+// SECURITY: an idempotency token is NOT an authorization token. The lookup is
+// always scoped to the authenticated customer, so knowing (or guessing)
+// another customer's submission id can never return their order. Uniqueness
+// in the database is also customer-scoped (customer_id, checkout_submission_id),
+// so two different customers reusing the same token are independent, while one
+// customer resending their own token is still perfectly idempotent.
+async function findOwnedOrderByCheckoutSubmissionId(checkoutSubmissionId: string, customerId: string) {
+  if (!checkoutSubmissionId || !customerId) return null;
+  const supabase = createServiceRoleClient();
+  const { data, error } = await supabase
+    .from("orders")
+    .select("*,order_items(*)")
+    .eq("checkout_submission_id", checkoutSubmissionId)
+    .eq("customer_id", customerId)
+    .maybeSingle();
+  if (error) throw error;
+  return data ? orderFromSupabaseRow(data) : null;
+}
+
 export async function createOrderRequest(input) {
+  const checkoutSubmissionId = clampString(input.checkoutSubmissionId, 100);
+  if (!checkoutSubmissionId) {
+    return { ok: false, errors: { checkoutSubmissionId: "A checkout submission id is required." } };
+  }
+
+  // The caller (the API route) has already replaced customerId with the
+  // authenticated user's id — never a client-supplied value.
+  const trustedCustomerId = cleanString(input.customerId);
+  if (!trustedCustomerId) {
+    return { ok: false, errors: { customerId: "Authentication is required to place an order." } };
+  }
+
+  // Fast path: this exact checkout attempt already succeeded for THIS
+  // customer (a retried click, a resent request, or a slow response the
+  // client never saw). Returning the existing order — not creating a new
+  // one — is what makes this idempotent rather than merely rate-limited.
+  const existingOrder = await findOwnedOrderByCheckoutSubmissionId(checkoutSubmissionId, trustedCustomerId);
+  if (existingOrder) return { ok: true, order: existingOrder, idempotent: true };
+
   const product = input.productSlug ? await getProductBySlug(input.productSlug) : null;
 
   if (product?.isStockOut) {
@@ -428,6 +568,7 @@ export async function createOrderRequest(input) {
 
   const order = normalizeOrderRequest({
     ...input,
+    checkoutSubmissionId,
     id: "",
     status: "pending",
     paymentStatus: "unpaid",
@@ -449,9 +590,20 @@ export async function createOrderRequest(input) {
   try {
     await insertSupabaseOrder(priced.order);
   } catch (error: any) {
-    // A failed design snapshot is a customer-facing outcome, not a 500: the
-    // order was rolled back and they can safely retry (spec §14).
-    if (error?.code === "ORDER_SNAPSHOT_FAILED") {
+    // Lost a race to a concurrent identical request from THIS customer (same
+    // submission id inserted a moment earlier): return their own order
+    // instead of failing. The recovery lookup is ownership-scoped exactly
+    // like the fast path, so a unique-index collision can never hand back a
+    // row belonging to somebody else.
+    if (error?.code === "23505" && String(error?.message || "").includes("checkout_submission_id")) {
+      const raced = await findOwnedOrderByCheckoutSubmissionId(checkoutSubmissionId, trustedCustomerId);
+      if (raced) return { ok: true, order: raced, idempotent: true };
+      return { ok: false, errors: { checkoutSubmissionId: "This checkout could not be completed. Please start a new checkout." } };
+    }
+    // A failed order-items insert or design snapshot is a customer-facing
+    // outcome, not a 500: the order was rolled back and they can safely
+    // retry (spec §14).
+    if (error?.code === "ORDER_SNAPSHOT_FAILED" || error?.code === "ORDER_ITEMS_FAILED") {
       return { ok: false, errors: { customization: error.message } };
     }
     throw error;

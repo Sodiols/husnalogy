@@ -158,6 +158,7 @@ const manifest = {
   projectRef,
   seededAt: new Date().toISOString(),
   productId,
+  productSlug: slug,
   templateId: template.id,
   customizationAId: customization.id,
   customerAssetReference: assetReference,

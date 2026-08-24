@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { CUSTOMIZER_APPROVED_FONTS } from "@/lib/customizer";
+import GoogleFontMultiSelect from "@/app/components/customizer/GoogleFontMultiSelect";
 import { CUSTOMIZER_FEATURE_FLAGS } from "@/lib/customizer/v2/feature-flags";
 import { GRID_PRESETS } from "@/lib/customizer/v2/grids";
 import EditableNumericStepper from "@/app/components/customizer/EditableNumericStepper";
@@ -299,7 +299,7 @@ export default function AdminTemplateSettings({ template, onChange, productName,
           <p className="mt-1 text-xs leading-5 text-[#303839]/50">Optional allowlists and hard page bounds. An empty allowlist keeps every available option enabled; saved customizations are checked against these rules on the server.</p>
         </div>
         <div className="grid gap-4 lg:grid-cols-2">
-          <Field label="Fonts"><MultiChoice value={settings.allowedCustomerFonts} options={CUSTOMIZER_APPROVED_FONTS.map((font) => ({ value: font.value, label: font.label }))} onChange={(value: string[]) => patchSettings({ allowedCustomerFonts: value })} /></Field>
+          <Field label="Fonts" hint="Leave empty to allow the complete Google Fonts catalog."><GoogleFontMultiSelect value={settings.allowedCustomerFonts} onChange={(value: string[]) => patchSettings({ allowedCustomerFonts: value })} /></Field>
           <Field label="Customer-created content pages"><MultiChoice value={settings.allowedCustomerPages} options={(t.pages || []).filter((page: any) => page.enabled !== false).map((page: any) => ({ value: page.id, label: page.label || page.name || page.id }))} onChange={(value: string[]) => patchSettings({ allowedCustomerPages: value })} /></Field>
           <Field label="Shapes"><MultiChoice value={settings.allowedCustomerShapes} options={["rectangle", "rounded-rectangle", "circle", "oval", "triangle", "polygon", "arch"].map((value) => ({ value, label: value.replaceAll("-", " ") }))} onChange={(value: string[]) => patchSettings({ allowedCustomerShapes: value })} /></Field>
           <Field label="Frame masks"><MultiChoice value={settings.allowedCustomerFrameMasks} options={["rectangle", "rounded", "circle", "oval", "arch", "arch-top", "arch-bottom"].map((value) => ({ value, label: value.replaceAll("-", " ") }))} onChange={(value: string[]) => patchSettings({ allowedCustomerFrameMasks: value })} /></Field>

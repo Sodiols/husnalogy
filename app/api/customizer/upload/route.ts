@@ -2,7 +2,7 @@ import sharp from "sharp";
 import type { Metadata } from "sharp";
 import { createHash } from "crypto";
 import { createClient } from "@/lib/supabase/server";
-import { rateLimit } from "@/lib/security/rate-limit";
+import { rateLimitDistributed } from "@/lib/security/rate-limit";
 import { sniffImageType, safeFileName } from "@/lib/customizer/v2/uploads";
 import { resolvePrivateAssetUrl } from "@/lib/customizer/server/private-assets";
 
@@ -18,7 +18,7 @@ const THUMB_PX = 384;
 // - Generates an optimized editor version + thumbnail alongside the original.
 // - Records the upload in customer_asset_library for reuse across products.
 export async function POST(request: Request) {
-  const limited = rateLimit(request, { name: "customizer-upload", limit: 40, windowMs: 10 * 60 * 1000 });
+  const limited = await rateLimitDistributed(request, { name: "customizer-upload", limit: 40, windowMs: 10 * 60 * 1000 });
   if (limited) return limited;
 
   const supabase = await createClient();

@@ -9,7 +9,7 @@
 //   letterSpacing px   (canvas, preview, SVG/PNG and PDF all read px)
 //   lineHeight    unitless multiplier of fontSize
 
-import { getFontByFamily } from "./fonts";
+import { DEFAULT_FONT_FAMILY, nearestWeight } from "./google-fonts";
 
 /* ---------------------------------------------------------------- values -- */
 
@@ -18,7 +18,7 @@ import { getFontByFamily } from "./fonts";
 import { DEFAULT_LETTER_SPACING, DEFAULT_LINE_HEIGHT } from "./text-layout";
 
 export const TEXT_TOOLBAR_DEFAULTS = {
-  fontFamily: "Cormorant Garamond",
+  fontFamily: DEFAULT_FONT_FAMILY,
   fontSize: 48,
   fontWeight: "400",
   fontStyle: "normal",
@@ -84,49 +84,62 @@ export function sharedTextStyleValue<T>(
 
 export type WeightOption = { value: string; label: string; disabled: boolean };
 
-const WEIGHT_LABELS: Array<{ value: string; label: string }> = [
-  { value: "300", label: "Light" },
-  { value: "400", label: "Regular" },
-  { value: "500", label: "Medium" },
-  { value: "600", label: "Semibold" },
-  { value: "700", label: "Bold" },
-];
+/** Human labels for the CSS weight scale. A family only ever offers the
+ *  entries it genuinely has — these are labels, not an allowlist. */
+const WEIGHT_LABELS: Record<string, string> = {
+  "100": "Thin",
+  "200": "Extra light",
+  "300": "Light",
+  "400": "Regular",
+  "500": "Medium",
+  "600": "Semibold",
+  "700": "Bold",
+  "800": "Extra bold",
+  "900": "Black",
+};
 
-function supportedWeights(fontFamily: string | undefined): string[] {
-  const font = getFontByFamily(fontFamily || TEXT_TOOLBAR_DEFAULTS.fontFamily);
-  const weights = font?.supportedWeights?.length ? font.supportedWeights : ["400", "700"];
-  return [...weights];
+export function weightLabel(weight: string): string {
+  return WEIGHT_LABELS[String(weight)] || String(weight);
 }
 
-/** Weight choices for a font. Unsupported weights stay visible but disabled so
- *  the admin can see the font simply has no such cut (spec §10). */
-export function resolveWeightOptions(fontFamily: string | undefined): WeightOption[] {
-  const supported = new Set(supportedWeights(fontFamily));
-  return WEIGHT_LABELS.map((entry) => ({ ...entry, disabled: !supported.has(entry.value) }));
+/** Weights with no catalog information — used only before the catalog has
+ *  loaded, and deliberately minimal so nothing unsupported is ever offered. */
+const UNKNOWN_FAMILY_WEIGHTS = ["400", "700"];
+
+function usableWeights(availableWeights: string[] | undefined): string[] {
+  const weights = (availableWeights || []).filter(Boolean).map(String);
+  return weights.length ? [...new Set(weights)].sort((a, b) => Number(a) - Number(b)) : [...UNKNOWN_FAMILY_WEIGHTS];
 }
 
-/** Nearest weight the font can actually render — this is what the renderer
+/**
+ * Weight choices for a family, derived from the Google Fonts catalog rather
+ * than a fixed list (spec §13). Only the weights the family actually ships
+ * are offered, so the toolbar can never request a cut production lacks.
+ */
+export function resolveWeightOptions(availableWeights: string[] | undefined): WeightOption[] {
+  return usableWeights(availableWeights).map((value) => ({
+    value,
+    label: weightLabel(value),
+    disabled: false,
+  }));
+}
+
+/** Nearest weight the family can actually render — this is what the renderer
  *  resolves to, so the toolbar must show the same thing. */
-export function nearestSupportedWeight(fontFamily: string | undefined, weight: unknown): string {
-  const supported = supportedWeights(fontFamily);
-  const requested = Number(weight) || 400;
-  if (supported.includes(String(requested))) return String(requested);
-  return supported
-    .slice()
-    .sort((a, b) => Math.abs(Number(a) - requested) - Math.abs(Number(b) - requested) || Number(a) - Number(b))[0]
-    || "400";
+export function nearestSupportedWeight(availableWeights: string[] | undefined, weight: unknown): string {
+  return nearestWeight(usableWeights(availableWeights), weight);
 }
 
-/** The weight the Bold button applies for this font (700 where available). */
-export function boldWeightForFont(fontFamily: string | undefined): string {
-  const supported = supportedWeights(fontFamily).map(Number).sort((a, b) => a - b);
+/** The weight the Bold button applies for this family (700 where available). */
+export function boldWeightForFont(availableWeights: string[] | undefined): string {
+  const supported = usableWeights(availableWeights).map(Number).sort((a, b) => a - b);
   const bold = supported.filter((weight) => weight >= 700)[0];
   return String(bold ?? supported[supported.length - 1] ?? 700);
 }
 
 /** The weight the Bold button returns to when toggled off. */
-export function regularWeightForFont(fontFamily: string | undefined): string {
-  const supported = supportedWeights(fontFamily).map(Number).sort((a, b) => a - b);
+export function regularWeightForFont(availableWeights: string[] | undefined): string {
+  const supported = usableWeights(availableWeights).map(Number).sort((a, b) => a - b);
   const regular = supported.filter((weight) => weight <= 400).pop();
   return String(regular ?? supported[0] ?? 400);
 }

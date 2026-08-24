@@ -4,14 +4,23 @@
 // layer is selected; every control is gated by the layer's admin-configured
 // customer permissions. Customer-added text gets the full set.
 
-import { CUSTOMIZER_APPROVED_FONTS } from "@/lib/customizer";
+import { useEffect } from "react";
 import EditableNumericStepper from "./EditableNumericStepper";
 import TextAlignmentDropdown from "./TextAlignmentDropdown";
 import ToolbarDropdown, { type ToolbarDropdownOption } from "./ToolbarDropdown";
+import GoogleFontSelector from "./GoogleFontSelector";
+import {
+  ensureGoogleFontLoaded,
+  reportGoogleFontLoadFailure,
+  useFamilyCapabilities,
+  useSelectableFamilies,
+} from "./useGoogleFonts";
 import {
   LETTER_SPACING_RULES,
   LINE_HEIGHT_RULES,
+  nearestSupportedWeight,
   resolveFontSizeBounds,
+  resolveWeightOptions,
 } from "@/lib/customizer/v2/text-toolbar";
 
 type Props = {
@@ -62,20 +71,35 @@ export default function CustomerContextToolbar({
   const align = style.textAlign || "center";
   const verticalAlign = style.verticalAlign || "middle";
   const lineHeight = Number(style.lineHeight ?? 1.2);
-  const fontOptions = CUSTOMIZER_APPROVED_FONTS.filter((font) => !allowedFonts.length || allowedFonts.includes(font.value));
-  const fontDropdownOptions: ToolbarDropdownOption[] = fontOptions.map((font) => ({
-    value: font.value,
-    label: font.label,
-    fontFamily: font.stack,
+
+  // Weights and italic availability come from the selected family's real
+  // Google Fonts variants, never a fixed list (spec §13).
+  const { families } = useSelectableFamilies(allowedFonts);
+  const capabilities = useFamilyCapabilities(style.fontFamily, families);
+  const weightOptions: ToolbarDropdownOption[] = resolveWeightOptions(capabilities.weights).map((option) => ({
+    value: option.value,
+    label: option.label,
   }));
-  const weightOptions: ToolbarDropdownOption[] = [
-    { value: "300", label: "Light" },
-    { value: "400", label: "Regular" },
-    { value: "500", label: "Medium" },
-    { value: "600", label: "Semibold" },
-    { value: "700", label: "Bold" },
-    { value: "800", label: "Extra bold" },
-  ];
+
+  // Load the face this layer actually uses so the canvas measures against real
+  // metrics instead of a fallback and then reflowing (spec §14).
+  useEffect(() => {
+    if (style.fontFamily) void ensureGoogleFontLoaded(style.fontFamily, weight, italic ? "italic" : "normal").catch(reportGoogleFontLoadFailure);
+  }, [style.fontFamily, weight, italic]);
+
+  // Switching family may leave the current weight unsupported — snap it to the
+  // nearest cut the new family genuinely has, grouped with the font change so
+  // it stays ONE undo step.
+  const onFontFamilyChange = (fontFamily: string) => {
+    const entry = families.find((item) => item.family.toLowerCase() === fontFamily.toLowerCase());
+    const nextWeights = entry?.weights?.length ? entry.weights : ["400", "700"];
+    const patch: Record<string, unknown> = { fontFamily };
+    const snapped = nearestSupportedWeight(nextWeights, weight);
+    if (snapped !== weight) patch.fontWeight = snapped;
+    if (italic && entry && !entry.hasItalic) patch.fontStyle = "normal";
+    void ensureGoogleFontLoaded(fontFamily, snapped, italic && entry?.hasItalic ? "italic" : "normal").catch(reportGoogleFontLoadFailure);
+    onStyleChange(patch, "fontFamily");
+  };
 
   const divider = <span className="mx-1 h-6 w-px shrink-0 bg-[#303839]/10" aria-hidden />;
   // Shared compact field styling. Numeric fields stay fully keyboard editable.
@@ -117,13 +141,16 @@ export default function CustomerContextToolbar({
       )}
 
       {canFont && (
-        <ToolbarDropdown
+        <GoogleFontSelector
           label="Font family"
-          value={style.fontFamily || "Cormorant Garamond"}
-          onChange={(fontFamily) => onStyleChange({ fontFamily })}
-          options={fontDropdownOptions}
-          width="w-52"
-          previewFont
+          value={style.fontFamily || ""}
+          onChange={onFontFamilyChange}
+          onOpen={() => {
+            if (style.fontFamily) void ensureGoogleFontLoaded(style.fontFamily, weight, italic ? "italic" : "normal").catch(reportGoogleFontLoadFailure);
+          }}
+          allowedFonts={allowedFonts}
+          className="w-52"
+          compact
         />
       )}
 
@@ -174,12 +201,16 @@ export default function CustomerContextToolbar({
             options={weightOptions}
             width="w-28"
           />
+          {/* Italic is offered only when the family genuinely ships one
+              (spec §13) — production would otherwise have no cut to render. */}
           <button
             type="button"
             aria-label="Italic"
             aria-pressed={italic}
+            disabled={!capabilities.hasItalic}
+            title={capabilities.hasItalic ? "Italic" : "This font has no italic style"}
             onClick={() => onStyleChange({ fontStyle: italic ? "normal" : "italic" })}
-            className={`${iconButton} font-display text-[17px] italic ${
+            className={`${iconButton} font-display text-[17px] italic disabled:cursor-not-allowed disabled:opacity-35 ${
               italic ? "bg-[#303839] text-white" : "text-[#303839] hover:bg-[#303839]/5"
             }`}
           >

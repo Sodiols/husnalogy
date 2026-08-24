@@ -19,3 +19,7 @@ playwright-report/
 * - Copy (*)/
 Copy of *
 
+
+# Supplied source archives / transfer artifacts (never part of the app)
+app.zip
+*.zip

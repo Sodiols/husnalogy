@@ -18,7 +18,7 @@ import {
 } from "@/lib/customizer/v2/server/render";
 import { renderFlatMockup } from "@/lib/customizer/v2/server/mockup-render";
 import { MOCKUP_RENDERER_VERSION } from "@/lib/customizer/v2/mockups";
-import { FONT_REGISTRY_VERSION } from "@/lib/customizer/v2/fonts";
+import { FONT_CATALOG_VERSION } from "@/lib/customizer/v2/google-fonts";
 import { getDisabledRenderFeature } from "@/lib/customizer/v2/feature-flags";
 import { assetReferenceHashMaterial, collectCustomerAssetReferences } from "@/lib/customizer/v2/asset-references";
 import { resolvePrivateAssetsForDelivery } from "@/lib/customizer/server/private-assets";
@@ -136,7 +136,7 @@ export function computeRenderInputHash(
     values: assetReferenceHashMaterial(customization.values || {}),
     editorState: assetReferenceHashMaterial(customization.renderData?.editorState || {}),
     selectedOptions: (customization as any).selectedOptions || {},
-    fontRegistryVersion: FONT_REGISTRY_VERSION,
+    fontRegistryVersion: FONT_CATALOG_VERSION,
     renderEngineVersion: "husnalogy-2.2.0",
     mockupRendererVersion: jobType === "mockup" ? MOCKUP_RENDERER_VERSION : undefined,
     mockupTemplate: jobType === "mockup"
@@ -527,16 +527,28 @@ export async function processRenderJob(jobId: string): Promise<RenderJobRow> {
           renderedAt: new Date().toISOString(),
         };
       }
-      await supabase
+      // The Supabase client resolves with { error } rather than throwing, so
+      // these must be inspected: a silent failure here means the render
+      // genuinely succeeded but nothing points at the production files.
+      const { error: printFilesError } = await supabase
         .from("product_customizations")
         .update({ print_files: printFiles })
         .eq("id", customization.id);
+      if (printFilesError) {
+        console.error(`[customizer] PRINT_FILES_SYNC_FAILED job=${jobId} customization=${customization.id}: outputs exist in storage but the customization was not updated.`, printFilesError);
+      }
       if (claimed.order_id) {
-        await supabase
+        const { error: snapshotSyncError } = await supabase
           .from("order_design_snapshots")
           .update({ print_files: printFiles, render_status: "completed" })
           .eq("order_id", claimed.order_id)
           .eq("customization_id", customization.id);
+        if (snapshotSyncError) {
+          // Fail the job rather than report success: a "completed" job whose
+          // order snapshot still reads queued/pending would hide a broken
+          // order from Admin. Failing it keeps the retry path in charge.
+          throw new RenderError("output-record-failed", `Could not attach production files to order ${claimed.order_id}: ${snapshotSyncError.message}`);
+        }
       }
     }
 
@@ -550,17 +562,28 @@ export async function processRenderJob(jobId: string): Promise<RenderJobRow> {
   } catch (error: any) {
     const code = getRenderErrorCode(error);
     const attempts = (Number(claimed.attempt_count) || 0) + 1;
-    await supabase.from("customizer_render_outputs").delete().eq("job_id", jobId);
-    if (uploadedPaths.length) await supabase.storage.from(RENDER_BUCKET).remove(uploadedPaths);
+    const { error: outputCleanupError } = await supabase.from("customizer_render_outputs").delete().eq("job_id", jobId);
+    if (outputCleanupError) {
+      console.error(`[customizer] Could not clean up render output rows for failed job ${jobId}; they may be orphaned.`, outputCleanupError);
+    }
+    if (uploadedPaths.length) {
+      const { error: storageCleanupError } = await supabase.storage.from(RENDER_BUCKET).remove(uploadedPaths);
+      if (storageCleanupError) {
+        console.error(`[customizer] Could not remove partial render files for failed job ${jobId}: ${uploadedPaths.join(", ")}`, storageCleanupError);
+      }
+    }
     console.error(`[customizer] Render job ${jobId} failed (attempt ${attempts}):`, error);
     const cancelled = code === "RENDER_CANCELLED";
     const nextStatus = cancelled ? "cancelled" : renderRetryStatus(attempts);
     if (claimed.order_id) {
-      await supabase
+      const { error: snapshotStatusError } = await supabase
         .from("order_design_snapshots")
         .update({ render_status: cancelled ? "failed" : nextStatus === "failed" ? "failed" : "queued" })
         .eq("order_id", claimed.order_id)
         .eq("customization_id", claimed.customization_id);
+      if (snapshotStatusError) {
+        console.error(`[customizer] RENDER_STATUS_SYNC_FAILED order=${claimed.order_id} job=${jobId}: the job failed but the snapshot status was not updated.`, snapshotStatusError);
+      }
     }
     return await finish({
       status: nextStatus,

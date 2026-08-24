@@ -120,20 +120,67 @@ describe("preflight", () => {
     expect(result.issues.map((i) => i.code)).toContain("low-resolution-image");
   });
 
-  it("flags fonts that are not in the registry", () => {
+  // Font identity is now checked against the trusted Google Fonts catalog.
+  const googleFamilies = new Set(["playfair display", "montserrat", "inter"]);
+
+  it("flags a family that is not an available Google Font", () => {
     const custom = {
       ...template,
       layers: [
         {
           ...template.layers[0],
           text: "hello",
+          // A genuine system font, not a Google Font — production could not
+          // reproduce it, so publishing must surface it (spec §23).
           textStyle: { fontFamily: "Comic Sans MS", fontSize: 48 },
         },
         template.layers[1],
       ],
     };
     const { document } = templateToDocument(custom);
-    const result = runPreflight(document);
+    const result = runPreflight(document, { knownFontFamilies: googleFamilies });
     expect(result.issues.map((i) => i.code)).toContain("unknown-font");
+    expect(result.issues.find((i) => i.code === "unknown-font")?.severity).toBe("error");
+  });
+
+  it("accepts a genuine Google Font family", () => {
+    const custom = {
+      ...template,
+      layers: [
+        { ...template.layers[0], text: "hello", textStyle: { fontFamily: "Playfair Display", fontSize: 48 } },
+        template.layers[1],
+      ],
+    };
+    const { document } = templateToDocument(custom);
+    const result = runPreflight(document, { knownFontFamilies: googleFamilies });
+    expect(result.issues.map((i) => i.code)).not.toContain("unknown-font");
+  });
+
+  it("matches family names case insensitively", () => {
+    const custom = {
+      ...template,
+      layers: [
+        { ...template.layers[0], text: "hello", textStyle: { fontFamily: "MONTSERRAT", fontSize: 48 } },
+        template.layers[1],
+      ],
+    };
+    const { document } = templateToDocument(custom);
+    const result = runPreflight(document, { knownFontFamilies: googleFamilies });
+    expect(result.issues.map((i) => i.code)).not.toContain("unknown-font");
+  });
+
+  it("does not assert font identity during a catalog outage", () => {
+    // No catalog available: skip the identity check rather than flagging every
+    // layer on the page (spec §28).
+    const custom = {
+      ...template,
+      layers: [
+        { ...template.layers[0], text: "hello", textStyle: { fontFamily: "Comic Sans MS", fontSize: 48 } },
+        template.layers[1],
+      ],
+    };
+    const { document } = templateToDocument(custom);
+    expect(runPreflight(document).issues.map((i) => i.code)).not.toContain("unknown-font");
+    expect(runPreflight(document, { knownFontFamilies: null }).issues.map((i) => i.code)).not.toContain("unknown-font");
   });
 });

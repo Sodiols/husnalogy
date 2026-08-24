@@ -64,10 +64,12 @@ describe("admin canvas geometry is memoized", () => {
     expect(adminCanvas).toContain('surface: "admin"');
   });
 
-  it("does not depend on a font revision it does not have", () => {
-    // The admin measurer is created once eagerly, unlike the customer one.
+  it("invalidates memoized geometry only when a confirmed used font loads", () => {
+    // The measurer remains eagerly available, while the shared font revision
+    // gives the memo one precise invalidation after real metrics arrive.
     expect(adminCanvas).toContain("if (!textMeasureRef.current) textMeasureRef.current = createCanvasMeasure();");
-    expect(adminCanvas).not.toContain("metricsRevision:");
+    expect(adminCanvas).toContain("const fontMetricsRevision = useGoogleFontMetricsRevision(");
+    expect(adminCanvas).toContain("metricsRevision: fontMetricsRevision");
   });
 });
 

@@ -8,8 +8,7 @@
 
 import { z } from "zod";
 import { getLayerPermissions } from "@/app/components/customizer/customizer-utils";
-import { CUSTOMIZER_APPROVED_FONTS } from "@/lib/customizer";
-import { listFonts } from "./fonts";
+import { DEFAULT_FONT_FAMILY } from "./google-fonts";
 import { isValidQRValue, normalizeQRCodeStyle } from "./qr";
 import { normalizeImageFilters } from "./image-filters";
 import { resolveImageCropCapabilities } from "./image-permissions";
@@ -218,13 +217,30 @@ export type CustomizationValidationResult = {
 
 /* ----------------------------------------------------------- main validate */
 
-// Fonts customers may select: the registry's customer set plus the legacy
-// approved list (existing customer toolbars offer these — rejecting them
-// would fail legitimate saves from older templates).
-const CUSTOMER_FONT_FAMILIES = new Set([
-  ...listFonts({ customerOnly: true }).map((f) => f.cssFamily),
-  ...CUSTOMIZER_APPROVED_FONTS.map((f) => f.value),
-]);
+/**
+ * Font validation options (spec §21).
+ *
+ * `knownFamilies` is the trusted, server-fetched Google Fonts catalog. A
+ * submitted family must exist there — an arbitrary string is never accepted.
+ *
+ * When the set is absent (catalog outage), font-identity checking is skipped
+ * rather than rejecting every legitimate save; the template allowlist below
+ * still applies, so a customer can never exceed what the template permits.
+ */
+export type FontValidationOptions = {
+  knownFamilies?: Set<string> | null;
+};
+
+function isKnownFontFamily(options: FontValidationOptions | undefined, family: unknown): boolean {
+  const known = options?.knownFamilies;
+  if (!known || known.size === 0) return true;
+  return known.has(String(family || "").trim().toLowerCase());
+}
+
+/** Build the lookup set the validator expects from a catalog. */
+export function knownFamilySet(families: Array<{ family: string }>): Set<string> {
+  return new Set(families.map((entry) => entry.family.trim().toLowerCase()));
+}
 
 function pageAllowsText(template: Record<string, any>, pageId: string): boolean {
   const page = (template?.pages || []).find((p: any) => p.id === pageId);
@@ -296,6 +312,7 @@ export function validateCustomerState(
     values?: Record<string, unknown>;
     editorState?: { layerOverrides?: Record<string, any>; userLayers?: any[] } | null;
   },
+  fontOptions?: FontValidationOptions,
 ): CustomizationValidationResult {
   const violations: ValidationViolation[] = [];
   const layers: any[] = Array.isArray(template?.layers) ? template.layers : [];
@@ -492,13 +509,13 @@ export function validateCustomerState(
       violations.push({ code: "user-group-not-allowed", message: "Grouping is not enabled for this design." });
       continue;
     }
-    if (layer.type === "text" && layer.textStyle?.fontFamily && !CUSTOMER_FONT_FAMILIES.has(String(layer.textStyle.fontFamily))) {
+    if (layer.type === "text" && layer.textStyle?.fontFamily && !isKnownFontFamily(fontOptions, layer.textStyle.fontFamily)) {
       violations.push({ code: "font-not-available", message: `Font "${layer.textStyle.fontFamily}" is not available.` });
-      layer.textStyle = { ...layer.textStyle, fontFamily: "Cormorant Garamond" };
+      layer.textStyle = { ...layer.textStyle, fontFamily: DEFAULT_FONT_FAMILY };
     }
     if (layer.type === "text" && layer.textStyle?.fontFamily && !settingAllows(template, "allowedCustomerFonts", layer.textStyle.fontFamily)) {
       violations.push({ code: "font-not-allowed-by-template", message: `Font "${layer.textStyle.fontFamily}" is not allowed for this design.` });
-      const fallback = settingList(template, "allowedCustomerFonts")[0] || "Cormorant Garamond";
+      const fallback = settingList(template, "allowedCustomerFonts")[0] || DEFAULT_FONT_FAMILY;
       layer.textStyle = { ...layer.textStyle, fontFamily: fallback };
     }
     const colourValues = layer.type === "text"
@@ -650,7 +667,7 @@ export function validateCustomerState(
           }
           s.fontSize = clampedFontSize;
         }
-        if (s.fontFamily !== undefined && !CUSTOMER_FONT_FAMILIES.has(String(s.fontFamily))) {
+        if (s.fontFamily !== undefined && !isKnownFontFamily(fontOptions, s.fontFamily)) {
           violations.push({ code: "font-not-available", layerId, message: `Font "${s.fontFamily}" is not available.` });
           delete s.fontFamily;
         }

@@ -10,6 +10,7 @@
 // canvases. What stays here is what is genuinely admin-only or genuinely DOM:
 // ruler guides, the inline text editor, panning, and the workspace fit maths.
 
+import { DEFAULT_FONT_FAMILY } from "@/lib/customizer/v2/google-fonts";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import CustomizerPreview from "@/app/components/customizer/CustomizerPreview";
 import InteractionStageClient from "@/app/components/customizer/interaction/InteractionStageClient";
@@ -41,6 +42,7 @@ import { resolveLayerSelectionGeometry } from "@/lib/customizer/v2/selection-geo
 import { isEmptyText } from "@/lib/customizer/v2/text-editing";
 import { actualSizeZoom, computeWorkspaceFit, resolveWorkspacePadding } from "@/lib/customizer/v2/zoom";
 import { layersForPage, selectableLayersForPage } from "./builder-utils";
+import { useGoogleFontMetricsRevision } from "@/app/components/customizer/useGoogleFonts";
 
 
 export default function AdminCanvas({
@@ -178,6 +180,12 @@ export default function AdminCanvas({
   // Re-derived on every render, including every pointermove of a drag. Same
   // cost profile as the customer workspace (spec §30).
   const layers = useMemo(() => layersForPage(template, pageId), [template, pageId]);
+  const fontMetricsRevision = useGoogleFontMetricsRevision(
+    layers.filter((layer: any) => layer?.type === "text").map((layer: any) => layer.textStyle?.fontFamily),
+  );
+  useEffect(() => {
+    if (fontMetricsRevision > 0) textMeasureRef.current = createCanvasMeasure();
+  }, [fontMetricsRevision]);
   const selectableLayers = useMemo(
     () => selectableLayersForPage(template, pageId, editingGroupId),
     [template, pageId, editingGroupId],
@@ -214,7 +222,7 @@ export default function AdminCanvas({
       text: String(text),
       width: Math.max(1, requestedWidth),
       height: Math.max(1, requestedHeight),
-      fontFamily: style.fontFamily || "Cormorant Garamond",
+      fontFamily: style.fontFamily || DEFAULT_FONT_FAMILY,
       fontSize: Number(style.fontSize) || 48,
       minFontSize: Number(style.minFontSize) || undefined,
       fontWeight: style.fontWeight || "400",
@@ -248,7 +256,7 @@ export default function AdminCanvas({
       text: String(text),
       width: resolved.width,
       height: resolved.height,
-      fontFamily: style.fontFamily || "Cormorant Garamond",
+      fontFamily: style.fontFamily || DEFAULT_FONT_FAMILY,
       fontSize: Number(style.fontSize) || 48,
       minFontSize: Number(style.minFontSize) || undefined,
       fontWeight: style.fontWeight || "400",
@@ -349,6 +357,7 @@ export default function AdminCanvas({
     measure: textMeasureRef.current!,
     safeBounds,
     editingGroupId,
+    metricsRevision: fontMetricsRevision,
   });
 
   const handleGestureStart = useCallback(() => {

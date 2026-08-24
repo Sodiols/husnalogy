@@ -1,12 +1,12 @@
 import { createContactMessage } from "@/lib/messages";
-import { rateLimit, rejectLargeRequest } from "@/lib/security/rate-limit";
+import { rateLimitDistributed, rejectLargeRequest } from "@/lib/security/rate-limit";
 
 export async function POST(request) {
   try {
     const largeRequest = rejectLargeRequest(request, 24 * 1024);
     if (largeRequest) return largeRequest;
 
-    const limited = rateLimit(request, {
+    const limited = await rateLimitDistributed(request, {
       name: "contact",
       limit: 6,
       windowMs: 10 * 60 * 1000,

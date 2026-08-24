@@ -5,6 +5,7 @@
 // same mask generator, and break lines through the same text layout service.
 // The output feeds @resvg/resvg-js for PNG production and pdf-lib for PDFs.
 
+import { DEFAULT_FONT_FAMILY } from "./google-fonts";
 import {
   getEffectiveLayersForPage,
   getFieldById,
@@ -100,7 +101,7 @@ function renderTextLayer(layer: any, field: any, values: Record<string, any>, me
       width: layer.width || 0,
       height: layer.height || 0,
       text: String(text),
-      fontFamily: style.fontFamily || "Cormorant Garamond",
+      fontFamily: style.fontFamily || DEFAULT_FONT_FAMILY,
       fontSize: Number(style.fontSize) || 48,
       fontWeight: style.fontWeight || "400",
       fontStyle: style.fontStyle === "italic" ? "italic" : "normal",
@@ -121,7 +122,7 @@ function renderTextLayer(layer: any, field: any, values: Record<string, any>, me
       text: String(text),
       width: box.width,
       height: box.height,
-      fontFamily: style.fontFamily || "Cormorant Garamond",
+      fontFamily: style.fontFamily || DEFAULT_FONT_FAMILY,
       fontSize: Number(style.fontSize) || 48,
       minFontSize: Number(style.minFontSize) || undefined,
       fontWeight: style.fontWeight || "400",
@@ -152,7 +153,7 @@ function renderTextLayer(layer: any, field: any, values: Record<string, any>, me
   return (
     `<g${rotate}><defs><clipPath id="${clipId}"><rect x="${boxLeft}" y="${boxTop}" width="${box.width}" height="${box.height}"/></clipPath></defs>` +
     `<text clip-path="url(#${clipId})" xml:space="preserve" text-anchor="${layout.anchor}" dominant-baseline="middle"` +
-    ` font-family="${esc(style.fontFamily || "Cormorant Garamond")}"` +
+    ` font-family="${esc(style.fontFamily || DEFAULT_FONT_FAMILY)}"` +
     ` font-size="${layout.fontSize}"` +
     attr("font-weight", style.fontWeight || "400") +
     (style.fontStyle === "italic" ? ` font-style="italic"` : "") +

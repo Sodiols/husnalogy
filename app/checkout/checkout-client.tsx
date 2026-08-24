@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { formatCurrency } from "@/lib/currency";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import useAuth from "../lib/useAuth";
 import {
   clearCart,
@@ -25,6 +25,12 @@ const initialCustomer = {
   deliveryNote: "",
 };
 
+function newCheckoutSubmissionId() {
+  return typeof crypto !== "undefined" && crypto.randomUUID
+    ? crypto.randomUUID()
+    : `checkout_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+}
+
 export default function CheckoutClient({ initialUser = undefined }: any) {
   const { user, authLoading } = useAuth(initialUser);
   const [items, setItems] = useState([]);
@@ -33,6 +39,10 @@ export default function CheckoutClient({ initialUser = undefined }: any) {
   const [saveAddress, setSaveAddress] = useState(true);
   const [acceptTerms, setAcceptTerms] = useState(true);
   const [status, setStatus] = useState({ loading: false, error: "", success: "" });
+  // One id per genuine checkout attempt (spec: idempotency). A failed
+  // request reuses it on retry; only a placed order rotates it, so a new
+  // intentional checkout always gets a fresh id.
+  const checkoutSubmissionIdRef = useRef(newCheckoutSubmissionId());
 
   useEffect(() => {
     if (authLoading) return undefined;
@@ -95,6 +105,7 @@ export default function CheckoutClient({ initialUser = undefined }: any) {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
+          checkoutSubmissionId: checkoutSubmissionIdRef.current,
           customerName,
           customerEmail: user.email,
           customerPhone: customer.customerPhone,
@@ -159,6 +170,11 @@ export default function CheckoutClient({ initialUser = undefined }: any) {
       };
 
       saveLocalOrder(savedOrder);
+
+      // A new order id was created (or an idempotent retry returned the same
+      // one) — either way this checkout attempt is finished, so the next
+      // Place Order press must be a new attempt with its own id.
+      checkoutSubmissionIdRef.current = newCheckoutSubmissionId();
 
       await clearCart(user);
       setCustomer(initialCustomer);

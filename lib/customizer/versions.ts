@@ -10,7 +10,8 @@ import { createServiceRoleClient } from "@/lib/supabase/server";
 import { getCustomizerTemplateByProductId } from "@/lib/customizer/store";
 import { validateCustomizerTemplateDetailed } from "@/lib/customizer";
 import { templateToDocument } from "@/lib/customizer/v2/document";
-import { collectFontDependencies } from "@/lib/customizer/v2/fonts";
+import { collectFontDependencies } from "@/lib/customizer/v2/google-fonts";
+import { getFontCatalogSafe } from "@/lib/customizer/v2/server/google-fonts-catalog";
 import { CUSTOMIZER_ENGINE_VERSION, CUSTOMIZER_SCHEMA_VERSION } from "@/lib/customizer/v2/types";
 import type { CustomizerRow } from "@/lib/supabase/database.types";
 import { hydrateAdminAssetUrls, stripAdminAssetUrls } from "@/lib/customizer/server/admin-assets";
@@ -81,7 +82,10 @@ export async function publishTemplateVersion(
   const textStyles = document.layers
     .filter((layer) => layer.type === "text")
     .map((layer: any) => layer.textStyle || {});
-  const fonts = collectFontDependencies(textStyles);
+  // Freeze the exact Google Font variants this published version depends on,
+  // so a later catalog change can never silently alter a published template.
+  const fontCatalog = await getFontCatalogSafe();
+  const fonts = collectFontDependencies(fontCatalog, textStyles);
 
   const supabase = createServiceRoleClient();
 
@@ -95,7 +99,7 @@ export async function publishTemplateVersion(
     p_schema_version: CUSTOMIZER_SCHEMA_VERSION,
     p_engine_version: CUSTOMIZER_ENGINE_VERSION,
     p_document: document,
-    p_font_dependencies: fonts.files,
+    p_font_dependencies: fonts.dependencies,
     p_published_by: publishedBy,
     p_notes: notes,
   });

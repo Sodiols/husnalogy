@@ -1,5 +1,6 @@
 "use client";
 
+import { DEFAULT_FONT_FAMILY } from "@/lib/customizer/v2/google-fonts";
 import { customerEditablePermissionBundle } from "@/lib/customizer";
 import {
   ADMIN_REORDER_POLICY,
@@ -114,7 +115,7 @@ export function newTextLayer(
     adminEditable: true,
     customerEditable: false,
     textStyle: {
-      fontFamily: "Cormorant Garamond",
+      fontFamily: DEFAULT_FONT_FAMILY,
       fontSize: placed ? preset.fontSize : 72,
       fontWeight: "400",
       color: "#303839",

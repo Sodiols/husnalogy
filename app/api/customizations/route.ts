@@ -7,6 +7,12 @@ import {
 import { validateCustomizationSave } from "@/lib/customizer/save-validation";
 import { resolvePrivateAssetsForDelivery } from "@/lib/customizer/server/private-assets";
 import { writeCustomizerAudit } from "@/lib/customizer/audit";
+import { rateLimit } from "@/lib/security/rate-limit";
+
+// Generous enough for the real autosave cadence (900ms debounce, spec
+// lib/customizer/save-queue.ts) plus retries, but still bounds a runaway or
+// scripted client from hammering the save endpoint.
+const SAVE_RATE_LIMIT = { name: "customizations-save", limit: 300, windowMs: 5 * 60 * 1000 };
 
 // GET /api/customizations — list customizations visible to the caller.
 // RLS restricts this to the caller's own rows (or all rows for admins).
@@ -43,6 +49,9 @@ export async function GET(request: Request) {
 
 // POST /api/customizations — create (or save a draft of) a customization.
 export async function POST(request: Request) {
+  const limited = rateLimit(request, SAVE_RATE_LIMIT);
+  if (limited) return limited;
+
   const supabase = await createClient();
   const {
     data: { user },

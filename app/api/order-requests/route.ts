@@ -1,6 +1,6 @@
 import { getSupabaseUserFromRequest } from "@/lib/auth/supabase-user";
 import { createOrderRequest, getOrderRequestsForCustomer } from "@/lib/orders/index";
-import { rateLimit, rejectLargeRequest } from "@/lib/security/rate-limit";
+import { rateLimitDistributed, rejectLargeRequest } from "@/lib/security/rate-limit";
 import { cleanString } from "@/lib/validation";
 
 export async function GET(request) {
@@ -28,7 +28,7 @@ export async function POST(request) {
     const largeRequest = rejectLargeRequest(request, 256 * 1024);
     if (largeRequest) return largeRequest;
 
-    const limited = rateLimit(request, {
+    const limited = await rateLimitDistributed(request, {
       name: "order-request",
       limit: 12,
       windowMs: 10 * 60 * 1000,
@@ -57,7 +57,12 @@ export async function POST(request) {
       return Response.json({ ok: false, errors: result.errors }, { status: 400 });
     }
 
-    return Response.json({ ok: true, order: result.order }, { status: 201 });
+    // 200 for an idempotent replay of a checkout this customer already
+    // completed, 201 when the order was genuinely created just now.
+    return Response.json(
+      { ok: true, order: result.order, idempotent: Boolean((result as any).idempotent) },
+      { status: (result as any).idempotent ? 200 : 201 },
+    );
   } catch (error) {
     console.error("Order request failed:", error);
     return Response.json({ ok: false, error: "Could not submit your request." }, { status: 500 });

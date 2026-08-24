@@ -200,26 +200,35 @@ mockup versions, font-registry version, and renderer version. Workers:
 
 ## 8. Fonts
 
-Registry: `lib/customizer/v2/fonts.ts`. Files live in `public/fonts/*.ttf`
-(Cormorant Garamond 400/500/600/700 + italic, Inter 400/500/600/700 +
-italic). System fonts (Georgia, Arial, …) remain listed for legacy templates
-but are `serverRenderable: false` — preflight warns and print jobs refuse
-them.
+The customizer uses the **complete Google Fonts library**, fetched server-side
+from the Google Fonts Developer API. There is no hardcoded font list and no
+bundled customizer font files.
 
-**To add a font:**
-1. Add the licensed TTF files to `public/fonts/`.
-2. Add a `FontRegistryEntry` in `FONT_REGISTRY` (id, cssFamily, files,
-   weights, availability, license, fallback).
-3. Load the webfont in `app/layout.tsx` (`next/font/local`) with the same family name.
-4. Optionally add it to `CUSTOMIZER_APPROVED_FONTS` in `lib/customizer/index.ts`
-   for the legacy pickers.
+**Full documentation: [CUSTOMIZER_FONTS.md](./CUSTOMIZER_FONTS.md)**
 
-Run `npm run validate:fonts` before every build. It checks that each registered
-production file exists, is non-empty, and parses as a real font.
-`public/fonts/README.md` records the licensing responsibility. Production
-rendering returns `FONT_FILE_MISSING` rather than silently substituting. The
-application no longer imports `next/font/google`, so a clean build does not
-depend on Google Fonts.
+Quick reference:
+
+- Requires `GOOGLE_FONTS_API_KEY` (server only, never `NEXT_PUBLIC_`).
+- Catalog: `lib/customizer/v2/server/google-fonts-catalog.ts` (cached ~24h,
+  serves a stale cache during a Google outage).
+- Browser catalog: `GET /api/customizer/fonts` — sanitized, no key, no file URLs.
+- Selector: `app/components/customizer/GoogleFontSelector.tsx`, shared by the
+  admin and customer toolbars and the allowed-fonts setting.
+- Rendering downloads only the variants a document uses and caches them in
+  `os.tmpdir()`; it returns `FONT_FILE_MISSING` rather than substituting.
+- Weight options and italic availability come from each family's real variants.
+- Legacy system fonts (Georgia, Arial, ...) still open, but publish preflight
+  reports `unknown-font` and production rendering refuses them.
+
+**To add a font:** nothing to do — every Google Font is already available.
+
+Run `npm run validate:fonts` before every build. It validates the architecture
+(modules present, old registry gone, key server-only, SSRF guard in place,
+branding fonts intact) without calling Google, so builds stay deterministic.
+
+Site typography is separate: `app/brand-fonts/` + `next/font/local` in
+`app/layout.tsx`. The app does not import `next/font/google`, so a clean build
+never depends on Google at build time.
 
 ## 9. Elements library
 

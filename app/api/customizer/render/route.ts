@@ -1,5 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
-import { rateLimit, rejectLargeRequest } from "@/lib/security/rate-limit";
+import { rateLimitDistributed, rejectLargeRequest } from "@/lib/security/rate-limit";
 import { enqueueRenderJob, processRenderJob, getRenderOutputs } from "@/lib/customizer/render-jobs";
 import { RenderError } from "@/lib/customizer/v2/server/render";
 import type { RenderJobType } from "@/lib/customizer/v2/types";
@@ -10,7 +10,7 @@ import type { RenderJobType } from "@/lib/customizer/v2/types";
 export async function POST(request: Request) {
   const tooLarge = rejectLargeRequest(request, 32 * 1024);
   if (tooLarge) return tooLarge;
-  const limited = rateLimit(request, { name: "customizer-render", limit: 20, windowMs: 10 * 60 * 1000 });
+  const limited = await rateLimitDistributed(request, { name: "customizer-render", limit: 20, windowMs: 10 * 60 * 1000 });
   if (limited) return limited;
 
   const supabase = await createClient();

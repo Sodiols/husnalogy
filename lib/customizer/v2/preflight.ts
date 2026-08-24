@@ -9,7 +9,6 @@ import type {
   PreflightResult,
   TextLayer,
 } from "./types";
-import { getFontByFamily } from "./fonts";
 import { layoutText, fallbackMeasure, type MeasureFn } from "./text-layout";
 import { getGridSlotRect, normalizeGridSlot, validateGridGeometry } from "./grids";
 import { validateGroupRelationships } from "./groups";
@@ -25,6 +24,16 @@ export type PreflightOptions = {
   blockOnLowResolution?: boolean;
   mockupAvailable?: boolean;
   productionRenderFailed?: boolean;
+  /**
+   * Lower-cased Google Font family names from the trusted catalog. When
+   * supplied, a family outside it is reported as `unknown-font` — this is how
+   * a legacy non-Google font (e.g. an old "Georgia" template) surfaces to the
+   * admin so it can be replaced before republishing (spec §23).
+   *
+   * Omitted during a catalog outage, where font identity simply is not
+   * asserted rather than flagging every layer.
+   */
+  knownFontFamilies?: Set<string> | null;
 };
 
 const MIN_READABLE_FONT_PX_AT_300DPI = 16; // ≈ 4pt at 300dpi
@@ -95,7 +104,7 @@ export function runPreflight(document: CustomizerDocument, options: PreflightOpt
     }
 
     if (layer.type === "text") {
-      checkTextLayer(layer, document, measure, issues, fieldById);
+      checkTextLayer(layer, document, measure, issues, fieldById, options.knownFontFamilies);
     }
 
     if (isImageLike(layer)) {
@@ -278,26 +287,24 @@ function checkTextLayer(
   measure: MeasureFn,
   issues: PreflightIssue[],
   fieldById: Map<string, { id: string; label: string; required: boolean }>,
+  knownFontFamilies?: Set<string> | null,
 ): void {
   const style = layer.textStyle;
-  const font = getFontByFamily(style.fontFamily);
 
-  if (!font) {
-    issues.push({
-      code: "unknown-font",
-      severity: "error",
-      layerId: layer.id,
-      pageId: layer.pageId,
-      message: `Font "${style.fontFamily}" is not in the Husnalogy font registry.`,
-    });
-  } else if (!font.serverRenderable) {
-    issues.push({
-      code: "font-substitution",
-      severity: layer.type === "text" && layer.required ? "error" : "warning",
-      layerId: layer.id,
-      pageId: layer.pageId,
-      message: `Font "${style.fontFamily}" is a system font and may render differently in print files.`,
-    });
+  // A family outside the trusted Google Fonts catalog cannot be produced.
+  // This is an error, not a substitution warning: production rendering
+  // refuses it rather than silently drawing a different typeface (spec §18).
+  if (knownFontFamilies && knownFontFamilies.size > 0) {
+    const family = String(style.fontFamily || "").trim().toLowerCase();
+    if (!family || !knownFontFamilies.has(family)) {
+      issues.push({
+        code: "unknown-font",
+        severity: "error",
+        layerId: layer.id,
+        pageId: layer.pageId,
+        message: `Font "${style.fontFamily}" is not an available Google Font. Choose a Google Font before publishing.`,
+      });
+    }
   }
 
   const page = document.pages.find((p) => p.id === layer.pageId);

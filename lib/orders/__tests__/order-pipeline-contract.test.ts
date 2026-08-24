@@ -35,8 +35,12 @@ describe("order design snapshot atomicity", () => {
   it("treats a snapshot failure as fatal for the order", () => {
     expect(orders).toContain("evaluateSnapshotOutcome");
     expect(orders).toContain("ORDER_SNAPSHOT_FAILED");
-    // Compensating rollback: the half-created order is removed.
-    expect(orders).toContain('await supabase.from("orders").delete().eq("id", data.id)');
+    // Compensating rollback: the half-created order is removed. This now goes
+    // through the shared rollbackPartialOrder helper, which (unlike the old
+    // inline delete) inspects the error Supabase RESOLVES with rather than
+    // assuming a throw — see order-transaction-safety.test.ts.
+    expect(orders).toContain('rollbackPartialOrder(supabase, data.id, "order_design_snapshots")');
+    expect(orders).toContain("async function rollbackPartialOrder(");
   });
 
   it("marks customizations ordered only after the snapshot exists", () => {

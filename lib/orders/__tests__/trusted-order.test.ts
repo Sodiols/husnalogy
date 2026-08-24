@@ -134,6 +134,63 @@ describe("applyTrustedOrderPricing", () => {
     expect(result.order.subtotal).toBe(0);
     expect(result.order.total).toBe(0);
   });
+
+  it.each([
+    ["zero", 0],
+    ["negative", -10],
+    ["fractional", 2.7],
+    ["NaN", Number.NaN],
+    ["a numeric string", "3" as unknown as number],
+    ["excessive", 999999],
+  ])("normalizes a %s quantity to a sane integer instead of trusting it", (_label, quantity) => {
+    const result = applyTrustedOrderPricing(
+      orderWith({ productId: "prod_1", quantity, price: 100, selectedOptions: {} }),
+      products,
+    );
+    expect(result.ok).toBe(true);
+    const priced = result.order.items[0].quantity;
+    expect(Number.isInteger(priced)).toBe(true);
+    expect(priced).toBeGreaterThanOrEqual(1);
+    expect(priced).toBeLessThanOrEqual(9999);
+    // The persisted subtotal always matches catalogue price x trusted quantity.
+    expect(result.order.subtotal).toBe(100 * priced);
+  });
+
+  it("never produces a negative or NaN monetary value from a malformed payload", () => {
+    const result = applyTrustedOrderPricing(
+      orderWith({ productId: "prod_1", quantity: 1, price: -5000, finalPrice: -5000, selectedOptions: {} }, {
+        subtotal: -5000,
+        total: -5000,
+        deliveryCharge: -5000,
+      }),
+      products,
+    );
+    expect(result.ok).toBe(true);
+    expect(result.order.subtotal).toBe(100);
+    expect(result.order.deliveryCharge).toBe(0);
+    expect(result.order.total).toBe(100);
+    expect(Number.isNaN(result.order.total)).toBe(false);
+  });
+
+  it("rejects the whole order when only one line of several is untrusted", () => {
+    const result = applyTrustedOrderPricing(
+      {
+        items: [
+          { productId: "prod_1", quantity: 1, price: 100, selectedOptions: {} },
+          { productId: "does-not-exist", quantity: 1, price: 1, selectedOptions: {} },
+        ],
+      },
+      products,
+    );
+    expect(result.ok).toBe(false);
+    expect(result.errors.product).toBeTruthy();
+  });
+
+  it("treats a non-array items payload as an empty cart rather than throwing", () => {
+    const result = applyTrustedOrderPricing({ items: "not-an-array", subtotal: 999 } as any, products);
+    expect(result.ok).toBe(true);
+    expect(result.order.subtotal).toBe(0);
+  });
 });
 
 describe("evaluateSnapshotOutcome", () => {

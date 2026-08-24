@@ -63,6 +63,8 @@ import { evaluateGroupAction, getDescendantIds, groupLayers, transformGroupChild
 import { DEFAULT_LINE_HEIGHT, createCanvasMeasure, getSingleLineTextBox, isSingleLineAutoSizeText } from "@/lib/customizer/v2/text-layout";
 import { resolveLayerSelectionGeometry } from "@/lib/customizer/v2/selection-geometry";
 import { resolveSelection, sanitizeSelection } from "@/lib/customizer/v2/selection";
+import { DEFAULT_FONT_FAMILY } from "@/lib/customizer/v2/google-fonts";
+import { ensureDesignFontsLoaded, reportGoogleFontLoadFailure } from "@/app/components/customizer/useGoogleFonts";
 import {
   canonicalTextLayerUpdate,
   getTextPlacementStyle,
@@ -212,6 +214,10 @@ export default function PersonalizeClient({ product, template }: { product: any;
   const [values, setValues] = useState<Record<string, any>>(() => buildInitialValues(template));
   const [editorState, setEditorState] = useState<EditorState>(() => normalizeEditorState({}));
   const [activePage, setActivePage] = useState(enabledPages[0]?.id || "front");
+  // Bumped once the design's Google Fonts have finished loading, so text is
+  // re-measured against REAL metrics instead of a fallback and then visibly
+  // reflowing (spec §14). Only the fonts this design uses are fetched.
+  const [fontEpoch, setFontEpoch] = useState(0);
   const [viewZoom, setViewZoom] = useState(1);
   // Real Fit (spec §9): reported by the workspace from its measured box, so the
   // Fit button always lands on a zoom where the whole page is visible on the
@@ -573,7 +579,7 @@ export default function PersonalizeClient({ product, template }: { product: any;
       height: style.height,
       zIndex: maxZ + 1,
       textStyle: {
-        fontFamily: allowedCustomerFonts[0] || "Cormorant Garamond",
+        fontFamily: allowedCustomerFonts[0] || DEFAULT_FONT_FAMILY,
         color: allowedCustomerColors[0] || "#303839",
         fontSize: style.fontSize,
         textAlign: style.textAlign,
@@ -754,8 +760,39 @@ export default function PersonalizeClient({ product, template }: { product: any;
   /* ----- selection ----- */
   const effectiveLayers = useMemo(
     () => getEffectiveLayersForPage(template, activePage, editorState),
-    [template, activePage, editorState],
+    // fontEpoch is a deliberate dependency: when the design's Google Fonts
+    // finish loading, the layers are recomputed so text is laid out with real
+    // metrics rather than the fallback used during the first paint (spec §14).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [template, activePage, editorState, fontEpoch],
   );
+
+  // Load exactly the faces this design uses — never the whole catalog — then
+  // trigger one re-measure pass.
+  useEffect(() => {
+    const styles = effectiveLayers
+      .filter((layer: any) => layer?.type === "text")
+      .map((layer: any) => layer.textStyle || {});
+    if (!styles.length) return;
+    let cancelled = false;
+    void ensureDesignFontsLoaded(styles)
+      .then(() => {
+        if (!cancelled) setFontEpoch((epoch) => epoch + 1);
+      })
+      .catch(reportGoogleFontLoadFailure);
+    return () => {
+      cancelled = true;
+    };
+    // Keyed by the distinct font faces in play, so this runs once per new face
+    // rather than on every geometry change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    effectiveLayers
+      .filter((layer: any) => layer?.type === "text")
+      .map((layer: any) => `${layer.textStyle?.fontFamily}|${layer.textStyle?.fontWeight}|${layer.textStyle?.fontStyle}`)
+      .sort()
+      .join(","),
+  ]);
   const selectedLayer = useMemo(
     () => effectiveLayers.find((layer: any) => layer.id === selectedLayerId) || null,
     [effectiveLayers, selectedLayerId],
@@ -1736,7 +1773,7 @@ export default function PersonalizeClient({ product, template }: { product: any;
       const text = selectedText;
       const box = getSingleLineTextBox({
         text: String(text),
-        fontFamily: nextStyle.fontFamily || "Cormorant Garamond",
+        fontFamily: nextStyle.fontFamily || DEFAULT_FONT_FAMILY,
         fontSize: nextStyle.fontSize,
         minFontSize,
         fontWeight: nextStyle.fontWeight || "400",

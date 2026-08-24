@@ -7,7 +7,8 @@
 // sanitized state — unauthorized changes are rejected with typed violations.
 
 import { getTrustedTemplateForCustomization } from "@/lib/customizer/versions";
-import { validateCustomerState, assertOwnedUploadPath, type ValidationViolation } from "@/lib/customizer/v2/validate";
+import { validateCustomerState, assertOwnedUploadPath, knownFamilySet, type ValidationViolation } from "@/lib/customizer/v2/validate";
+import { getFontCatalogSafe } from "@/lib/customizer/v2/server/google-fonts-catalog";
 import { collectCustomerAssetReferences, stripEphemeralAssetUrls } from "@/lib/customizer/v2/asset-references";
 import { validatePrivateAssetOwnership } from "@/lib/customizer/server/private-assets";
 import { resolveFlagsIntoTemplate } from "@/lib/customizer/v2/feature-flags.server";
@@ -155,10 +156,20 @@ export async function validateCustomizationSave(
     return { ok: false, status: 403, error: "Personalization is not enabled for this product.", violations: [{ code: "feature-disabled", message: "Customizer V2 is disabled for this product." }] };
   }
 
-  const result = validateCustomerState(authoritativeTemplate, {
-    values: hasValues ? body.values : {},
-    editorState,
-  });
+  // Font identity is validated against the trusted, cached Google Fonts
+  // catalog — one shared catalog serves the API, validation, weight
+  // resolution and the renderer (spec §22). A catalog outage degrades to
+  // template-allowlist-only checking instead of failing every save.
+  const fontCatalog = await getFontCatalogSafe();
+
+  const result = validateCustomerState(
+    authoritativeTemplate,
+    {
+      values: hasValues ? body.values : {},
+      editorState,
+    },
+    { knownFamilies: fontCatalog.length ? knownFamilySet(fontCatalog) : null },
+  );
   if (!isCustomizerFeatureEnabled(authoritativeTemplate, "customizer_v2_grids")) {
     const hasGridChanges = Object.values(editorState?.layerOverrides || {}).some((override: any) => override?.gridSlots && Object.keys(override.gridSlots).length);
     if (hasGridChanges) result.violations.push({ code: "feature-disabled", message: "Photo grids are disabled for this product." });

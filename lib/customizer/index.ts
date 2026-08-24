@@ -9,7 +9,7 @@ import {
   normalizeBoolean,
   normalizeStringArray,
 } from "@/lib/validation";
-import { listFonts } from "@/lib/customizer/v2/fonts";
+import { DEFAULT_FONT_FAMILY, normalizeAllowedCustomerFonts } from "@/lib/customizer/v2/google-fonts";
 import { normalizeGridSlot } from "@/lib/customizer/v2/grids";
 import { normalizeImageFilters } from "@/lib/customizer/v2/image-filters";
 import { normalizeQRCodeStyle } from "@/lib/customizer/v2/qr";
@@ -120,14 +120,9 @@ export const DEFAULT_CUSTOMIZER_SETTINGS = {
   adminNotes: "",
 };
 
-// Fonts approved for template text and customer text. These render consistently
-// in the live editor, exports, and previews (site-loaded webfonts + safe system
-// fonts). Keep this list in sync with fonts actually available in the app.
-export const CUSTOMIZER_APPROVED_FONTS = listFonts({ adminOnly: true }).map((font) => ({
-  value: font.cssFamily,
-  label: font.displayName,
-  stack: font.cssStack,
-}));
+// NOTE: the old fixed CUSTOMIZER_APPROVED_FONTS list is gone. Selectable
+// fonts now come from the full Google Fonts catalog, served by
+// GET /api/customizer/fonts and modelled in lib/customizer/v2/google-fonts.ts.
 
 // Expanded permission keys remain in stored documents for server enforcement.
 // The admin-facing source of truth is now the single customerEditable flag.
@@ -187,7 +182,7 @@ export function normalizeCustomerPermissions(_input: any, layer: any = {}): Reco
 }
 
 export const DEFAULT_TEXT_STYLE = {
-  fontFamily: "Cormorant Garamond",
+  fontFamily: DEFAULT_FONT_FAMILY,
   fontSize: 64,
   fontWeight: "400",
   color: "#303839",
@@ -680,6 +675,12 @@ export function normalizeCustomizerTemplate(input: any = {}, existing: any = {})
     .map((layer: any) => ({ ...layer, page: pageIds.has(layer.page) ? layer.page : pages[0]?.id || "front" }));
 
   const defaultPage = cleanString(source.defaultPage ?? prev.defaultPage);
+  const mergedSettings = {
+    ...DEFAULT_CUSTOMIZER_SETTINGS,
+    ...(prev.settings && typeof prev.settings === "object" ? prev.settings : {}),
+    ...(source.settings && typeof source.settings === "object" ? source.settings : {}),
+  };
+  mergedSettings.allowedCustomerFonts = normalizeAllowedCustomerFonts(mergedSettings.allowedCustomerFonts);
 
   return {
     enabled: normalizeBoolean(source.enabled ?? prev.enabled),
@@ -716,11 +717,7 @@ export function normalizeCustomizerTemplate(input: any = {}, existing: any = {})
           : Array.isArray(prev.settings?.mockupTemplates)
             ? prev.settings.mockupTemplates
             : [],
-    settings: {
-      ...DEFAULT_CUSTOMIZER_SETTINGS,
-      ...(prev.settings && typeof prev.settings === "object" ? prev.settings : {}),
-      ...(source.settings && typeof source.settings === "object" ? source.settings : {}),
-    },
+    settings: mergedSettings,
   };
 }
 
@@ -829,7 +826,7 @@ export function buildFallbackTemplateFromFields(product: any = {}): any {
         zIndex: 10 + index,
         ...(isImage
           ? {}
-          : { text: field.defaultValue || field.label, textStyle: { fontFamily: "Cormorant Garamond", fontSize: 64, textAlign: "center", color: "#303839" } }),
+          : { text: field.defaultValue || field.label, textStyle: { fontFamily: DEFAULT_FONT_FAMILY, fontSize: 64, textAlign: "center", color: "#303839" } }),
       };
     });
 
@@ -948,14 +945,15 @@ export function validateCustomizerTemplateDetailed(template: any = {}): { errors
     }
   });
 
-  // Fonts must come from the approved list so every surface renders the same.
-  const approvedFonts = new Set(CUSTOMIZER_APPROVED_FONTS.map((font) => font.value));
-  const badFonts = new Set<string>();
+  // Font identity is validated against the trusted Google Fonts catalog by
+  // preflight (which runs on publish and before production rendering), because
+  // that check needs the server-fetched catalog this pure validator has no
+  // access to. A missing text family is still caught here.
   layers.forEach((layer: any) => {
-    const font = layer?.textStyle?.fontFamily;
-    if (layer.type === "text" && font && !approvedFonts.has(font)) badFonts.add(font);
+    if (layer.type === "text" && !String(layer?.textStyle?.fontFamily || "").trim()) {
+      warnings.push(`Text layer "${layer.name || layer.id}" has no font family set.`);
+    }
   });
-  badFonts.forEach((font) => warnings.push(`Font "${font}" is not in the approved list and may render inconsistently.`));
 
   // Safe area / bleed sanity.
   const safe = t.safeArea || {};

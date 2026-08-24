@@ -66,8 +66,10 @@ describe("editable numeric stepper component contract", () => {
     }
     // The customer toolbar keeps its label-only numeric fields.
     expect(customerToolbar).toContain("showStepButtons={false}");
-    // The admin toolbar now shows explicit decrease/increase buttons (spec §9).
-    expect(adminToolbar).toContain("showStepButtons\n");
+    // The admin toolbar now shows explicit decrease/increase buttons (spec §9):
+    // a bare `showStepButtons` prop (true), not `showStepButtons={false}`.
+    // Matched line-ending agnostically so a CRLF checkout cannot break it.
+    expect(adminToolbar).toMatch(/showStepButtons\s*\r?\n/);
     expect(adminToolbar).toContain('sharedTextStyleValue(selectedLayers, "fontSize"');
     expect(adminToolbar).toContain('sharedTextStyleValue(selectedLayers, "letterSpacing"');
     expect(adminToolbar).toContain('sharedTextStyleValue(selectedLayers, "lineHeight"');

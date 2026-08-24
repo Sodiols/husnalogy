@@ -1,5 +1,5 @@
 import { createHash } from "crypto";
-import { FONT_REGISTRY_VERSION } from "./fonts";
+import { FONT_CATALOG_VERSION } from "./google-fonts";
 import { assetReferenceHashMaterial } from "./asset-references";
 
 export const MOCKUP_RENDERER_VERSION = "perspective-v1";
@@ -137,7 +137,7 @@ export function computeMockupInputHash(input: {
     ...input,
     documentState: assetReferenceHashMaterial(input.documentState),
     engineVersion: input.engineVersion || MOCKUP_RENDERER_VERSION,
-    fontRegistryVersion: FONT_REGISTRY_VERSION,
+    fontRegistryVersion: FONT_CATALOG_VERSION,
   };
   return createHash("sha256").update(JSON.stringify(stable(material))).digest("hex");
 }

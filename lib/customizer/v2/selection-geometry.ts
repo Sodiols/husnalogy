@@ -1,3 +1,4 @@
+import { DEFAULT_FONT_FAMILY } from "./google-fonts";
 import { resolveGroupBounds, rotatedAxisHalfExtents } from "./groups";
 import { DEFAULT_LINE_HEIGHT, resolveTextBox, type MeasureFn, type SafeBounds } from "./text-layout";
 
@@ -193,7 +194,7 @@ export function resolveLayerSelectionGeometry(
       width: layer.width,
       height: layer.height,
       text,
-      fontFamily: style.fontFamily || "Cormorant Garamond",
+      fontFamily: style.fontFamily || DEFAULT_FONT_FAMILY,
       fontSize: Number(style.fontSize) || 48,
       fontWeight: style.fontWeight || "400",
       fontStyle: style.fontStyle === "italic" ? "italic" : "normal",

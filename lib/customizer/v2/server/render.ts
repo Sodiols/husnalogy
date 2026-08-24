@@ -3,8 +3,13 @@
 // Pipeline: normalized template + values + editorState
 //   → deterministic SVG (lib/customizer/v2/svg — same layout/masks/crops as
 //     the browser renderer)
-//   → @resvg/resvg-js with the registry's font files (no system fonts)
+//   → @resvg/resvg-js with exactly the Google Font files this document needs
+//     (no system fonts, no bundled registry)
 //   → PNG buffers, and print-ready PDF via pdf-lib at exact physical size.
+//
+// Fonts are fetched on demand from the trusted Google Fonts catalog and cached
+// on disk; only the required variants are downloaded per render (spec §16).
+// Production output NEVER silently substitutes a family (spec §18).
 //
 // Images are inlined as data URIs before rendering: resvg never fetches the
 // network, and we only accept sources we trust (our own Supabase storage,
@@ -18,7 +23,15 @@ import { PDFDocument } from "pdf-lib";
 import { buildPageSvg, collectPageImageUrls } from "../svg";
 import type { EditorState } from "@/app/components/customizer/customizer-utils";
 import { getEnabledPages } from "@/app/components/customizer/customizer-utils";
-import { createServerMeasure, getAllFontFilePaths, findMissingFontFiles, findUnrenderableFonts } from "./server-fonts";
+import { DEFAULT_FONT_FAMILY } from "../google-fonts";
+import { getFontCatalog } from "./google-fonts-catalog";
+import {
+  collectTextStyles,
+  createServerMeasureFromCatalog,
+  findUnrenderableFonts,
+  preloadFontsForStyles,
+} from "./server-fonts";
+import { resolveFontsForStyles } from "./google-font-files";
 
 export class RenderError extends Error {
   code: string;
@@ -122,27 +135,53 @@ export type RenderCustomizationOptions = {
 export async function renderCustomizationPages(options: RenderCustomizationOptions): Promise<PageRenderResult[]> {
   const { template, values, editorState, mode } = options;
 
-  // Spec §10: production rendering must fail clearly when a design depends on
-  // a font the server cannot reproduce — never silently substitute.
-  if (mode === "print") {
-    const missing = findUnrenderableFonts(template, editorState);
-    if (missing.length) {
-      throw new RenderError(
-        "FONT_FILE_MISSING",
-        `Design uses fonts unavailable for production rendering: ${missing.join(", ")}`,
-      );
-    }
-    const missingFiles = findMissingFontFiles(template, editorState);
-    if (missingFiles.length) {
-      throw new RenderError("FONT_FILE_MISSING", `Required production font files are missing: ${missingFiles.join(", ")}`);
-    }
+  // The trusted Google Fonts catalog backs validation, measurement and the
+  // renderer alike. A catalog outage is a hard render failure, never a silent
+  // substitution — the job stays retryable and diagnosable.
+  let catalog;
+  try {
+    catalog = await getFontCatalog();
+  } catch (error) {
+    throw new RenderError(
+      "FONT_FILE_MISSING",
+      `The Google Fonts catalog is unavailable, so fonts cannot be resolved for rendering: ${error instanceof Error ? error.message : "unknown error"}`,
+    );
   }
 
-  const measure = createServerMeasure();
-  const fontFiles = getAllFontFilePaths();
-  if (!fontFiles.length) {
-    throw new RenderError("FONT_FILE_MISSING", "No server font files found under public/fonts.");
+  // Spec §18: production rendering must fail clearly when a design depends on
+  // a font the server cannot reproduce — never silently substitute.
+  const unresolvable = findUnrenderableFonts(catalog, template, editorState);
+  if (unresolvable.length) {
+    throw new RenderError(
+      "FONT_FILE_MISSING",
+      `Design uses fonts unavailable for production rendering: ${unresolvable.join(", ")}`,
+    );
   }
+
+  const textStyles = collectTextStyles(template, editorState);
+
+  // Download + parse exactly the variants this document needs, then measure
+  // with those real metrics so the server matches the browser.
+  const { parsed, missingFamilies } = await preloadFontsForStyles(catalog, textStyles);
+  if (missingFamilies.length) {
+    throw new RenderError(
+      "FONT_FILE_MISSING",
+      `Required production font files could not be obtained: ${missingFamilies.join(", ")}`,
+    );
+  }
+
+  const measure = createServerMeasureFromCatalog(catalog, parsed);
+
+  const { filePaths: fontFiles } = await resolveFontsForStyles(catalog, textStyles);
+  // A design with text MUST have resolved font files; a design with none
+  // (images, shapes, grids only) legitimately needs no fonts at all.
+  if (textStyles.length && !fontFiles.length) {
+    throw new RenderError("FONT_FILE_MISSING", "No font files could be resolved for this design.");
+  }
+
+  // resvg's default family must be one this render actually loaded, so a text
+  // run with no explicit family still draws with a real, intended typeface.
+  const defaultFontFamily = String(textStyles.find((style) => style?.fontFamily)?.fontFamily || DEFAULT_FONT_FAMILY);
 
   const pages = getEnabledPages(template).filter(
     (page: any) => !options.pageIds || options.pageIds.includes(page.id),
@@ -195,7 +234,7 @@ export async function renderCustomizationPages(options: RenderCustomizationOptio
         font: {
           fontFiles,
           loadSystemFonts: false,
-          defaultFontFamily: "Cormorant Garamond",
+          defaultFontFamily,
         },
         background: options.transparentBackground ? undefined : "#ffffff",
       });

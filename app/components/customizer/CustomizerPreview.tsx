@@ -27,6 +27,7 @@ import {
   resolveLayerText,
   type EditorState,
 } from "./customizer-utils";
+import { useGoogleFontMetricsRevision } from "./useGoogleFonts";
 
 type Props = {
   template: any;
@@ -495,6 +496,13 @@ export default function CustomizerPreview({
     () => getEffectiveLayersForPage(template, activePage?.id, editorState),
     [template, activePage, editorState],
   );
+  const googleFontMetricsRevision = useGoogleFontMetricsRevision(
+    resolvedLayers.filter((layer: any) => layer?.type === "text").map((layer: any) => layer.textStyle?.fontFamily),
+  );
+  // Zero retains deterministic hydration metrics. Every confirmed face load
+  // bumps this value, invalidating TextLayer's layout memo without touching
+  // document state, selection, editing state, or Undo history.
+  const fontMeasurementRevision = fontsReady ? googleFontMetricsRevision + 1 : 0;
   // Applied last, on top of every override the document already carries, so an
   // in-flight gesture always wins over the persisted value it is replacing.
   const layers = useMemo(
@@ -555,7 +563,7 @@ export default function CustomizerPreview({
             <QRCodeLayer layer={layer} />
           ) : layer.type === "group" ? null
           : layer.type === "text" ? (
-            <TextLayer layer={layer} field={field} values={values} fontsReady={fontsReady} idPrefix={idPrefix} safeBounds={safeBounds} />
+            <TextLayer layer={layer} field={field} values={values} fontsReady={fontMeasurementRevision} idPrefix={idPrefix} safeBounds={safeBounds} />
           ) : (
             null
           );

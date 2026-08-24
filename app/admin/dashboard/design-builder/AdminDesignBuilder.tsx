@@ -8,6 +8,8 @@
 // Collapsed: a launch card with a live summary. Open: a full-screen
 // professional editor (fixed overlay, no site chrome).
 
+import { DEFAULT_FONT_FAMILY } from "@/lib/customizer/v2/google-fonts";
+import { ensureDesignFontsLoaded, reportGoogleFontLoadFailure } from "@/app/components/customizer/useGoogleFonts";
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
@@ -97,7 +99,7 @@ function constrainTextLayerBox(template: any, layerId: string): any {
     text: String(layer.text || ""),
     width: layer.width,
     height: layer.height,
-    fontFamily: style.fontFamily || "Cormorant Garamond",
+    fontFamily: style.fontFamily || DEFAULT_FONT_FAMILY,
     fontSize: Number(style.fontSize) || 48,
     minFontSize: Number(style.minFontSize) || undefined,
     fontWeight: style.fontWeight || "400",
@@ -113,7 +115,7 @@ function constrainTextLayerBox(template: any, layerId: string): any {
     text: String(layer.text || ""),
     width,
     height: layer.height,
-    fontFamily: style.fontFamily || "Cormorant Garamond",
+    fontFamily: style.fontFamily || DEFAULT_FONT_FAMILY,
     fontSize: Number(style.fontSize) || 48,
     minFontSize: Number(style.minFontSize) || undefined,
     fontWeight: style.fontWeight || "400",
@@ -391,6 +393,21 @@ export default function AdminDesignBuilder({
       document.body.style.overflow = previous;
     };
   }, [studioOpen]);
+
+  // Load exactly the Google Font faces this template's text uses, so the admin
+  // canvas measures and draws with real metrics rather than a fallback that
+  // then reflows (spec §14). Never the whole catalog.
+  const templateFontKey = (t.layers || [])
+    .filter((layer: any) => layer?.type === "text")
+    .map((layer: any) => `${layer.textStyle?.fontFamily}|${layer.textStyle?.fontWeight}|${layer.textStyle?.fontStyle}`)
+    .sort()
+    .join(",");
+  useEffect(() => {
+    const styles = (tRef.current.layers || [])
+      .filter((layer: any) => layer?.type === "text")
+      .map((layer: any) => layer.textStyle || {});
+    if (styles.length) void ensureDesignFontsLoaded(styles).catch(reportGoogleFontLoadFailure);
+  }, [templateFontKey]);
 
   const settings = t.settings || {};
   const enabledPages = getEnabledBuilderPages(t);

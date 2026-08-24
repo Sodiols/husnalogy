@@ -172,8 +172,9 @@ export async function createOrderDesignSnapshots(
       });
       if (insertError) throw insertError;
 
-      // Persist the preflight run for the audit trail.
-      await supabase.from("customizer_preflight_results").insert({
+      // Persist the preflight run for the audit trail. This is a diagnostic
+      // record, not order state, so a failure is logged rather than fatal.
+      const { error: preflightLogError } = await supabase.from("customizer_preflight_results").insert({
         customization_id: customization.id,
         order_id: order.id,
         context: "order",
@@ -181,21 +182,51 @@ export async function createOrderDesignSnapshots(
         blocking: preflight.blocking,
         issues: preflight.issues,
       });
+      if (preflightLogError) {
+        console.error(`[customizer] Could not persist the order preflight audit row for order ${order.id}.`, preflightLogError);
+      }
 
       // Queue production rendering (spec §23). The protected worker endpoint
       // (or an admin retry) processes these; enqueue failures never block the
-      // order.
-      try {
-        if (isCustomizerFeatureEnabled(authoritativeTemplate, "customizer_v2_server_rendering")) {
+      // order — but they must never leave the snapshot silently looking
+      // healthy either. A snapshot whose renders were never queued is marked
+      // "failed" so Admin can see it and the existing retry path can pick it up.
+      if (isCustomizerFeatureEnabled(authoritativeTemplate, "customizer_v2_server_rendering")) {
+        try {
           const { enqueueRenderJob } = await import("@/lib/customizer/render-jobs");
           await enqueueRenderJob({ customizationId: customization.id, orderId: order.id, jobType: "print_png", priority: 10 });
           if (isCustomizerFeatureEnabled(authoritativeTemplate, "customizer_v2_print_pdf")) {
             await enqueueRenderJob({ customizationId: customization.id, orderId: order.id, jobType: "print_pdf", priority: 10 });
           }
-          await supabase.from("order_design_snapshots").update({ render_status: "queued" }).eq("order_id", order.id).eq("customization_id", customization.id);
+          const { error: queuedStatusError } = await supabase
+            .from("order_design_snapshots")
+            .update({ render_status: "queued" })
+            .eq("order_id", order.id)
+            .eq("customization_id", customization.id);
+          if (queuedStatusError) {
+            console.error(`[customizer] RENDER_STATUS_SYNC_FAILED order=${order.id} customization=${customization.id}: renders are queued but the snapshot still reads "pending".`, queuedStatusError);
+          }
+        } catch (queueError) {
+          console.error(`[customizer] RENDER_ENQUEUE_FAILED order=${order.id} customization=${customization.id}: the order and snapshot are valid, but production renders were not queued and need an Admin retry.`, queueError);
+          const { error: failedStatusError } = await supabase
+            .from("order_design_snapshots")
+            .update({
+              render_status: "failed",
+              preflight: {
+                ...preflight,
+                renderQueueError: {
+                  code: "RENDER_ENQUEUE_FAILED",
+                  message: queueError instanceof Error ? queueError.message : String(queueError),
+                  at: new Date().toISOString(),
+                },
+              },
+            })
+            .eq("order_id", order.id)
+            .eq("customization_id", customization.id);
+          if (failedStatusError) {
+            console.error(`[customizer] Could not mark snapshot render_status=failed for order ${order.id}.`, failedStatusError);
+          }
         }
-      } catch (queueError) {
-        console.error(`[customizer] Could not queue print renders for order ${order.id}:`, queueError);
       }
 
       created += 1;

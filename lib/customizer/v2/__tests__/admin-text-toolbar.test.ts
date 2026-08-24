@@ -211,27 +211,60 @@ describe("admin text toolbar — numeric fields", () => {
 /* -------------------------------------------------------------- weights --- */
 
 describe("admin text toolbar — font weight", () => {
-  it("offers the five named weights and disables cuts the font does not have", () => {
-    const options = resolveWeightOptions("Cormorant Garamond");
-    expect(options.map((option) => option.label)).toEqual(["Light", "Regular", "Medium", "Semibold", "Bold"]);
-    // The registry has 400/500/600/700 for Cormorant Garamond — no 300 cut.
-    expect(options.find((option) => option.value === "300")?.disabled).toBe(true);
-    expect(options.find((option) => option.value === "600")?.disabled).toBe(false);
+  // Weights now come from the selected family's real Google Fonts variants,
+  // so these take the family's available weights rather than a family name.
+  const PLAYFAIR = ["400", "700"]; // serif with no light/medium cuts
+  const MONTSERRAT = ["100", "400", "600", "800"]; // wide variable-ish range
+
+  it("offers exactly the weights the family ships — never a fixed list", () => {
+    expect(resolveWeightOptions(PLAYFAIR).map((option) => option.value)).toEqual(["400", "700"]);
+    expect(resolveWeightOptions(MONTSERRAT).map((option) => option.value)).toEqual(["100", "400", "600", "800"]);
   });
 
-  it("never shows a weight the renderer will not draw", () => {
-    // Georgia only registers 400/700, so 500 resolves to the nearest cut.
-    expect(nearestSupportedWeight("Georgia", "500")).toBe("400");
-    expect(nearestSupportedWeight("Cormorant Garamond", "500")).toBe("500");
-    expect(nearestSupportedWeight("Cormorant Garamond", "300")).toBe("400");
+  it("labels weights on the standard CSS scale", () => {
+    expect(resolveWeightOptions(PLAYFAIR).map((option) => option.label)).toEqual(["Regular", "Bold"]);
+    expect(resolveWeightOptions(MONTSERRAT).map((option) => option.label)).toEqual([
+      "Thin",
+      "Regular",
+      "Semibold",
+      "Extra bold",
+    ]);
+  });
+
+  it("never offers a weight the family cannot draw", () => {
+    // Playfair has no 300/500/600 — none of them may appear as an option.
+    const values = resolveWeightOptions(PLAYFAIR).map((option) => option.value);
+    expect(values).not.toContain("300");
+    expect(values).not.toContain("500");
+    expect(values).not.toContain("600");
+  });
+
+  it("snaps an unavailable weight to the nearest cut the renderer will use", () => {
+    expect(nearestSupportedWeight(PLAYFAIR, "500")).toBe("400");
+    expect(nearestSupportedWeight(PLAYFAIR, "600")).toBe("700");
+    expect(nearestSupportedWeight(MONTSERRAT, "700")).toBe("800");
+    expect(nearestSupportedWeight(MONTSERRAT, "400")).toBe("400");
+  });
+
+  it("falls back to a safe pair when the catalog has not loaded yet", () => {
+    expect(resolveWeightOptions(undefined).map((option) => option.value)).toEqual(["400", "700"]);
+    expect(resolveWeightOptions([]).map((option) => option.value)).toEqual(["400", "700"]);
   });
 
   it("toggles bold to the heaviest available cut and back to regular", () => {
-    expect(boldWeightForFont("Cormorant Garamond")).toBe("700");
-    expect(regularWeightForFont("Cormorant Garamond")).toBe("400");
+    expect(boldWeightForFont(PLAYFAIR)).toBe("700");
+    expect(regularWeightForFont(PLAYFAIR)).toBe("400");
+    // Montserrat's heaviest is 800 and its lightest-at-or-below-400 is 400.
+    expect(boldWeightForFont(MONTSERRAT)).toBe("800");
+    expect(regularWeightForFont(MONTSERRAT)).toBe("400");
     expect(isBoldWeight("700")).toBe(true);
     expect(isBoldWeight("600")).toBe(true);
     expect(isBoldWeight("400")).toBe(false);
+  });
+
+  it("handles a family whose only cut is heavy", () => {
+    expect(boldWeightForFont(["900"])).toBe("900");
+    expect(regularWeightForFont(["900"])).toBe("900");
   });
 });
 
@@ -765,14 +798,34 @@ describe("admin text toolbar — structure and accessibility", () => {
   });
 
   it("keeps the font family and weight triggers wide enough to read", () => {
-    // "Cormorant Garamond" at 13px semibold needs ~130px plus chevron and padding.
+    // A long Google family name at 13px semibold needs ~130px plus chevron
+    // and padding.
     expect(CONTROL_WIDTH.fontFamily.comfortable).toBeGreaterThanOrEqual(168);
-    // "Semibold" is the longest weight label.
+    // "Extra bold" is the longest weight label.
     expect(CONTROL_WIDTH.fontWeight.comfortable).toBeGreaterThanOrEqual(92);
-    // The menu is wider than its trigger and shows the full names.
-    expect(toolbarSource).toContain("menuWidth={264}");
-    expect(toolbarSource).toContain("previewFont");
     expect(dropdownSource).toContain("Math.max(menuWidth ?? 0, rect.width");
+  });
+
+  it("uses the shared searchable Google Fonts selector for the family control", () => {
+    // The family control is no longer a fixed-option ToolbarDropdown — both
+    // toolbars share ONE selector backed by the Google Fonts catalog.
+    expect(toolbarSource).toContain("<GoogleFontSelector");
+    expect(toolbarSource).toContain('from "@/app/components/customizer/GoogleFontSelector"');
+    expect(toolbarSource).not.toContain("CUSTOMIZER_APPROVED_FONTS");
+    expect(toolbarSource).not.toContain("FONT_OPTIONS");
+  });
+
+  it("derives weights and italic availability from the selected family", () => {
+    expect(toolbarSource).toContain("useFamilyCapabilities");
+    expect(toolbarSource).toContain("resolveWeightOptions(fontCapabilities.weights)");
+    expect(toolbarSource).toContain("nearestSupportedWeight(fontCapabilities.weights, fontWeight.value)");
+  });
+
+  it("keeps a font change to a single undo step by patching weight in the same call", () => {
+    // Switching family may invalidate the current weight; the snap must ride
+    // along in ONE patch rather than creating a second history entry.
+    expect(toolbarSource).toContain("const applyFontFamily = (next: string) => {");
+    expect(toolbarSource).toContain("patch(change);");
   });
 
   it("puts every caption on one line at one shared height", () => {

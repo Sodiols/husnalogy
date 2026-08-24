@@ -16,7 +16,23 @@ export default defineConfig({
     screenshot: "only-on-failure",
     video: "retain-on-failure",
   },
-  projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
+  projects: [
+    { name: "chromium", use: { ...devices["Desktop Chrome"] } },
+    // Focused Safari/WebKit coverage for the critical customer paths only —
+    // the full suite stays on Chromium so CI time does not double. WebKit is
+    // the closest available engine to iPhone/desktop Safari; a physical device
+    // check remains a separate manual launch step.
+    {
+      name: "webkit",
+      testMatch: /webkit-critical\.spec\.ts/,
+      use: { ...devices["Desktop Safari"] },
+    },
+    {
+      name: "mobile-safari",
+      testMatch: /webkit-critical\.spec\.ts/,
+      use: { ...devices["iPhone 13"] },
+    },
+  ],
   webServer: externalBaseUrl
     ? undefined
     : {

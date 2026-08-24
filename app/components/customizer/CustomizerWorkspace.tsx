@@ -46,6 +46,7 @@ import {
   computeFitZoom,
   resolveCustomerBaseWidth,
 } from "@/lib/customizer/v2/zoom";
+import { useGoogleFontMetricsRevision } from "./useGoogleFonts";
 
 type Props = {
   template: any;
@@ -260,6 +261,14 @@ export default function CustomizerWorkspace({
     () => getEffectiveLayersForPage(template, pageId, editorState),
     [template, pageId, editorState],
   );
+  const googleFontMetricsRevision = useGoogleFontMetricsRevision(
+    layers.filter((layer: any) => layer?.type === "text").map((layer: any) => layer.textStyle?.fontFamily),
+  );
+  useEffect(() => {
+    if (googleFontMetricsRevision === 0) return;
+    textMeasureRef.current = createCanvasMeasure();
+    setTextMetricsRevision((revision) => revision + 1);
+  }, [googleFontMetricsRevision]);
 
   // Auto-width text may grow only up to the safe area.
   const safeBounds: SafeBounds = useMemo(

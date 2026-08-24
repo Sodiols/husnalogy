@@ -6,6 +6,12 @@ import {
 import { validateCustomizationSave } from "@/lib/customizer/save-validation";
 import { resolvePrivateAssetsForDelivery } from "@/lib/customizer/server/private-assets";
 import { writeCustomizerAudit } from "@/lib/customizer/audit";
+import { rateLimit } from "@/lib/security/rate-limit";
+
+// Generous enough for the real autosave cadence (900ms debounce, spec
+// lib/customizer/save-queue.ts) plus retries, but still bounds a runaway or
+// scripted client from hammering the save endpoint.
+const SAVE_RATE_LIMIT = { name: "customizations-save", limit: 300, windowMs: 5 * 60 * 1000 };
 
 async function getUser() {
   const supabase = await createClient();
@@ -32,6 +38,9 @@ export async function GET(_request: Request, { params }: any) {
 // PATCH /api/customizations/[id] — update your own customization. RLS blocks
 // updates to rows that are not yours.
 export async function PATCH(request: Request, { params }: any) {
+  const limited = rateLimit(request, SAVE_RATE_LIMIT);
+  if (limited) return limited;
+
   const { id } = await params;
   const { supabase, user } = await getUser();
   if (!user) return Response.json({ ok: false, error: "Sign in required." }, { status: 401 });

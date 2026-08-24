@@ -1,7 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { CUSTOMIZER_APPROVED_FONTS } from "@/lib/customizer";
+import GoogleFontSelector from "@/app/components/customizer/GoogleFontSelector";
+import { ensureGoogleFontLoaded, reportGoogleFontLoadFailure, useFamilyCapabilities, useSelectableFamilies } from "@/app/components/customizer/useGoogleFonts";
 import EditableNumericStepper from "@/app/components/customizer/EditableNumericStepper";
 import ToolbarDropdown, {
   type ToolbarDropdownOption,
@@ -61,12 +62,6 @@ type Props = {
   onLayerOrder: (action: LayerArrangeMode) => void;
   onDelete: () => void;
 };
-
-const FONT_OPTIONS: ToolbarDropdownOption[] = CUSTOMIZER_APPROVED_FONTS.map((font) => ({
-  value: font.value,
-  label: font.label,
-  fontFamily: font.stack,
-}));
 
 const FALLBACK_SWATCHES = ["#303839", "#5B6667", "#8D6E63", "#D4AF37", "#B08D2A", "#F4ECEC", "#FFFFFF", "#7A1F2B"];
 
@@ -806,11 +801,34 @@ export default function AdminContextToolbar(props: Props) {
   const letterSpacing = sharedTextStyleValue(selectedLayers, "letterSpacing", TEXT_TOOLBAR_DEFAULTS.letterSpacing as number);
   const lineHeight = sharedTextStyleValue(selectedLayers, "lineHeight", TEXT_TOOLBAR_DEFAULTS.lineHeight as number);
 
-  // The weight the renderer will actually use — the toolbar must never show a
-  // weight the font cannot draw (spec §10).
-  const effectiveWeight = nearestSupportedWeight(String(fontFamily.value), fontWeight.value);
-  const weightOptions = useMemo(() => resolveWeightOptions(String(fontFamily.value)), [fontFamily.value]);
+  // Weights + italic come from the selected family's real Google Fonts
+  // variants — the toolbar must never show a cut the font cannot draw
+  // and production therefore could not render (spec §13).
+  const { families: fontFamilies } = useSelectableFamilies();
+  const fontCapabilities = useFamilyCapabilities(String(fontFamily.value), fontFamilies);
+  const effectiveWeight = nearestSupportedWeight(fontCapabilities.weights, fontWeight.value);
+  const weightOptions = useMemo(() => resolveWeightOptions(fontCapabilities.weights), [fontCapabilities.weights]);
   const italic = fontStyle.value === "italic" && !fontStyle.mixed;
+
+  // Load the faces the current selection uses so the admin canvas measures
+  // against real metrics rather than a fallback (spec §14).
+  useEffect(() => {
+    const family = String(fontFamily.value || "");
+    if (family) void ensureGoogleFontLoaded(family, effectiveWeight, italic ? "italic" : "normal").catch(reportGoogleFontLoadFailure);
+  }, [fontFamily.value, effectiveWeight, italic]);
+
+  // Changing family keeps the weight valid for the NEW family, in one patch so
+  // undo/redo sees a single step (spec §13).
+  const applyFontFamily = (next: string) => {
+    const entry = fontFamilies.find((item) => item.family.toLowerCase() === next.toLowerCase());
+    const nextWeights = entry?.weights?.length ? entry.weights : ["400", "700"];
+    const snapped = nearestSupportedWeight(nextWeights, fontWeight.value);
+    const change: Record<string, unknown> = { fontFamily: next };
+    if (snapped !== String(fontWeight.value)) change.fontWeight = snapped;
+    if (italic && entry && !entry.hasItalic) change.fontStyle = "normal";
+    void ensureGoogleFontLoaded(next, snapped, italic && entry?.hasItalic ? "italic" : "normal").catch(reportGoogleFontLoadFailure);
+    patch(change);
+  };
   const bold = isBoldWeight(effectiveWeight) && !fontWeight.mixed;
 
   const canVerticalAlign = selectedLayers.some((layer) => verticalAlignAffectsCanvas(layer?.textStyle, layer?.text));
@@ -870,18 +888,18 @@ export default function AdminContextToolbar(props: Props) {
     if (shows("fontFamily")) {
       fontGroup.push(
         <ToolbarItem key="fontFamily" width={size("fontFamily")} density={density} showCaption={caption} caption="Font">
-          <ToolbarDropdown
+          {/* Full Google Fonts catalog — same shared selector the customer
+              toolbar and the allowed-fonts setting use. */}
+          <GoogleFontSelector
             label="Font"
-            value={String(fontFamily.value)}
-            mixed={fontFamily.mixed}
-            onChange={(next: string) => patch({ fontFamily: next })}
-            options={FONT_OPTIONS}
-            previewFont
-            searchable={FONT_OPTIONS.length > 6}
-            menuWidth={264}
+            value={fontFamily.mixed ? "" : String(fontFamily.value)}
+            onChange={applyFontFamily}
+            onOpen={() => {
+              const family = String(fontFamily.value || "");
+              if (family) void ensureGoogleFontLoaded(family, effectiveWeight, italic ? "italic" : "normal").catch(reportGoogleFontLoadFailure);
+            }}
             className="w-full"
-            hideLabel
-            triggerClassName={dropdownTrigger()}
+            compact
           />
         </ToolbarItem>,
       );
@@ -947,7 +965,7 @@ export default function AdminContextToolbar(props: Props) {
         <ToolbarIconButton
           key="bold"
           label="Bold"
-          hint={`Bold (${boldWeightForFont(String(fontFamily.value))})`}
+          hint={`Bold (${boldWeightForFont(fontCapabilities.weights)})`}
           density={density}
           width={size("bold")}
           showCaption={caption}
@@ -956,8 +974,8 @@ export default function AdminContextToolbar(props: Props) {
           onClick={() =>
             patch({
               fontWeight: bold
-                ? regularWeightForFont(String(fontFamily.value))
-                : boldWeightForFont(String(fontFamily.value)),
+                ? regularWeightForFont(fontCapabilities.weights)
+                : boldWeightForFont(fontCapabilities.weights),
             })
           }
         >

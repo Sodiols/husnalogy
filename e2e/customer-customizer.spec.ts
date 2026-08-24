@@ -41,6 +41,18 @@ test.describe("seeded customer Customizer V2 journey", () => {
     await root.getByRole("button", { name: "solid line", exact: true }).click();
     await expect(root.getByLabel("Line start cap")).toBeVisible();
 
+    // Marquee selection: a drag across the canvas should pick up both the
+    // shape and the line at once, exactly like ctrl-clicking each one.
+    const canvasSurface = root.locator('div[class*="shrink-0 bg-white shadow-"]').first();
+    const canvasBox = await canvasSurface.boundingBox();
+    if (canvasBox) {
+      await page.mouse.move(canvasBox.x + 4, canvasBox.y + 4);
+      await page.mouse.down();
+      await page.mouse.move(canvasBox.x + canvasBox.width - 4, canvasBox.y + canvasBox.height - 4, { steps: 8 });
+      await page.mouse.up();
+      await expect(root.getByRole("toolbar", { name: /[2-9] selected objects/ })).toBeVisible();
+    }
+
     await root.getByRole("button", { name: "Layers", exact: true }).click();
     const shapeLayer = root.getByRole("button", { name: /Customer shape/i }).first();
     const lineLayer = root.getByRole("button", { name: /Customer line/i }).first();
@@ -48,9 +60,25 @@ test.describe("seeded customer Customizer V2 journey", () => {
     await lineLayer.click({ modifiers: ["Control"] });
     const multiToolbar = root.getByRole("toolbar", { name: "2 selected objects" });
     await expect(multiToolbar).toBeVisible();
+
+    // Align selection: moves the two objects relative to each other.
+    await root.getByRole("button", { name: "Left", exact: true }).click();
+    await root.getByRole("button", { name: "Centre", exact: true }).click();
+
     await multiToolbar.getByRole("button", { name: "Group", exact: true }).click();
     await expect(root.getByRole("button", { name: /Customer group/i }).first()).toBeVisible();
     await root.getByRole("toolbar", { name: "1 selected objects" }).getByRole("button", { name: "Ungroup", exact: true }).click();
+
+    // Layer drag reorder: dragging one row's grip handle past another must
+    // change their stacking order in the panel.
+    const layerNames = root.getByRole("button", { name: /Customer (shape|line)/i });
+    const dragHandles = root.locator('[draggable="true"]');
+    if ((await layerNames.count()) >= 2 && (await dragHandles.count()) >= 2) {
+      const orderBefore = await layerNames.allTextContents();
+      await dragHandles.first().dragTo(dragHandles.last());
+      const orderAfter = await layerNames.allTextContents();
+      expect(orderAfter).not.toEqual(orderBefore);
+    }
 
     await root.getByRole("button", { name: "QR Code", exact: true }).click();
     await root.getByLabel("Destination URL").fill("https://husnalogy.com/playwright");
@@ -108,6 +136,24 @@ test.describe("seeded customer Customizer V2 journey", () => {
     await gridZoom.fill("140");
     await gridZoom.press("Enter");
     await expect(gridZoom).toHaveValue("140%");
+
+    // Pan: reposition the cropped photo within its frame.
+    const gridPanX = root.locator('input[aria-label="Grid crop X position"]');
+    const gridPanY = root.locator('input[aria-label="Grid crop Y position"]');
+    if (await gridPanX.count()) {
+      await gridPanX.fill("15");
+      await gridPanX.press("Enter");
+      await expect(gridPanX).toHaveValue("15");
+    }
+    if (await gridPanY.count()) {
+      await gridPanY.fill("-10");
+      await gridPanY.press("Enter");
+      await expect(gridPanY).toHaveValue("-10");
+    }
+
+    const gridFlip = root.getByRole("button", { name: "Flip photo horizontally", exact: true });
+    if (await gridFlip.count()) await gridFlip.click();
+
     await root.getByRole("button", { name: "Rotate", exact: true }).click();
     await root.getByRole("button", { name: "Done", exact: true }).click();
 

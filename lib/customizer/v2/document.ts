@@ -6,6 +6,7 @@
 // V1 rows via migrateCustomizerDocument, and are persisted directly in
 // customizer_template_versions snapshots and order_design_snapshots.
 
+import { DEFAULT_FONT_FAMILY, normalizeAllowedCustomerFonts } from "./google-fonts";
 import {
   CUSTOMIZER_ENGINE_VERSION,
   CUSTOMIZER_SCHEMA_VERSION,
@@ -92,7 +93,7 @@ export function normalizeTextStyleV2(input: unknown): TextStyle {
   const vAlign = str(s.verticalAlign).toLowerCase();
   const fontSize = posNum(s.fontSize, 64);
   return {
-    fontFamily: str(s.fontFamily) || "Cormorant Garamond",
+    fontFamily: str(s.fontFamily) || DEFAULT_FONT_FAMILY,
     fontSize,
     minFontSize: posNum(s.minFontSize, Math.max(8, Math.round(fontSize * 0.4))),
     maxFontSize: posNum(s.maxFontSize, Math.round(fontSize * 2)),
@@ -388,7 +389,7 @@ export function templateToDocument(template: Record<string, any>): { document: C
     allowCustomerBackground: bool(settingsSrc.allowCustomerBackground),
     allowCustomerGrouping: bool(settingsSrc.allowCustomerGrouping),
     showCustomerLayers: bool(settingsSrc.showCustomerLayers),
-    allowedCustomerFonts: Array.isArray(settingsSrc.allowedCustomerFonts) ? settingsSrc.allowedCustomerFonts.map((value: unknown) => str(value)).filter(Boolean) : [],
+    allowedCustomerFonts: normalizeAllowedCustomerFonts(settingsSrc.allowedCustomerFonts),
     allowedCustomerColors: Array.isArray(settingsSrc.allowedCustomerColors) ? settingsSrc.allowedCustomerColors.map((value: unknown) => str(value)).filter(Boolean) : [],
     allowedCustomerShapes: Array.isArray(settingsSrc.allowedCustomerShapes) ? settingsSrc.allowedCustomerShapes.map((value: unknown) => str(value)).filter(Boolean) : [],
     allowedCustomerElementIds: Array.isArray(settingsSrc.allowedCustomerElementIds) ? settingsSrc.allowedCustomerElementIds.map((value: unknown) => str(value)).filter(Boolean) : [],

@@ -1,7 +1,8 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { renderCustomizationPages, buildPrintPdf, RenderError } from "../server/render";
 import { buildPageSvg } from "../svg";
 import { createServerMeasure } from "../server/server-fonts";
+import { installGoogleFontsHarness, resetGoogleFontsHarness } from "./google-fonts-test-harness";
 import sharp from "sharp";
 
 // A tiny valid PNG (1x1 red pixel) used as an embedded photo.
@@ -39,7 +40,7 @@ const template = {
       height: 160,
       zIndex: 5,
       text: "A very long headline that must wrap across lines",
-      textStyle: { fontFamily: "Cormorant Garamond", fontSize: 44, multiline: true, textAlign: "center" },
+      textStyle: { fontFamily: "Playfair Display", fontSize: 44, multiline: true, textAlign: "center" },
     },
     {
       id: "photo",
@@ -64,6 +65,9 @@ const template = {
 const values = { names: "Ayesha & Omar", photo: { url: RED_PIXEL, zoom: 1.4, offsetX: 10 } };
 
 describe("server render pipeline", () => {
+  beforeEach(() => { installGoogleFontsHarness(); });
+  afterEach(() => { resetGoogleFontsHarness(); });
+
   it("renders every enabled page to a valid PNG at print size with bleed", async () => {
     const pages = await renderCustomizationPages({
       template,
@@ -135,7 +139,9 @@ describe("server render pipeline", () => {
     ).rejects.toThrowError(RenderError);
   });
 
-  it("fails print jobs that depend on non-server fonts instead of substituting", async () => {
+  it("fails print jobs that depend on a non-Google font instead of substituting", async () => {
+    // "Georgia" is a legacy system font: it is not in the Google catalog, so
+    // production must refuse rather than silently drawing another typeface.
     const badTemplate = {
       ...template,
       layers: [
@@ -145,7 +151,24 @@ describe("server render pipeline", () => {
     };
     await expect(
       renderCustomizationPages({ template: badTemplate, values, editorState: null, mode: "print" }),
-    ).rejects.toThrow(/fonts unavailable/i);
+    ).rejects.toThrow(/fonts unavailable for production rendering/i);
+  });
+
+  it("fails, retryably, when a required Google font file cannot be downloaded", async () => {
+    // A font the catalog knows but whose file 503s must not fall back to
+    // another family — the job fails with a retryable FONT_FILE_MISSING.
+    const fetchSpy = installGoogleFontsHarness();
+    fetchSpy.mockImplementation(async (input: any) => {
+      const requested = String(typeof input === "string" ? input : input?.url || "");
+      if (requested.startsWith("https://fonts.gstatic.com/")) {
+        return new Response("upstream down", { status: 503 }) as any;
+      }
+      return new Response("", { status: 200 }) as any;
+    });
+
+    await expect(
+      renderCustomizationPages({ template, values, editorState: null, mode: "print" }),
+    ).rejects.toMatchObject({ code: "FONT_FILE_MISSING" });
   });
 
   it("builds a print PDF at the exact physical size including bleed", async () => {
