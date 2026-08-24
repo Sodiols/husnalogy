@@ -1,10 +1,8 @@
 import OpenAI from "openai";
 import { rateLimit, rejectLargeRequest } from "@/lib/security/rate-limit";
+import { BUSINESS_INFO, ORDER_POLICY } from "@/lib/launch-config";
 
 export const runtime = "nodejs";
-
-const SODIOL_FACEBOOK_LINK = process.env.SODIOL_FACEBOOK_LINK || "";
-const SODIOL_INSTAGRAM_LINK = process.env.SODIOL_INSTAGRAM_LINK || "";
 
 // Logy uses the live AI whenever a funded OPENAI_API_KEY is configured, and
 // falls back to its local brain otherwise. Set LOGY_USE_OPENAI=false to force
@@ -12,12 +10,6 @@ const SODIOL_INSTAGRAM_LINK = process.env.SODIOL_INSTAGRAM_LINK || "";
 const USE_OPENAI = Boolean(process.env.OPENAI_API_KEY) && process.env.LOGY_USE_OPENAI !== "false";
 const OPENAI_COOLDOWN_MS = 5 * 60 * 1000;
 let openaiCooldownUntil = 0;
-
-function sodiolLinks() {
-  return SODIOL_FACEBOOK_LINK && SODIOL_INSTAGRAM_LINK
-    ? ` You can find Sodiol here. Facebook: ${SODIOL_FACEBOOK_LINK} Instagram: ${SODIOL_INSTAGRAM_LINK}`
-    : "";
-}
 
 /* ----------------------------------------------------------------------------
    Logy's local brain: a keyword-scored knowledge base. Each intent lists trigger
@@ -72,7 +64,7 @@ const INTENTS = [
   // Contact and support
   {
     keywords: ["contact", "reach you", "reach the team", "phone", "whatsapp", "email", "message you", "talk to someone", "customer service", "support"],
-    reply: "You can reach the Husnalogy team any time through the Contact page at /contact, and the team will reply with care.",
+    reply: `You can reach Husnalogy through /contact, at ${BUSINESS_INFO.email}, or on WhatsApp at ${BUSINESS_INFO.phone}.`,
   },
   {
     keywords: ["studio", "visit", "address", "location", "where are you located"],
@@ -87,7 +79,7 @@ const INTENTS = [
   },
   {
     keywords: ["payment", "pay", "card payment", "bkash", "cash", "online payment"],
-    reply: "Payment is arranged after your order is reviewed, so the team can confirm the type, quantity, and customization first. They will guide you through it.",
+    reply: `${ORDER_POLICY.paymentMethod} is the only launch payment method. For delivery orders, the delivery charge is confirmed after order review.`,
   },
   {
     keywords: ["price", "cost", "how much", "charge", "rate", "budget", "expensive", "cheap"],
@@ -95,11 +87,11 @@ const INTENTS = [
   },
   {
     keywords: ["delivery", "shipping", "deliver", "ship", "arrive", "how long to receive", "when will i get"],
-    reply: "Husnalogy offers reliable delivery. Timing depends on the product and customization, and the team confirms the details after your order is placed.",
+    reply: ORDER_POLICY.deliveryCharge,
   },
   {
     keywords: ["return", "refund", "exchange", "cancel", "change my order", "wrong order"],
-    reply: "If something is not right, please reach the team through the Contact page at /contact and they will help you with changes, cancellations, or any concern.",
+    reply: `${ORDER_POLICY.personalizedReturns} Changes or cancellations are only possible before production begins.`,
   },
   {
     keywords: ["track", "my order", "order status", "where is my order", "delivered"],
@@ -171,7 +163,7 @@ const INTENTS = [
   },
   {
     keywords: ["discount", "offer", "sale", "coupon", "promo", "deal"],
-    reply: "For current offers, keep an eye on the store and the newsletter. I can also help you find beautiful pieces that suit your budget.",
+    reply: "Current offers are shown on the store. I can also help you find pieces that suit your budget.",
   },
   {
     keywords: ["language", "bangla", "bengali", "english", "arabic"],
@@ -236,7 +228,7 @@ function answerLocally(rawMessage) {
     (asksAboutOrigin(text) && (text.includes("logy") || /assistant|chatbot|\bbot\b/.test(text))) ||
     /(made|built|created|founded|developed|behind)\s+you/.test(text)
   ) {
-    return `Logy was founded by Sodiol Sayem.${sodiolLinks()}`;
+    return "Logy is Husnalogy's shopping assistant and is maintained as part of the Husnalogy website.";
   }
 
   let best = null;
@@ -259,21 +251,18 @@ function answerLocally(rawMessage) {
 /* ---------------------- Optional OpenAI enhancement ---------------------- */
 
 function buildLogyInstructions() {
-  const linkRule =
-    SODIOL_FACEBOOK_LINK && SODIOL_INSTAGRAM_LINK
-      ? `When you mention Sodiol Sayem, you may include these exact links. Facebook: ${SODIOL_FACEBOOK_LINK} Instagram: ${SODIOL_INSTAGRAM_LINK}`
-      : `Do not invent Facebook or Instagram links.`;
-
   return `
 You are Logy, the warm shopping assistant for Husnalogy.
 Your name is Logy. Never call yourself Ask Logy.
 
 Founders:
-If someone asks who founded Logy, made you, or built the AI, reply: Logy was founded by Sodiol Sayem.
+If someone asks who made Logy, say it is Husnalogy's shopping assistant maintained as part of the Husnalogy website.
 If someone asks who founded Husnalogy, reply: Husnalogy was founded by Sodiol Foyez.
-${linkRule}
+Do not invent social-profile or contact links. Husnalogy email: ${BUSINESS_INFO.email}. Phone and WhatsApp: ${BUSINESS_INFO.phone}.
 
 Husnalogy is an elegant online store for wedding invitations, save the dates, nikah invitations, birthday invitations, cards, personalized gifts, and stationery.
+${ORDER_POLICY.paymentMethod} is the only launch payment method. ${ORDER_POLICY.deliveryCharge}
+Do not promise a delivery date, tracking email, guarantee, or broad returns. ${ORDER_POLICY.personalizedReturns}
 Help customers with design choices and guide them to the right page.
 Wedding invitations are at /weddings, save the dates at /save-the-dates, gifts at /gifts, stationery at /stationery, cards at /cards, all products at /products, and contact at /contact.
 

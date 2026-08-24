@@ -5,6 +5,7 @@ import SiteShell from "./components/site-shell";
 import { createClient } from "@/lib/supabase/server";
 import { formatSupabaseUser } from "./lib/format-user";
 import { getSettings, toPublicSettings } from "@/lib/settings";
+import { BUSINESS_INFO } from "@/lib/launch-config";
 
 const fontDisplay = localFont({
   src: [
@@ -133,7 +134,15 @@ export default async function RootLayout({ children }) {
     url: SITE_URL,
     logo: `${SITE_URL}/Brand%20Kit/Logo-1.png`,
     description: DESCRIPTION,
-    sameAs: [process.env.SODIOL_FACEBOOK_LINK, process.env.SODIOL_INSTAGRAM_LINK].filter(Boolean),
+    email: BUSINESS_INFO.email,
+    telephone: BUSINESS_INFO.phone,
+    address: {
+      "@type": "PostalAddress",
+      streetAddress: BUSINESS_INFO.address,
+      addressLocality: BUSINESS_INFO.city,
+      addressCountry: "BD",
+    },
+    sameAs: Object.values(BUSINESS_INFO.socialProfiles),
   };
 
   const websiteJsonLd = {

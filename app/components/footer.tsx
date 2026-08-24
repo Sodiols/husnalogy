@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { BUSINESS_INFO } from "@/lib/launch-config";
 
 const COLUMNS = [
   {
@@ -29,7 +30,6 @@ const COLUMNS = [
       ["/about", "Our Story"],
       ["/about", "Why Husnalogy"],
       ["/products", "Reviews"],
-      ["/about", "Blog"],
     ],
   },
 ];
@@ -49,16 +49,13 @@ export default function Footer() {
               life&rsquo;s special moments.
             </p>
             <div className="mt-5 flex items-center gap-4 text-[#303839]/70">
-              <a href="https://www.instagram.com/husnalogy" target="_blank" rel="noopener noreferrer" aria-label="Instagram" className="transition hover:text-[#303839]">
+              <a href={BUSINESS_INFO.socialProfiles.instagram} target="_blank" rel="noopener noreferrer" aria-label="Instagram" className="transition hover:text-[#303839]">
                 <i className="fa-brands fa-instagram text-lg" />
               </a>
-              <a href="https://www.facebook.com/husnalogy/" target="_blank" rel="noopener noreferrer" aria-label="Facebook" className="transition hover:text-[#303839]">
+              <a href={BUSINESS_INFO.socialProfiles.facebook} target="_blank" rel="noopener noreferrer" aria-label="Facebook" className="transition hover:text-[#303839]">
                 <i className="fa-brands fa-facebook-f text-lg" />
               </a>
-              <a href="https://www.pinterest.com/" target="_blank" rel="noopener noreferrer" aria-label="Pinterest" className="transition hover:text-[#303839]">
-                <i className="fa-brands fa-pinterest-p text-lg" />
-              </a>
-              <a href="mailto:hello@husnalogy.com" aria-label="Email" className="transition hover:text-[#303839]">
+              <a href={`mailto:${BUSINESS_INFO.email}`} aria-label="Email" className="transition hover:text-[#303839]">
                 <i className="fa-regular fa-envelope text-lg" />
               </a>
             </div>
@@ -85,15 +82,15 @@ export default function Footer() {
               <p className="flex items-center gap-2">
                 <i className="fa-solid fa-headset text-[#303839]" /> We&rsquo;re here to help
               </p>
-              <a href="mailto:admin@meka.agency" className="block transition hover:text-[#303839]">admin@meka.agency</a>
-              <a href="tel:+8801575004432" className="block transition hover:text-[#303839]">+880 1575 004432</a>
+              <a href={`mailto:${BUSINESS_INFO.email}`} className="block transition hover:text-[#303839]">{BUSINESS_INFO.email}</a>
+              <a href={BUSINESS_INFO.phoneHref} className="block transition hover:text-[#303839]">{BUSINESS_INFO.phone}</a>
               <p>Mon &ndash; Fri, 10 AM &ndash; 6 PM (BST)</p>
             </div>
           </div>
         </div>
 
         <div className="mt-14 flex flex-col gap-4 border-t border-[#303839]/10 pt-7 text-xs tracking-[0.02em] text-[#303839]/55 sm:flex-row sm:items-center sm:justify-between">
-          <p>© 2025 Husnalogy. All rights reserved.</p>
+          <p>© 2026 Husnalogy. All rights reserved.</p>
           <div className="flex items-center gap-3">
             <a href="/privacy" className="transition hover:text-[#303839]">Privacy Policy</a>
             <span className="text-[#303839]/25">|</span>

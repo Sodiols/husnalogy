@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { ORDER_POLICY } from "@/lib/launch-config";
 
 export const metadata = {
   title: "Terms and Conditions",
@@ -12,7 +13,7 @@ const terms = [
   },
   {
     title: "Orders and Payments",
-    text: "Orders are subject to availability, review, and acceptance. Payment must be completed in full before production begins, and prices may include applicable taxes where required.",
+    text: `Orders are subject to availability, review, and acceptance. ${ORDER_POLICY.paymentMethod} is the launch payment method. The website subtotal excludes any delivery charge that still needs review.`,
   },
   {
     title: "Personalized Products",
@@ -20,19 +21,19 @@ const terms = [
   },
   {
     title: "Digital Products",
-    text: "Digital products are delivered electronically and may be non-refundable once prepared or delivered. Customers are responsible for providing a valid email address and downloading files promptly.",
+    text: "Digital products are prepared using the approved order details. Husnalogy confirms the available delivery or collection method during order review; digital products may be non-refundable once prepared or supplied.",
   },
   {
     title: "Proofs and Revisions",
-    text: "A digital proof may be provided for selected products or upon request. Please review proofs carefully and reply within the stated timeframe so production can continue without delay.",
+    text: "A digital proof may be provided for selected products or when Husnalogy confirms one is required. Customers should review any supplied proof carefully before approving production.",
   },
   {
     title: "Shipping and Delivery",
-    text: "Delivery timelines are estimates and may vary based on product type, proof approval, production capacity, destination, and courier performance. We will share order updates where available.",
+    text: ORDER_POLICY.deliveryCharge,
   },
   {
     title: "Returns and Refunds",
-    text: "Because personalized products are created for a specific customer, returns and refunds are limited. Please contact support promptly if an item arrives damaged, defective, or incorrect.",
+    text: ORDER_POLICY.personalizedReturns,
   },
   {
     title: "Customer Files",
@@ -64,7 +65,7 @@ export default function TermsPage() {
             Please read these terms before placing an order. They explain how Husnalogy handles orders, personalization, digital files, delivery, and customer support.
           </p>
           <p className="mt-6 text-[0.72rem] font-extrabold uppercase tracking-[0.24em] text-[#303839]">
-            Last updated: June 2026
+            Last updated: August 2026
           </p>
         </div>
       </section>

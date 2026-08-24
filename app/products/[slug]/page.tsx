@@ -18,6 +18,7 @@ import ProductCarousel from "../ProductCarousel";
 import RecentlyViewedTracker from "../RecentlyViewedTracker";
 import RecentlyViewedCarousel from "../RecentlyViewedCarousel";
 import { getMainMockupImage } from "../product-image";
+import { normalizeCurrency } from "@/lib/currency";
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || "https://husnalogy.com";
 
@@ -174,6 +175,8 @@ export default async function ProductDetailsPage({ params }) {
 
   const productImage = getMainMockupImage(product);
   const reviews = Array.isArray(product.reviews) ? product.reviews.filter((review) => review.status !== "deleted") : [];
+  const productUrl = `${SITE_URL}/products/${encodeURIComponent(slug)}`;
+  const isOutOfStock = Boolean(product.isStockOut) || String(product.stockStatus || "").toLowerCase() === "out-of-stock";
   const productJsonLd: any = {
     "@context": "https://schema.org",
     "@type": "Product",
@@ -188,9 +191,9 @@ export default async function ProductDetailsPage({ params }) {
         ? {
             "@type": "Offer",
             price: Number(product.salePrice ?? product.price ?? 0),
-            priceCurrency: "USD",
-            availability: "https://schema.org/InStock",
-            url: `${SITE_URL}/products/${slug}`,
+            priceCurrency: normalizeCurrency(product.currency),
+            availability: isOutOfStock ? "https://schema.org/OutOfStock" : "https://schema.org/InStock",
+            url: productUrl,
           }
         : undefined,
   };

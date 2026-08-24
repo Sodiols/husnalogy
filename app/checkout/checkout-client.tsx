@@ -13,11 +13,11 @@ import {
   subscribeToUserCart,
 } from "../lib/customer-lists";
 import ServerCustomizationImage from "@/app/components/customizer/ServerCustomizationImage";
+import { ORDER_POLICY } from "@/lib/launch-config";
 
 const initialCustomer = {
   firstName: "",
   lastName: "",
-  customerEmail: "",
   customerPhone: "",
   city: "",
   addressLine1: "",
@@ -48,7 +48,6 @@ export default function CheckoutClient({ initialUser = undefined }: any) {
         ...current,
         firstName: current.firstName || parts[0] || "",
         lastName: current.lastName || parts.slice(1).join(" ") || "",
-        customerEmail: current.customerEmail || user.email || "",
       };
     });
   }, [user]);
@@ -97,13 +96,13 @@ export default function CheckoutClient({ initialUser = undefined }: any) {
         },
         body: JSON.stringify({
           customerName,
-          customerEmail: customer.customerEmail,
+          customerEmail: user.email,
           customerPhone: customer.customerPhone,
-          addressLine1: customer.addressLine1,
+          addressLine1: deliveryMethod === "delivery" ? customer.addressLine1 : "",
           addressLine2: "",
-          city: customer.city,
+          city: deliveryMethod === "delivery" ? customer.city : "",
           area: "",
-          postalCode: customer.postalCode,
+          postalCode: deliveryMethod === "delivery" ? customer.postalCode : "",
           deliveryNote: customer.deliveryNote,
           deliveryMethod,
           customerId: user?.uid || "",
@@ -126,7 +125,7 @@ export default function CheckoutClient({ initialUser = undefined }: any) {
         throw new Error(firstError || "Could not place the order.");
       }
 
-      if (saveAddress) {
+      if (deliveryMethod === "delivery" && saveAddress) {
         saveCustomerAddress({
           customerName,
           customerPhone: customer.customerPhone,
@@ -142,15 +141,18 @@ export default function CheckoutClient({ initialUser = undefined }: any) {
         id: data.order?.id,
         customerId: user.uid,
         customerName,
-        customerEmail: customer.customerEmail,
+        customerEmail: data.order?.customerEmail || user.email,
         customerPhone: customer.customerPhone,
         productTitle: data.order?.productTitle || items[0]?.title || "Order request",
-        items,
-        subtotal: totals.subtotal,
-        deliveryCharge: totals.deliveryCharge,
-        total: totals.total,
-        currency: totals.currency,
+        items: data.order?.items || items,
+        subtotal: data.order?.subtotal ?? totals.subtotal,
+        deliveryCharge: data.order?.deliveryCharge ?? 0,
+        total: data.order?.total ?? totals.total,
+        currency: data.order?.currency || totals.currency,
         paymentStatus: data.order?.paymentStatus || "unpaid",
+        paymentMethod: data.order?.paymentMethod || ORDER_POLICY.paymentMethod,
+        deliveryMethod: data.order?.deliveryMethod || deliveryMethod,
+        deliveryChargeConfirmed: Boolean(data.order?.deliveryChargeConfirmed),
         status: data.order?.status || "pending",
         createdAt: data.order?.createdAt || new Date().toISOString(),
         updatedAt: data.order?.updatedAt || new Date().toISOString(),
@@ -214,8 +216,14 @@ export default function CheckoutClient({ initialUser = undefined }: any) {
               <div className="grid gap-x-5 gap-y-4 sm:grid-cols-2">
                 <Field label="First name" value={customer.firstName} onChange={(v) => updateCustomer("firstName", v)} required />
                 <Field label="Last name" value={customer.lastName} onChange={(v) => updateCustomer("lastName", v)} required />
-                <Field label="Phone" value={customer.customerPhone} onChange={(v) => updateCustomer("customerPhone", v)} placeholder="+880 1XXX-XXXXXX" />
-                <Field label="E-mail" type="email" value={customer.customerEmail} onChange={(v) => updateCustomer("customerEmail", v)} required />
+                <Field label="Phone" value={customer.customerPhone} onChange={(v) => updateCustomer("customerPhone", v)} placeholder="+880 1XXX-XXXXXX" required />
+                <label className="block">
+                  <span className="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.08em] text-[#303839]/45">Account email</span>
+                  <span className="checkout-field flex h-[52px] w-full cursor-not-allowed items-center bg-[#E6E6E6]/50 px-4 text-sm font-medium text-[#303839]/70 sm:h-[54px]">
+                    {user?.email || "—"}
+                  </span>
+                  <span className="mt-1.5 block text-[11px] leading-4 text-[#303839]/45">Orders are placed with your signed-in account email and can&apos;t be changed here.</span>
+                </label>
               </div>
             </Section>
 
@@ -240,34 +248,26 @@ export default function CheckoutClient({ initialUser = undefined }: any) {
                 />
               </div>
 
-              <div className="mt-4 grid gap-x-4 gap-y-4 sm:grid-cols-3">
-                <Field label="City" value={customer.city} onChange={(v) => updateCustomer("city", v)} required />
-                <Field label="Address" value={customer.addressLine1} onChange={(v) => updateCustomer("addressLine1", v)} required />
-                <Field label="Zip code" value={customer.postalCode} onChange={(v) => updateCustomer("postalCode", v)} />
-              </div>
-
-              <label className="mt-4 block">
-                <span className="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.08em] text-[#303839]/45">Delivery note</span>
-                <textarea
-                  value={customer.deliveryNote}
-                  onChange={(event) => updateCustomer("deliveryNote", event.target.value)}
-                  placeholder="Gift message, preferred time, special instructions…"
-                  className="checkout-field min-h-24 w-full px-4 py-3.5 text-sm text-[#303839] outline-none placeholder:text-[#303839]/35"
-                />
-              </label>
-
-              <label className="mt-4 flex cursor-pointer items-center gap-3 rounded-[14px] px-4 py-3 text-sm font-medium text-[#303839]/80">
-                <input
-                  type="checkbox"
-                  checked={saveAddress}
-                  onChange={(event) => setSaveAddress(event.target.checked)}
-                  className="checkout-checkbox h-5 w-5 shrink-0 accent-[#303839]"
-                />
-                <span className="flex min-w-0 flex-col">
-                  <span className="text-[13px] font-bold text-[#303839]">Save this address</span>
-                  <span className="text-[12px] leading-5 text-[#303839]/55">Keep it on this device for faster checkout.</span>
-                </span>
-              </label>
+              {deliveryMethod === "delivery" ? (
+                <>
+                  <p className="mt-4 rounded-[14px] bg-[#E6E6E6]/60 px-4 py-3 text-xs leading-5 text-[#303839]/70">{ORDER_POLICY.deliveryCharge}</p>
+                  <div className="mt-4 grid gap-x-4 gap-y-4 sm:grid-cols-3">
+                    <Field label="City" value={customer.city} onChange={(v) => updateCustomer("city", v)} required />
+                    <Field label="Address" value={customer.addressLine1} onChange={(v) => updateCustomer("addressLine1", v)} required />
+                    <Field label="Zip code" value={customer.postalCode} onChange={(v) => updateCustomer("postalCode", v)} />
+                  </div>
+                  <label className="mt-4 block">
+                    <span className="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.08em] text-[#303839]/45">Delivery note</span>
+                    <textarea value={customer.deliveryNote} onChange={(event) => updateCustomer("deliveryNote", event.target.value)} placeholder="Preferred time or special delivery instructions…" className="checkout-field min-h-24 w-full px-4 py-3.5 text-sm text-[#303839] outline-none placeholder:text-[#303839]/35" />
+                  </label>
+                  <label className="mt-4 flex cursor-pointer items-center gap-3 rounded-[14px] px-4 py-3 text-sm font-medium text-[#303839]/80">
+                    <input type="checkbox" checked={saveAddress} onChange={(event) => setSaveAddress(event.target.checked)} className="checkout-checkbox h-5 w-5 shrink-0 accent-[#303839]" />
+                    <span className="flex min-w-0 flex-col"><span className="text-[13px] font-bold text-[#303839]">Save this address</span><span className="text-[12px] leading-5 text-[#303839]/55">Keep it on this device for faster checkout.</span></span>
+                  </label>
+                </>
+              ) : (
+                <p className="mt-4 rounded-[14px] bg-[#E6E6E6]/60 px-4 py-3 text-xs leading-5 text-[#303839]/70">No delivery address or delivery charge is required for store pickup. Husnalogy will confirm when your order is ready to collect.</p>
+              )}
             </Section>
 
             {/* 3. Payment method */}
@@ -278,8 +278,8 @@ export default function CheckoutClient({ initialUser = undefined }: any) {
                     <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="7" width="18" height="10" rx="2" /><circle cx="12" cy="12" r="2.2" /><path d="M6 12h.01M18 12h.01" /></svg>
                   </span>
                   <div className="flex-1">
-                    <p className="text-sm font-bold text-[#303839]">Cash on Delivery</p>
-                    <p className="text-xs text-[#303839]/55">Pay when your order arrives.</p>
+                    <p className="text-sm font-bold text-[#303839]">{ORDER_POLICY.paymentMethod}</p>
+                    <p className="text-xs text-[#303839]/55">Pay when a delivery order arrives or when collecting a store pickup order.</p>
                   </div>
                   <span className="grid h-5 w-5 place-items-center rounded-full bg-[#303839] text-white">
                     <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="m5 12 5 5 9-11" /></svg>
@@ -330,15 +330,16 @@ export default function CheckoutClient({ initialUser = undefined }: any) {
                   <span className="font-bold text-[#303839]">{money(totals.subtotal)}</span>
                 </div>
                 <div className="flex justify-between text-[#303839]/60">
-                  <span className="uppercase tracking-[0.06em]">Shipping</span>
-                  <span>Calculated later</span>
+                  <span className="uppercase tracking-[0.06em]">Delivery charge</span>
+                  <span>{deliveryMethod === "store" ? "No charge" : "Confirmed after review"}</span>
                 </div>
               </div>
 
               <div className="mt-4 flex items-baseline justify-between border-t border-[#303839]/10 pt-4">
-                <span className="text-base font-bold uppercase tracking-[0.04em] text-[#303839]">Total</span>
+                <span className="text-base font-bold uppercase tracking-[0.04em] text-[#303839]">{deliveryMethod === "store" ? "Total" : "Order subtotal"}</span>
                 <span className="text-2xl font-bold text-[#303839]">{money(totals.total)}</span>
               </div>
+              {deliveryMethod === "delivery" && <p className="mt-2 text-[11px] leading-5 text-[#303839]/55">The confirmed delivery charge will be added to the amount due on delivery.</p>}
 
               <button
                 type="submit"

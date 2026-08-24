@@ -2,7 +2,7 @@ import Link from "next/link";
 
 export const metadata = {
   title: "Privacy Policy",
-  description: "Read how Husnalogy handles customer information, order details, payment data, and personalized product files.",
+  description: "Read how Husnalogy handles customer information, order details, and personalized product files.",
 };
 
 const sections = [
@@ -16,11 +16,11 @@ const sections = [
   },
   {
     title: "How We Use Your Information",
-    text: "We use your information to process orders, prepare personalized products, provide customer support, improve the website experience, manage account features, and communicate order updates.",
+    text: "We use your information to process orders, prepare personalized products, provide customer support, improve the website experience, manage account features, and show order status in your account.",
   },
   {
-    title: "Orders and Payments",
-    text: "Order and payment details are used to confirm purchases, manage checkout, issue receipts, support refunds where applicable, and protect against unauthorized or incorrect transactions.",
+    title: "Orders and Cash on Delivery",
+    text: "Order details are used to review checkout requests, arrange Cash on Delivery or store pickup, maintain order records, and protect against unauthorized or incorrect transactions. Husnalogy does not collect online card details at launch.",
   },
   {
     title: "Personalized Product Files",
@@ -31,8 +31,8 @@ const sections = [
     text: "Husnalogy may use cookies and similar tools to keep the website working, remember preferences, understand browsing activity, improve product discovery, and measure site performance.",
   },
   {
-    title: "Email and Newsletter",
-    text: "If you subscribe or share your email with us, we may send order updates, support replies, product news, and newsletter messages. You can unsubscribe from marketing emails at any time.",
+    title: "Email Addresses",
+    text: "Your email address identifies your account and helps Husnalogy match orders and support requests to you. Transactional and marketing email messaging is not active at launch.",
   },
   {
     title: "Data Protection",
@@ -40,7 +40,7 @@ const sections = [
   },
   {
     title: "Sharing Information",
-    text: "We do not sell customer information. We may share limited details with trusted service providers when needed for payments, delivery, email communication, website hosting, analytics, or customer support.",
+    text: "We do not sell customer information. We may share limited details with trusted service providers only when needed for delivery, website hosting, storage, analytics, security, or customer support.",
   },
   {
     title: "Your Rights",
@@ -67,7 +67,7 @@ export default function PrivacyPage() {
             We handle customer information with care, clarity, and restraint. This page explains what we collect, why we collect it, and how it supports your Husnalogy order experience.
           </p>
           <p className="mt-6 text-[0.72rem] font-extrabold uppercase tracking-[0.24em] text-[#303839]">
-            Last updated: June 2026
+            Last updated: August 2026
           </p>
         </div>
       </section>

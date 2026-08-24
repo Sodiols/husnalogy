@@ -221,8 +221,7 @@ async function readSupabaseOrders(filters: any = {}) {
   const email = cleanString(filters.email).toLowerCase();
   const status = cleanString(filters.status).toLowerCase();
 
-  if (customerId && email) query = query.or(`customer_id.eq.${customerId},customer_email.eq.${email}`);
-  else if (customerId) query = query.eq("customer_id", customerId);
+  if (customerId) query = query.eq("customer_id", customerId);
   else if (email) query = query.eq("customer_email", email);
   if (status) query = query.eq("status", status);
 
@@ -323,6 +322,8 @@ function normalizeOrderRequest(input: any, existing: any = {}) {
   const subtotal = clampNumber(input.subtotal ?? existing.subtotal ?? computedSubtotal, { fallback: computedSubtotal });
   const deliveryCharge = clampNumber(input.deliveryCharge ?? existing.deliveryCharge ?? 0, { max: 100000 });
   const total = clampNumber(input.total ?? existing.total ?? subtotal + deliveryCharge, { fallback: subtotal + deliveryCharge });
+  const deliveryMethodInput = cleanString(input.deliveryMethod ?? existing.deliveryMethod).toLowerCase();
+  const deliveryMethod = deliveryMethodInput === "store" ? "store" : "delivery";
 
   return {
     id: existing.id || cleanString(input.id) || createId("order"),
@@ -333,7 +334,10 @@ function normalizeOrderRequest(input: any, existing: any = {}) {
     customerName: clampString(input.customerName ?? existing.customerName, 160),
     customerEmail: clampString(input.customerEmail ?? existing.customerEmail, 254).toLowerCase(),
     customerPhone: clampString(input.customerPhone ?? existing.customerPhone, 40),
-    address: normalizeAddress(input, existing.address || {}),
+    address: deliveryMethod === "delivery" ? normalizeAddress(input, existing.address || {}) : {},
+    deliveryMethod,
+    deliveryChargeConfirmed: deliveryMethod === "store" ? true : Boolean(input.deliveryChargeConfirmed ?? existing.deliveryChargeConfirmed),
+    paymentMethod: "Cash on Delivery",
     eventDate: cleanOptionalString(input.eventDate ?? existing.eventDate),
     customizationDetails: normalizeCustomizationData(input.customizationDetails ?? existing.customizationDetails),
     uploadedFiles: input.uploadedFiles ?? existing.uploadedFiles ?? {},
@@ -356,6 +360,9 @@ function validateOrderRequest(order: any) {
   if (!order.customerName) errors.customerName = "Name is required.";
   if (!order.customerEmail) errors.customerEmail = "Email is required.";
   if (order.customerEmail && !isValidEmail(order.customerEmail)) errors.customerEmail = "Enter a valid email address.";
+  if (!order.customerPhone) errors.customerPhone = "Phone number is required.";
+  if (order.deliveryMethod === "delivery" && !order.address?.addressLine1) errors.addressLine1 = "Delivery address is required.";
+  if (order.deliveryMethod === "delivery" && !order.address?.city) errors.city = "Delivery city is required.";
   return errors;
 }
 
@@ -462,12 +469,12 @@ export async function getOrderRequestsForCustomer({ customerId, email }: any = {
 
   if (!id && !mail) return [];
 
-  const orders = await getOrderRequests({ customerId: id, email: mail });
+  const orders = await getOrderRequests(id ? { customerId: id } : { email: mail });
 
   return orders.filter((order) => {
     const matchesId = id && order.customerId === id;
-    const matchesEmail = mail && String(order.customerEmail || "").toLowerCase() === mail;
-    return matchesId || matchesEmail;
+    const matchesEmail = !id && mail && String(order.customerEmail || "").toLowerCase() === mail;
+    return Boolean(matchesId || matchesEmail);
   });
 }
 
@@ -480,6 +487,48 @@ export async function updateOrderRequestStatus(id, status) {
   const order = await updateSupabaseOrderStatus(id, cleanStatus);
   if (!order) return { ok: false, errors: { order: "Order request not found." } };
   return { ok: true, order };
+}
+
+export async function updateOrderRequestDetails(id, input: any = {}) {
+  const supabase = createServiceRoleClient();
+  const { data: current, error: readError } = await supabase
+    .from("orders")
+    .select("*")
+    .eq("id", id)
+    .maybeSingle();
+  if (readError) throw readError;
+  if (!current) return { ok: false, errors: { order: "Order request not found." } };
+
+  const patch: Record<string, any> = { updated_at: nowIso() };
+  const metadata = { ...(current.metadata || {}) };
+  if (input.status !== undefined) {
+    const status = cleanString(input.status).toLowerCase();
+    if (!ORDER_STATUSES.has(status)) return { ok: false, errors: { status: "Invalid order status." } };
+    patch.status = status;
+    metadata.status = status;
+  }
+
+  if (Object.prototype.hasOwnProperty.call(input, "deliveryCharge")) {
+    const requested = Number(input.deliveryCharge);
+    if (!Number.isFinite(requested) || requested < 0 || requested > 100000) {
+      return { ok: false, errors: { deliveryCharge: "Enter a valid delivery charge." } };
+    }
+    const deliveryMethod = cleanString(metadata.deliveryMethod).toLowerCase() === "store" ? "store" : "delivery";
+    const charge = deliveryMethod === "store" ? 0 : Number(requested.toFixed(2));
+    const subtotal = Number(current.subtotal || 0);
+    patch.delivery_charge = charge;
+    patch.total = Number((subtotal + charge).toFixed(2));
+    metadata.deliveryCharge = charge;
+    metadata.total = patch.total;
+    metadata.deliveryChargeConfirmed = true;
+  }
+
+  metadata.updatedAt = patch.updated_at;
+  patch.metadata = metadata;
+  const { data, error } = await supabase.from("orders").update(patch).eq("id", id).select("*,order_items(*)").maybeSingle();
+  if (error) throw error;
+  if (!data) return { ok: false, errors: { order: "Order request not found." } };
+  return { ok: true, order: orderFromSupabaseRow(data) };
 }
 
 export async function deleteOrderRequest(id) {

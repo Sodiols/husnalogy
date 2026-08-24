@@ -35,16 +35,22 @@ export async function POST(request) {
     });
     if (limited) return limited;
 
-    const body = await request.json();
     const user = await getSupabaseUserFromRequest(request);
-    const trustedCustomerId = user?.uid || "";
-    const trustedCustomerEmail = user?.email || cleanString(body.customerEmail).toLowerCase();
+    if (!user?.uid) {
+      return Response.json({ ok: false, error: "Authentication required." }, { status: 401 });
+    }
+    const trustedCustomerEmail = cleanString(user.email).toLowerCase();
+    if (!trustedCustomerEmail) {
+      return Response.json({ ok: false, error: "Your signed-in account needs an email address before checkout." }, { status: 400 });
+    }
+    const body = await request.json();
 
     const result = await createOrderRequest({
       ...body,
-      customerId: trustedCustomerId,
+      customerId: user.uid,
       customerEmail: trustedCustomerEmail,
       customerName: body.customerName || user?.name || "",
+      paymentMethod: "Cash on Delivery",
     });
 
     if (!result.ok) {

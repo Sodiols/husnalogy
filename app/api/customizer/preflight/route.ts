@@ -32,6 +32,7 @@ export async function POST(request: Request) {
     .from("product_customizations")
     .select("*")
     .eq("id", customizationId)
+    .eq("user_id", user.id)
     .maybeSingle();
   if (error) return Response.json({ ok: false, error: "Could not load customization." }, { status: 500 });
   if (!row) return Response.json({ ok: false, error: "Not found." }, { status: 404 });

@@ -124,6 +124,7 @@ export default function Hero({ collection }: { collection?: any }) {
               alt={title ? `${title} collection` : "Featured collection"}
               fill
               priority
+              loading="eager"
               sizes="(min-width: 1024px) 460px, 78vw"
               className="object-cover object-center transition-transform duration-[1200ms] ease-out group-hover:scale-[1.03]"
             />

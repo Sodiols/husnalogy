@@ -21,7 +21,7 @@ export async function GET(_request: Request, { params }: any) {
   const { supabase, user } = await getUser();
   if (!user) return Response.json({ ok: false, error: "Sign in required." }, { status: 401 });
 
-  const { data, error } = await supabase.from("product_customizations").select("*").eq("id", id).maybeSingle();
+  const { data, error } = await supabase.from("product_customizations").select("*").eq("id", id).eq("user_id", user.id).maybeSingle();
   if (error) return Response.json({ ok: false, error: error.message }, { status: 500 });
   if (!data) return Response.json({ ok: false, error: "Not found." }, { status: 404 });
 
@@ -42,11 +42,15 @@ export async function PATCH(request: Request, { params }: any) {
   // the product/template even when the patch omits them.
   const { data: existingRow, error: readError } = await supabase
     .from("product_customizations")
-    .select("id, product_id, template_id, template_version, render_data")
+    .select("id, product_id, template_id, template_version, render_data, status")
     .eq("id", id)
+    .eq("user_id", user.id)
     .maybeSingle();
   if (readError) return Response.json({ ok: false, error: readError.message }, { status: 500 });
   if (!existingRow) return Response.json({ ok: false, error: "Not found." }, { status: 404 });
+  if (existingRow.status === "ordered") {
+    return Response.json({ ok: false, error: "Placed-order designs are locked. Duplicate the design to make changes." }, { status: 409 });
+  }
 
   // Server-side permission validation against the trusted template (spec §21).
   const validation = await validateCustomizationSave(user.id, rawBody, {
@@ -76,6 +80,8 @@ export async function PATCH(request: Request, { params }: any) {
     .from("product_customizations")
     .update(row)
     .eq("id", id)
+    .eq("user_id", user.id)
+    .neq("status", "ordered")
     .select("*")
     .maybeSingle();
   if (error) return Response.json({ ok: false, error: error.message }, { status: 500 });
@@ -99,8 +105,10 @@ export async function DELETE(_request: Request, { params }: any) {
   const { supabase, user } = await getUser();
   if (!user) return Response.json({ ok: false, error: "Sign in required." }, { status: 401 });
 
-  const { data: existing } = await supabase.from("product_customizations").select("product_id").eq("id", id).maybeSingle();
-  const { error } = await supabase.from("product_customizations").delete().eq("id", id);
+  const { data: existing } = await supabase.from("product_customizations").select("product_id,status").eq("id", id).eq("user_id", user.id).maybeSingle();
+  if (!existing) return Response.json({ ok: false, error: "Not found." }, { status: 404 });
+  if (existing.status === "ordered") return Response.json({ ok: false, error: "Placed-order designs cannot be deleted." }, { status: 409 });
+  const { error } = await supabase.from("product_customizations").delete().eq("id", id).eq("user_id", user.id).neq("status", "ordered");
   if (error) return Response.json({ ok: false, error: error.message }, { status: 500 });
 
   await writeCustomizerAudit(supabase, {

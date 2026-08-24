@@ -245,11 +245,11 @@ export default function SidePanel({ type, setType, user, openAuth }) {
                 <span className="font-medium text-[#303839]">{formatCurrency(total, cartCurrency)}</span>
               </div>
               <div className="flex items-center justify-between text-[#303839]/70">
-                <span>Delivery</span>
-                <span className="font-medium text-[#303839]/60">Calculated later</span>
+                <span>Delivery charge</span>
+                <span className="font-medium text-[#303839]/60">Confirmed after review</span>
               </div>
               <div className="flex items-center justify-between border-t border-[#303839]/10 pt-3 text-[15px] font-semibold text-[#303839]">
-                <span>Total</span>
+                <span>Order subtotal</span>
                 <span>{formatCurrency(total, cartCurrency)}</span>
               </div>
             </div>

@@ -1,9 +1,13 @@
 import { createSubscriber } from "@/lib/newsletter";
 import { rateLimit, rejectLargeRequest } from "@/lib/security/rate-limit";
 import { getSettings } from "@/lib/settings";
+import { LAUNCH_FEATURES } from "@/lib/launch-config";
 
 export async function POST(request) {
   try {
+    if (!LAUNCH_FEATURES.marketingEmail) {
+      return Response.json({ ok: false, error: "Newsletter subscriptions are not available at launch." }, { status: 403 });
+    }
     const largeRequest = rejectLargeRequest(request, 4 * 1024);
     if (largeRequest) return largeRequest;
 

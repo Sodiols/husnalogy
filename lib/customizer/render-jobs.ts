@@ -180,15 +180,20 @@ export async function enqueueRenderJob(options: {
   if (disabledFeature) throw new RenderError("FEATURE_DISABLED", `${disabledFeature} is disabled for this product.`);
   const inputHash = computeRenderInputHash(options.jobType, customization, authoritativeTemplate);
 
-  const { data: existing } = options.force ? { data: null } : await supabase
-    .from("customizer_render_jobs")
-    .select("*")
-    .eq("input_hash", inputHash)
-    .eq("job_type", options.jobType)
-    .in("status", ["completed", "queued", "retrying", "processing"])
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
+  let existing: any = null;
+  if (!options.force) {
+    let existingQuery = supabase
+      .from("customizer_render_jobs")
+      .select("*")
+      .eq("input_hash", inputHash)
+      .eq("job_type", options.jobType)
+      .in("status", ["completed", "queued", "retrying", "processing"]);
+    existingQuery = options.orderId
+      ? existingQuery.eq("order_id", options.orderId)
+      : existingQuery.is("order_id", null);
+    const result = await existingQuery.order("created_at", { ascending: false }).limit(1).maybeSingle();
+    existing = result.data;
+  }
   if (existing) return { job: jobFromRow(existing), reused: true };
 
   const { data: versionRow } = customization.templateId
@@ -321,7 +326,18 @@ export async function processRenderJob(jobId: string): Promise<RenderJobRow> {
       .eq("id", claimed.customization_id)
       .maybeSingle();
     if (!row) throw new RenderError("customization-not-found", "Customization no longer exists.");
-    const customization = customizationFromRow(row);
+    let customization = customizationFromRow(row);
+    const inputSnapshot = claimed.input_snapshot && typeof claimed.input_snapshot === "object"
+      ? claimed.input_snapshot as Record<string, any>
+      : {};
+    customization = {
+      ...customization,
+      values: inputSnapshot.values ?? customization.values,
+      renderData: {
+        ...(customization.renderData || {}),
+        editorState: inputSnapshot.editorState ?? customization.renderData?.editorState ?? {},
+      },
+    };
 
     const trusted = await getTrustedTemplateForCustomization(customization);
     if (!trusted) throw new RenderError("template-not-found", "No template available for this customization.");

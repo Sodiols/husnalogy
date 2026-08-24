@@ -35,7 +35,7 @@ const immutableAssetHeaders = [
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  allowedDevOrigins: ["192.168.0.206"],
+  allowedDevOrigins: ["192.168.0.206", "127.0.0.1"],
   reactStrictMode: true,
   poweredByHeader: false,
   compress: true,
@@ -66,6 +66,13 @@ const nextConfig = {
         source: "/Brand Kit/:path*",
         headers: immutableAssetHeaders,
       },
+    ];
+  },
+  async redirects() {
+    return [
+      { source: "/best-seller", destination: "/products", permanent: true },
+      { source: "/personalizations", destination: "/products", permanent: true },
+      { source: "/homeandliving", destination: "/products", permanent: true },
     ];
   },
 };

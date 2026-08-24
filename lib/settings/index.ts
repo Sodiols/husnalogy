@@ -1,16 +1,17 @@
 import { nowIso } from "@/lib/core/id";
 import { createServiceRoleClient } from "@/lib/supabase/server";
 import { cleanOptionalString, cleanString, isValidEmail, normalizeBoolean, normalizePrice } from "@/lib/validation";
+import { BUSINESS_INFO } from "@/lib/launch-config";
 
 const SETTINGS_ID = "global";
 
 export const DEFAULT_SETTINGS = {
   store: {
-    name: "Husnalogy",
-    tagline: "Timeless Invitations & Gifts",
-    email: "hello@husnalogy.com",
-    phone: "+880 1712 345678",
-    address: "House 12, Road 5, Dhanmondi\nDhaka 1205, Bangladesh",
+    name: BUSINESS_INFO.name,
+    tagline: BUSINESS_INFO.tagline,
+    email: BUSINESS_INFO.email,
+    phone: BUSINESS_INFO.phone,
+    address: BUSINESS_INFO.address,
   },
   branding: {
     logoUrl: "/Brand Kit/Logo-5.png",
@@ -27,7 +28,7 @@ export const DEFAULT_SETTINGS = {
   },
   preferences: {
     allowProductReviews: true,
-    newsletterEnabled: true,
+    newsletterEnabled: false,
     maintenanceMode: false,
   },
   payment: {
@@ -40,22 +41,19 @@ export const DEFAULT_SETTINGS = {
   },
   shipping: {
     digitalProductsNoShipping: true,
-    methods: [
-      { id: "inside-dhaka", name: "Inside Dhaka", area: "Dhaka city", fee: 20, eta: "1-2 business days", enabled: true },
-      { id: "outside-dhaka", name: "Outside Dhaka", area: "Bangladesh", fee: 80, eta: "3-5 business days", enabled: true },
-    ],
+    methods: [],
   },
   email: {
     senderName: "Husnalogy",
-    senderEmail: "hello@husnalogy.com",
+    senderEmail: BUSINESS_INFO.email,
     provider: "",
     smtpHost: "",
     smtpPort: "",
     smtpUser: "",
     smtpPassword: "",
-    orderConfirmationEmails: true,
-    designRequestUpdateEmails: true,
-    newsletterEmails: true,
+    orderConfirmationEmails: false,
+    designRequestUpdateEmails: false,
+    newsletterEmails: false,
   },
   security: {
     twoStepVerificationEnabled: false,
@@ -70,7 +68,7 @@ export const DEFAULT_SETTINGS = {
     newReviews: true,
     paymentUpdates: true,
     lowStockProducts: true,
-    newsletterSubscribers: true,
+    newsletterSubscribers: false,
   },
   backup: {
     lastExportAt: "",

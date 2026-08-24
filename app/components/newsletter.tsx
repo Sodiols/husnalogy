@@ -3,6 +3,7 @@
 import { useState } from "react";
 
 import Reveal from "./reveal";
+import { LAUNCH_FEATURES } from "@/lib/launch-config";
 
 export default function Newsletter() {
   const [email, setEmail] = useState("");
@@ -31,6 +32,8 @@ export default function Newsletter() {
       setStatus({ loading: false, success: "", error: error.message || "Something went wrong." });
     }
   };
+
+  if (!LAUNCH_FEATURES.marketingEmail) return null;
 
   return (
     <section className="bg-white px-4 py-16 sm:px-6 sm:py-20 lg:px-10 lg:py-24">

@@ -1,35 +1,4 @@
-"use client";
-
-import { useState } from "react";
-
 export default function MaintenanceScreen({ storeName = "Husnalogy", storeTagline = "" }: { storeName?: string; storeTagline?: string }) {
-  const [email, setEmail] = useState("");
-  const [status, setStatus] = useState({ loading: false, success: "", error: "" });
-
-  const handleSubmit = async (event) => {
-    event.preventDefault();
-    setStatus({ loading: true, success: "", error: "" });
-
-    try {
-      const response = await fetch("/api/newsletter", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, source: "maintenance notify" }),
-      });
-      const data = await response.json();
-
-      if (!response.ok) {
-        const firstError = data?.errors ? Object.values(data.errors)[0] : data?.error;
-        throw new Error(firstError || "Subscription failed.");
-      }
-
-      setEmail("");
-      setStatus({ loading: false, success: "Thank you — we'll email you the moment we're back.", error: "" });
-    } catch (error) {
-      setStatus({ loading: false, success: "", error: error.message || "Something went wrong." });
-    }
-  };
-
   return (
     <main className="relative min-h-screen overflow-hidden bg-[#f8f6f1] text-[#303839]">
       {/* Soft brand circle */}
@@ -65,33 +34,9 @@ export default function MaintenanceScreen({ storeName = "Husnalogy", storeTaglin
             We&rsquo;re updating the store
           </h1>
           <p className="mx-auto mt-4 max-w-[420px] text-sm leading-7 text-[#303839]/65">
-            We&rsquo;re preparing something beautiful. Leave your email and we&rsquo;ll let you know the
-            moment we&rsquo;re back.
+            We&rsquo;re preparing something beautiful. Please return soon or contact Husnalogy if you need help with an existing order.
           </p>
-
-          <form onSubmit={handleSubmit} className="relative mx-auto mt-8 flex w-full max-w-[420px] items-center">
-            <input
-              type="email"
-              value={email}
-              onChange={(event) => setEmail(event.target.value)}
-              placeholder="Enter your email address"
-              required
-              aria-label="Email address"
-              className="w-full border-b border-[#303839]/25 bg-transparent py-2.5 pl-0 pr-[116px] text-sm text-[#303839] outline-none transition placeholder:text-[#303839]/45 focus:border-[#303839]"
-            />
-            <button
-              type="submit"
-              disabled={status.loading}
-              className="absolute right-0 text-[11px] font-semibold uppercase tracking-[0.18em] text-[#303839] transition-colors duration-300 hover:text-black disabled:opacity-60"
-            >
-              {status.loading ? "Sending..." : "Notify me!"}
-            </button>
-          </form>
-
-          <div className="mt-3 min-h-[18px]" aria-live="polite">
-            {status.success && <p className="text-xs font-semibold text-[#303839]">{status.success}</p>}
-            {status.error && <p className="text-xs font-semibold text-red-600">{status.error}</p>}
-          </div>
+          <a href="/contact" className="mt-8 inline-flex border-b border-[#303839] pb-1 text-xs font-bold uppercase tracking-[0.16em]">Contact Husnalogy</a>
         </div>
       </div>
     </main>

@@ -922,8 +922,10 @@ function OrderDetailModal({ order, onClose }) {
 
         <div className="grid gap-1 border-t border-[#111111]/10 pt-3">
           <Row label="Subtotal" value={money(order.subtotal ?? order.total ?? 0, order.currency)} />
-          <Row label="Delivery" value={order.deliveryCharge ? money(order.deliveryCharge, order.currency) : "Calculated later"} />
-          <Row label="Total" value={money(order.total ?? 0, order.currency)} strong />
+          <Row label="Fulfillment" value={order.deliveryMethod === "store" ? "Store pickup" : "Delivery"} />
+          <Row label="Payment" value={order.paymentMethod || "Cash on Delivery"} />
+          <Row label="Delivery charge" value={order.deliveryMethod === "store" ? "No charge" : order.deliveryChargeConfirmed ? money(order.deliveryCharge || 0, order.currency) : "Confirmed after review"} />
+          <Row label={order.deliveryMethod === "store" || order.deliveryChargeConfirmed ? "Total" : "Order subtotal"} value={money(order.total ?? 0, order.currency)} strong />
         </div>
 
         {(addr.addressLine1 || addr.city) && (

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import RightArrowIcon from "../components/RightArrowIcon";
+import { BUSINESS_INFO, LAUNCH_FEATURES, ORDER_POLICY } from "@/lib/launch-config";
 
 const TOPICS = [
   { icon: "bag", title: "Orders", text: "Track, view, or manage your order.", href: "/orders" },
@@ -18,16 +19,17 @@ const TOPICS = [
 
 // Ordered so a 2-column grid fills the columns to match the reference layout.
 const FAQS = [
-  { q: "How can I track my order?", a: "Once your order has shipped you'll receive a shipping confirmation email with a tracking link. You can also sign in and view live status anytime under My Orders. Please allow up to 24 hours for tracking updates to appear." },
+  { q: "How can I check my order?", a: "Sign in and open My Orders to see the current order status. Contact Husnalogy if you need courier or collection details that are not shown there." },
   { q: "Can I cancel or change my order?", a: "Reach out through the contact page as soon as possible and we'll help with cancellations or changes wherever production hasn't started yet." },
   { q: "Can I request changes after placing an order?", a: "Yes — contact us as soon as possible and we'll update the details before production begins." },
-  { q: "How do personalized orders work?", a: "Choose a design, add your names, wording, dates, or photos during personalization, and our team prepares a proof for your approval before printing." },
+  { q: "How do personalized orders work?", a: "Choose a design, add your names, wording, dates, or photos, and check the preview before ordering. If a separate proof is needed, Husnalogy will confirm that during review." },
   { q: "How long does a custom design take?", a: "It depends on the product and customization; the team confirms the timeline after reviewing your request." },
   { q: "Do you ship internationally?", a: "Delivery options and timing are confirmed after your order; contact us for international requests." },
   { q: "Can I upload my own photo or wording?", a: "Yes, many designs let you add your own names, wording, and photos during personalization." },
-  { q: "When will I receive my proof?", a: "After your request is reviewed, the team prepares a digital proof and shares it for approval, usually within a few working days." },
+  { q: "When will I receive a proof?", a: "Proof requirements depend on the selected product. Husnalogy will confirm whether a separate proof is needed after reviewing the order." },
   { q: "Do you offer digital and printed products?", a: "Yes — both digital and printed options are available on selected designs." },
-  { q: "What file type will I receive for digital products?", a: "Digital products are delivered as high-resolution PDF or PNG files, ready to print or share." },
+  { q: "How is payment handled?", a: `${ORDER_POLICY.paymentMethod} is the only launch payment method. ${ORDER_POLICY.deliveryCharge}` },
+  { q: "Can I return a personalized item?", a: ORDER_POLICY.personalizedReturns },
 ];
 
 // Split into two independent columns so opening a card only pushes items in its own column.
@@ -181,8 +183,8 @@ export default function SupportClient() {
           </div>
 
           <div className="rounded-none border border-[#303839]/8 bg-white p-3 shadow-[0_10px_30px_rgba(48,56,57,0.04)]">
-            <ContactRow icon="mail" title="Email Support" detail="hello@husnalogy.com" href="mailto:hello@husnalogy.com" />
-            <ContactRow icon="phone" title="Call or WhatsApp" detail="+880 1712 345678" href="tel:+8801712345678" />
+            <ContactRow icon="mail" title="Email Support" detail={BUSINESS_INFO.email} href={`mailto:${BUSINESS_INFO.email}`} />
+            <ContactRow icon="phone" title="WhatsApp" detail={BUSINESS_INFO.phone} href={BUSINESS_INFO.whatsappHref} />
             <ContactRow icon="clock" title="Support Hours" detail="Sun to Thu, 10:00 AM – 8:00 PM" />
           </div>
         </div>
@@ -212,7 +214,7 @@ export default function SupportClient() {
       </section>
 
       {/* Newsletter */}
-      <section className="bg-white px-4 py-12 sm:px-6 lg:px-10">
+      {LAUNCH_FEATURES.marketingEmail && <section className="bg-white px-4 py-12 sm:px-6 lg:px-10">
         <div className="mx-auto flex max-w-[1280px] flex-col gap-5 rounded-none border border-[#303839]/8 bg-white p-6 shadow-[0_10px_30px_rgba(48,56,57,0.05)] sm:p-8 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex items-center gap-4">
             <span className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-[#f8f6f1] text-[#303839]">
@@ -242,7 +244,7 @@ export default function SupportClient() {
             {status.message || status.error}
           </p>
         )}
-      </section>
+      </section>}
     </main>
   );
 }

@@ -25,7 +25,7 @@ export async function GET(request: Request) {
   const templateVersion = Math.max(0, Number(url.searchParams.get("templateVersion") || 0));
   const limit = Math.max(1, Math.min(50, Number(url.searchParams.get("limit") || 50)));
 
-  let query = supabase.from("product_customizations").select("*").order("updated_at", { ascending: false });
+  let query = supabase.from("product_customizations").select("*").eq("user_id", user.id).order("updated_at", { ascending: false });
   if (status) query = query.eq("status", status);
   if (productId) query = query.eq("product_id", productId);
   if (templateId) query = query.eq("template_id", templateId);
@@ -72,10 +72,23 @@ export async function POST(request: Request) {
   const body = validation.body;
 
   if (requestedId && !requestedId.startsWith("local_")) {
+    const { data: existing, error: existingError } = await supabase
+      .from("product_customizations")
+      .select("id,status")
+      .eq("id", requestedId)
+      .eq("user_id", user.id)
+      .maybeSingle();
+    if (existingError) return Response.json({ ok: false, error: existingError.message }, { status: 500 });
+    if (!existing) return Response.json({ ok: false, error: "Customization not found." }, { status: 404 });
+    if (existing.status === "ordered") {
+      return Response.json({ ok: false, error: "Placed-order designs are locked. Duplicate the design to make changes." }, { status: 409 });
+    }
     const { data, error } = await supabase
       .from("product_customizations")
       .update(customizationUpdateRow(body))
       .eq("id", requestedId)
+      .eq("user_id", user.id)
+      .neq("status", "ordered")
       .select("*")
       .maybeSingle();
     if (error) return Response.json({ ok: false, error: error.message }, { status: 500 });

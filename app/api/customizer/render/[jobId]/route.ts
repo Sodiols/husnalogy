@@ -6,9 +6,11 @@ async function authorizeJob(jobId: string) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { ok: false as const, response: Response.json({ ok: false, error: "Sign in required." }, { status: 401 }) };
-  const { data, error } = await supabase.from("customizer_render_jobs").select("id").eq("id", jobId).maybeSingle();
+  const { data, error } = await supabase.from("customizer_render_jobs").select("id,customization_id").eq("id", jobId).maybeSingle();
   if (error) return { ok: false as const, response: Response.json({ ok: false, error: "Could not verify this render job." }, { status: 500 }) };
   if (!data) return { ok: false as const, response: Response.json({ ok: false, error: "Not found." }, { status: 404 }) };
+  const { data: owned } = await supabase.from("product_customizations").select("id").eq("id", data.customization_id).eq("user_id", user.id).maybeSingle();
+  if (!owned) return { ok: false as const, response: Response.json({ ok: false, error: "Not found." }, { status: 404 }) };
   return { ok: true as const };
 }
 

@@ -316,7 +316,6 @@ function decorateSizeOption(option) {
       ...option,
       displayLabel: 'Classic (5" x 7")',
       badge: "Best Seller",
-      price: option.price || "+$0.35",
     };
   }
 

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { BUSINESS_INFO, LAUNCH_FEATURES } from "@/lib/launch-config";
 
 export default function ContactPage() {
   const [form, setForm] = useState({ name: "", email: "", phone: "", subject: "", message: "" });
@@ -78,19 +79,19 @@ export default function ContactPage() {
 
           <div className="mt-12 grid gap-y-9 sm:grid-cols-3 sm:divide-x sm:divide-[#303839]/14">
             <ContactMethod icon={<MailIcon />} title="Email">
-              <a href="mailto:hello@husnalogy.com" className="font-semibold hover:text-black">
-                hello@husnalogy.com
+              <a href={`mailto:${BUSINESS_INFO.email}`} className="font-semibold hover:text-black">
+                {BUSINESS_INFO.email}
               </a>
-              <p className="mt-2 text-charcoal/58">We usually reply within 24 hours</p>
+              <p className="mt-2 text-charcoal/58">We reply as soon as possible</p>
             </ContactMethod>
             <ContactMethod icon={<PhoneIcon />} title="Phone">
-              <a href="tel:+8801760074435" className="font-semibold hover:text-black">
-                +880 1575 004432
+              <a href={BUSINESS_INFO.phoneHref} className="font-semibold hover:text-black">
+                {BUSINESS_INFO.phone}
               </a>
               <p className="mt-2 text-charcoal/58">Sun - Thu, 10:00 AM - 8:00 PM (BDT)</p>
             </ContactMethod>
             <ContactMethod icon={<PinIcon />} title="Studio">
-              <p className="font-semibold">Sylhet, Bangladesh</p>
+              <p className="font-semibold">{BUSINESS_INFO.address}</p>
               <p className="mt-2 text-charcoal/58">By appointment only</p>
             </ContactMethod>
           </div>
@@ -169,12 +170,12 @@ export default function ContactPage() {
         <div className="grid gap-y-6 rounded-none bg-white p-6 sm:grid-cols-2 sm:p-8 lg:grid-cols-4 lg:divide-x lg:divide-charcoal/10">
           <Feature icon={<SupportIcon />} title="Dedicated Support" text="We're here to help with care and attention." />
           <Feature icon={<PencilIcon />} title="Custom Design Help" text="Share your ideas and we'll bring them to life." />
-          <Feature icon={<TruckIcon />} title="Fast & Reliable" text="Quick responses and timely delivery." />
+          <Feature icon={<TruckIcon />} title="Delivery Support" text="Delivery details are confirmed after order review." />
           <Feature icon={<HeartIcon />} title="Made with Love" text="Every piece is designed with meaning." />
         </div>
       </section>
 
-      <section className="mx-auto max-w-[1480px] px-4 pb-16 pt-6 sm:px-6 lg:px-8">
+      {LAUNCH_FEATURES.marketingEmail && <section className="mx-auto max-w-[1480px] px-4 pb-16 pt-6 sm:px-6 lg:px-8">
         <div className="flex flex-col gap-5 rounded-none p-6 sm:p-8 md:flex-row md:items-center md:justify-between">
           <div className="flex items-center gap-4">
             <span className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-white/70 text-charcoal">
@@ -215,7 +216,7 @@ export default function ContactPage() {
             {newsletter.success || newsletter.error}
           </p>
         )}
-      </section>
+      </section>}
     </main>
   );
 }

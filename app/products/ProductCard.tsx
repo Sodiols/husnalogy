@@ -135,7 +135,7 @@ export default function ProductCard({ product, hasOtherStyles = false, hasSuite 
   return (
     <article className="product-card group min-w-0 text-[#303839]">
       <div className="relative aspect-square overflow-hidden rounded-none bg-[#f8f6f1] ring-1 ring-[#303839]/8">
-        <Link href={`/products/${product.slug}`} className="block h-full w-full">
+        <Link href={`/products/${product.slug}`} className="relative block h-full w-full">
           <Image
             src={image}
             alt={product.title}

@@ -17,14 +17,7 @@ const typeLabel: Record<string, string> = {
   qrCode: "QR",
 };
 
-const orderActions = [
-  ["bringToFront", "Front"],
-  ["bringForward", "Forward"],
-  ["sendBackward", "Backward"],
-  ["sendToBack", "Back"],
-] as const;
-
-export default function CustomerLayersPanel({ layers, selectedIds, selectedGridSlotId, onSelectionChange, onGridSlotSelect, onEnterGroup, onArrange, onReorder, onToggleVisibility, onToggleLock, onRename, onDuplicate }: any) {
+export default function CustomerLayersPanel({ layers, selectedIds, selectedGridSlotId, onSelectionChange, onGridSlotSelect, onEnterGroup, onReorder, onToggleVisibility, onToggleLock, onRename, onDuplicate }: any) {
   const [renaming, setRenaming] = useState<string | null>(null);
   const [name, setName] = useState("");
   const [query, setQuery] = useState("");
@@ -213,11 +206,6 @@ export default function CustomerLayersPanel({ layers, selectedIds, selectedGridS
           <input id="customer-layer-search" type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search name or type" className="h-11 w-full border border-[#303839]/12 bg-white pl-9 pr-12 text-xs font-semibold text-[#303839] outline-none transition placeholder:text-[#303839]/35 focus:border-[#D4AF37] focus:ring-2 focus:ring-[#D4AF37]/15" />
           <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[9px] font-extrabold text-[#303839]/40">{visibleLayers.length}</span>
         </div>
-      </div>
-      <div className="flex flex-wrap gap-1.5" role="toolbar" aria-label="Layer order">
-        {orderActions.map(([action, label]) => (
-          <button key={action} type="button" disabled={!selectedIds.length} onClick={() => onArrange(action)} className="min-h-11 flex-1 rounded-lg border border-[#303839]/12 bg-white px-2 text-[10px] font-extrabold text-[#303839] transition hover:border-[#D4AF37] hover:bg-[#303839]/5 disabled:opacity-35 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37]">{label}</button>
-        ))}
       </div>
       <p className="text-[10px] leading-4 text-[#303839]/45">Drag unlocked layers to reorder. Double-click a customer layer name to rename it.</p>
       <div className="grid gap-1.5">{roots.map((layer) => renderLayer(layer))}</div>

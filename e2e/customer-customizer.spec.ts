@@ -36,7 +36,8 @@ test.describe("seeded customer Customizer V2 journey", () => {
     await opacity.press("Enter");
     await expect(opacity).toHaveValue("100%");
 
-    await root.getByRole("button", { name: "Lines", exact: true }).click();
+    // Lines intentionally live inside the Shapes panel; there is no separate
+    // Lines tool in the current customer UI.
     await root.getByRole("button", { name: "solid line", exact: true }).click();
     await expect(root.getByLabel("Line start cap")).toBeVisible();
 
@@ -89,8 +90,13 @@ test.describe("seeded customer Customizer V2 journey", () => {
 
     await root.getByRole("button", { name: "Uploads", exact: true }).first().click();
     const upload = root.locator('input[type="file"]').first();
-    await upload.setInputFiles(join(process.cwd(), "public", "images", "weddings", "invitations", "collection1.png"));
+    await upload.setInputFiles([
+      join(process.cwd(), "public", "images", "weddings", "invitations", "collection1.png"),
+      join(process.cwd(), "public", "images", "weddings", "invitations", "collection2.png"),
+    ]);
     await expect(root.getByText(/Uploading|Great quality|Good quality|Replace photo/i).first()).toBeVisible({ timeout: 30_000 });
+    await expect(root.getByRole("button", { name: /Use photo collection1\.png/i })).toBeVisible({ timeout: 30_000 });
+    await expect(root.getByRole("button", { name: /Use photo collection2\.png/i })).toBeVisible({ timeout: 30_000 });
 
     const firstGridSlot = root.getByRole("button", { name: /Select photo grid slot 1/i }).first();
     await expect(firstGridSlot, "The E2E product must contain a customer-editable grid").toBeVisible();
@@ -107,6 +113,15 @@ test.describe("seeded customer Customizer V2 journey", () => {
 
     await root.getByRole("button", { name: "Undo" }).first().click();
     await root.getByRole("button", { name: "Redo" }).first().click();
+    const canvasZoom = root.locator('input[aria-label="Canvas zoom"]').first();
+    await canvasZoom.fill("150");
+    await canvasZoom.press("Enter");
+    await expect(canvasZoom).toHaveValue("150%");
+    await canvasZoom.fill("200");
+    await canvasZoom.press("Enter");
+    await expect(canvasZoom).toHaveValue("200%");
+    await root.getByRole("button", { name: "Show the page at actual size" }).click();
+    await expect(canvasZoom).toHaveValue("100%");
     await root.getByRole("button", { name: /Save & Exit/i }).first().click();
     await page.goto(customizerUrl);
     await expect(page.locator("[data-customizer-root]")).toBeVisible();

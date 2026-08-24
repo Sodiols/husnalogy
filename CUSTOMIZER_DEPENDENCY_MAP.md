@@ -1,6 +1,6 @@
 # Customizer Dependency Map
 
-Generated: 2026-08-18T09:16:15.318Z
+Generated: 2026-08-23T11:10:01.792Z
 
 This inventory covers static imports, dynamic `import()`/`require()` calls, Next.js route entry points, package scripts, tests, migrations, Supabase functions, worker/configuration strings, and route URL references. A zero-import file is not automatically unused: framework and deployment entry points are retained explicitly.
 
@@ -35,12 +35,12 @@ Files audited: 227
 | `app/api/admin/customizer/mockups/[productId]/publish/route.ts` | Next API route | 0 | 0 | 1 | KEEP: framework/script/test/migration entry point |
 | `app/api/admin/customizer/mockups/[productId]/route.ts` | Next API route | 0 | 0 | 1 | KEEP: framework/script/test/migration entry point |
 | `app/api/admin/customizer/orders/[orderId]/snapshots/route.ts` | Next API route | 0 | 0 | 1 | KEEP: framework/script/test/migration entry point |
-| `app/api/admin/customizer/render/process/route.ts` | Next API route | 0 | 0 | 2 | KEEP: framework/script/test/migration entry point |
+| `app/api/admin/customizer/render/process/route.ts` | Next API route | 0 | 0 | 4 | KEEP: framework/script/test/migration entry point |
 | `app/api/admin/customizer/render/retry/route.ts` | Next API route | 0 | 0 | 3 | KEEP: framework/script/test/migration entry point |
 | `app/api/admin/customizer/templates/[productId]/publish/route.ts` | Next API route | 0 | 0 | 2 | KEEP: framework/script/test/migration entry point |
 | `app/api/admin/customizer/templates/[productId]/versions/route.ts` | Next API route | 0 | 0 | 1 | KEEP: framework/script/test/migration entry point |
-| `app/api/customizations/[id]/route.ts` | Next API route | 0 | 0 | 3 | KEEP: framework/script/test/migration entry point |
-| `app/api/customizations/route.ts` | Next API route | 0 | 0 | 8 | KEEP: framework/script/test/migration entry point |
+| `app/api/customizations/[id]/route.ts` | Next API route | 0 | 0 | 4 | KEEP: framework/script/test/migration entry point |
+| `app/api/customizations/route.ts` | Next API route | 0 | 0 | 9 | KEEP: framework/script/test/migration entry point |
 | `app/api/customizer/assets/[id]/route.ts` | Next API route | 0 | 0 | 1 | KEEP: framework/script/test/migration entry point |
 | `app/api/customizer/assets/resolve/route.ts` | Next API route | 0 | 0 | 2 | KEEP: framework/script/test/migration entry point |
 | `app/api/customizer/elements/route.ts` | Next API route | 0 | 0 | 2 | KEEP: framework/script/test/migration entry point |
@@ -105,7 +105,7 @@ Files audited: 227
 | `lib/customizer/numeric-stepper.ts` | engine/service | 3 | 0 | 4 | KEEP: referenced |
 | `lib/customizer/order-snapshots.ts` | engine/service | 3 | 0 | 6 | KEEP: referenced |
 | `lib/customizer/public-version.ts` | engine/service | 4 | 0 | 5 | KEEP: referenced |
-| `lib/customizer/render-jobs.ts` | engine/service | 5 | 1 | 7 | KEEP: referenced |
+| `lib/customizer/render-jobs.ts` | engine/service | 5 | 1 | 8 | KEEP: referenced |
 | `lib/customizer/save-queue.ts` | engine/service | 2 | 0 | 2 | KEEP: referenced |
 | `lib/customizer/save-validation.ts` | engine/service | 3 | 0 | 4 | KEEP: referenced |
 | `lib/customizer/server/admin-assets.ts` | engine/service | 11 | 0 | 8 | KEEP: referenced |

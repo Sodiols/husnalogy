@@ -11,7 +11,7 @@ const categories = [
   { title: "Gifts", href: "/gifts", image: "/images/gifts.png" },
   { title: "Personalized Gifts", href: "/gifts", image: "/images/personalizedGifts.png" },
   { title: "Stationery", href: "/stationery", image: "/images/weddings/minimalist.png" },
-  { title: "Best Sellers", href: "/best-seller", image: "/images/invitations.png" },
+  { title: "Best Sellers", href: "/products", image: "/images/invitations.png" },
 ];
 
 export default function Categories() {

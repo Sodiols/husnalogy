@@ -6,35 +6,35 @@ export const mainMenu = [
     dropdownColumns: 2,
     children: [
       {
-        href: "/collections/wedding-invitations",
+        href: "/search?q=wedding%20invitations",
         title: "Wedding Invitations",
       },
       {
-        href: "/collections/save-the-dates",
+        href: "/search?q=save%20the%20dates",
         title: "Save the Dates",
       },
       {
-        href: "/collections/response-cards",
+        href: "/search?q=RSVP%20cards",
         title: "RSVP Cards",
       },
       {
-        href: "/collections/all-wedding-stationery",
+        href: "/search?q=wedding%20suite",
         title: "Wedding Suites",
       },
       {
-        href: "/collections/bridal-shower-invitations",
+        href: "/search?q=bridal%20shower",
         title: "Bridal Shower",
       },
       {
-        href: "/collections/rehearsal-dinner-invitations",
+        href: "/search?q=rehearsal%20dinner",
         title: "Rehearsal Dinner",
       },
       {
-        href: "/collections/guest-books",
+        href: "/search?q=guest%20book",
         title: "Guest Books",
       },
       {
-        href: "/collections/thank-you-cards",
+        href: "/search?q=thank%20you%20cards",
         title: "Thank You Cards",
       },
     ],
@@ -44,19 +44,19 @@ export const mainMenu = [
     href: "/gifts",
     children: [
       {
-        href: "/collections/personalized-gifts",
+        href: "/search?q=personalized%20gifts",
         title: "Personalized Gifts",
       },
       {
-        href: "/collections/birthday-gifts",
+        href: "/search?q=birthday%20gifts",
         title: "Birthday Gifts",
       },
       {
-        href: "/collections/gifts-for-her",
+        href: "/search?q=gifts%20for%20her",
         title: "Gifts for Her",
       },
       {
-        href: "/collections/gifts-for-him",
+        href: "/search?q=gifts%20for%20him",
         title: "Gifts for Him",
       },
     ],
@@ -64,22 +64,22 @@ export const mainMenu = [
 
    {
     label: "Personalizations",
-    href: "/personalizations",
+    href: "/products",
     children: [
       {
-        href: "/collections/personalized-gifts",
-        title: "mugs",
+        href: "/search?q=personalized%20mugs",
+        title: "Mugs",
       },
       {
-        href: "/collections/birthday-gifts",
-        title: "invitation cards",
+        href: "/search?q=invitation%20cards",
+        title: "Invitation Cards",
       },
       {
-        href: "/collections/gifts-for-her",
+        href: "/search?q=personalized%20gifts",
         title: "Gifts for Her",
       },
       {
-        href: "/collections/gifts-for-him",
+        href: "/search?q=photo%20gifts",
         title: "Gifts for Him",
       },
     ],
@@ -90,24 +90,23 @@ export const mainMenu = [
     href: "/stationery",
     children: [
       {
-        href: "/collections/cards",
+        href: "/search?q=notecards",
         title: "Notecards",
       },
       {
-        href: "/collections/envelopes",
+        href: "/search?q=envelopes",
         title: "Envelopes",
       },
       {
-        href: "/collections/mailing-accessories",
+        href: "/search?q=address%20labels",
         title: "Address Labels",
       },
       {
-        href: "/collections/mailing-accessories",
+        href: "/search?q=seals%20stamps",
         title: "Seals & Stamps",
       },
     ],
   },
-  { label: "Home & Living", href: "/homeandliving",},
   { label: "About", href: "/about", },
   { label: "Contact", href: "/contact",},
 ];

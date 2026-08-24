@@ -96,8 +96,9 @@ export default function CartClient() {
           <h2 className="text-xl font-bold">Order summary</h2>
           <div className="mt-5 space-y-3 text-sm">
             <div className="flex justify-between"><span>Subtotal</span><span>{formatCurrency(totals.subtotal, totals.currency)}</span></div>
-            <div className="flex justify-between"><span>Delivery</span><span>{totals.deliveryCharge ? formatCurrency(totals.deliveryCharge, totals.currency) : "Calculated later"}</span></div>
-            <div className="border-t border-[#303839]/10 pt-3 flex justify-between font-bold"><span>Total</span><span>{formatCurrency(totals.total, totals.currency)}</span></div>
+            <div className="flex justify-between"><span>Delivery charge</span><span>{totals.deliveryCharge ? formatCurrency(totals.deliveryCharge, totals.currency) : "Confirmed after order review"}</span></div>
+            <div className="border-t border-[#303839]/10 pt-3 flex justify-between font-bold"><span>Order subtotal</span><span>{formatCurrency(totals.total, totals.currency)}</span></div>
+            <p className="text-xs leading-5 text-[#303839]/60">Store pickup has no delivery charge. For delivery, Husnalogy confirms the charge after reviewing the destination.</p>
           </div>
 
           {items.length ? (

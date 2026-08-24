@@ -1,5 +1,5 @@
 import { requireAdmin } from "@/lib/auth/admin-server";
-import { deleteOrderRequest, updateOrderRequestStatus } from "@/lib/orders/index";
+import { deleteOrderRequest, updateOrderRequestDetails } from "@/lib/orders/index";
 
 export async function PUT(request, { params }) {
   const admin = await requireAdmin();
@@ -7,7 +7,7 @@ export async function PUT(request, { params }) {
 
   const { id } = await params;
   const body = await request.json();
-  const result = await updateOrderRequestStatus(id, body.status);
+  const result = await updateOrderRequestDetails(id, body);
 
   if (!result.ok) {
     return Response.json({ ok: false, errors: result.errors }, { status: 400 });

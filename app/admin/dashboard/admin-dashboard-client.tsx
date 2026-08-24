@@ -7,6 +7,7 @@ import ProductUploadForm from "./product-upload-form";
 import HeroCollectionSection from "./hero-collection-section";
 import ElementsLibrarySection from "./elements-library-section";
 import { formatCurrency as formatMoneyValue } from "@/lib/currency";
+import { BUSINESS_INFO, LAUNCH_FEATURES, ORDER_POLICY } from "@/lib/launch-config";
 
 const sections = [
   "Overview",
@@ -17,7 +18,6 @@ const sections = [
   "Elements Library",
   "Order Requests",
   "Contact Messages",
-  "Newsletter Subscribers",
   "Recently Deleted",
   "Settings",
 ];
@@ -45,7 +45,6 @@ const navGroups = [
     title: "Customers",
     items: [
       { section: "Contact Messages", label: "Contact Messages", icon: "mail" },
-      { section: "Newsletter Subscribers", label: "Newsletter Subscribers", icon: "document" },
     ],
   },
   {
@@ -99,7 +98,7 @@ const sectionDetails = {
     searchPlaceholder: "Search recently deleted products...",
   },
   Settings: {
-    description: "Update store profile, payments, email, shipping, and security.",
+    description: "Update store profile, launch payment, delivery, and security settings.",
     searchPlaceholder: "Search products, orders, messages...",
   },
 };
@@ -351,10 +350,6 @@ export default function AdminDashboardClient() {
       {
         section: "Collections",
         count: productCollections.filter((collection) => includesSearch([collection.name, collection.slug, collection.description], query)).length,
-      },
-      {
-        section: "Newsletter Subscribers",
-        count: subscribers.filter((subscriber) => includesSearch([subscriber.email, subscriber.source, subscriber.status], query)).length,
       },
       {
         section: "Recently Deleted",
@@ -740,6 +735,22 @@ export default function AdminDashboardClient() {
       showNotice("Order status updated.");
     } catch (updateError) {
       showError(updateError.message || "Order status could not be updated.");
+    }
+  };
+
+  const updateOrderDeliveryCharge = async (id, deliveryCharge) => {
+    try {
+      const response = await fetch(`/api/admin/order-requests/${id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ deliveryCharge }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(Object.values(data?.errors || {})[0] || data?.error || "Delivery charge could not be updated.");
+      await loadData();
+      showNotice("Delivery charge confirmed.");
+    } catch (updateError) {
+      showError(updateError.message || "Delivery charge could not be updated.");
     }
   };
 
@@ -1203,6 +1214,7 @@ export default function AdminDashboardClient() {
                     status={orderStatus}
                     setStatus={setOrderStatus}
                     onStatusChange={updateOrderStatus}
+                    onDeliveryChargeChange={updateOrderDeliveryCharge}
                     onDelete={removeOrder}
                   />
                 )}
@@ -1220,7 +1232,7 @@ export default function AdminDashboardClient() {
                   />
                 )}
 
-                {activeSection === "Newsletter Subscribers" && (
+                {LAUNCH_FEATURES.marketingEmail && activeSection === "Newsletter Subscribers" && (
                   <SubscribersSection
                     subscribers={filteredSubscribers}
                     allSubscribers={subscribers}
@@ -1413,7 +1425,7 @@ function Overview({
   const metrics = [
     { label: "Total Orders", value: rangeOrders.length.toLocaleString(), icon: "bag", note: `${overview.newOrders} need attention`, onClick: onOpenOrders },
     { label: "Total Revenue", value: formatCurrency(totalRevenue), icon: "wallet", note: "Recorded order value", onClick: onOpenOrders },
-    { label: "Subscribers", value: overview.subscribers.toLocaleString(), icon: "user", note: "Newsletter audience", onClick: onOpenSubscribers },
+    ...(LAUNCH_FEATURES.marketingEmail ? [{ label: "Subscribers", value: overview.subscribers.toLocaleString(), icon: "user", note: "Newsletter audience", onClick: onOpenSubscribers }] : []),
     { label: "Active Products", value: overview.activeProducts.toLocaleString(), icon: "box", note: `${overview.products} total products`, onClick: onOpenActiveProducts },
   ];
 
@@ -1439,7 +1451,7 @@ function Overview({
       summary: {
         totalOrders: rangeOrders.length,
         totalRevenue,
-        subscribers: overview.subscribers,
+        ...(LAUNCH_FEATURES.marketingEmail ? { subscribers: overview.subscribers } : {}),
         activeProducts: overview.activeProducts,
         pendingOrders: overview.newOrders,
         newMessages: overview.newMessages,
@@ -2183,6 +2195,8 @@ function getCheckoutDetailEntries(order) {
     { label: "Name", value: order.customerName },
     { label: "Email", value: order.customerEmail },
     { label: "Phone", value: order.customerPhone },
+    { label: "Fulfillment", value: order.deliveryMethod === "store" ? "Store pickup" : "Delivery" },
+    { label: "Payment method", value: order.paymentMethod || ORDER_POLICY.paymentMethod },
     { label: "Address 1", value: address.addressLine1 },
     { label: "Address 2", value: address.addressLine2 },
     { label: "City", value: address.city },
@@ -3662,9 +3676,10 @@ function CollectionActionLink({ icon, label, href }) {
   );
 }
 
-function OrdersSection({ orders, query, status, setStatus, onStatusChange, onDelete }) {
+function OrdersSection({ orders, query, status, setStatus, onStatusChange, onDeliveryChargeChange, onDelete }) {
   const [selectedId, setSelectedId] = useState(null);
   const [showPersonalization, setShowPersonalization] = useState(false);
+  const [deliveryChargeDraft, setDeliveryChargeDraft] = useState("");
   const queryMatchedOrders = orders.filter((order) => orderMatchesQuery(order, query));
   const visibleOrders = status
     ? queryMatchedOrders.filter((order) => String(order.status || "pending").toLowerCase() === status)
@@ -3684,7 +3699,8 @@ function OrdersSection({ orders, query, status, setStatus, onStatusChange, onDel
 
   useEffect(() => {
     setShowPersonalization(false);
-  }, [selectedOrder?.id]);
+    setDeliveryChargeDraft(selectedOrder?.deliveryChargeConfirmed ? String(selectedOrder.deliveryCharge ?? 0) : "");
+  }, [selectedOrder?.id, selectedOrder?.deliveryCharge, selectedOrder?.deliveryChargeConfirmed]);
 
   return (
     <div className="grid gap-5 xl:grid-cols-[minmax(0,1.25fr)_minmax(360px,0.75fr)]">
@@ -3813,6 +3829,17 @@ function OrdersSection({ orders, query, status, setStatus, onStatusChange, onDel
               </div>
             </div>
 
+            {selectedOrder.deliveryMethod !== "store" && (
+              <div className="rounded-none border border-[#1F1F1F]/10 bg-white p-4">
+                <p className="font-bold">Confirm delivery charge</p>
+                <p className="mt-1 text-xs leading-5 text-[#1F1F1F]/55">Enter the charge agreed for this destination. The order total updates from the trusted subtotal.</p>
+                <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+                  <input type="number" min="0" max="100000" step="0.01" value={deliveryChargeDraft} onChange={(event) => setDeliveryChargeDraft(event.target.value)} placeholder="Delivery charge" aria-label="Delivery charge" className="h-11 min-w-0 flex-1 border border-[#1F1F1F]/15 bg-white px-3 text-sm outline-none focus:border-[#1F1F1F]" />
+                  <button type="button" disabled={deliveryChargeDraft === ""} onClick={() => onDeliveryChargeChange(selectedOrder.id, Number(deliveryChargeDraft))} className="h-11 bg-[#1F1F1F] px-5 text-xs font-bold text-white disabled:opacity-40">Confirm charge</button>
+                </div>
+              </div>
+            )}
+
             <div className="rounded-none border border-[#1F1F1F]/10 bg-white p-4">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
@@ -3912,8 +3939,8 @@ function OrdersSection({ orders, query, status, setStatus, onStatusChange, onDel
             </div>
             <div className="grid gap-2 border-t border-[#1F1F1F]/10 pt-4">
               <p className="flex justify-between"><span>Subtotal</span><strong>{formatCurrency(selectedOrder.subtotal || selectedOrder.total || 0, selectedOrder.currency)}</strong></p>
-              <p className="flex justify-between"><span>Delivery</span><strong>{formatCurrency(selectedOrder.deliveryCharge || 0, selectedOrder.currency)}</strong></p>
-              <p className="flex justify-between text-base"><span>Total</span><strong>{formatCurrency(selectedOrder.total || 0, selectedOrder.currency)}</strong></p>
+              <p className="flex justify-between"><span>Delivery charge</span><strong>{selectedOrder.deliveryMethod === "store" ? "No charge" : selectedOrder.deliveryChargeConfirmed ? formatCurrency(selectedOrder.deliveryCharge || 0, selectedOrder.currency) : "Awaiting confirmation"}</strong></p>
+              <p className="flex justify-between text-base"><span>{selectedOrder.deliveryMethod === "store" || selectedOrder.deliveryChargeConfirmed ? "Total" : "Order subtotal"}</span><strong>{formatCurrency(selectedOrder.total || 0, selectedOrder.currency)}</strong></p>
             </div>
           </div>
         ) : (
@@ -4696,7 +4723,7 @@ function SettingsSection({ onAction }) {
     { id: "general", title: "General Settings", subtitle: "Store, branding, profile and preferences" },
     { id: "payment", title: "Payment Settings", subtitle: "Payment methods and gateway mode" },
     { id: "shipping", title: "Shipping Settings", subtitle: "Delivery methods, areas and fees" },
-    { id: "email", title: "Email Settings", subtitle: "Sender identity and email provider" },
+    ...(LAUNCH_FEATURES.emailSettings ? [{ id: "email", title: "Email Settings", subtitle: "Sender identity and email provider" }] : []),
     { id: "security", title: "Security", subtitle: "Access rules and active session" },
     { id: "notifications", title: "Notifications", subtitle: "Admin alert preferences" },
     { id: "backup", title: "Backup", subtitle: "Export settings and store data" },
@@ -4911,16 +4938,16 @@ function SettingsSection({ onAction }) {
           <>
             <div className="grid gap-5 2xl:grid-cols-[minmax(0,1fr)_minmax(320px,0.8fr)]">
               <Panel title="Store Information">
+                <p className="mb-4 rounded-none bg-[#F6F6F6] px-4 py-3 text-xs font-semibold leading-5 text-[#1F1F1F]/65">
+                  Store contact information is fixed at launch as a single source of truth for the storefront, checkout, metadata and Ask Logy. It is read-only here so Admin can never drift from what customers see. Contact engineering to update it in <code className="font-mono">lib/launch-config.ts</code>.
+                </p>
                 <div className="grid gap-4 md:grid-cols-2">
-                  <AdminInput label="Store Name" value={draft.store.name} onChange={(value) => setDraftValue("store", "name", value)} required />
-                  <AdminInput label="Store Tagline" value={draft.store.tagline} onChange={(value) => setDraftValue("store", "tagline", value)} required />
-                  <AdminInput label="Store Email" type="email" value={draft.store.email} onChange={(value) => setDraftValue("store", "email", value)} required />
-                  <AdminInput label="Phone Number" value={draft.store.phone} onChange={(value) => setDraftValue("store", "phone", value)} required />
-                  <AdminTextarea label="Store Address" value={draft.store.address} onChange={(value) => setDraftValue("store", "address", value)} required />
+                  <AdminInput label="Store Name" value={BUSINESS_INFO.name} onChange={() => {}} disabled />
+                  <AdminInput label="Store Tagline" value={BUSINESS_INFO.tagline} onChange={() => {}} disabled />
+                  <AdminInput label="Store Email" type="email" value={BUSINESS_INFO.email} onChange={() => {}} disabled />
+                  <AdminInput label="Phone Number" value={BUSINESS_INFO.phone} onChange={() => {}} disabled />
+                  <AdminTextarea label="Store Address" value={BUSINESS_INFO.address} onChange={() => {}} disabled />
                 </div>
-                <SaveButton saving={status.saving} onClick={() => saveSettings({ store: draft.store }, "Store information saved.")}>
-                  Update Store Information
-                </SaveButton>
               </Panel>
 
               <Panel title="Logo & Favicon">
@@ -4978,7 +5005,7 @@ function SettingsSection({ onAction }) {
               <Panel title="Other Preferences">
                 <div className="space-y-3">
                   <ToggleRow label="Allow Product Reviews" checked={draft.preferences.allowProductReviews} onChange={(value) => setDraftValue("preferences", "allowProductReviews", value)} />
-                  <ToggleRow label="Enable Newsletter Subscription" checked={draft.preferences.newsletterEnabled} onChange={(value) => setDraftValue("preferences", "newsletterEnabled", value)} />
+                  {LAUNCH_FEATURES.marketingEmail && <ToggleRow label="Enable Newsletter Subscription" checked={draft.preferences.newsletterEnabled} onChange={(value) => setDraftValue("preferences", "newsletterEnabled", value)} />}
                   <ToggleRow label="Enable Maintenance Mode" checked={draft.preferences.maintenanceMode} onChange={(value) => setDraftValue("preferences", "maintenanceMode", value)} />
                 </div>
                 <SaveButton saving={status.saving} onClick={() => saveSettings({ preferences: draft.preferences }, "Preferences saved.")}>
@@ -4991,58 +5018,19 @@ function SettingsSection({ onAction }) {
 
         {activeGroup === "payment" && (
           <Panel title="Payment Settings">
-            <div className="grid gap-4 lg:grid-cols-2">
-              <ToggleRow label="Cash on Delivery" checked={draft.payment.cashOnDeliveryEnabled} onChange={(value) => setDraftValue("payment", "cashOnDeliveryEnabled", value)} />
-              <ToggleRow label="SSLCommerz" checked={draft.payment.sslCommerzEnabled} onChange={(value) => setDraftValue("payment", "sslCommerzEnabled", value)} />
-              <AdminSelect label="Gateway Mode" value={draft.payment.sslCommerzMode} onChange={(value) => setDraftValue("payment", "sslCommerzMode", value)} options={["test", "live"]} />
-              <AdminInput label="SSLCommerz Store ID" value={draft.payment.sslCommerzStoreId} onChange={(value) => setDraftValue("payment", "sslCommerzStoreId", value)} />
-              <AdminInput label="Store Password" type="password" value={draft.payment.sslCommerzStorePassword || ""} onChange={(value) => setDraftValue("payment", "sslCommerzStorePassword", value)} />
-              <AdminInput label="API Key" type="password" value={draft.payment.sslCommerzApiKey || ""} onChange={(value) => setDraftValue("payment", "sslCommerzApiKey", value)} />
-            </div>
-            <p className="mt-4 rounded-none bg-[#F6F6F6] px-4 py-3 text-xs font-semibold text-[#1F1F1F]/65">
-              Saved keys are masked in the dashboard and are only handled by protected admin APIs.
-            </p>
-            <SaveButton saving={status.saving} onClick={savePayment}>Save Payment Settings</SaveButton>
+            <InfoBox label="Launch payment method" value={ORDER_POLICY.paymentMethod} />
+            <p className="mt-4 rounded-none bg-[#F6F6F6] px-4 py-3 text-xs font-semibold leading-5 text-[#1F1F1F]/65">Online gateway settings are hidden for launch. Checkout is server-enforced as Cash on Delivery.</p>
           </Panel>
         )}
 
         {activeGroup === "shipping" && (
           <Panel title="Shipping Settings">
-            <ToggleRow
-              label="Digital products do not require shipping"
-              checked={draft.shipping.digitalProductsNoShipping}
-              onChange={(value) => setDraftValue("shipping", "digitalProductsNoShipping", value)}
-            />
-            <div className="mt-5 space-y-3">
-              {draft.shipping.methods.map((method, index) => (
-                <ShippingMethodEditor
-                  key={method.id || index}
-                  method={method}
-                  onChange={(nextMethod) => {
-                    const methods = [...draft.shipping.methods];
-                    methods[index] = nextMethod;
-                    setShippingMethods(methods);
-                  }}
-                  onDelete={() => setShippingMethods(draft.shipping.methods.filter((_, itemIndex) => itemIndex !== index))}
-                />
-              ))}
-            </div>
-            <div className="mt-5 flex flex-wrap gap-3">
-              <button
-                type="button"
-                onClick={() => setShippingMethods([...draft.shipping.methods, { id: `method-${Date.now()}`, name: "New Shipping Method", area: "", fee: 0, eta: "", enabled: true }])}
-                className="inline-flex h-11 min-w-[180px] items-center justify-center rounded-full border border-[#1F1F1F]/15 px-5 text-sm font-bold text-[#1F1F1F] transition hover:bg-[#E6E6E6]"
-              >
-                Add Shipping Method
-              </button>
-              <SaveButton saving={status.saving} spaced={false} className="h-11 min-w-[180px]" onClick={() => saveSettings({ shipping: draft.shipping }, "Shipping settings saved.")}>
-                Save Shipping Settings
-              </SaveButton>
-            </div>
+            <p className="rounded-none bg-[#F6F6F6] px-4 py-4 text-sm font-semibold leading-6 text-[#1F1F1F]/70">{ORDER_POLICY.deliveryCharge}</p>
+            <p className="mt-3 text-xs leading-5 text-[#1F1F1F]/60">Fixed delivery-rate controls are hidden because launch orders are reviewed before the delivery charge is confirmed.</p>
           </Panel>
         )}
 
-        {activeGroup === "email" && (
+        {LAUNCH_FEATURES.emailSettings && activeGroup === "email" && (
           <Panel title="Email Settings">
             <div className="grid gap-4 lg:grid-cols-2">
               <AdminInput label="Sender Name" value={draft.email.senderName} onChange={(value) => setDraftValue("email", "senderName", value)} />
@@ -5101,7 +5089,7 @@ function SettingsSection({ onAction }) {
                 ["newReviews", "New reviews"],
                 ["paymentUpdates", "Payment updates"],
                 ["lowStockProducts", "Low stock products"],
-                ["newsletterSubscribers", "Newsletter subscribers"],
+                ...(LAUNCH_FEATURES.marketingEmail ? [["newsletterSubscribers", "Newsletter subscribers"]] : []),
               ].map(([key, label]) => (
                 <ToggleRow key={key} label={label} checked={draft.notifications[key]} onChange={(value) => setDraftValue("notifications", key, value)} />
               ))}
@@ -5235,7 +5223,7 @@ function BackupButton({ label, onClick }) {
   );
 }
 
-function AdminInput({ label, value, onChange, onBlur, type = "text", required = false, placeholder = "", helper = "" }: any) {
+function AdminInput({ label, value, onChange, onBlur, type = "text", required = false, placeholder = "", helper = "", disabled = false }: any) {
   return (
     <label className="block text-sm font-bold">
       <span>{label}</span>
@@ -5247,14 +5235,16 @@ function AdminInput({ label, value, onChange, onBlur, type = "text", required = 
         required={required}
         placeholder={placeholder}
         step={type === "number" ? "0.01" : undefined}
-        className="mt-2 h-12 w-full rounded-none border border-[#1F1F1F]/12 bg-white px-4 text-sm font-semibold text-[#1F1F1F] outline-none transition placeholder:text-[#1F1F1F]/35 hover:border-[#1F1F1F]/20 hover:bg-[#F8F8F8] focus:border-[#1F1F1F]/40 focus:bg-white focus:ring-2 focus:ring-[#1F1F1F]/10"
+        disabled={disabled}
+        readOnly={disabled}
+        className={`mt-2 h-12 w-full rounded-none border border-[#1F1F1F]/12 px-4 text-sm font-semibold text-[#1F1F1F] outline-none transition placeholder:text-[#1F1F1F]/35 ${disabled ? "cursor-not-allowed bg-[#F1F1F1] text-[#1F1F1F]/60" : "bg-white hover:border-[#1F1F1F]/20 hover:bg-[#F8F8F8] focus:border-[#1F1F1F]/40 focus:bg-white focus:ring-2 focus:ring-[#1F1F1F]/10"}`}
       />
       {helper && <span className="mt-1.5 block text-xs font-normal leading-5 text-[#1F1F1F]/55">{helper}</span>}
     </label>
   );
 }
 
-function AdminTextarea({ label, value, onChange, helper, required = false, placeholder = "" }: any) {
+function AdminTextarea({ label, value, onChange, helper, required = false, placeholder = "", disabled = false }: any) {
   return (
     <label className="block text-sm font-bold">
       <span>{label}</span>
@@ -5263,7 +5253,9 @@ function AdminTextarea({ label, value, onChange, helper, required = false, place
         onChange={(event) => onChange(event.target.value)}
         required={required}
         placeholder={placeholder}
-        className="mt-2 min-h-32 w-full rounded-none border border-[#1F1F1F]/12 bg-white p-4 text-sm font-medium leading-6 text-[#1F1F1F] outline-none transition placeholder:text-[#1F1F1F]/35 hover:border-[#1F1F1F]/20 hover:bg-[#F8F8F8] focus:border-[#1F1F1F]/40 focus:bg-white focus:ring-2 focus:ring-[#1F1F1F]/10"
+        disabled={disabled}
+        readOnly={disabled}
+        className={`mt-2 min-h-32 w-full rounded-none border border-[#1F1F1F]/12 p-4 text-sm font-medium leading-6 text-[#1F1F1F] outline-none transition placeholder:text-[#1F1F1F]/35 ${disabled ? "cursor-not-allowed bg-[#F1F1F1] text-[#1F1F1F]/60" : "bg-white hover:border-[#1F1F1F]/20 hover:bg-[#F8F8F8] focus:border-[#1F1F1F]/40 focus:bg-white focus:ring-2 focus:ring-[#1F1F1F]/10"}`}
       />
       {helper && <span className="mt-1 block text-xs font-normal text-[#1F1F1F]/55">{helper}</span>}
     </label>

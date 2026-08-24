@@ -32,6 +32,7 @@ export async function POST(request: Request) {
     .from("product_customizations")
     .select("id")
     .eq("id", customizationId)
+    .eq("user_id", user.id)
     .maybeSingle();
   if (ownError) return Response.json({ ok: false, error: "Could not verify customization." }, { status: 500 });
   if (!owned) return Response.json({ ok: false, error: "Not found." }, { status: 404 });

@@ -158,9 +158,11 @@ export default function OrdersClient() {
                   </div>
                 )}
 
-                <div className="mt-4 flex items-center justify-between border-t border-[#303839]/10 pt-4 text-sm font-bold">
-                  <span>{order.paymentStatus || "unpaid"}</span>
-                  <span>{formatCurrency(order.total, order.currency)}</span>
+                <div className="mt-4 grid gap-2 border-t border-[#303839]/10 pt-4 text-sm sm:grid-cols-2">
+                  <span><strong>Fulfillment:</strong> {order.deliveryMethod === "store" ? "Store pickup" : "Delivery"}</span>
+                  <span className="sm:text-right"><strong>Payment:</strong> {order.paymentMethod || "Cash on Delivery"}</span>
+                  <span><strong>Delivery charge:</strong> {order.deliveryMethod === "store" ? "No charge" : order.deliveryChargeConfirmed ? formatCurrency(order.deliveryCharge || 0, order.currency) : "Confirmed after review"}</span>
+                  <span className="font-bold sm:text-right">{order.deliveryMethod === "store" || order.deliveryChargeConfirmed ? "Total" : "Order subtotal"}: {formatCurrency(order.total, order.currency)}</span>
                 </div>
               </article>
             );

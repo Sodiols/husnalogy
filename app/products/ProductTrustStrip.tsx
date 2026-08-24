@@ -1,42 +1,9 @@
-"use client";
-
-import { useEffect, useState } from "react";
+import { ORDER_POLICY } from "@/lib/launch-config";
 
 /**
  * ProductTrustStrip
- * The reassurance block Zazzle shows directly beneath the buy box:
- * an estimated delivery window, returns policy, and a satisfaction guarantee.
- *
- * The delivery window is computed from the current date on the client (so it
- * stays accurate without an SSR/CSR hydration mismatch). Copy is intentionally
- * generic placeholder text — adjust the policy wording to your real terms.
+ * Launch-safe reassurance shown directly beneath the buy box.
  */
-function addBusinessDays(date, days) {
-  const result = new Date(date);
-  let added = 0;
-
-  while (added < days) {
-    result.setDate(result.getDate() + 1);
-    const day = result.getDay();
-    if (day !== 0 && day !== 6) added += 1;
-  }
-
-  return result;
-}
-
-function formatDeliveryWindow(start, end) {
-  const sameMonth = start.getMonth() === end.getMonth();
-  const month = { month: "short" };
-  const startLabel = start.toLocaleDateString("en-US", month);
-  const endLabel = end.toLocaleDateString("en-US", month);
-
-  if (sameMonth) {
-    return `${startLabel} ${start.getDate()} – ${end.getDate()}`;
-  }
-
-  return `${startLabel} ${start.getDate()} – ${endLabel} ${end.getDate()}`;
-}
-
 function TrustRow({ icon, title, value }) {
   return (
     <div className="flex items-start gap-3">
@@ -52,37 +19,24 @@ function TrustRow({ icon, title, value }) {
 }
 
 export default function ProductTrustStrip({ className = "" }) {
-  const [deliveryWindow, setDeliveryWindow] = useState("");
-
-  useEffect(() => {
-    const now = new Date();
-    const start = addBusinessDays(now, 5);
-    const end = addBusinessDays(now, 9);
-    setDeliveryWindow(formatDeliveryWindow(start, end));
-  }, []);
-
   return (
     <div
       className={`space-y-4 rounded-none bg-white px-5 py-5 text-[#303839] ${className}`}
     >
       <TrustRow
         icon="fa-truck-fast"
-        title="Estimated delivery"
-        value={
-          deliveryWindow
-            ? `Arrives ${deliveryWindow} with standard shipping`
-            : "Calculating your delivery window…"
-        }
+        title="Delivery reviewed with your order"
+        value={ORDER_POLICY.deliveryCharge}
       />
       <TrustRow
         icon="fa-rotate-left"
-        title="Easy returns"
-        value="30-day return policy on every order"
+        title="Personalized-order support"
+        value={ORDER_POLICY.personalizedReturns}
       />
       <TrustRow
-        icon="fa-shield-heart"
-        title="100% satisfaction guarantee"
-        value="Love it, or we'll make it right"
+        icon="fa-money-bill-wave"
+        title="Cash on Delivery"
+        value="Pay when a delivery order arrives or when collecting a store pickup order."
       />
     </div>
   );

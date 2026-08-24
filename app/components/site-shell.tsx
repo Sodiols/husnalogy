@@ -10,6 +10,7 @@ import Footer from "./footer";
 import MaintenanceScreen from "./maintenance";
 
 import useAuth from "../lib/useAuth";
+import { BUSINESS_INFO } from "@/lib/launch-config";
 
 const MobileMenu = dynamic(() => import("./mobile-menu"), { ssr: false });
 const SidePanel = dynamic(() => import("./side-panel"), { ssr: false });
@@ -156,8 +157,11 @@ export default function SiteShell({ children, initialUser, initialSettings = nul
   }
 
   const logoUrl = siteSettings?.branding?.logoUrl || "/Brand Kit/Logo-5.png";
-  const storeName = siteSettings?.store?.name || "Husnalogy";
-  const storeTagline = siteSettings?.store?.tagline || "Timeless Invitations & Gifts";
+  // Store name/tagline are the launch single source of truth (BUSINESS_INFO),
+  // not the Admin-editable settings row, so the maintenance screen can never
+  // drift from what the rest of the storefront shows.
+  const storeName = BUSINESS_INFO.name;
+  const storeTagline = BUSINESS_INFO.tagline;
 
   if (siteSettings?.preferences?.maintenanceMode) {
     return <MaintenanceScreen storeName={storeName} storeTagline={storeTagline} />;

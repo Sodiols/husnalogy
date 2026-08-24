@@ -445,6 +445,7 @@ export async function updateCartQuantity(user, cartItemId, quantity) {
   const safeQuantity = Math.max(1, Number(quantity || 1));
   const supabase = createClient();
   const current = (await getUserCart(user)).find((item) => String(item.id) === String(cartItemId));
+  if (!current) throw new Error("Cart item not found.");
   const metadata = {
     ...(current || {}),
     quantity: safeQuantity,
@@ -454,7 +455,8 @@ export async function updateCartQuantity(user, cartItemId, quantity) {
   const { error } = await supabase
     .from("cart_items")
     .update({ quantity: safeQuantity, metadata, updated_at: nowIso() })
-    .eq("id", cartItemId);
+    .eq("id", cartItemId)
+    .eq("user_id", userId);
 
   if (error) throw error;
   invalidateRemoteCache("cart", userId);
@@ -464,6 +466,7 @@ export async function updateCartQuantity(user, cartItemId, quantity) {
 export async function updateCartItem(user, cartItemId, patch: any = {}) {
   const userId = requireUser(user);
   const current = (await getUserCart(user)).find((item) => String(item.id) === String(cartItemId));
+  if (!current) throw new Error("Cart item not found.");
   const next = { ...(current || {}), ...patch, updatedAt: nowIso() };
   const quantity = Math.max(1, Number(next.quantity || 1));
   const price = Number(next.price || 0);
@@ -476,7 +479,8 @@ export async function updateCartItem(user, cartItemId, patch: any = {}) {
       metadata: { ...next, quantity, price, finalPrice: Number((price * quantity).toFixed(2)) },
       updated_at: nowIso(),
     })
-    .eq("id", cartItemId);
+    .eq("id", cartItemId)
+    .eq("user_id", userId);
 
   if (error) throw error;
   invalidateRemoteCache("cart", userId);
@@ -486,7 +490,7 @@ export async function updateCartItem(user, cartItemId, patch: any = {}) {
 export async function removeFromCart(user, cartItemId) {
   const userId = requireUser(user);
   const supabase = createClient();
-  const { error } = await supabase.from("cart_items").delete().eq("id", cartItemId);
+  const { error } = await supabase.from("cart_items").delete().eq("id", cartItemId).eq("user_id", userId);
   if (error) throw error;
   invalidateRemoteCache("cart", userId);
   dispatchCommerceChange("cart");
@@ -538,7 +542,7 @@ export async function removeFromWishlist(user, productId) {
   const supabase = createClient();
   const value = String(productId || "");
   const uuidLike = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
-  let query = supabase.from("wishlist_items").delete();
+  let query = supabase.from("wishlist_items").delete().eq("user_id", userId);
   query = uuidLike ? query.or(`id.eq.${value},product_id.eq.${value}`) : query.eq("product_id", value);
   const { error } = await query;
 
