@@ -50,12 +50,13 @@ describe("launch ownership and render immutability", () => {
     expect(renderJobs).toContain('existingQuery.eq("order_id", options.orderId)');
   });
 
-  it("keeps the scheduled worker authenticated and running hourly", () => {
+  it("keeps the scheduled worker authenticated and running daily", () => {
     expect(worker).toContain("safeSecretMatch(bearerToken(request), secret)");
     expect(worker).toContain('status: 401');
     const vercelConfig = read("vercel.json");
     expect(vercelConfig).toContain('"/api/admin/customizer/render/process"');
-    expect(vercelConfig).toContain('"0 * * * *"');
+    // Vercel Hobby allows at most one cron run per day.
+    expect(vercelConfig).toContain('"0 0 * * *"');
   });
 });
 

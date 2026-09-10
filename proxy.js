@@ -22,6 +22,18 @@ const ADMIN_PREFIXES = [
   "/api/admin",
 ];
 
+// The render worker endpoint authenticates itself with a Bearer CRON_SECRET
+// (Vercel Cron) or x-render-secret, and never carries a Supabase session. The
+// proxy must not answer 401 before the route can validate that secret. Only the
+// short-circuit is skipped — the route still validates the secret with a
+// timing-safe compare and fails closed on a wrong or missing one.
+const WORKER_PATHS = new Set(["/api/admin/customizer/render/process"]);
+
+function carriesWorkerCredential(request) {
+  const authorization = request.headers.get("authorization") || "";
+  return authorization.startsWith("Bearer ") || Boolean(request.headers.get("x-render-secret"));
+}
+
 function isPathMatch(pathname, prefixes) {
   return prefixes.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`));
 }
@@ -101,6 +113,10 @@ export async function proxy(request) {
   if (isPathMatch(pathname, ADMIN_PREFIXES)) {
     if (pathname === "/admin/login") {
       return notFoundPage(request);
+    }
+
+    if (WORKER_PATHS.has(pathname) && carriesWorkerCredential(request)) {
+      return response;
     }
 
     if (!user) {

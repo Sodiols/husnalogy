@@ -103,7 +103,7 @@ test.describe.serial("checkout places one trusted, immutable, render-queued orde
     await login(page, adminCredentials.email, adminCredentials.password);
 
     // Drive the real protected worker path (admin-authorized POST), the same
-    // code the hourly cron runs.
+    // code the daily cron runs.
     for (let pass = 0; pass < 6; pass += 1) {
       const worker = await page.request.post("/api/admin/customizer/render/process", { data: { limit: 5 }, timeout: 120_000 });
       expect(worker.ok(), "an admin session must be allowed to run the worker").toBe(true);
