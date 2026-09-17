@@ -77,9 +77,11 @@ describe("customerObjectLimits apply to template layers on the server", () => {
 });
 
 describe("the customer editor now constrains template layers too", () => {
-  it("applies the limits in the template-layer branch of onLayerTransform", () => {
+  it("applies the limits in the template-layer branch of the transform plan", () => {
+    // Transforms now commit as one batch transaction; every template layer in
+    // the batch is still clamped by the same limits as the save validator.
     expect(personalizeSource).toContain(
-      "const constrained = applyCustomerObjectLimits(layer, allowed, layer.page || activePage);",
+      "Object.assign(allowed, applyCustomerObjectLimits(layer, allowed, layer.page || activePage));",
     );
   });
 

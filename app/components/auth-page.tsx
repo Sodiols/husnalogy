@@ -41,21 +41,82 @@ export default function AuthPage({ mode }) {
     message: "",
   }));
   const [resetLinkState, setResetLinkState] = useState(isReset ? "checking" : "n/a");
+  // Read as primitives: the object returned by useSearchParams() is not
+  // referentially stable, so depending on it would re-run (and cancel) the
+  // verification effect below on every render.
+  const resetTokenHash = searchParams.get("token_hash");
+  const resetOtpType = searchParams.get("type");
 
   useEffect(() => {
     if (!isReset) return undefined;
 
     let cancelled = false;
+    let timeoutId;
     const supabase = createClient();
 
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (!cancelled) setResetLinkState(session ? "valid" : "invalid");
+    // Supabase's browser client processes an implicit-flow URL hash
+    // asynchronously after load and emits PASSWORD_RECOVERY/SIGNED_IN when it
+    // succeeds. Subscribing before the session check matters: a bare
+    // getSession() can win that race and report a perfectly good reset link as
+    // expired.
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((event, session) => {
+      if (cancelled) return;
+      if (session) setResetLinkState("valid");
+      else if (event === "SIGNED_OUT") setResetLinkState("invalid");
     });
+
+    async function verifyResetLink() {
+      // A recovery link can also land straight on this page carrying
+      // ?token_hash=...&type=recovery, when the Supabase email template points
+      // here instead of at /auth/callback.
+      if (resetTokenHash) {
+        const { error } = await supabase.auth.verifyOtp({
+          type: resetOtpType || "recovery",
+          token_hash: resetTokenHash,
+        });
+        if (!cancelled) setResetLinkState(error ? "invalid" : "valid");
+        return;
+      }
+
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      if (cancelled) return;
+
+      if (session) {
+        setResetLinkState("valid");
+        return;
+      }
+
+      // No session yet. If there are tokens still being processed out of the
+      // URL hash, let the listener above settle it rather than calling the
+      // link dead; otherwise there is nothing to wait for.
+      const hasPendingHashTokens =
+        typeof window !== "undefined" && /access_token=/.test(window.location.hash);
+
+      if (!hasPendingHashTokens) {
+        setResetLinkState("invalid");
+        return;
+      }
+
+      timeoutId = setTimeout(() => {
+        if (!cancelled) {
+          setResetLinkState((current) => (current === "checking" ? "invalid" : current));
+        }
+      }, 8000);
+    }
+
+    verifyResetLink();
 
     return () => {
       cancelled = true;
+      if (timeoutId) clearTimeout(timeoutId);
+      subscription?.unsubscribe();
     };
-  }, [isReset]);
+  }, [isReset, resetTokenHash, resetOtpType]);
 
   const title = isReset
     ? "Reset Password"
@@ -108,6 +169,12 @@ export default function AuthPage({ mode }) {
         if (form.password.length < 6) throw new Error("Password must be at least 6 characters.");
         if (form.password !== form.confirmPassword) throw new Error("Passwords do not match.");
         await updateUserPassword(form.password);
+        setStatus({
+          loading: false,
+          google: false,
+          error: "",
+          message: "Password updated. Signing you in...",
+        });
         router.replace("/account");
         router.refresh();
         return;

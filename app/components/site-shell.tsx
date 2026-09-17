@@ -20,7 +20,13 @@ const AskLogy = dynamic(() => import("./logy"), { ssr: false });
 export default function SiteShell({ children, initialUser, initialSettings = null }) {
   const pathname = usePathname();
   const isAdminRoute = pathname?.startsWith("/admin");
-  const isCustomizerRoute = /^\/products\/[^/]+\/personalize\/?$/.test(pathname || "");
+  // The internal fixture route mounts the SAME customizer, so it has to get the
+  // same chrome treatment. If it kept the storefront header the editor would be
+  // laid out differently there than in production, and the interaction tests
+  // running against it would be proving the wrong layout.
+  const isCustomizerRoute =
+    /^\/products\/[^/]+\/personalize\/?$/.test(pathname || "") ||
+    /^\/__e2e\/customizer\/?$/.test(pathname || "");
 
   // Seed with the settings the server resolved for this request so SSR and the
   // first client render are identical (no hydration mismatch), and maintenance

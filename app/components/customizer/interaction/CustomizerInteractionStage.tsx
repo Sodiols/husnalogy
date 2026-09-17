@@ -18,10 +18,12 @@
  *   back to the owner, which is the only thing that touches the document.
  *
  * Performance contract (spec §4, §49):
- *   EVERY continuous gesture — drag, resize, rotate — is TRANSIENT. Konva owns
- *   the visual, the artwork follows by writing one SVG transform per frame, and
- *   the Husnalogy document is written exactly ONCE, on release, as one history
- *   step. No React render happens while the pointer is moving.
+ *   EVERY continuous gesture — drag, resize, rotate — is TRANSIENT, and the
+ *   Husnalogy document is written exactly ONCE, on release, as one transaction
+ *   and one history step. While the pointer moves, a drag or rotation writes an
+ *   SVG transform attribute per affected layer with no React render; a resize
+ *   re-renders only the layers being resized (it can change text wrapping, which
+ *   a scale transform cannot preview honestly). The workspace does not render.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
@@ -33,6 +35,7 @@ import {
   layerHalfExtents,
   snapMove,
   type SmartGuide,
+  type SnapTargets,
 } from "@/lib/customizer/v2/snapping";
 import {
   resolveMarqueeSelection,
@@ -51,17 +54,30 @@ import {
 import {
   geometryPatch,
   isEmptyPatch,
+  MIN_OBJECT_SIZE,
   normalizeKonvaGeometry,
   normalizeTextScale,
 } from "@/lib/customizer/v2/interaction/konva-adapter";
-import { applySelectionDelta, rotatePoint, ROTATION_SNAP_STEP } from "@/lib/customizer/v2/interaction/gesture-math";
+import {
+  applySelectionDelta,
+  resolveDragCommits,
+  rotatePoint,
+  ROTATION_SNAP_STEP,
+} from "@/lib/customizer/v2/interaction/gesture-math";
 import { resolvePointerOwner, type ToolMode } from "@/lib/customizer/v2/interaction/tool-mode";
+import {
+  escapeConsumedByGesture,
+  shouldAbortGesture,
+  type GestureInterruption,
+  type GestureLifecycleState,
+} from "@/lib/customizer/v2/interaction/gesture-lifecycle";
 import type { LayerCapabilities } from "@/lib/customizer/v2/interaction/capabilities";
 import {
   applyTransientTransform,
   clearTransientTransforms,
   createFrameScheduler,
 } from "@/lib/customizer/v2/interaction/transient-preview";
+import { recordEditorEvent } from "@/lib/customizer/v2/dev-metrics";
 
 /* -------------------------------------------------------------------------- */
 /* Husnalogy brand palette. Gold is the single accent; nothing glows.          */
@@ -69,6 +85,22 @@ import {
 const GOLD = "#D4AF37";
 const CHARCOAL = "#303839";
 const WHITE = "#FFFFFF";
+
+/**
+ * Screen-pixel margin the interaction stage extends BEYOND the page on every
+ * side (spec §37).
+ *
+ * The stage used to be sized exactly to the artwork, so anything the selection
+ * chrome drew outside the page was clipped away by the canvas element itself —
+ * invisible AND unhittable. The rotation control sits above its object, so for
+ * any object near the top edge of the design it landed off-canvas and the
+ * object simply could not be rotated: the press went through to the workspace
+ * behind it. The same applied to the outer half of every corner handle on an
+ * object flush with an edge.
+ *
+ * Wide enough to clear the rotation offset plus a touch handle's radius.
+ */
+const STAGE_GUTTER = 36;
 
 export type InteractionNode = {
   id: string;
@@ -78,6 +110,21 @@ export type InteractionNode = {
   y: number;
   width: number;
   height: number;
+  /**
+   * The layer's PERSISTED centre, straight from the document.
+   *
+   * For every ordinary object this is identical to `x`/`y`. For auto-sized text
+   * it is NOT: `resolveTextBox` re-anchors the measured glyph box inside the
+   * authored box, so the resolved centre sits away from the stored centre by
+   * half the difference between the measured and stored extents.
+   *
+   * A drag is a TRANSLATION, so it must be committed against this origin. The
+   * resolved centre is for hit testing, handles and snapping only — writing it
+   * into the document re-applies that offset on every single drag, which is how
+   * resized text used to creep down the page (or up) a little more each time.
+   */
+  documentX: number;
+  documentY: number;
   rotation?: number;
   opacity?: number;
   hidden?: boolean;
@@ -173,7 +220,18 @@ function useCoarsePointer(): boolean {
 
 type DragSession = {
   leadId: string;
-  members: Array<{ id: string; x: number; y: number; width: number; height: number; rotation: number }>;
+  members: Array<{
+    id: string;
+    /** Resolved centre at pointer-down — what the gesture moves on screen. */
+    x: number;
+    y: number;
+    /** Persisted centre at pointer-down — what the commit translates. */
+    documentX: number;
+    documentY: number;
+    width: number;
+    height: number;
+    rotation: number;
+  }>;
   startX: number;
   startY: number;
   moved: boolean;
@@ -219,6 +277,12 @@ export default function CustomizerInteractionStage({
     y: number;
   }>(null);
   const transformStartRef = useRef<Map<string, InteractionNode>>(new Map());
+  /**
+   * The Transformer's own box at the start of a resize, in absolute stage
+   * pixels. `boundBoxFunc` needs it to tell a legitimate shrink from the
+   * pointer having crossed the object entirely — see the guard below.
+   */
+  const boundStartRef = useRef<{ x: number; y: number; width: number; height: number; rotation: number } | null>(null);
   const angleLabelRef = useRef<Konva.Label>(null);
   const angleTextRef = useRef<Konva.Text>(null);
   /**
@@ -235,6 +299,18 @@ export default function CustomizerInteractionStage({
   // away a scheduler on every single render.
   const schedulerRef = useRef<ReturnType<typeof createFrameScheduler> | null>(null);
   if (!schedulerRef.current) schedulerRef.current = createFrameScheduler();
+
+  /**
+   * Snap candidates for the gesture in flight (spec §12, §49).
+   *
+   * Every line an object can snap to is derived from the page, the guides and
+   * the OTHER layers — none of which can change while a drag is held, because
+   * the document is not written until release. Rebuilding them per `dragmove`
+   * therefore re-measured every neighbour's transformed bounds on every pointer
+   * event, at up to 120Hz, to arrive at the same answer each time. It is built
+   * once at gesture start and dropped at gesture end instead.
+   */
+  const dragSnapTargetsRef = useRef<SnapTargets | null>(null);
   // Hover is the only piece of interaction state that legitimately belongs in
   // React: it changes at human speed, not at pointer speed.
   const [hoveredId, setHoveredId] = useState<string | null>(null);
@@ -405,13 +481,23 @@ export default function CustomizerInteractionStage({
    */
   const abortGesture = useCallback(() => {
     const session = dragRef.current;
-    if (!session && !gestureActiveRef.current) return;
+    if (!session && !gestureActiveRef.current && !marqueeSessionRef.current) return;
     abortedRef.current = true;
     schedulerRef.current!.cancel();
+
+    // A resize/rotate is driven by the Transformer's own pointer loop, not by a
+    // node drag, so releasing the proxies is not enough: without this Konva
+    // still believes a transform is in flight and the next pointer move would
+    // re-apply it on top of the geometry we have just restored.
+    const transformer = transformerRef.current;
+    if (transformer?.isTransforming?.()) transformer.stopTransform();
 
     for (const [id, before] of transformStartRef.current) {
       const proxy = proxyRefs.current.get(id);
       if (!proxy) continue;
+      // `stopTransform` above consumed the flag through its own `transformend`;
+      // re-assert it so the `dragend` that `stopDrag` fires cannot commit.
+      abortedRef.current = true;
       if (proxy.isDragging()) proxy.stopDrag();
       proxy.position({ x: before.x, y: before.y });
       proxy.rotation(Number(before.rotation) || 0);
@@ -424,12 +510,50 @@ export default function CustomizerInteractionStage({
     if (angleLabelRef.current?.visible()) angleLabelRef.current.visible(false);
 
     dragRef.current = null;
+    dragSnapTargetsRef.current = null;
     marqueeSessionRef.current = null;
     if (marqueeRef.current?.visible()) marqueeRef.current.visible(false);
     transformStartRef.current = new Map();
+    boundStartRef.current = null;
     gestureActiveRef.current = false;
+    // Konva fires `dragend` / `transformend` synchronously from `stopDrag` /
+    // `stopTransform`, so by here every end handler this abort could trigger has
+    // already run. Leaving the flag set would make the NEXT real gesture return
+    // early and silently discard the customer's edit.
+    abortedRef.current = false;
     stageRef.current?.batchDraw();
   }, [clearGuides, previewRootRef, onTransientGeometry]);
+
+  /**
+   * What the shared lifecycle rule needs to know about this stage, right now.
+   *
+   * `moved` rather than "a session object exists" on purpose: both a drag and a
+   * marquee are ARMED on pointer-down and only become gestures once the pointer
+   * travels. Counting the armed state would make Escape-while-pressing report
+   * that it cancelled a gesture, and the canvas would then swallow the key
+   * instead of letting it clear the selection.
+   */
+  const lifecycleState = useCallback(
+    (): GestureLifecycleState => ({
+      dragging: Boolean(dragRef.current?.moved) || gestureActiveRef.current,
+      transforming: Boolean(transformerRef.current?.isTransforming?.()),
+      marquee: Boolean(marqueeSessionRef.current?.moved),
+    }),
+    [],
+  );
+
+  /**
+   * Single entry point for every way a gesture can be interrupted. The DECISION
+   * lives in `gesture-lifecycle`, so listeners here stay a list of sources and
+   * the rule itself is covered by tests rather than by a browser.
+   */
+  const interrupt = useCallback(
+    (interruption: GestureInterruption) => {
+      if (!shouldAbortGesture(interruption, lifecycleState())) return;
+      abortGesture();
+    },
+    [abortGesture, lifecycleState],
+  );
 
   /**
    * Touch bookkeeping, on the stage container in the CAPTURE phase.
@@ -450,23 +574,76 @@ export default function CustomizerInteractionStage({
       touches.add(event.pointerId);
       // The second finger converts the gesture into a viewport pinch, which the
       // workspace owns. Hand it over cleanly rather than fighting for it.
-      if (touches.size >= 2) abortGesture();
+      interrupt({ type: "extra-touch", activeTouches: touches.size });
     };
     const onUp = (event: PointerEvent) => {
       if (event.pointerType !== "touch") return;
       touches.delete(event.pointerId);
     };
 
+    /**
+     * The browser has taken the pointer away from us (spec §20): an OS-level
+     * touch gesture, palm rejection, a device disconnecting mid-drag. Konva
+     * will never deliver the matching `dragend` / `transformend`, so without
+     * this the editor is left permanently mid-gesture — `gestureActiveRef`
+     * stays true, which blocks every Transformer re-attachment from then on,
+     * and the transient preview stays painted over artwork the document no
+     * longer describes.
+     */
+    const onCancel = (event: PointerEvent) => {
+      onUp(event);
+      interrupt({ type: "pointercancel" });
+    };
+
     container.addEventListener("pointerdown", onDown, true);
     container.addEventListener("pointerup", onUp, true);
-    container.addEventListener("pointercancel", onUp, true);
+    container.addEventListener("pointercancel", onCancel, true);
     return () => {
       container.removeEventListener("pointerdown", onDown, true);
       container.removeEventListener("pointerup", onUp, true);
-      container.removeEventListener("pointercancel", onUp, true);
+      container.removeEventListener("pointercancel", onCancel, true);
       touches.clear();
     };
-  }, [abortGesture]);
+  }, [interrupt]);
+
+  /**
+   * The rest of the cancellation contract (spec §20).
+   *
+   * Escape abandons the gesture in flight rather than committing it, and losing
+   * the window — alt-tab, a system dialog, switching tabs — does the same:
+   * pointer events simply stop arriving, so a gesture that is not abandoned
+   * here would hang until the customer happened to press inside the canvas
+   * again, at which point a stale delta would commit.
+   *
+   * Escape is handled in the CAPTURE phase and swallowed ONLY when a gesture
+   * was actually live, so it still reaches the owner (to leave crop mode, close
+   * a text editor, or clear the selection) in every other case.
+   */
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      const consumed = escapeConsumedByGesture(lifecycleState());
+      interrupt({ type: "escape" });
+      if (!consumed) return;
+      event.preventDefault();
+      event.stopPropagation();
+    };
+    const onLoseFocus = () => interrupt({ type: "window-blur" });
+    const onVisibility = () => {
+      if (typeof document !== "undefined" && document.visibilityState === "hidden") {
+        interrupt({ type: "visibility-hidden" });
+      }
+    };
+
+    window.addEventListener("keydown", onKeyDown, true);
+    window.addEventListener("blur", onLoseFocus);
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown, true);
+      window.removeEventListener("blur", onLoseFocus);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, [interrupt, lifecycleState]);
 
   /* ---------------------------------------------------------------------- */
   /* Selection                                                               */
@@ -501,7 +678,13 @@ export default function CustomizerInteractionStage({
         id: target.id,
         additive: additiveFrom(event),
       });
-      onSelectionChange(decision.selection);
+      // Pressing an object that is already the selection must not re-publish
+      // it: an identical selection still re-renders the whole editor, which
+      // would put a broad React render at the start of every drag.
+      const unchanged =
+        decision.selection.length === selection.length &&
+        decision.selection.every((id, index) => id === selection[index]);
+      if (!unchanged) onSelectionChange(decision.selection);
       if (!decision.allowDrag) return;
 
       const members = decision.selection
@@ -516,6 +699,8 @@ export default function CustomizerInteractionStage({
               id: item.id,
               x: item.x,
               y: item.y,
+              documentX: Number.isFinite(item.documentX) ? item.documentX : item.x,
+              documentY: Number.isFinite(item.documentY) ? item.documentY : item.y,
               width: item.width,
               height: item.height,
               rotation: Number(item.rotation) || 0,
@@ -542,11 +727,13 @@ export default function CustomizerInteractionStage({
     if (!session || !session.members.length) return;
     session.moved = true;
     gestureActiveRef.current = true;
+    dragSnapTargetsRef.current = snapTargetsFor(session.members.map((member) => member.id));
     transformStartRef.current = new Map(
       session.members.map((member) => [member.id, nodeById.get(member.id)!]).filter(([, node]) => Boolean(node)) as any,
     );
+    recordEditorEvent("dragSession");
     onGestureStart?.();
-  }, [interactive, nodeById, onGestureStart]);
+  }, [interactive, nodeById, onGestureStart, snapTargetsFor]);
 
   const handleDragMove = useCallback(
     (event: Konva.KonvaEventObject<DragEvent>) => {
@@ -558,7 +745,12 @@ export default function CustomizerInteractionStage({
 
       // Snap the LEAD object; every follower takes the same effective delta so
       // the arrangement stays rigid (spec §16, §18).
-      const targets = snapTargetsFor(session.members.map((member) => member.id));
+      // Built once per gesture; the fallback covers a `dragmove` that somehow
+      // arrives before `dragstart` rather than silently losing snapping.
+      if (!dragSnapTargetsRef.current) {
+        dragSnapTargetsRef.current = snapTargetsFor(session.members.map((member) => member.id));
+      }
+      const targets = dragSnapTargetsRef.current;
       const { halfWidth, halfHeight } = layerHalfExtents({
         x: node.x(),
         y: node.y(),
@@ -611,6 +803,7 @@ export default function CustomizerInteractionStage({
     const session = dragRef.current;
     schedulerRef.current!.flush();
     clearGuides();
+    dragSnapTargetsRef.current = null;
     if (!session || !session.members.length) return;
 
     const lead = session.members.find((member) => member.id === session.leadId);
@@ -621,15 +814,11 @@ export default function CustomizerInteractionStage({
     // committed, so the artwork never flashes back to its old position.
     clearTransientTransforms(previewRootRef?.current, session.members.map((member) => member.id));
 
-    const changes = moves
-      .map((move) => {
-        const member = session.members.find((item) => item.id === move.id)!;
-        const patch: Record<string, number> = {};
-        if (Math.round(member.x) !== move.x) patch.x = move.x;
-        if (Math.round(member.y) !== move.y) patch.y = move.y;
-        return { id: move.id, patch };
-      })
-      .filter((change) => !isEmptyPatch(change.patch));
+    // A drag TRANSLATES: the delta the gesture applied moves the PERSISTED
+    // origin. Committing the resolved box's absolute position instead would
+    // write the measured text box centre into the document — see
+    // `resolveDragCommits` for what that cost.
+    const changes = resolveDragCommits(session.members, moves, session.leadId);
 
     dragRef.current = null;
     gestureActiveRef.current = false;
@@ -649,6 +838,7 @@ export default function CustomizerInteractionStage({
       if (!session) return;
       const moved = session.moved;
       dragRef.current = null;
+      dragSnapTargetsRef.current = null;
       if (moved || !session.collapseOnRelease) return;
       const next = resolvePointerUpSelection({
         current: selection,
@@ -667,9 +857,11 @@ export default function CustomizerInteractionStage({
 
   const handleTransformStart = useCallback(() => {
     gestureActiveRef.current = true;
+    boundStartRef.current = null;
     transformStartRef.current = new Map(
       selection.map((id) => [id, nodeById.get(id)!]).filter(([, node]) => Boolean(node)) as any,
     );
+    recordEditorEvent("transformSession");
     onGestureStart?.();
   }, [selection, nodeById, onGestureStart]);
 
@@ -768,19 +960,50 @@ export default function CustomizerInteractionStage({
    * The same re-render reattached the Transformer, dropping the active anchor.
    * The result was a resize that accelerated, jittered and lost the handle.
    *
-   * Now the artwork follows by writing ONE transform attribute per frame onto
-   * the SVG group the renderer already emits, and the real geometry — with the
-   * real text wrapping — lands exactly once, on release. That is also what
-   * makes the gesture cheap: no React render at all while the pointer moves.
+   * Now the document is written exactly once, on release. While the pointer
+   * moves, a rotation writes one SVG transform attribute per affected layer (no
+   * React render), and a resize publishes its in-progress geometry to the
+   * per-layer transient store, which re-renders ONLY the resized layers through
+   * the production renderer so text wraps and photos re-fit exactly as they
+   * will once committed.
    */
   const publishTransformPreview = useCallback(() => {
-    if (!onTransientGeometry) return;
     const changes = collectTransformChanges();
     if (!changes.length) return;
+
+    // A pure ROTATION cannot change layout — no re-wrap, no re-fit — so the
+    // artwork follows with one SVG transform attribute per layer and no React
+    // render at all, exactly like a drag. The rotation composes with the angle
+    // the renderer already baked in (see transientTransformString).
+    const activeAnchor = transformerRef.current?.getActiveAnchor?.() ?? "";
+    if (activeAnchor === "rotater") {
+      const root = previewRootRef?.current;
+      for (const change of changes) {
+        const before = transformStartRef.current.get(change.id);
+        if (!before) continue;
+        const patch = change.patch as { x?: number; y?: number; rotation?: number };
+        const baseRotation = Number(before.rotation) || 0;
+        applyTransientTransform(root, change.id, {
+          dx: (patch.x ?? before.x) - before.x,
+          dy: (patch.y ?? before.y) - before.y,
+          rotation: patch.rotation ?? baseRotation,
+          pivotX: before.x,
+          pivotY: before.y,
+          baseRotation,
+        });
+      }
+      return;
+    }
+
+    // A RESIZE can change layout (text wraps, photos re-fit), so it is rendered
+    // by the production renderer — but through the per-layer transient store:
+    // only the layers being resized re-render, never the workspace, the preview
+    // shell or any other object on the page.
+    if (!onTransientGeometry) return;
     const overrides: Record<string, Record<string, unknown>> = {};
     for (const change of changes) overrides[change.id] = change.patch;
     onTransientGeometry(overrides);
-  }, [collectTransformChanges, onTransientGeometry]);
+  }, [collectTransformChanges, onTransientGeometry, previewRootRef]);
 
   const handleTransform = useCallback(() => {
     schedulerRef.current!.schedule(() => {
@@ -813,6 +1036,7 @@ export default function CustomizerInteractionStage({
       angleLabelRef.current.getLayer()?.batchDraw();
     }
     transformStartRef.current = new Map();
+    boundStartRef.current = null;
     gestureActiveRef.current = false;
     if (changes.length) onGestureCommit(changes);
   }, [collectTransformChanges, selection, previewRootRef, onTransientGeometry, onGestureCommit]);
@@ -843,7 +1067,12 @@ export default function CustomizerInteractionStage({
         const pointer = stage?.getPointerPosition();
         if (pointer) {
           const safeScale = Math.max(Math.abs(scale), 1e-6);
-          const point = { x: pointer.x / safeScale, y: pointer.y / safeScale };
+          // Pointer positions are relative to the stage container, which now
+          // starts STAGE_GUTTER before the page origin.
+          const point = {
+            x: (pointer.x - STAGE_GUTTER) / safeScale,
+            y: (pointer.y - STAGE_GUTTER) / safeScale,
+          };
           // Slots are laid out in the grid's own frame, so un-rotate the
           // pointer before asking which one it landed in.
           const local = node.rotation
@@ -871,7 +1100,7 @@ export default function CustomizerInteractionStage({
     const pointer = stage?.getPointerPosition();
     if (!stage || !pointer) return null;
     const safeScale = Math.max(Math.abs(scale), 1e-6);
-    return { x: pointer.x / safeScale, y: pointer.y / safeScale };
+    return { x: (pointer.x - STAGE_GUTTER) / safeScale, y: (pointer.y - STAGE_GUTTER) / safeScale };
   }, [scale]);
 
   const handleStagePointerDown = useCallback(
@@ -956,8 +1185,15 @@ export default function CustomizerInteractionStage({
   return (
     <Stage
       ref={stageRef}
-      width={Math.max(1, displayWidth)}
-      height={Math.max(1, displayHeight)}
+      // Bigger than the page by STAGE_GUTTER on every side, and pulled back by
+      // the same amount, so the page still lines up exactly with the artwork
+      // underneath while the chrome drawn outside it stays visible and
+      // clickable. `x`/`y` re-origin the scene at the page's top-left, which
+      // keeps every document coordinate in this file unchanged.
+      width={Math.max(1, displayWidth) + STAGE_GUTTER * 2}
+      height={Math.max(1, displayHeight) + STAGE_GUTTER * 2}
+      x={STAGE_GUTTER}
+      y={STAGE_GUTTER}
       scaleX={scale}
       scaleY={scale}
       listening={interactive}
@@ -966,7 +1202,8 @@ export default function CustomizerInteractionStage({
       onPointerUp={handleStagePointerUp}
       style={{
         position: "absolute",
-        inset: 0,
+        left: -STAGE_GUTTER,
+        top: -STAGE_GUTTER,
         // Pointer events are owned entirely by the Konva stage while it is
         // interactive; when it is not, clicks fall through to the DOM beneath.
         pointerEvents: interactive ? "auto" : "none",
@@ -1201,9 +1438,34 @@ export default function CustomizerInteractionStage({
           flipEnabled={false}
           keepRatio={false}
           boundBoxFunc={(oldBox, newBox) => {
+            // The first call of a gesture hands us the box it started from.
+            if (!boundStartRef.current) boundStartRef.current = { ...oldBox };
+            const start = boundStartRef.current;
+
             // Never let a transform collapse an object to nothing.
-            const minimum = 24 * scale;
+            const minimum = MIN_OBJECT_SIZE * scale;
             if (Math.abs(newBox.width) < minimum || Math.abs(newBox.height) < minimum) return oldBox;
+
+            /**
+             * Stop the box INVERTING through its anchor.
+             *
+             * `flipEnabled={false}` only keeps the width positive; it does not
+             * stop the pointer travelling past the opposite corner. Once it
+             * does, Konva re-pins the box on the far side and it starts GROWING
+             * again — so dragging a corner across the object turned a 300x120
+             * shape into a 410x589 one, in the direction opposite to the drag.
+             *
+             * A resize anchors the edge opposite the handle, so that edge must
+             * not move. If it has, the pointer has crossed over and the gesture
+             * is refused until it comes back.
+             */
+            const anchor = String(transformerRef.current?.getActiveAnchor?.() ?? "");
+            const EPSILON = 0.5;
+            const moved = (a: number, b: number) => Math.abs(a - b) > EPSILON;
+            if (anchor.includes("right") && moved(newBox.x, start.x)) return oldBox;
+            if (anchor.includes("left") && moved(newBox.x + newBox.width, start.x + start.width)) return oldBox;
+            if (anchor.includes("bottom") && moved(newBox.y, start.y)) return oldBox;
+            if (anchor.includes("top") && moved(newBox.y + newBox.height, start.y + start.height)) return oldBox;
             return newBox;
           }}
           onTransformStart={handleTransformStart}

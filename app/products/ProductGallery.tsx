@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import RightArrowIcon from "../components/RightArrowIcon";
 import useAuth from "../lib/useAuth";
 import {
   addToWishlist,
@@ -478,7 +477,7 @@ export default function ProductGallery({ product, belowMainContent = null, initi
               ariaLabel="Next image"
               className="absolute right-[18px] top-1/2 z-20 h-[42px] w-[42px] -translate-y-1/2 text-[25px] leading-none md:right-[28px] md:h-[48px] md:w-[48px] md:text-[28px]"
             >
-              <RightArrowIcon />
+              <span className="block -translate-y-[2px]">›</span>
             </GalleryCircleButton>
           </>
         )}

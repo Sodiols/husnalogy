@@ -8,6 +8,7 @@ import {
   reorderLayersByDrop,
 } from "@/lib/customizer/v2/interaction/layer-reorder";
 import { distributeAlongAxis, getDescendantIds, rotatedAxisHalfExtents, transformGroupChildren } from "@/lib/customizer/v2/groups";
+import { clonedIdsFor, expandCloneSelection, relinkClones } from "@/lib/customizer/v2/clipboard";
 import { marqueeSelectedLayerIds, type SelectionRect } from "@/lib/customizer/v2/selection-geometry";
 import { getTextPlacementStyle, type TextPlacementPreset } from "@/lib/customizer/v2/text-editing";
 import { DEFAULT_LETTER_SPACING, DEFAULT_LINE_HEIGHT } from "@/lib/customizer/v2/text-layout";
@@ -311,6 +312,24 @@ export function updateLayerStyle(template: any, layerId: string, stylePatch: any
   };
 }
 
+/**
+ * Apply one canvas gesture's patches to the template as ONE value.
+ *
+ * However many objects the gesture touched — and whether or not a patch carries
+ * a `textStyle` from text corner scaling — the result is a single template the
+ * builder applies once: one history step, one dirty transition. Groups move
+ * their members through `updateLayer`.
+ */
+export function applyCanvasLayerPatches(template: any, patches: Record<string, any>) {
+  let next = template;
+  for (const [id, patch] of Object.entries(patches || {})) {
+    const { textStyle, ...layerPatch } = patch || {};
+    if (Object.keys(layerPatch).length) next = updateLayer(next, id, layerPatch);
+    if (textStyle && typeof textStyle === "object") next = updateLayerStyle(next, id, textStyle);
+  }
+  return next;
+}
+
 export function removeLayer(template: any, layerId: string) {
   const layer = getLayer(template, layerId);
   let fields = template.fields || [];
@@ -321,12 +340,145 @@ export function removeLayer(template: any, layerId: string) {
   return { ...template, fields, layers: (template.layers || []).filter((l: any) => !removeIds.has(l.id)) };
 }
 
+/* ---------------------------------------------------- clone / clipboard ----
+ * Duplicate, Copy, Cut and Paste all mean the same thing to the document: take
+ * a set of layers, give them fresh identities, point them at each other rather
+ * than at their originals, and stack the result on top. That single operation
+ * lives here so the four commands cannot drift apart — which is exactly how the
+ * customer editor ended up pasting groups whose children belonged to the group
+ * they were copied from.
+ * ------------------------------------------------------------------------- */
+
+/** A fresh id that cannot collide with anything already in the template. */
+function freshId(template: any, type: string, taken: Set<string>): string {
+  const existing = new Set((template?.layers || []).map((layer: any) => String(layer.id)));
+  for (let attempt = 0; attempt < 50; attempt += 1) {
+    const candidate = genId(type || "layer");
+    if (!existing.has(candidate) && !taken.has(candidate)) {
+      taken.add(candidate);
+      return candidate;
+    }
+  }
+  // `genId` is 6 random base-36 characters; 50 collisions in a row is not
+  // chance, so fall back to something that cannot repeat rather than looping.
+  const unique = `${type || "layer"}_${Date.now().toString(36)}_${taken.size}`;
+  taken.add(unique);
+  return unique;
+}
+
+export type LayerClipboard = { rootIds: string[]; layers: any[] };
+
+/**
+ * Clone `sources` onto `pageId` as one contiguous z-block above everything
+ * already there, with every internal relationship rewritten to the copies.
+ *
+ * `sources` must already include the descendants of any group among them —
+ * `expandCloneSelection` is what works that out.
+ */
+function cloneLayersInto(
+  template: any,
+  sources: readonly any[],
+  requestedIds: readonly string[],
+  pageId: string,
+  { offset = 40, rename = true }: { offset?: number; rename?: boolean } = {},
+): { template: any; newIds: string[] } {
+  if (!sources.length) return { template, newIds: [] };
+
+  const baseZ = nextZIndex(template, pageId);
+  // Preserve the sources' relative stacking inside the block, so a copied
+  // arrangement still looks like the arrangement that was copied.
+  const stackOrder = sources
+    .slice()
+    .sort((a: any, b: any) => Number(a.zIndex || 0) - Number(b.zIndex || 0))
+    .map((layer: any) => layer.id);
+  const zBySourceId = new Map(stackOrder.map((id: string, index: number) => [id, baseZ + index]));
+
+  const taken = new Set<string>();
+  const clones = sources.map((source: any) => ({
+    ...source,
+    id: freshId(template, source.type, taken),
+    name: rename ? `${source.name || "Layer"} copy` : source.name,
+    page: pageId,
+    x: Number(source.x || 0) + offset,
+    y: Number(source.y || 0) + offset,
+    zIndex: zBySourceId.get(source.id) ?? baseZ,
+    // A copy must never inherit the original's binding to a customer field, and
+    // must never arrive locked — an object you cannot select is a poor thing to
+    // hand someone as the result of a paste.
+    fieldId: "",
+    customerEditable: false,
+    locked: false,
+  }));
+
+  const relinked = relinkClones(sources, clones);
+  return {
+    template: { ...template, layers: [...(template.layers || []), ...relinked] },
+    newIds: clonedIdsFor(sources, relinked, requestedIds),
+  };
+}
+
+/**
+ * Snapshot a selection for the clipboard: the requested layers PLUS every
+ * descendant, deep-copied so a later delete cannot empty the clipboard.
+ */
+export function copyLayersToClipboard(template: any, layerIds: readonly string[]): LayerClipboard {
+  const rootIds = [...new Set(layerIds.filter(Boolean).map(String))];
+  const layers = expandCloneSelection(template?.layers || [], rootIds).map((layer: any) =>
+    JSON.parse(JSON.stringify(layer)),
+  );
+  return { rootIds, layers };
+}
+
+/** Paste a clipboard onto `pageId`. Returns the template unchanged when empty. */
+export function pasteLayers(
+  template: any,
+  clipboard: LayerClipboard | null | undefined,
+  pageId: string,
+): { template: any; newIds: string[] } {
+  if (!clipboard?.layers?.length) return { template, newIds: [] };
+  return cloneLayersInto(template, clipboard.layers, clipboard.rootIds, pageId);
+}
+
+/**
+ * Cut: copy, then remove. Locked layers (and anything marked non-editable) are
+ * COPIED but not removed — the same rule Delete already follows — so a cut that
+ * includes one does not silently destroy it.
+ */
+export function cutLayers(
+  template: any,
+  layerIds: readonly string[],
+): { template: any; clipboard: LayerClipboard; removedIds: string[] } {
+  const clipboard = copyLayersToClipboard(template, layerIds);
+  const removedIds: string[] = [];
+  let next = template;
+  for (const id of clipboard.rootIds) {
+    const layer = getLayer(next, id);
+    if (!layer || layer.locked || layer.adminEditable === false) continue;
+    next = removeLayer(next, id);
+    removedIds.push(id);
+  }
+  return { template: next, clipboard, removedIds };
+}
+
 export function duplicateLayer(template: any, layerId: string) {
   const layer = getLayer(template, layerId);
   if (!layer) return { template, newId: null };
   if (layer.type === "group") {
     const sourceIds = [layerId, ...getDescendantIds(template.layers || [], layerId)];
     const idMap = new Map(sourceIds.map((id) => [id, genId(getLayer(template, id)?.type || "layer")]));
+    // The copy must sit ABOVE everything already on the page, as one contiguous
+    // block. Carrying each source's own zIndex across would tie every copied
+    // member with the member it was cloned from: `layersForPage` sorts by
+    // zIndex and JS sort is stable, so the two groups would interleave and the
+    // duplicate would inherit the original's place in the stack instead of
+    // landing on top of it.
+    const baseZ = nextZIndex(template, layer.page);
+    const stackOrder = (template.layers || [])
+      .filter((item: any) => idMap.has(item.id))
+      .slice()
+      .sort((a: any, b: any) => Number(a.zIndex || 0) - Number(b.zIndex || 0))
+      .map((item: any) => item.id);
+    const zBySourceId = new Map(stackOrder.map((id: string, index: number) => [id, baseZ + index]));
     const copies = (template.layers || [])
       .filter((item: any) => idMap.has(item.id))
       .map((item: any) => ({
@@ -335,6 +487,7 @@ export function duplicateLayer(template: any, layerId: string) {
         name: item.id === layerId ? `${item.name} copy` : item.name,
         x: Number(item.x || 0) + 40,
         y: Number(item.y || 0) + 40,
+        zIndex: zBySourceId.get(item.id) ?? baseZ,
         groupId: item.groupId && idMap.has(item.groupId) ? idMap.get(item.groupId) : item.groupId,
         childIds: Array.isArray(item.childIds) ? item.childIds.map((id: string) => idMap.get(id) || id) : item.childIds,
         fieldId: "",
@@ -354,7 +507,16 @@ export function duplicateLayer(template: any, layerId: string) {
     fieldId: "",
     customerEditable: false,
   };
-  return { template: { ...template, layers: [...(template.layers || []), copy] }, newId: copy.id };
+  // A copy made inside a group stays in that group (`groupId` is the authority
+  // for membership). `childIds` is a derived mirror of the same relationship,
+  // so it has to learn about the copy too or it drifts out of agreement with
+  // the document it describes.
+  const withCopy = (template.layers || []).map((item: any) =>
+    copy.groupId && item.id === copy.groupId && item.type === "group"
+      ? { ...item, childIds: [...(Array.isArray(item.childIds) ? item.childIds : []), copy.id] }
+      : item,
+  );
+  return { template: { ...template, layers: [...withCopy, copy] }, newId: copy.id };
 }
 
 /**

@@ -1,6 +1,7 @@
 import CheckoutClient from "./checkout-client";
 import { createClient } from "@/lib/supabase/server";
 import { formatSupabaseUser } from "../lib/format-user";
+import { logServerFailure } from "@/lib/core/server-errors";
 
 export const metadata = {
   title: "Checkout",
@@ -23,9 +24,8 @@ async function getInitialUser() {
       .maybeSingle();
 
     return formatSupabaseUser(user, profile);
-  } catch (error: any) {
-    if (error?.digest === "DYNAMIC_SERVER_USAGE") throw error;
-    console.error("Could not resolve checkout auth state:", error);
+  } catch (error) {
+    logServerFailure("Could not resolve checkout auth state", error);
     return null;
   }
 }

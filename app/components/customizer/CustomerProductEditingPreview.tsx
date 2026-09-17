@@ -3,7 +3,7 @@
 import CustomizerWorkspace from "./CustomizerWorkspace";
 import CustomizerPreview from "./CustomizerPreview";
 
-export default function CustomerProductEditingPreview({ template, values, editorState, pageId, zoom, onZoomChange, selectedLayerIds, onSelectLayer, onSelectionChange, onLayerTransform, editingGroupId, onEnterGroup, showWatermark = false }: any) {
+export default function CustomerProductEditingPreview({ template, values, editorState, pageId, zoom, onZoomChange, selectedLayerIds, onSelectLayer, onSelectionChange, onLayerTransform, onLayerTransforms, editingGroupId, onEnterGroup, showWatermark = false }: any) {
   const config = template?.mockupTemplates?.[0] || template?.settings?.mockupTemplates?.[0];
   const view = config?.views?.[0];
   if (!config || !view) {
@@ -21,7 +21,7 @@ export default function CustomerProductEditingPreview({ template, values, editor
           {perspective ? (
             <CustomizerPreview template={template} values={values} editorState={editorState} page={area.sourcePageId} showSafeArea={false} showBleed={false} />
           ) : (
-            <CustomizerWorkspace template={template} values={values} editorState={editorState} pageId={area.sourcePageId} zoom={zoom} onZoomChange={onZoomChange} selectedLayerIds={selectedLayerIds} selectedLayerId={selectedLayerIds?.at(-1) || null} onSelectLayer={onSelectLayer} onSelectionChange={onSelectionChange} onLayerTransform={onLayerTransform} editingGroupId={editingGroupId} onEnterGroup={onEnterGroup} showWatermark={showWatermark} showSafeArea={false} showBleed={false} maxCanvasWidth={10000} embedded interactionRotation={Number(area.rotation) || 0} />
+            <CustomizerWorkspace template={template} values={values} editorState={editorState} pageId={area.sourcePageId} zoom={zoom} onZoomChange={onZoomChange} selectedLayerIds={selectedLayerIds} selectedLayerId={selectedLayerIds?.at(-1) || null} onSelectLayer={onSelectLayer} onSelectionChange={onSelectionChange} onLayerTransform={onLayerTransform} onLayerTransforms={onLayerTransforms} editingGroupId={editingGroupId} onEnterGroup={onEnterGroup} showWatermark={showWatermark} showSafeArea={false} showBleed={false} maxCanvasWidth={10000} embedded interactionRotation={Number(area.rotation) || 0} />
           )}
         </div>
         {(view.overlays || []).filter((overlay: any) => overlay.visible !== false && overlay.src).map((overlay: any) => <img key={overlay.id} src={overlay.src} alt="" className="pointer-events-none absolute inset-0 h-full w-full object-fill" style={{ opacity: overlay.opacity ?? 1, mixBlendMode: overlay.blendMode || "normal" }} />)}

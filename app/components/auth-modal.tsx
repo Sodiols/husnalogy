@@ -301,7 +301,7 @@ export default function AuthModal({ open, setOpen, mode, setMode }) {
             <button
               type="submit"
               disabled={loading || googleLoading}
-              className="mt-2 w-full rounded-none bg-[#303839] px-6 py-4 text-sm font-extrabold text-white shadow-[0_12px_26px_rgba(32,32,32,0.12)] transition-all duration-300 ease-out hover:-translate-y-0.5 hover:bg-[#434c4d] hover:shadow-[0_18px_38px_rgba(32,32,32,0.22)] disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0 disabled:hover:shadow-[0_12px_26px_rgba(32,32,32,0.12)]"
+              className="mt-2 w-full rounded-none bg-[#303839] px-6 py-4 text-sm font-extrabold text-white shadow-[0_12px_26px_rgba(32,32,32,0.12)] transition-colors duration-300 ease-out hover:bg-[#434c4d] disabled:cursor-not-allowed disabled:opacity-60"
             >
               {loading
                 ? "Please wait..."
@@ -328,7 +328,7 @@ export default function AuthModal({ open, setOpen, mode, setMode }) {
                   type="button"
                   onClick={handleGoogleLogin}
                   disabled={googleLoading || loading}
-                  className="flex w-full items-center justify-center gap-3 rounded-none bg-[#303839] px-6 py-4 text-sm font-extrabold text-white shadow-[0_12px_26px_rgba(32,32,32,0.12)] transition-all duration-300 ease-out hover:-translate-y-0.5 hover:bg-[#434c4d] hover:shadow-[0_18px_38px_rgba(32,32,32,0.22)] disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0 disabled:hover:shadow-[0_12px_26px_rgba(32,32,32,0.12)]"
+                  className="flex w-full items-center justify-center gap-3 rounded-none bg-[#303839] px-6 py-4 text-sm font-extrabold text-white shadow-[0_12px_26px_rgba(32,32,32,0.12)] transition-colors duration-300 ease-out hover:bg-[#434c4d] disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   <GoogleIcon />
                   {googleLoading ? "Please wait..." : "Continue with Google"}

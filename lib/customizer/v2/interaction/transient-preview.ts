@@ -18,11 +18,11 @@
  * On release the gesture commits normalised geometry once, React re-renders the
  * real thing, and the transient transform is removed in the same frame.
  *
- * This only covers transforms that do not change LAYOUT — translation and
- * rotation. A resize can change text wrapping, so resizing deliberately commits
- * through the document (rAF-throttled) rather than previewing here: a preview
- * that showed different line breaks from the result would be worse than a
- * slightly heavier gesture.
+ * The attribute path covers transforms that do not change LAYOUT — translation
+ * and rotation. A resize can change text wrapping, so it is NOT previewed as a
+ * scale here; it publishes real in-progress geometry to the per-layer
+ * `TransientGeometryStore` below, which re-renders only the resized layers
+ * through the production renderer. Neither path touches the document.
  */
 
 export type TransientTransform = {
@@ -185,5 +185,69 @@ export function createFrameScheduler(): {
       }
       pending = null;
     },
+  };
+}
+
+/* -------------------------------------------------------------------------- */
+/* Localized transient geometry (spec §19–§23 of the hardening brief)          */
+/* -------------------------------------------------------------------------- */
+
+/** In-progress values for one layer, merged over its committed values. */
+export type GeometryOverride = Record<string, unknown>;
+
+/**
+ * Per-layer, subscribable home for geometry that a live gesture needs RENDERED
+ * but that must not reach the document.
+ *
+ * Why not React state: resize, rotation and crop used to publish every frame
+ * through `useState` on the workspace. Each publish re-rendered the workspace,
+ * the whole preview and every layer in it — on a busy card, dozens of text
+ * layouts re-derived 60 times a second to move one object.
+ *
+ * With this store a publish notifies ONLY the layers whose override changed.
+ * The workspace and the preview shell do not render at all; the affected layer
+ * re-renders through the production renderer, so text still wraps and photos
+ * still re-fit exactly as they will once committed.
+ */
+export type TransientGeometryStore = {
+  /** Replace every live override (null clears them all). */
+  set: (overrides: Record<string, GeometryOverride> | null) => void;
+  get: (layerId: string) => GeometryOverride | null;
+  subscribe: (layerId: string, listener: () => void) => () => void;
+  /** Number of layers currently carrying an override. */
+  size: () => number;
+};
+
+export function createTransientGeometryStore(): TransientGeometryStore {
+  let current = new Map<string, GeometryOverride>();
+  const listeners = new Map<string, Set<() => void>>();
+
+  const notify = (layerId: string) => {
+    listeners.get(layerId)?.forEach((listener) => listener());
+  };
+
+  return {
+    set(overrides) {
+      const next = new Map<string, GeometryOverride>(overrides ? Object.entries(overrides) : []);
+      const changed = new Set<string>();
+      for (const [layerId, value] of next) if (current.get(layerId) !== value) changed.add(layerId);
+      for (const layerId of current.keys()) if (!next.has(layerId)) changed.add(layerId);
+      current = next;
+      changed.forEach(notify);
+    },
+    get: (layerId) => current.get(layerId) ?? null,
+    subscribe(layerId, listener) {
+      let set = listeners.get(layerId);
+      if (!set) {
+        set = new Set();
+        listeners.set(layerId, set);
+      }
+      set.add(listener);
+      return () => {
+        set!.delete(listener);
+        if (!set!.size) listeners.delete(layerId);
+      };
+    },
+    size: () => current.size,
   };
 }

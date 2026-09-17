@@ -11,7 +11,7 @@
 // editor, thumbnails, review, previews, and print files all break lines and
 // clip photos identically.
 
-import { useEffect, useMemo, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { getLegacyMaskPath, getMaskPath } from "@/lib/customizer/v2/masks";
 import { getGridSlotRect, normalizeGridSlot } from "@/lib/customizer/v2/grids";
 import { DEFAULT_LINE_HEIGHT, layoutText, createCanvasMeasure, fallbackMeasure, resolveTextBox, type MeasureFn } from "@/lib/customizer/v2/text-layout";
@@ -20,6 +20,7 @@ import { resolveImageDrawBoxFromTransform } from "@/lib/customizer/v2/image-crop
 import { normalizeQRCodeStyle, qrModuleRects } from "@/lib/customizer/v2/qr";
 import {
   applyGeometryOverrides,
+  reuseEquivalentLayers,
   getEffectiveLayersForPage,
   getFieldById,
   getPageById,
@@ -28,6 +29,8 @@ import {
   type EditorState,
 } from "./customizer-utils";
 import { useGoogleFontMetricsRevision } from "./useGoogleFonts";
+import { recordRender } from "@/lib/customizer/v2/dev-metrics";
+import type { GeometryOverride, TransientGeometryStore } from "@/lib/customizer/v2/interaction/transient-preview";
 
 type Props = {
   template: any;
@@ -59,6 +62,11 @@ type Props = {
    * moment the gesture ends.
    */
   geometryOverrides?: Record<string, Record<string, any>> | null;
+  /**
+   * Live gesture geometry, delivered per layer. When given, only the layers a
+   * gesture is changing re-render; the preview itself does not.
+   */
+  transientStore?: TransientGeometryStore | null;
 };
 
 let sharedMeasure: MeasureFn | null = null;
@@ -475,6 +483,89 @@ function QRCodeLayer({ layer }: any) {
   );
 }
 
+
+/* -------------------------------------------------------------------------- */
+/* Per-layer render boundary                                                  */
+/* -------------------------------------------------------------------------- */
+
+const NO_OVERRIDE_STORE: TransientGeometryStore = {
+  set: () => {},
+  get: () => null,
+  subscribe: () => () => {},
+  size: () => 0,
+};
+
+/** The live override for ONE layer; re-renders only when that layer's changes. */
+function useLayerOverride(store: TransientGeometryStore | null | undefined, layerId: string): GeometryOverride | null {
+  const source = store || NO_OVERRIDE_STORE;
+  const subscribe = useCallback((listener: () => void) => source.subscribe(layerId, listener), [source, layerId]);
+  const read = useCallback(() => source.get(layerId), [source, layerId]);
+  return useSyncExternalStore(subscribe, read, () => null);
+}
+
+type PreviewLayerProps = {
+  layer: any;
+  template: any;
+  values: Record<string, any>;
+  idPrefix: string;
+  fontsReady: number;
+  safeBounds: { left: number; top: number; right: number; bottom: number };
+  transientStore: TransientGeometryStore | null;
+};
+
+/**
+ * One layer of the shared renderer, memoized.
+ *
+ * `applyGeometryOverrides` and the resolved-layers memo keep an untouched
+ * layer's object identity, so a change to another layer — or a live gesture on
+ * another layer — skips this component entirely. A layer being transformed
+ * re-renders here, alone, with its in-progress geometry applied.
+ */
+const PreviewLayer = memo(function PreviewLayer({
+  layer: committedLayer,
+  template,
+  values,
+  idPrefix,
+  fontsReady,
+  safeBounds,
+  transientStore,
+}: PreviewLayerProps) {
+  const override = useLayerOverride(transientStore, committedLayer.id);
+  const layer = useMemo(
+    () => (override ? applyGeometryOverrides([committedLayer], { [committedLayer.id]: override })[0] : committedLayer),
+    [committedLayer, override],
+  );
+  recordRender(`layer:${layer.id}`);
+
+  const field = layer.fieldId ? getFieldById(template, layer.fieldId) : null;
+  const content =
+    layer.type === "image" || layer.type === "frame" ? (
+      <ImageLayer layer={layer} field={field} values={values} idPrefix={idPrefix} />
+    ) : layer.type === "shape" ? (
+      <ShapeLayer layer={layer} />
+    ) : layer.type === "element" ? (
+      <ElementLayer layer={layer} idPrefix={idPrefix} />
+    ) : layer.type === "grid" ? (
+      <GridLayer layer={layer} idPrefix={idPrefix} />
+    ) : layer.type === "background" ? (
+      <BackgroundLayer layer={layer} />
+    ) : layer.type === "qrCode" ? (
+      <QRCodeLayer layer={layer} />
+    ) : layer.type === "text" ? (
+      <TextLayer layer={layer} field={field} values={values} fontsReady={fontsReady} idPrefix={idPrefix} safeBounds={safeBounds} />
+    ) : null;
+
+  return (
+    // `data-layer-id` lets the interaction layer address this exact group for a
+    // TRANSIENT DOM transform during a drag or rotation, and lets tests scope
+    // to it. It is presentational only: never part of the document, never
+    // emitted by `buildPageSvg`, so it cannot reach print output.
+    <g data-layer-id={layer.id} opacity={layer.opacity === undefined ? 1 : layer.opacity}>
+      {content}
+    </g>
+  );
+});
+
 export default function CustomizerPreview({
   template,
   values = {},
@@ -487,15 +578,24 @@ export default function CustomizerPreview({
   editorState,
   hiddenLayerIds = [],
   geometryOverrides = null,
+  transientStore = null,
 }: Props) {
+  recordRender("preview");
   const width = template?.canvasWidthPx || 1500;
   const height = template?.canvasHeightPx || 2100;
   const fontsReady = useFontsReady();
   const activePage = useMemo(() => getPageById(template, page || template?.defaultPage), [template, page]);
-  const resolvedLayers = useMemo(
-    () => getEffectiveLayersForPage(template, activePage?.id, editorState),
-    [template, activePage, editorState],
-  );
+  // Unchanged layers keep their previous object, so the memoized per-layer
+  // renderer skips them when some OTHER layer's values change.
+  const previousLayersRef = useRef<any[] | null>(null);
+  const resolvedLayers = useMemo(() => {
+    const stable = reuseEquivalentLayers(
+      previousLayersRef.current,
+      getEffectiveLayersForPage(template, activePage?.id, editorState),
+    );
+    previousLayersRef.current = stable;
+    return stable;
+  }, [template, activePage, editorState]);
   const googleFontMetricsRevision = useGoogleFontMetricsRevision(
     resolvedLayers.filter((layer: any) => layer?.type === "text").map((layer: any) => layer.textStyle?.fontFamily),
   );
@@ -545,41 +645,20 @@ export default function CustomizerPreview({
         <image href={bg} x={0} y={0} width={width} height={height} preserveAspectRatio="xMidYMid slice" crossOrigin="anonymous" />
       ) : null}
 
-      {layers.map((layer: any) => {
-        if (layer.hidden || hiddenLayerIds.includes(layer.id)) return null;
-        const field = layer.fieldId ? getFieldById(template, layer.fieldId) : null;
-        const content =
-          layer.type === "image" || layer.type === "frame" ? (
-            <ImageLayer layer={layer} field={field} values={values} idPrefix={idPrefix} />
-          ) : layer.type === "shape" ? (
-            <ShapeLayer layer={layer} />
-          ) : layer.type === "element" ? (
-            <ElementLayer layer={layer} idPrefix={idPrefix} />
-          ) : layer.type === "grid" ? (
-            <GridLayer layer={layer} idPrefix={idPrefix} />
-          ) : layer.type === "background" ? (
-            <BackgroundLayer layer={layer} />
-          ) : layer.type === "qrCode" ? (
-            <QRCodeLayer layer={layer} />
-          ) : layer.type === "group" ? null
-          : layer.type === "text" ? (
-            <TextLayer layer={layer} field={field} values={values} fontsReady={fontMeasurementRevision} idPrefix={idPrefix} safeBounds={safeBounds} />
-          ) : (
-            null
-          );
-        return (
-          // `data-layer-id` is what lets the shared Konva interaction layer
-          // apply a TRANSIENT transform to this exact group during a drag or a
-          // rotation (spec §9). Moving the real artwork node costs one style
-          // write per frame instead of a full React + SVG re-render, and it is
-          // pixel-accurate by construction because it IS the production
-          // renderer. The attribute is presentational metadata only: it is not
-          // part of the document and never reaches `buildPageSvg`.
-          <g key={layer.id} data-layer-id={layer.id} opacity={layer.opacity === undefined ? 1 : layer.opacity}>
-            {content}
-          </g>
-        );
-      })}
+      {layers.map((layer: any) =>
+        layer.hidden || hiddenLayerIds.includes(layer.id) ? null : (
+          <PreviewLayer
+            key={layer.id}
+            layer={layer}
+            template={template}
+            values={values}
+            idPrefix={idPrefix}
+            fontsReady={fontMeasurementRevision}
+            safeBounds={safeBounds}
+            transientStore={transientStore}
+          />
+        ),
+      )}
 
       {resolvedShowBleed ? (
         <rect

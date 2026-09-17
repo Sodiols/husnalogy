@@ -13,7 +13,15 @@ import { describe, expect, it } from "vitest";
 import { applyGeometryOverrides } from "@/app/components/customizer/customizer-utils";
 
 const layers = () => [
-  { id: "photo", type: "image", x: 100, y: 100, width: 200, height: 200 },
+  {
+    id: "photo",
+    type: "image",
+    x: 100,
+    y: 100,
+    width: 200,
+    height: 200,
+    imageTransform: { zoom: 1.5, offsetX: 12, offsetY: -8, flipX: true, fitMode: "cover", rotation: 90 },
+  },
   { id: "title", type: "text", x: 50, y: 50, width: 300, height: 80, textStyle: { fontFamily: "Cormorant Garamond", fontSize: 48, color: "#303839" } },
   { id: "other", type: "shape", x: 10, y: 10, width: 20, height: 20 },
 ];
@@ -50,6 +58,61 @@ describe("applyGeometryOverrides", () => {
       color: "#303839",
     });
     expect(title.width).toBe(420);
+  });
+
+  it("merges imageTransform instead of replacing it, so a crop keeps its flips and fit", () => {
+    // A crop pan publishes ONLY the offsets it is changing. Replacing the whole
+    // object would drop the flip, the in-frame rotation and the fit mode, and
+    // the photo would jump on the first pointer move.
+    const result = applyGeometryOverrides(layers(), {
+      photo: { imageTransform: { offsetX: 40, offsetY: 25 } },
+    });
+    expect(result.find((layer) => layer.id === "photo")!.imageTransform).toEqual({
+      zoom: 1.5,
+      offsetX: 40,
+      offsetY: 25,
+      flipX: true,
+      fitMode: "cover",
+      rotation: 90,
+    });
+  });
+
+  it("previews a crop zoom without disturbing the committed offsets", () => {
+    const result = applyGeometryOverrides(layers(), { photo: { imageTransform: { zoom: 3.25 } } });
+    const photo = result.find((layer) => layer.id === "photo")!;
+    expect(photo.imageTransform.zoom).toBe(3.25);
+    expect(photo.imageTransform.offsetX).toBe(12);
+    expect(photo.imageTransform.offsetY).toBe(-8);
+  });
+
+  it("leaves imageTransform untouched when the preview is a plain geometry change", () => {
+    const result = applyGeometryOverrides(layers(), { photo: { x: 180 } });
+    const photo = result.find((layer) => layer.id === "photo")!;
+    expect(photo.x).toBe(180);
+    expect(photo.imageTransform).toEqual(layers()[0].imageTransform);
+  });
+
+  it("previews a grid slot crop by carrying the whole slots array", () => {
+    // A slot's transform lives inside the grid layer, so the override replaces
+    // `slots` wholesale with one slot's transform merged.
+    const grid = [
+      {
+        id: "grid",
+        type: "grid",
+        slots: [
+          { id: "a", transform: { zoom: 1, offsetX: 0, offsetY: 0, fitMode: "cover" } },
+          { id: "b", transform: { zoom: 2, offsetX: 5, offsetY: 5, fitMode: "cover" } },
+        ],
+      },
+    ];
+    const slots = grid[0].slots.map((slot) =>
+      slot.id === "b" ? { ...slot, transform: { ...slot.transform, offsetX: 60 } } : slot,
+    );
+    const result = applyGeometryOverrides(grid, { grid: { slots } });
+    const out = result.find((layer) => layer.id === "grid")!;
+    expect(out.slots[1].transform).toEqual({ zoom: 2, offsetX: 60, offsetY: 5, fitMode: "cover" });
+    // The sibling slot must be untouched.
+    expect(out.slots[0].transform).toEqual({ zoom: 1, offsetX: 0, offsetY: 0, fitMode: "cover" });
   });
 
   it("previews rotation", () => {

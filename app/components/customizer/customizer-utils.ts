@@ -202,6 +202,12 @@ export function getEffectiveLayersForPage(template: any, pageId: string, editorS
  * over the persisted value it is replacing, and `textStyle` is merged rather
  * than replaced so a font-size preview does not drop the layer's font family.
  *
+ * `imageTransform` is merged for the same reason as `textStyle`: a live crop
+ * publishes only the values the gesture is changing (an offset, or a zoom), and
+ * replacing the whole object would silently drop the flips, in-frame rotation,
+ * fit mode and crop rect the photo already carries — the photo would jump on
+ * the first pointer move and the preview would stop matching what prints.
+ *
  * Pure and override-shaped so both canvases share it and it stays testable.
  */
 export function applyGeometryOverrides(
@@ -214,13 +220,74 @@ export function applyGeometryOverrides(
   return layers.map((layer: any) => {
     const override = layer?.id ? overrides[layer.id] : null;
     if (!override) return layer;
-    const { textStyle, ...geometry } = override;
+    const { textStyle, imageTransform, ...geometry } = override;
     return {
       ...layer,
       ...geometry,
       ...(textStyle ? { textStyle: { ...(layer.textStyle || {}), ...textStyle } } : {}),
+      ...(imageTransform
+        ? { imageTransform: { ...(layer.imageTransform || {}), ...imageTransform } }
+        : {}),
     };
   });
+}
+
+/**
+ * Bounded structural equality for layer records (spec §23).
+ *
+ * Layer records are small and shallow — geometry, a style object, a transform,
+ * a slots array — so a depth-limited walk answers "did this layer change?"
+ * without `JSON.stringify` and without ever recursing without bound. Anything
+ * deeper than the limit is compared by reference, which can only produce a
+ * false "changed" (an extra render), never a false "unchanged" (a stale one).
+ */
+export function layerRecordsEquivalent(a: unknown, b: unknown, depth = 4): boolean {
+  if (a === b) return true;
+  if (depth <= 0 || !a || !b || typeof a !== "object" || typeof b !== "object") return false;
+  if (Array.isArray(a) !== Array.isArray(b)) return false;
+  if (Array.isArray(a)) {
+    const other = b as unknown[];
+    if (a.length !== other.length) return false;
+    for (let index = 0; index < a.length; index += 1) {
+      if (!layerRecordsEquivalent(a[index], other[index], depth - 1)) return false;
+    }
+    return true;
+  }
+  const left = a as Record<string, unknown>;
+  const right = b as Record<string, unknown>;
+  const keys = Object.keys(left);
+  if (keys.length !== Object.keys(right).length) return false;
+  for (const key of keys) {
+    if (!Object.prototype.hasOwnProperty.call(right, key)) return false;
+    if (!layerRecordsEquivalent(left[key], right[key], depth - 1)) return false;
+  }
+  return true;
+}
+
+/**
+ * Keep the previous object for every layer that did not actually change.
+ *
+ * Resolving a page rebuilds every layer object on each document change, which
+ * defeated the memoized per-layer renderer: moving one object re-rendered all
+ * of them. Reusing unchanged records restores identity, so only layers whose
+ * values changed render again.
+ */
+export function reuseEquivalentLayers(previous: readonly any[] | null | undefined, next: any[]): any[] {
+  if (!previous?.length) return next;
+  const byId = new Map<string, any>();
+  for (const layer of previous) if (layer?.id) byId.set(layer.id, layer);
+  let reusedAll = previous.length === next.length;
+  const result = next.map((layer, index) => {
+    const prior = layer?.id ? byId.get(layer.id) : undefined;
+    if (prior && layerRecordsEquivalent(prior, layer)) {
+      if (previous[index] !== prior) reusedAll = false;
+      return prior;
+    }
+    reusedAll = false;
+    return layer;
+  });
+  // Nothing changed at all: hand back the previous array so list-level memos hold too.
+  return reusedAll ? (previous as any[]) : result;
 }
 
 export function getEnabledPages(template: any): any[] {

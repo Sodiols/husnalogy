@@ -155,6 +155,54 @@ export function panForZoomChange(
 }
 
 /**
+ * Screen ↔ document conversion under the workspace's pan convention.
+ *
+ * Both are expressed relative to the CENTRE of the workspace (screen px) and the
+ * CENTRE of the document (document units), which is the frame `panForZoomChange`
+ * already uses: a document point `d` appears on screen at `d * zoom + pan`.
+ */
+export function documentToScreenOffset(
+  point: { x: number; y: number },
+  pan: { panX: number; panY: number },
+  zoom: number,
+): { x: number; y: number } {
+  return { x: point.x * zoom + pan.panX, y: point.y * zoom + pan.panY };
+}
+
+export function screenToDocumentOffset(
+  point: { x: number; y: number },
+  pan: { panX: number; panY: number },
+  zoom: number,
+): { x: number; y: number } {
+  const safeZoom = Number(zoom) > 0 ? Number(zoom) : 1;
+  return { x: (point.x - pan.panX) / safeZoom, y: (point.y - pan.panY) / safeZoom };
+}
+
+/**
+ * The pan that keeps the document point under `focal` (a screen position
+ * relative to the workspace centre) fixed across a zoom change — zoom at the
+ * pointer, or at the midpoint between two pinching fingers.
+ *
+ * `panForZoomChange` is exactly the special case `focal = {0, 0}`.
+ */
+export function panForZoomAtPoint(
+  pan: { panX: number; panY: number },
+  previousZoom: number,
+  nextZoom: number,
+  focal: { x: number; y: number },
+): { panX: number; panY: number } {
+  const from = Number(previousZoom);
+  const to = Number(nextZoom);
+  const panX = Number(pan?.panX) || 0;
+  const panY = Number(pan?.panY) || 0;
+  if (!Number.isFinite(from) || !Number.isFinite(to) || from <= 0 || to <= 0) return { panX, panY };
+  const ratio = to / from;
+  const fx = Number(focal?.x) || 0;
+  const fy = Number(focal?.y) || 0;
+  return { panX: fx - (fx - panX) * ratio, panY: fy - (fy - panY) * ratio };
+}
+
+/**
  * One zoom step in or out. Multiplicative so each press feels the same at every
  * zoom level, unlike a fixed +0.1 which is huge at 25% and tiny at 400%.
  */

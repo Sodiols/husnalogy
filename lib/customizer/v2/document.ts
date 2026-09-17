@@ -143,6 +143,7 @@ function migrateLayerV1(raw: Record<string, any>, pageIdFallback: string): Custo
     y: num(raw.y, 0),
     width: Math.max(1, num(raw.width, 100)),
     height: Math.max(1, num(raw.height, 100)),
+    // Inert legacy field — see the note on LayerBase.scale in types.ts.
     scale: posNum(raw.scale, 1),
     rotation: num(raw.rotation, 0),
     opacity: clamp01(raw.opacity === undefined ? 1 : raw.opacity),

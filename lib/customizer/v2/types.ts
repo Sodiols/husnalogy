@@ -220,6 +220,21 @@ type LayerBase = {
   y: number; // center Y in canvas px
   width: number;
   height: number;
+  /**
+   * INERT. Persisted for backwards compatibility and nothing else.
+   *
+   * No renderer, geometry helper, interaction path or server render reads this
+   * — size is carried entirely by `width`/`height`, which every transform
+   * normalises into (see `konva-adapter.normalizeKonvaGeometry`). It survives
+   * only because it is already present inside the `document` JSONB of saved
+   * templates and customizations; dropping it from the type would make those
+   * documents fail to round-trip for no gain.
+   *
+   * Both normalisers force it to a finite positive number (defaulting to 1), so
+   * a legacy value cannot become NaN and cannot influence output. If a layer is
+   * ever found with a value other than 1, that is historical noise rather than
+   * geometry: do NOT start applying it, or every existing design would resize.
+   */
   scale: number;
   rotation: number;
   opacity: number;

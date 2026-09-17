@@ -7,6 +7,7 @@ import {
 import { getProductCollections } from "@/lib/collections/store";
 import { createClient } from "@/lib/supabase/server";
 import { formatSupabaseUser } from "@/app/lib/format-user";
+import { logServerFailure } from "@/lib/core/server-errors";
 
 import ProductGallery from "../ProductGallery";
 import ProductInfo from "../ProductInfo";
@@ -91,9 +92,8 @@ async function getInitialUser() {
       .maybeSingle();
 
     return formatSupabaseUser(user, profile);
-  } catch (error: any) {
-    if (error?.digest === "DYNAMIC_SERVER_USAGE") throw error;
-    console.error("Could not resolve product auth state:", error);
+  } catch (error) {
+    logServerFailure("Could not resolve product auth state", error);
     return null;
   }
 }

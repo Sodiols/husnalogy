@@ -5,6 +5,7 @@ import SiteShell from "./components/site-shell";
 import { createClient } from "@/lib/supabase/server";
 import { formatSupabaseUser } from "./lib/format-user";
 import { getSettings, toPublicSettings } from "@/lib/settings";
+import { logServerFailure } from "@/lib/core/server-errors";
 import { BUSINESS_INFO } from "@/lib/launch-config";
 
 const fontDisplay = localFont({
@@ -104,13 +105,11 @@ async function getInitialUser() {
 
     return formatSupabaseUser(user, profile);
   } catch (error) {
-    // Next.js throws this internally to bail a route out of static
-    // generation during `next build` (we read cookies(), so every route is
-    // dynamic) — it isn't a real failure, so let it propagate instead of
-    // logging it as one.
-    if (error?.digest === "DYNAMIC_SERVER_USAGE") throw error;
-
-    console.error("Could not resolve server-side auth state:", error);
+    // Next.js aborts a render by THROWING — that is how redirect(), notFound()
+    // and the static-generation bailouts all work, and swallowing one of those
+    // would turn it into a silently wrong page. `logServerFailure` rethrows
+    // every such signal and only logs a genuine failure.
+    logServerFailure("Could not resolve server-side auth state", error);
     return null;
   }
 }
@@ -119,8 +118,7 @@ async function getInitialSettings() {
   try {
     return toPublicSettings(await getSettings());
   } catch (error) {
-    if (error?.digest === "DYNAMIC_SERVER_USAGE") throw error;
-    console.error("Could not resolve server-side site settings:", error);
+    logServerFailure("Could not resolve server-side site settings", error);
     return null;
   }
 }

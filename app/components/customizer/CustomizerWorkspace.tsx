@@ -16,6 +16,9 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import CustomizerPreview from "./CustomizerPreview";
 import InlineCanvasTextEditor from "./InlineCanvasTextEditor";
 import InteractionStageClient, { type GestureCommit } from "./interaction/InteractionStageClient";
+
+/** One layer's share of a transform transaction. */
+export type LayerTransformChange = GestureCommit;
 import { useInteractionNodes } from "./interaction/useInteractionNodes";
 import { getGridSlotRect, normalizeGridSlot } from "@/lib/customizer/v2/grids";
 import { CustomizerWatermark } from "./CustomizerProtectionOverlay";
@@ -39,6 +42,46 @@ import {
 import { resolveLayerSelectionGeometry } from "@/lib/customizer/v2/selection-geometry";
 import { resolveLayerCapabilities } from "@/lib/customizer/v2/interaction/capabilities";
 import { isEmptyText } from "@/lib/customizer/v2/text-editing";
+import {
+  createFrameScheduler,
+  createTransientGeometryStore,
+  type TransientGeometryStore,
+} from "@/lib/customizer/v2/interaction/transient-preview";
+import { recordEditorEvent, recordRender } from "@/lib/customizer/v2/dev-metrics";
+
+/** How a crop session ended. Never inferred — the owner states it. */
+export type CropExitMode = "commit" | "discard";
+
+export type CropSessionKind = "layer" | "slot";
+
+/** Which input drove the session; a wheel/pinch burst settles on a timer. */
+export type CropInteraction = "pan" | "wheel" | "pinch";
+
+export type CropSession = {
+  /** Monotonic. An async continuation is only valid while this still matches. */
+  id: number;
+  kind: CropSessionKind;
+  layerId: string;
+  slotId?: string;
+  interaction: CropInteraction;
+  /** Accumulated transient values, merged over the layer's committed transform. */
+  patch: Record<string, number>;
+  /** False until something changed, so Done-with-no-change writes nothing. */
+  dirty: boolean;
+};
+
+/** Imperative handle the owner uses to drive crop Done / Cancel. */
+export type CropSessionApi = {
+  finish: (mode: CropExitMode) => void;
+  isDirty: () => boolean;
+};
+
+/**
+ * How long a wheel or pinch burst may idle before it counts as finished.
+ * Long enough that a normal scroll burst stays one transaction, short enough
+ * that Done/Cancel never has to wait on it.
+ */
+const CROP_SETTLE_MS = 260;
 import {
   ZOOM_MAX,
   ZOOM_MIN,
@@ -64,9 +107,21 @@ type Props = {
   onSelectLayer?: (layerId: string | null) => void;
   onSelectionChange?: (layerIds: string[]) => void;
   onLayerTransform?: (layerId: string, patch: any, phase: "start" | "move") => void;
+  /**
+   * Commit a whole gesture as ONE transaction. When provided it is used for every
+   * gesture commit; `onLayerTransform` remains as a per-layer fallback for
+   * owners that do not persist (the admin's customer simulation).
+   */
+  onLayerTransforms?: (changes: LayerTransformChange[]) => void;
   // Crop mode: drag/zoom the photo INSIDE its fixed frame (spec §11).
   cropLayerId?: string | null;
   onImageTransform?: (layerId: string, patch: any, phase: "start" | "move") => void;
+  /**
+   * Receives the imperative crop handle. The owner owns the Done/Cancel
+   * buttons, so it must be able to end the live session explicitly rather than
+   * letting the workspace guess intent from crop mode closing.
+   */
+  cropSessionApi?: { current: CropSessionApi | null };
   cropGridSlotId?: string | null;
   onGridSlotTransform?: (layerId: string, slotId: string, patch: any, phase: "start" | "move") => void;
   onGridSlotSelect?: (layerId: string, slotId: string) => void;
@@ -116,8 +171,10 @@ export default function CustomizerWorkspace({
   onSelectLayer,
   onSelectionChange,
   onLayerTransform,
+  onLayerTransforms,
   cropLayerId = null,
   onImageTransform,
+  cropSessionApi,
   cropGridSlotId = null,
   onGridSlotTransform,
   onGridSlotSelect,
@@ -147,6 +204,7 @@ export default function CustomizerWorkspace({
   const wrapRef = useRef<HTMLDivElement>(null);
   const surfaceRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<any>(null);
+  recordRender("workspace");
   const textMeasureRef = useRef<MeasureFn>(fallbackMeasure);
   // Bumped once when webfonts finish loading and the real canvas measurer
   // replaces the fallback; memoized geometry depends on it.
@@ -164,7 +222,16 @@ export default function CustomizerWorkspace({
   // React (not the document) so the shared renderer can draw the real values —
   // real text wrapping, real photo fit — without a document write, a history
   // entry or an autosave.
-  const [transientGeometry, setTransientGeometry] = useState<Record<string, Record<string, any>> | null>(null);
+  // Live resize, rotation and crop geometry. Held in a per-layer store rather
+  // than React state: publishing a frame re-renders only the layer being
+  // changed, never this workspace or the rest of the page (spec §19).
+  const transientStoreRef = useRef<TransientGeometryStore | null>(null);
+  if (!transientStoreRef.current) transientStoreRef.current = createTransientGeometryStore();
+  const transientStore = transientStoreRef.current;
+  const setTransientGeometry = useCallback(
+    (overrides: Record<string, Record<string, unknown>> | null) => transientStore.set(overrides),
+    [transientStore],
+  );
   const [editingTextId, setEditingTextId] = useState<string | null>(null);
   const newTextIdsRef = useRef(new Set<string>());
   const textEditSessionRef = useRef<{
@@ -356,6 +423,192 @@ export default function CustomizerWorkspace({
   const cropLayer = cropLayerId ? layers.find((layer: any) => layer.id === cropLayerId) : null;
   const cropGridLayer = cropGridSlotId ? layers.find((layer: any) => layer.type === "grid" && (layer.slots || []).some((slot: any) => slot.id === cropGridSlotId)) : null;
   const cropGridSlot = cropGridLayer ? normalizeGridSlot(cropGridLayer.slots.find((slot: any) => slot.id === cropGridSlotId)) : null;
+
+  /* ---------------------------------------------------------------------- */
+  /* Crop — transient, with an EXPLICIT commit/discard exit                   */
+  /* ---------------------------------------------------------------------- */
+
+  /**
+   * Crop used to be the last gesture that wrote the document on every event
+   * (spec §11, §49). A crop pan called `onImageTransform(..., "move")` per
+   * `pointermove`, and each call set editor state on the owner — which
+   * re-derived the page's effective layers, re-measured every text object and
+   * re-rendered the whole workspace, at pointer frequency.
+   *
+   * It now follows the same model as drag, resize and rotation: the gesture
+   * publishes TRANSIENT values only this component renders, and the document is
+   * written once when the gesture completes. The preview is exact rather than
+   * approximate because the override feeds the same
+   * `resolveImageDrawBoxFromTransform` the committed render and the print
+   * renderer use — there is no second crop formula to drift out of step.
+   *
+   * The exit is DELIBERATELY explicit. An earlier revision committed whenever
+   * crop mode closed, which silently made Cancel behave like Done: Cancel
+   * restored the pre-crop backup and the pending session then wrote the
+   * abandoned geometry straight back over it. Nothing may infer intent from
+   * `cropLayerId` going null — the owner states "commit" or "discard".
+   *
+   * Every session carries an id, and each async continuation re-checks it
+   * before touching anything. A frame or settle timer belonging to a discarded
+   * (or superseded) session is therefore inert rather than a delayed write.
+   */
+  const cropSchedulerRef = useRef<ReturnType<typeof createFrameScheduler> | null>(null);
+  if (!cropSchedulerRef.current) cropSchedulerRef.current = createFrameScheduler();
+  const cropSessionRef = useRef<CropSession | null>(null);
+  /** Settles a zoom burst (wheel/pinch), which has no natural pointer release. */
+  const cropSettleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const cropSessionSeqRef = useRef(0);
+
+  /** True while `id` is still the live session. Guards every async continuation. */
+  const cropSessionIsCurrent = useCallback((id: number) => cropSessionRef.current?.id === id, []);
+
+  const clearCropTimers = useCallback(() => {
+    if (cropSettleTimerRef.current) {
+      clearTimeout(cropSettleTimerRef.current);
+      cropSettleTimerRef.current = null;
+    }
+    cropSchedulerRef.current!.cancel();
+  }, []);
+
+  const paintCropPreview = useCallback(
+    (sessionId: number) => {
+      const session = cropSessionRef.current;
+      if (!session || session.id !== sessionId) return;
+      if (session.kind === "layer") {
+        setTransientGeometry({ [session.layerId]: { imageTransform: { ...session.patch } } });
+        return;
+      }
+      // A slot's transform lives inside the grid layer's `slots`, so the
+      // override carries the whole array with one slot's transform merged.
+      const grid = layers.find((layer: any) => layer.id === session.layerId);
+      if (!grid) return;
+      const slots = (grid.slots || []).map((slot: any) =>
+        slot?.id === session.slotId
+          ? { ...slot, transform: { ...(slot.transform || {}), ...session.patch } }
+          : slot,
+      );
+      setTransientGeometry({ [session.layerId]: { slots } });
+    },
+    [layers, setTransientGeometry],
+  );
+
+  /**
+   * End the live crop gesture.
+   *
+   * "commit" writes the accumulated geometry to the document exactly once, and
+   * only if something actually changed. "discard" throws it away. Either way
+   * every pending frame and timer is cancelled and the session id is retired
+   * FIRST, so anything already queued fires against a stale id and does nothing.
+   */
+  const finishCropSession = useCallback(
+    (mode: CropExitMode) => {
+      clearCropTimers();
+      const session = cropSessionRef.current;
+      cropSessionRef.current = null;
+      cropSessionSeqRef.current += 1;
+      if (!session) return;
+
+      setTransientGeometry(null);
+      if (mode !== "commit" || !session.dirty || !Object.keys(session.patch).length) {
+        recordEditorEvent("cropDiscard");
+        return;
+      }
+
+      recordEditorEvent("cropCommit");
+      if (session.kind === "layer") onImageTransform?.(session.layerId, session.patch, "move");
+      else if (session.slotId) onGridSlotTransform?.(session.layerId, session.slotId, session.patch, "move");
+    },
+    [clearCropTimers, onImageTransform, onGridSlotTransform, setTransientGeometry],
+  );
+
+  // Stable indirection so callers declared above can end a session without a
+  // declaration cycle, and so the imperative API never captures a stale closure.
+  const finishCropSessionRef = useRef(finishCropSession);
+  finishCropSessionRef.current = finishCropSession;
+
+  /**
+   * Open a crop session for a target.
+   *
+   * Switching target mid-flight commits the previous one: the customer made
+   * that edit deliberately, and silently dropping it would lose work.
+   */
+  const beginCropSession = useCallback(
+    (kind: CropSessionKind, interaction: CropInteraction, layerId: string, slotId?: string) => {
+      const existing = cropSessionRef.current;
+      if (existing && existing.layerId === layerId && existing.slotId === slotId) {
+        existing.interaction = interaction;
+        return existing.id;
+      }
+      if (existing) finishCropSessionRef.current("commit");
+      const id = (cropSessionSeqRef.current += 1);
+      cropSessionRef.current = { id, kind, layerId, slotId, interaction, patch: {}, dirty: false };
+      recordEditorEvent("cropSessionStarted");
+      return id;
+    },
+    [],
+  );
+
+  const previewCrop = useCallback(
+    (sessionId: number, patch: Record<string, number>) => {
+      const session = cropSessionRef.current;
+      if (!session || session.id !== sessionId) return;
+      session.patch = { ...session.patch, ...patch };
+      session.dirty = true;
+      cropSchedulerRef.current!.schedule(() => paintCropPreview(sessionId));
+    },
+    [paintCropPreview],
+  );
+
+  /** A zoom burst has no pointer release, so it settles on inactivity. */
+  const scheduleCropSettle = useCallback(
+    (sessionId: number) => {
+      if (cropSettleTimerRef.current) clearTimeout(cropSettleTimerRef.current);
+      cropSettleTimerRef.current = setTimeout(() => {
+        cropSettleTimerRef.current = null;
+        // The burst may have been cancelled, or another target may now own crop,
+        // while this timer was waiting.
+        if (!cropSessionIsCurrent(sessionId)) return;
+        cropSchedulerRef.current!.flush();
+        finishCropSessionRef.current("commit");
+      }, CROP_SETTLE_MS);
+    },
+    [cropSessionIsCurrent],
+  );
+
+  /**
+   * The owner drives Done and Cancel, so it needs to reach the live session.
+   * Assigned during render rather than in an effect because Cancel can be
+   * clicked in the same commit that mounts crop mode.
+   */
+  if (cropSessionApi) {
+    cropSessionApi.current = {
+      finish: (mode: CropExitMode) => {
+        if (mode === "commit") cropSchedulerRef.current!.flush();
+        finishCropSessionRef.current(mode);
+      },
+      isDirty: () => Boolean(cropSessionRef.current?.dirty),
+    };
+  }
+
+  // Unmount must never strand a gesture. Committing is the safe direction: the
+  // customer performed the edit, and the alternative loses it silently.
+  useEffect(() => {
+    const finish = finishCropSessionRef;
+    return () => {
+      finish.current("commit");
+    };
+  }, []);
+
+  // The image disappearing underneath crop retires the session rather than
+  // leaving frames and timers pointed at a layer that is no longer on screen.
+  useEffect(() => {
+    const session = cropSessionRef.current;
+    if (!session) return;
+    if (!layers.some((layer: any) => layer.id === session.layerId)) {
+      finishCropSessionRef.current("discard");
+    }
+  }, [layers]);
+
   const cropGridRect = cropGridLayer && cropGridSlot ? getGridSlotRect(cropGridLayer, cropGridSlot) : null;
   const interactiveLayers = useMemo(
     () =>
@@ -499,13 +752,6 @@ export default function CustomizerWorkspace({
 
   /* ---- gesture -> document ---- */
 
-  // One history entry per gesture, taken on the object that started it
-  // (spec §45). Autosave then persists the committed state exactly once.
-  const handleGestureStart = useCallback(() => {
-    const lead = activeSelection[0];
-    if (lead) onLayerTransform?.(lead, {}, "start");
-  }, [activeSelection, onLayerTransform]);
-
   /**
    * Commit normalised Husnalogy geometry (spec §8).
    *
@@ -515,21 +761,26 @@ export default function CustomizerWorkspace({
    */
   const commitChanges = useCallback(
     (changes: GestureCommit[]) => {
-      for (const change of changes) {
-        const layer = layers.find((candidate: any) => candidate.id === change.id);
-        let patch: Record<string, any> = { ...change.patch };
-        if (layer?.type === "text" && (patch.width !== undefined || patch.height !== undefined)) {
-          const constrained = constrainTextSize(
-            layer,
-            Number(patch.width ?? layer.width),
-            Number(patch.height ?? layer.height),
-          );
-          patch = { ...patch, width: constrained.width, height: constrained.height };
+      if (!changes.length) return;
+      const layersById = new Map(layers.map((layer: any) => [layer.id, layer]));
+      const constrained = changes.map((change) => {
+        const layer = layersById.get(change.id);
+        const patch: Record<string, any> = { ...change.patch };
+        if (layer?.type !== "text" || (patch.width === undefined && patch.height === undefined)) {
+          return { id: change.id, patch };
         }
-        onLayerTransform?.(change.id, patch, "move");
+        const size = constrainTextSize(layer, Number(patch.width ?? layer.width), Number(patch.height ?? layer.height));
+        return { id: change.id, patch: { ...patch, width: size.width, height: size.height } };
+      });
+      // The whole gesture is one transaction: one history entry, one document
+      // write and one autosave, however many objects moved (spec §8).
+      if (onLayerTransforms) {
+        onLayerTransforms(constrained);
+        return;
       }
+      for (const change of constrained) onLayerTransform?.(change.id, change.patch, "move");
     },
-    [layers, onLayerTransform, constrainTextSize],
+    [layers, onLayerTransform, onLayerTransforms, constrainTextSize],
   );
 
 
@@ -576,31 +827,32 @@ export default function CustomizerWorkspace({
     if (!drag) return;
     if (!drag.began) {
       drag.began = true;
-      if (drag.mode === "crop-pan") onImageTransform?.(drag.layerId, {}, "start");
-      else if (drag.mode === "grid-crop-pan") onGridSlotTransform?.(drag.layerId, drag.slotId, {}, "start");
+      drag.sessionId =
+        drag.mode === "crop-pan"
+          ? beginCropSession("layer", "pan", drag.layerId)
+          : drag.mode === "grid-crop-pan"
+            ? beginCropSession("slot", "pan", drag.layerId, drag.slotId)
+            : null;
     }
     const dx = (e.clientX - drag.startClientX) / scale;
     const dy = (e.clientY - drag.startClientY) / scale;
-    if (drag.mode === "crop-pan") {
-      onImageTransform?.(
-        drag.layerId,
-        { offsetX: Math.round(drag.startOffsetX + dx), offsetY: Math.round(drag.startOffsetY + dy) },
-        "move",
-      );
-      return;
-    }
-    if (drag.mode === "grid-crop-pan") {
-      onGridSlotTransform?.(
-        drag.layerId,
-        drag.slotId,
-        { offsetX: Math.round(drag.startOffsetX + dx), offsetY: Math.round(drag.startOffsetY + dy) },
-        "move",
-      );
+    if ((drag.mode === "crop-pan" || drag.mode === "grid-crop-pan") && drag.sessionId !== null) {
+      previewCrop(drag.sessionId, {
+        offsetX: Math.round(drag.startOffsetX + dx),
+        offsetY: Math.round(drag.startOffsetY + dy),
+      });
     }
   };
 
   const endDrag = () => {
+    const drag = dragRef.current;
     dragRef.current = null;
+    // Only a crop gesture that actually moved has anything to commit; a plain
+    // press inside the frame must not push an empty step onto the undo stack.
+    if (drag?.began && (drag.mode === "crop-pan" || drag.mode === "grid-crop-pan")) {
+      cropSchedulerRef.current!.flush();
+      finishCropSessionRef.current("commit");
+    }
   };
 
 
@@ -608,18 +860,23 @@ export default function CustomizerWorkspace({
   const onCropWheel = (e: React.WheelEvent, layer: any) => {
     e.preventDefault();
     e.stopPropagation();
-    const transform = layer.imageTransform || {};
-    const current = Number(transform.zoom) > 0 ? Number(transform.zoom) : 1;
+    const sessionId = beginCropSession("layer", "wheel", layer.id);
+    const live = cropSessionRef.current?.patch.zoom;
+    const current = Number(live) > 0 ? Number(live) : Number(layer.imageTransform?.zoom) > 0 ? Number(layer.imageTransform.zoom) : 1;
     const next = Math.min(8, Math.max(1, current * (e.deltaY < 0 ? 1.06 : 1 / 1.06)));
-    onImageTransform?.(layer.id, { zoom: Number(next.toFixed(3)) }, "move");
+    previewCrop(sessionId, { zoom: Number(next.toFixed(3)) });
+    scheduleCropSettle(sessionId);
   };
 
   const onGridCropWheel = (e: React.WheelEvent, layer: any, slot: any) => {
     e.preventDefault();
     e.stopPropagation();
-    const current = Number(slot.transform?.zoom) > 0 ? Number(slot.transform.zoom) : 1;
+    const sessionId = beginCropSession("slot", "wheel", layer.id, slot.id);
+    const live = cropSessionRef.current?.patch.zoom;
+    const current = Number(live) > 0 ? Number(live) : Number(slot.transform?.zoom) > 0 ? Number(slot.transform.zoom) : 1;
     const next = Math.min(8, Math.max(1, current * (e.deltaY < 0 ? 1.06 : 1 / 1.06)));
-    onGridSlotTransform?.(layer.id, slot.id, { zoom: Number(next.toFixed(3)) }, "move");
+    previewCrop(sessionId, { zoom: Number(next.toFixed(3)) });
+    scheduleCropSettle(sessionId);
   };
 
   const onGesturePointerDown = (event: React.PointerEvent) => {
@@ -638,10 +895,14 @@ export default function CustomizerWorkspace({
       gridZoom: Number(cropGridSlot?.transform?.zoom) || 1,
       scrollLeft: wrapRef.current?.scrollLeft || 0,
       scrollTop: wrapRef.current?.scrollTop || 0,
+      cropSessionId: null as number | null,
     };
     dragRef.current = null;
-    if (cropLayer) onImageTransform?.(cropLayer.id, {}, "start");
-    if (cropGridLayer && cropGridSlot) onGridSlotTransform?.(cropGridLayer.id, cropGridSlot.id, {}, "start");
+    if (cropLayer) {
+      gestureRef.current.cropSessionId = beginCropSession("layer", "pinch", cropLayer.id);
+    } else if (cropGridLayer && cropGridSlot) {
+      gestureRef.current.cropSessionId = beginCropSession("slot", "pinch", cropGridLayer.id, cropGridSlot.id);
+    }
   };
 
   const onGesturePointerMove = (event: React.PointerEvent) => {
@@ -655,10 +916,10 @@ export default function CustomizerWorkspace({
     const ratio = distance / Math.max(1, gesture.distance);
     const centerX = (first.x + second.x) / 2;
     const centerY = (first.y + second.y) / 2;
-    if (cropLayer) {
-      onImageTransform?.(cropLayer.id, { zoom: Number(Math.min(8, Math.max(1, gesture.cropZoom * ratio)).toFixed(3)) }, "move");
-    } else if (cropGridLayer && cropGridSlot) {
-      onGridSlotTransform?.(cropGridLayer.id, cropGridSlot.id, { zoom: Number(Math.min(8, Math.max(1, gesture.gridZoom * ratio)).toFixed(3)) }, "move");
+    if (cropLayer && gesture.cropSessionId != null) {
+      previewCrop(gesture.cropSessionId, { zoom: Number(Math.min(8, Math.max(1, gesture.cropZoom * ratio)).toFixed(3)) });
+    } else if (cropGridLayer && cropGridSlot && gesture.cropSessionId != null) {
+      previewCrop(gesture.cropSessionId, { zoom: Number(Math.min(8, Math.max(1, gesture.gridZoom * ratio)).toFixed(3)) });
     } else {
       onZoomChange?.(clampZoom(gesture.zoom * ratio, ZOOM_MIN, ZOOM_MAX));
       if (wrapRef.current) {
@@ -671,7 +932,15 @@ export default function CustomizerWorkspace({
   const onGesturePointerUp = (event: React.PointerEvent) => {
     if (event.pointerType !== "touch") return;
     touchPointsRef.current.delete(event.pointerId);
-    if (touchPointsRef.current.size < 2) gestureRef.current = null;
+    if (touchPointsRef.current.size < 2) {
+      gestureRef.current = null;
+      // Lifting a finger ends a pinch-crop, so commit rather than waiting for
+      // the inactivity timer.
+      if (cropSessionRef.current?.interaction === "pinch") {
+        cropSchedulerRef.current!.flush();
+        finishCropSessionRef.current("commit");
+      }
+    }
   };
 
   return (
@@ -736,7 +1005,7 @@ export default function CustomizerWorkspace({
         }}
       >
         {/* Shared renderer — identical output to thumbnails, review, exports. */}
-        <div ref={previewRootRef} className="pointer-events-none absolute inset-0">
+        <div ref={previewRootRef} data-customizer-canvas="main" className="pointer-events-none absolute inset-0">
           <CustomizerPreview
             template={template}
             values={values}
@@ -745,7 +1014,7 @@ export default function CustomizerWorkspace({
             showSafeArea={previewMode ? false : showSafeArea}
             showBleed={previewMode ? false : showBleed}
             hiddenLayerIds={[]}
-            geometryOverrides={transientGeometry}
+            transientStore={transientStore}
           />
         </div>
 
@@ -775,7 +1044,6 @@ export default function CustomizerWorkspace({
           }}
           previewRootRef={previewRootRef}
           onSelectionChange={applySelection}
-          onGestureStart={handleGestureStart}
           onGestureCommit={commitChanges}
           onTransientGeometry={setTransientGeometry}
           onDoubleClickNode={(layerId) => {

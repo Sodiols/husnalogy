@@ -23,6 +23,8 @@ import CustomizerWorkspace from "@/app/components/customizer/CustomizerWorkspace
 import CustomizerPageThumbnails from "@/app/components/customizer/CustomizerPageThumbnails";
 import CustomizerZoomControls from "@/app/components/customizer/CustomizerZoomControls";
 import { ZOOM_MAX, ZOOM_MIN, clampZoom } from "@/lib/customizer/v2/zoom";
+import { awaitDevSaveGate, ensureCustomizerMetrics, recordDocumentCommit, recordEditorEvent } from "@/lib/customizer/v2/dev-metrics";
+import type { CropExitMode, CropSessionApi, LayerTransformChange } from "@/app/components/customizer/CustomizerWorkspace";
 import { isTypingTarget } from "@/lib/customizer/v2/viewport-pan";
 import CustomizerReviewStep from "@/app/components/customizer/CustomizerReviewStep";
 import CustomerCustomizerHeader from "@/app/components/customizer/CustomerCustomizerHeader";
@@ -45,7 +47,7 @@ import CustomerShortcutHelp from "@/app/components/customizer/CustomerShortcutHe
 import CustomerOptionsPanel, { CUSTOMIZER_FORMAT_OPTIONS } from "@/app/components/customizer/CustomerOptionsPanel";
 import CustomizerProtectionOverlay from "@/app/components/customizer/CustomizerProtectionOverlay";
 import useCustomizerProtection from "@/app/components/customizer/useCustomizerProtection";
-import useCustomizerHistory from "@/app/components/customizer/useCustomizerHistory";
+import useCustomizerHistory, { type HistoryCheckpoint } from "@/app/components/customizer/useCustomizerHistory";
 import {
   createSaveQueue,
   saveStatusLabel as formatSaveStatus,
@@ -60,6 +62,7 @@ import { buildCustomerContextMenu, type ContextMenuActionId } from "@/lib/custom
 import { resolveImageCropCapabilities } from "@/lib/customizer/v2/image-permissions";
 import { alignCustomerLayers, arrangeLayers, removeCustomerLayers, reorderLayerByDrop, type AlignAction, type ArrangeAction } from "@/lib/customizer/v2/customer-actions";
 import { evaluateGroupAction, getDescendantIds, groupLayers, transformGroupChildren, ungroupLayers } from "@/lib/customizer/v2/groups";
+import { clonedIdsFor, expandCloneSelection, relinkClones } from "@/lib/customizer/v2/clipboard";
 import { DEFAULT_LINE_HEIGHT, createCanvasMeasure, getSingleLineTextBox, isSingleLineAutoSizeText } from "@/lib/customizer/v2/text-layout";
 import { resolveLayerSelectionGeometry } from "@/lib/customizer/v2/selection-geometry";
 import { resolveSelection, sanitizeSelection } from "@/lib/customizer/v2/selection";
@@ -159,6 +162,42 @@ function safeInternalPath(value: string, fallback: string) {
   if (!value || !value.startsWith("/") || value.startsWith("//")) return fallback;
   return value;
 }
+
+/** The one object a crop session edits, and its value when the session opened. */
+type CropRestoreTarget =
+  | { kind: "image"; layerId: string; isUserLayer: boolean; imageTransform: Record<string, unknown> }
+  | {
+      kind: "grid-slot";
+      layerId: string;
+      slotId: string;
+      isUserLayer: boolean;
+      /** The slot record as stored; null when the template slot had no override. */
+      slot: Record<string, unknown> | null;
+    };
+
+/**
+ * Everything Cancel needs to put a crop session back EXACTLY as it began
+ * (spec §2–§5 of the hardening brief). Deliberately a checkpoint, not a copy of
+ * the editor: the document is restored from `target` alone, history from two
+ * arrays of snapshot references, and persistence from two numbers.
+ */
+type CropSessionCheckpoint = {
+  target: CropRestoreTarget;
+  history: HistoryCheckpoint<HistorySnapshot>;
+  /** Document change version when the session opened. Never restored — see cancelActiveCrop. */
+  changeVersion: number;
+  dirty: boolean;
+  /** Save attempts started before the session opened. */
+  saveAttempt: number;
+  /** Canonical crop commits made for this target inside the session. */
+  commits: number;
+  /**
+   * Something OTHER than this crop recorded history during the session (a field
+   * or filter edit in the side panel). Its steps must survive Cancel, so the
+   * session history cannot be dropped wholesale.
+   */
+  foreignHistory: boolean;
+};
 
 type HistorySnapshot = {
   values: Record<string, any>;
@@ -311,7 +350,19 @@ export default function PersonalizeClient({ product, template }: { product: any;
   const cartItemIdRef = useRef(cartItemId);
   const dirtyRef = useRef(dirty);
   const changeVersionRef = useRef(0);
-  const customerClipboardRef = useRef<any[]>([]);
+  /**
+   * Save attempts ever started. Lets crop Cancel prove whether the server could
+   * possibly hold a state from inside the session: if no save started since the
+   * session opened, it cannot.
+   */
+  const saveAttemptRef = useRef(0);
+  /** The open crop session's rollback point, or null when crop is not active. */
+  const cropCheckpointRef = useRef<CropSessionCheckpoint | null>(null);
+  /** True while the crop commit path itself is recording history. */
+  const cropHistoryScopeRef = useRef(false);
+  // The clipboard holds a full SUBTREE plus the ids the customer actually
+  // selected, so paste can rebuild the group relationships exactly.
+  const customerClipboardRef = useRef<{ rootIds: string[]; layers: any[] }>({ rootIds: [], layers: [] });
   const activeTextHistoryIdRef = useRef<string | null>(null);
   const activeTextSessionRef = useRef<{
     layerId: string;
@@ -391,7 +442,28 @@ export default function PersonalizeClient({ product, template }: { product: any;
     editingGroupId: editingGroupIdRef.current,
   });
 
-  const recordHistory = (group?: string) => history.record(snapshot(), group);
+  const recordHistory = (group?: string) => {
+    const checkpoint = cropCheckpointRef.current;
+    if (checkpoint && !cropHistoryScopeRef.current) checkpoint.foreignHistory = true;
+    history.record(snapshot(), group);
+  };
+
+  /** Record history on behalf of the open crop session (not a foreign edit). */
+  const recordCropHistory = (group?: string) => {
+    cropHistoryScopeRef.current = true;
+    try {
+      recordHistory(group);
+    } finally {
+      cropHistoryScopeRef.current = false;
+    }
+  };
+
+  // Development-only gesture instrumentation (spec §20). Compiled to a no-op in
+  // production; created on mount so a browser test can read the counters before
+  // the first document write rather than assuming instrumentation is missing.
+  useEffect(() => {
+    ensureCustomizerMetrics();
+  }, []);
 
   const applySnapshot = (state: HistorySnapshot) => {
     setValues(state.values);
@@ -406,12 +478,22 @@ export default function PersonalizeClient({ product, template }: { product: any;
   };
 
   const undo = useCallback(() => {
+    // Inside a crop session, undo may walk back the session's own steps but not
+    // past where it opened: Cancel restores the document from the session's
+    // starting point, so crossing it would leave history and document disagreeing.
+    const checkpoint = cropCheckpointRef.current;
+    if (checkpoint && history.depth().past <= checkpoint.history.past.length) return;
     const previous = history.undo(snapshot());
     if (previous) applySnapshot(previous);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [history]);
 
   const redo = useCallback(() => {
+    const checkpoint = cropCheckpointRef.current;
+    // Before the session's first commit the redo stack still belongs to edits
+    // made before crop opened; after it, only in-session undos can be redone.
+    const redoFloor = checkpoint ? (checkpoint.commits === 0 ? checkpoint.history.future.length : 0) : -1;
+    if (checkpoint && history.depth().future <= redoFloor) return;
     const next = history.redo(snapshot());
     if (next) applySnapshot(next);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -464,14 +546,22 @@ export default function PersonalizeClient({ product, template }: { product: any;
   };
 
   const onActivePageChange = (pageId: string) => {
+    // Leaving the page is not Cancel — the backup is dropped rather than
+    // restored — so a gesture still in flight (a wheel burst that has not
+    // settled) is COMMITTED rather than silently lost. Ending it explicitly
+    // also cancels its pending frame and settle timer, so nothing from the old
+    // page can fire against the document once the new page is showing.
+    // Leaving the page is DONE, not Cancel: the edit the customer made stands.
+    // Finishing explicitly also kills the gesture's pending frame and settle
+    // timer, so nothing from this page can fire once the next page is showing.
+    confirmActiveCrop();
     setActivePage(pageId);
     activeTextHistoryIdRef.current = null;
     setEditingTextLayerId(null);
     setSelectedLayerIds([]);
     setSelectedLayerId(null);
     setEditingGroupId(null);
-    setCropLayerId(null);
-    cropBackupRef.current = null;
+    setSelectedGridSlotId(null);
   };
 
   const patchEditorState = (patch: (current: EditorState) => EditorState) => {
@@ -967,6 +1057,12 @@ export default function PersonalizeClient({ product, template }: { product: any;
   };
 
   const onSelectionChange = (ids: string[], groupScope?: string | null) => {
+    // Selecting anything other than the crop target while crop is open is DONE
+    // (spec §15): the canvas is already locked during crop, so this is reached
+    // from the layers panel or a keyboard command, and the customer's edit
+    // should stand rather than be thrown away by a click elsewhere.
+    const cropTargetId = cropCheckpointRef.current?.target.layerId;
+    if (cropTargetId && !(ids.length === 1 && ids[0] === cropTargetId)) confirmActiveCrop();
     const scope = groupScope === undefined ? editingGroupId : groupScope;
     const selectable = new Set(
       effectiveLayers
@@ -1191,40 +1287,64 @@ export default function PersonalizeClient({ product, template }: { product: any;
   };
   const toggleLayerLock = (layerId: string, customerLocked: boolean) => updateUserLayer(layerId, { locked: customerLocked }, `lock-${layerId}`);
 
+  /**
+   * One clone implementation for Duplicate, the layers-panel duplicate and
+   * paste (spec §18, §32).
+   *
+   * `sources` must already include every descendant that has to come along —
+   * `expandCloneSelection` is what works that out — and `requestedIds` names
+   * the layers the customer actually picked, so the result can be selected
+   * without also selecting each child that tagged along.
+   */
+  const cloneLayerSet = (sources: readonly any[], requestedIds: readonly string[], offset = 32) => {
+    const paired = sources
+      .map((source: any) => ({
+        source,
+        clone: normalizeUserLayer({
+          ...source,
+          id: "",
+          fieldId: "",
+          name: `${source.name || "Object"} copy`,
+          x: Number(source.x || 0) + offset,
+          y: Number(source.y || 0) + offset,
+          locked: false,
+          hidden: false,
+          positionLocked: false,
+          customerInteractionDisabled: false,
+        }),
+      }))
+      // Refused clones are dropped in PAIRS. Filtering only the clones (as this
+      // used to) shifts every later index by one, so the id map silently pairs
+      // each remaining clone with the WRONG source and the group links it
+      // rebuilds point at arbitrary layers.
+      .filter((entry: any) => Boolean(entry.clone?.id));
+
+    const keptSources = paired.map((entry: any) => entry.source);
+    const copies = relinkClones(keptSources, paired.map((entry: any) => entry.clone));
+    return { copies, selectionIds: clonedIdsFor(keptSources, copies, requestedIds) };
+  };
+
+  const cloneFromDocument = (requestedIds: readonly string[]) =>
+    cloneLayerSet(expandCloneSelection(effectiveLayers, requestedIds), requestedIds);
+
   const duplicateSelection = () => {
     if (!canDuplicateSelection) return;
-    const allowed = selectedLayers;
-    const expandedIds = new Set(allowed.map((layer: any) => layer.id));
-    for (const layer of allowed) {
-      if (layer.type === "group") getDescendantIds(effectiveLayers, layer.id).forEach((id) => expandedIds.add(id));
-    }
-    const sources = effectiveLayers.filter((layer: any) => expandedIds.has(layer.id));
-    const preliminaries = sources.map((source: any) => normalizeUserLayer({ ...source, id: "", fieldId: "", name: `${source.name || "Object"} copy`, x: Number(source.x || 0) + 32, y: Number(source.y || 0) + 32, locked: false, hidden: false, positionLocked: false, customerInteractionDisabled: false })).filter(Boolean);
-    const idMap = new Map<string, string>();
-    sources.forEach((source: any, index: number) => { if (preliminaries[index]?.id) idMap.set(source.id, String(preliminaries[index].id)); });
-    const copies = preliminaries.map((copy: any, index: number) => ({
-      ...copy,
-      groupId: idMap.get(sources[index]?.groupId) || "",
-      ...(copy.type === "group" ? { childIds: (sources[index]?.childIds || []).map((id: string) => idMap.get(id)).filter(Boolean) } : {}),
-    }));
+    const requestedIds = selectedLayers.map((layer: any) => layer.id);
+    const { copies, selectionIds } = cloneFromDocument(requestedIds);
     if (!copies.length) return;
     recordHistory();
     patchEditorState((current) => ({ ...current, userLayers: [...current.userLayers, ...copies] }));
-    applySelection(allowed.map((layer: any) => idMap.get(layer.id)).filter(Boolean) as string[]);
+    applySelection(selectionIds);
   };
 
   const duplicateLayer = (layerId: string) => {
     const source = effectiveLayers.find((layer: any) => layer.id === layerId);
     if (!source || (!source.isUserLayer && !getLayerPermissions(source).duplicate)) return;
-    const expandedIds = new Set([source.id, ...(source.type === "group" ? getDescendantIds(effectiveLayers, source.id) : [])]);
-    const sources = effectiveLayers.filter((layer: any) => expandedIds.has(layer.id));
-    const preliminaries = sources.map((layer: any) => normalizeUserLayer({ ...layer, id: "", fieldId: "", name: `${layer.name || "Object"} copy`, x: Number(layer.x || 0) + 32, y: Number(layer.y || 0) + 32, locked: false, hidden: false, positionLocked: false, customerInteractionDisabled: false })).filter(Boolean);
-    const idMap = new Map<string, string>();
-    sources.forEach((layer: any, index: number) => { if (preliminaries[index]?.id) idMap.set(layer.id, String(preliminaries[index].id)); });
-    const copies = preliminaries.map((copy: any, index: number) => ({ ...copy, groupId: idMap.get(sources[index]?.groupId) || "", ...(copy.type === "group" ? { childIds: (sources[index]?.childIds || []).map((id: string) => idMap.get(id)).filter(Boolean) } : {}) }));
+    const { copies, selectionIds } = cloneFromDocument([layerId]);
+    if (!copies.length) return;
     recordHistory();
     patchEditorState((current) => ({ ...current, userLayers: [...current.userLayers, ...copies] }));
-    applySelection([idMap.get(source.id)!]);
+    applySelection(selectionIds);
   };
 
   const deleteSelection = () => {
@@ -1277,17 +1397,45 @@ export default function PersonalizeClient({ product, template }: { product: any;
   /* ----- photo crop mode (spec §11) ----- */
   const [cropLayerId, setCropLayerId] = useState<string | null>(null);
   const [cropGridSlotId, setCropGridSlotId] = useState<string | null>(null);
-  const cropBackupRef = useRef<any>(null);
+  /**
+   * Reaches the workspace's live crop gesture (spec §2 of the crop brief).
+   *
+   * Done and Cancel live here, but the transient geometry lives in the
+   * workspace, so the intent has to travel. Without this the workspace could
+   * only guess from crop mode closing — and guessing made Cancel commit the
+   * very geometry the customer just abandoned.
+   */
+  const cropSessionApiRef = useRef<CropSessionApi | null>(null);
 
-  const onImageTransformChange = (layerId: string, patch: any, phase: "start" | "move") => {
+  /** End the live crop gesture, if any, with an explicit intent. */
+  const finishCropGesture = (mode: CropExitMode) => {
+    cropSessionApiRef.current?.finish(mode);
+  };
+
+  /**
+   * Apply a crop/image transform to the document (spec §4 of the crop brief).
+   *
+   * History is recorded HERE, immediately before the change lands — not when a
+   * gesture opens. A gesture that opens may still be cancelled, and recording
+   * up front left an undo step whose snapshot equalled the current document:
+   * an empty step the customer had to press undo twice to get past.
+   *
+   * `historyGroup` lets a burst of related discrete edits (stepper clicks on
+   * the same control) collapse into one entry; a continuous canvas gesture
+   * already arrives pre-collapsed as a single commit.
+   */
+  const onImageTransformChange = (
+    layerId: string,
+    patch: any,
+    phase: "start" | "move",
+    historyGroup?: string,
+  ) => {
     const layer = effectiveLayers.find((item: any) => item.id === layerId);
     if (!layer || (layer.type !== "image" && layer.type !== "frame")) return;
     const permissions = getLayerPermissions(layer);
     const cropAllowed = permissions.cropImage || permissions.zoomImage || permissions.repositionImage;
-    if (phase === "start") {
-      recordHistory(`crop-${layerId}`);
-      return;
-    }
+    // Retained so existing callers keep working; it deliberately does nothing.
+    if (phase === "start") return;
     const allowed: any = {};
     if (patch.zoom !== undefined && (permissions.zoomImage || cropAllowed)) allowed.zoom = patch.zoom;
     if ((patch.offsetX !== undefined || patch.offsetY !== undefined) && (permissions.repositionImage || cropAllowed)) {
@@ -1300,6 +1448,9 @@ export default function PersonalizeClient({ product, template }: { product: any;
       if (patch.flipY !== undefined) allowed.flipY = patch.flipY;
     }
     if (!Object.keys(allowed).length) return;
+    recordCropHistory(historyGroup);
+    noteCropCommit(layerId);
+    recordDocumentCommit("crop");
     markDirty();
     if (layer.isUserLayer) {
       setEditorState((current) => ({ ...current, userLayers: current.userLayers.map((item) => item.id === layerId ? { ...item, imageTransform: { ...(item.imageTransform || {}), ...allowed } } : item) }));
@@ -1317,51 +1468,175 @@ export default function PersonalizeClient({ product, template }: { product: any;
     });
   };
 
+  /* ----- crop session: open / Done / Cancel (spec §2–§7, §14) ----- */
+
+  /** Open a crop session and take its rollback checkpoint. Records no history. */
+  const openCropSession = (target: CropRestoreTarget) => {
+    // A second target while one is open finishes the first as Done.
+    if (cropCheckpointRef.current) confirmActiveCrop();
+    cropCheckpointRef.current = {
+      target,
+      history: history.checkpoint(),
+      changeVersion: changeVersionRef.current,
+      dirty: dirtyRef.current,
+      saveAttempt: saveAttemptRef.current,
+      commits: 0,
+      foreignHistory: false,
+    };
+  };
+
+  /** Count a canonical crop commit if it belongs to the open session. */
+  const noteCropCommit = (layerId: string, slotId?: string) => {
+    const checkpoint = cropCheckpointRef.current;
+    if (!checkpoint || checkpoint.target.layerId !== layerId) return;
+    if (checkpoint.target.kind === "grid-slot" && checkpoint.target.slotId !== slotId) return;
+    checkpoint.commits += 1;
+  };
+
+  /** Put the crop target's stored value back, in ONE document update. */
+  const restoreCropTarget = (target: CropRestoreTarget) => {
+    if (target.kind === "image") {
+      if (target.isUserLayer) {
+        setEditorState((current) => ({
+          ...current,
+          userLayers: current.userLayers.map((item) =>
+            item.id === target.layerId ? { ...item, imageTransform: target.imageTransform } : item,
+          ),
+        }));
+        return;
+      }
+      setEditorState((current) => {
+        const existing = current.layerOverrides[target.layerId] || {};
+        return {
+          ...current,
+          layerOverrides: {
+            ...current.layerOverrides,
+            [target.layerId]: { ...existing, imageTransform: target.imageTransform },
+          },
+        };
+      });
+      return;
+    }
+    if (target.isUserLayer) {
+      setEditorState((current) => ({
+        ...current,
+        userLayers: current.userLayers.map((item) =>
+          item.id === target.layerId
+            ? { ...item, slots: (item.slots || []).map((slot: any) => (slot.id === target.slotId ? target.slot : slot)) }
+            : item,
+        ),
+      }));
+      return;
+    }
+    setEditorState((current) => {
+      const existing = current.layerOverrides[target.layerId] || {};
+      const slots = { ...(existing.gridSlots || {}) };
+      if (target.slot) slots[target.slotId] = target.slot;
+      else delete slots[target.slotId];
+      return { ...current, layerOverrides: { ...current.layerOverrides, [target.layerId]: { ...existing, gridSlots: slots } } };
+    });
+  };
+
+  const closeCropMode = () => {
+    cropCheckpointRef.current = null;
+    setCropLayerId(null);
+    setCropGridSlotId(null);
+  };
+
+  /**
+   * DONE. Flush the live gesture, commit anything still uncommitted exactly
+   * once, keep the session's history, and leave. Nothing is written when
+   * nothing changed.
+   */
+  const confirmActiveCrop = () => {
+    if (!cropCheckpointRef.current) return;
+    finishCropGesture("commit");
+    closeCropMode();
+  };
+
+  /**
+   * CANCEL — a real transaction rollback, not a visual reset.
+   *
+   *  1. The live gesture is discarded FIRST, so its pending frame and wheel
+   *     settle timer are dead before anything below runs.
+   *  2. If the session never committed, the document already equals its
+   *     starting state: nothing is written, history is untouched, and dirty and
+   *     version stay exactly as they are.
+   *  3. Otherwise the target is restored in one update and history is put back
+   *     to the checkpoint, so Undo can never reveal a canceled crop state.
+   *  4. The change version moves FORWARD, never back. An autosave may already
+   *     have sent a canceled crop, or may be in flight carrying one: advancing
+   *     the version means that save's response cannot mark the restored
+   *     document saved, and the queue sends the restoration after it lands.
+   *     Rewinding — as text-editing Cancel does, safely, because autosave is
+   *     paused while text is edited — would let exactly that stale response win.
+   *  5. Dirty returns to its session-start value only when no save has started
+   *     since the session opened, i.e. when the server provably still holds the
+   *     starting document. Otherwise the restoration is dirty and gets saved.
+   */
+  const cancelActiveCrop = () => {
+    const checkpoint = cropCheckpointRef.current;
+    if (!checkpoint) return;
+    finishCropGesture("discard");
+
+    if (checkpoint.commits > 0) {
+      if (checkpoint.foreignHistory) {
+        // Another edit was recorded inside the session and must survive, so the
+        // rollback lands as its own step instead of erasing theirs.
+        recordCropHistory();
+      }
+      restoreCropTarget(checkpoint.target);
+      if (!checkpoint.foreignHistory) history.restoreCheckpoint(checkpoint.history);
+
+      changeVersionRef.current += 1;
+      const serverUntouched = saveAttemptRef.current === checkpoint.saveAttempt;
+      setDirty(serverUntouched ? checkpoint.dirty : true);
+      recordDocumentCommit(checkpoint.target.kind === "image" ? "crop" : "grid-crop");
+      recordEditorEvent("cropRollback");
+    }
+    closeCropMode();
+  };
+
   const enterCropMode = (layerId: string) => {
     const layer = effectiveLayers.find((item: any) => item.id === layerId);
     if (!layer || (layer.type !== "image" && layer.type !== "frame")) return;
     const permissions = getLayerPermissions(layer);
     if (!(permissions.cropImage || permissions.zoomImage || permissions.repositionImage)) return;
-    cropBackupRef.current = {
+    openCropSession({
+      kind: "image",
       layerId,
       isUserLayer: Boolean(layer.isUserLayer),
-      imageTransform: layer.isUserLayer ? { ...(layer.imageTransform || {}) } : { ...(editorStateRef.current.layerOverrides[layerId]?.imageTransform || {}) },
-    };
-    recordHistory();
+      imageTransform: layer.isUserLayer
+        ? { ...(layer.imageTransform || {}) }
+        : { ...(editorStateRef.current.layerOverrides[layerId]?.imageTransform || {}) },
+    });
     setSelectedLayerId(layerId);
+    setCropGridSlotId(null);
     setCropLayerId(layerId);
   };
 
-  const confirmCrop = () => {
-    cropBackupRef.current = null;
-    setCropLayerId(null);
-  };
+  const confirmCrop = confirmActiveCrop;
+  const cancelCrop = cancelActiveCrop;
 
-  const cancelCrop = () => {
-    const backup = cropBackupRef.current;
-    if (backup?.layerId) {
-      if (backup.isUserLayer) {
-        setEditorState((current) => ({ ...current, userLayers: current.userLayers.map((item) => item.id === backup.layerId ? { ...item, imageTransform: backup.imageTransform } : item) }));
-        cropBackupRef.current = null;
-        setCropLayerId(null);
-        return;
-      }
-      setEditorState((current) => {
-        const existing = current.layerOverrides[backup.layerId] || {};
-        return {
-          ...current,
-          layerOverrides: {
-            ...current.layerOverrides,
-            [backup.layerId]: { ...existing, imageTransform: backup.imageTransform },
-          },
-        };
-      });
-    }
-    cropBackupRef.current = null;
-    setCropLayerId(null);
-  };
+  // If the crop target disappears — deleted, a reload, a permission change —
+  // the session ends without restoring anything: restoring would recreate the
+  // very object that was just removed (spec §26). The workspace independently
+  // discards its transient gesture for the same reason.
+  useEffect(() => {
+    const checkpoint = cropCheckpointRef.current;
+    if (!checkpoint) return;
+    if (effectiveLayers.some((layer: any) => layer.id === checkpoint.target.layerId)) return;
+    finishCropGesture("discard");
+    closeCropMode();
+  }, [effectiveLayers]);
 
-  const onGridSlotTransformChange = (layerId: string, slotId: string, patch: any, phase: "start" | "move") => {
+  const onGridSlotTransformChange = (
+    layerId: string,
+    slotId: string,
+    patch: any,
+    phase: "start" | "move",
+    historyGroup?: string,
+  ) => {
     if (!gridsEnabled) return;
     const layer = effectiveLayers.find((item: any) => item.id === layerId);
     const slot = layer?.type === "grid" ? (layer.slots || []).find((item: any) => item.id === slotId) : null;
@@ -1371,12 +1646,15 @@ export default function PersonalizeClient({ product, template }: { product: any;
     // nothing — matching applyGridSlotAsset and the save validator.
     if (!layer || !slot || layer.customerInteractionDisabled) return;
     const permissions = { ...getLayerPermissions(layer), ...(slot.permissions || {}) };
-    if (phase === "start") {
-      recordHistory(`grid-crop-${layerId}-${slotId}`);
-      return;
-    }
+    // Retained so existing callers keep working; it deliberately does nothing.
+    // History is recorded at the commit below, for the reason documented on
+    // onImageTransformChange.
+    if (phase === "start") return;
     const cropAllowed = permissions.cropImage || permissions.zoomImage || permissions.repositionImage;
     if (!cropAllowed) return;
+    recordCropHistory(historyGroup);
+    noteCropCommit(layerId, slotId);
+    recordDocumentCommit("grid-crop");
     markDirty();
     if (layer.isUserLayer) {
       setEditorState((current) => ({ ...current, userLayers: current.userLayers.map((item) => item.id === layerId ? { ...item, slots: (item.slots || []).map((currentSlot: any) => currentSlot.id === slotId ? { ...currentSlot, transform: { ...(currentSlot.transform || {}), ...patch } } : currentSlot) } : item) }));
@@ -1506,40 +1784,24 @@ export default function PersonalizeClient({ product, template }: { product: any;
   const enterGridCropMode = (layerId: string, slotId: string) => {
     if (!gridsEnabled) return;
     const layer = effectiveLayers.find((item: any) => item.id === layerId);
-    const currentSlot = layer?.isUserLayer ? layer.slots?.find((slot: any) => slot.id === slotId) : editorStateRef.current.layerOverrides[layerId]?.gridSlots?.[slotId];
-    cropBackupRef.current = { type: "grid", layerId, slotId, isUserLayer: Boolean(layer?.isUserLayer), value: currentSlot ? structuredClone(currentSlot) : null };
-    recordHistory();
+    const currentSlot = layer?.isUserLayer
+      ? layer.slots?.find((slot: any) => slot.id === slotId)
+      : editorStateRef.current.layerOverrides[layerId]?.gridSlots?.[slotId];
+    openCropSession({
+      kind: "grid-slot",
+      layerId,
+      slotId,
+      isUserLayer: Boolean(layer?.isUserLayer),
+      slot: currentSlot ? structuredClone(currentSlot) : null,
+    });
     setSelectedLayerId(layerId);
     setSelectedGridSlotId(slotId);
     setCropLayerId(null);
     setCropGridSlotId(slotId);
   };
 
-  const confirmGridCrop = () => {
-    cropBackupRef.current = null;
-    setCropGridSlotId(null);
-  };
-
-  const cancelGridCrop = () => {
-    const backup = cropBackupRef.current;
-    if (backup?.type === "grid") {
-      if (backup.isUserLayer) {
-        setEditorState((current) => ({ ...current, userLayers: current.userLayers.map((item) => item.id === backup.layerId ? { ...item, slots: (item.slots || []).map((slot: any) => slot.id === backup.slotId ? backup.value : slot) } : item) }));
-        cropBackupRef.current = null;
-        setCropGridSlotId(null);
-        return;
-      }
-      setEditorState((current) => {
-        const existing = current.layerOverrides[backup.layerId] || {};
-        const slots = { ...(existing.gridSlots || {}) };
-        if (backup.value) slots[backup.slotId] = backup.value;
-        else delete slots[backup.slotId];
-        return { ...current, layerOverrides: { ...current.layerOverrides, [backup.layerId]: { ...existing, gridSlots: slots } } };
-      });
-    }
-    cropBackupRef.current = null;
-    setCropGridSlotId(null);
-  };
+  const confirmGridCrop = confirmActiveCrop;
+  const cancelGridCrop = cancelActiveCrop;
 
   const showImageToolbar =
     !previewMode &&
@@ -1634,6 +1896,8 @@ export default function PersonalizeClient({ product, template }: { product: any;
   );
 
   const onSelectLayer = (layerId: string | null, additive = false) => {
+    const activeCropTarget = cropCheckpointRef.current?.target.layerId;
+    if (activeCropTarget && layerId !== activeCropTarget) confirmActiveCrop();
     let targetId = layerId;
     let targetLayer = targetId ? effectiveLayers.find((item: any) => item.id === targetId) : null;
     const visited = new Set<string>();
@@ -1687,74 +1951,132 @@ export default function PersonalizeClient({ product, template }: { product: any;
     }
   };
 
-  const onLayerTransform = (layerId: string, patch: any, phase: "start" | "move") => {
-    const layer = effectiveLayers.find((item: any) => item.id === layerId);
-    if (!layer) return;
-    if (phase === "start") {
-      recordHistory(`transform-${layerId}`);
-      return;
-    }
-    markDirty();
-    const { textStyle: requestedTextStyle, ...transformPatch } = patch || {};
+  /* ----- layer transform transactions (spec §8 of the hardening brief) ----- */
+
+  /**
+   * What one layer's share of a transform transaction will write, resolved
+   * against permissions and object limits BEFORE any state is touched. Planning
+   * first is what lets a transaction know it changes nothing — and then record
+   * no history, mark nothing dirty and trigger no save.
+   */
+  type TransformPlan =
+    | { id: string; kind: "group"; patch: Record<string, unknown> }
+    | { id: string; kind: "user"; patch: Record<string, unknown>; textStyle: Record<string, unknown> | null }
+    | { id: string; kind: "template"; transform: Record<string, unknown> | null; textStyle: Record<string, unknown> | null };
+
+  const planLayerTransform = (layer: any, rawPatch: Record<string, any>): TransformPlan | null => {
+    const { textStyle: requestedTextStyle, ...transformPatch } = rawPatch || {};
     if (layer.isUserLayer) {
       const constrainedPatch = applyCustomerObjectLimits(layer, transformPatch, layer.page || activePage);
-      if (layer.type === "group") {
-        setEditorState((current) => transformCustomerGroupState(current, layerId, constrainedPatch));
-        return;
-      }
-      setEditorState((current) => ({
-        ...current,
-        userLayers: current.userLayers.map((item) => (item.id === layerId ? {
-              ...item,
-              ...constrainedPatch,
-              ...(requestedTextStyle ? { textStyle: { ...(item.textStyle || {}), ...requestedTextStyle } } : {}),
-            } : item)),
-      }));
-    } else {
-      const permissions = getLayerPermissions(layer);
-      const allowed: any = {};
-      if (permissions.move) {
-        if (transformPatch.x !== undefined) allowed.x = transformPatch.x;
-        if (transformPatch.y !== undefined) allowed.y = transformPatch.y;
-      }
-      if (permissions.resize) {
-        if (transformPatch.width !== undefined) allowed.width = transformPatch.width;
-        if (transformPatch.height !== undefined) allowed.height = transformPatch.height;
-      }
-      if (permissions.rotate && transformPatch.rotation !== undefined) allowed.rotation = transformPatch.rotation;
-      // Template layers obey the template's position/size/rotation limits too.
-      // Only user layers were being constrained here, while the save validator
-      // constrains BOTH — so dragging a template object past the limits looked
-      // fine on screen and then came back clamped, with a
-      // `customer-object-limit` violation, once the server had its say.
-      const constrained = applyCustomerObjectLimits(layer, allowed, layer.page || activePage);
-      Object.assign(allowed, constrained);
-      // Corner scaling carries the letter spacing with the font size, so each
-      // property is gated by its own administrator permission.
-      const styleUpdate: Record<string, unknown> = {};
-      if (requestedTextStyle?.fontSize !== undefined && permissions.changeFontSize) {
-        styleUpdate.fontSize = requestedTextStyle.fontSize;
-      }
-      if (requestedTextStyle?.letterSpacing !== undefined && permissions.changeLetterSpacing) {
-        styleUpdate.letterSpacing = requestedTextStyle.letterSpacing;
-      }
-      const allowedTextStyle = Object.keys(styleUpdate).length ? styleUpdate : null;
-      if (!Object.keys(allowed).length && !allowedTextStyle) return;
-      setEditorState((current) => {
-        const existing = current.layerOverrides[layerId] || {};
-        return {
-          ...current,
-          layerOverrides: {
-            ...current.layerOverrides,
-            [layerId]: {
-              ...existing,
-              ...(Object.keys(allowed).length ? { transform: { ...(existing.transform || {}), ...allowed } } : {}),
-              ...(allowedTextStyle ? { textStyle: { ...(existing.textStyle || {}), ...allowedTextStyle } } : {}),
-            },
-          },
-        };
-      });
+      if (layer.type === "group") return { id: layer.id, kind: "group", patch: constrainedPatch };
+      return { id: layer.id, kind: "user", patch: constrainedPatch, textStyle: requestedTextStyle || null };
     }
+    // Every layer in a batch is gated by ITS OWN permissions — a batch is never
+    // a way to move an object the customer could not move on its own.
+    const permissions = getLayerPermissions(layer);
+    const allowed: Record<string, unknown> = {};
+    if (permissions.move) {
+      if (transformPatch.x !== undefined) allowed.x = transformPatch.x;
+      if (transformPatch.y !== undefined) allowed.y = transformPatch.y;
+    }
+    if (permissions.resize) {
+      if (transformPatch.width !== undefined) allowed.width = transformPatch.width;
+      if (transformPatch.height !== undefined) allowed.height = transformPatch.height;
+    }
+    if (permissions.rotate && transformPatch.rotation !== undefined) allowed.rotation = transformPatch.rotation;
+    // Template layers obey the template's position/size/rotation limits too,
+    // exactly as the save validator does, so nothing snaps back after a save.
+    Object.assign(allowed, applyCustomerObjectLimits(layer, allowed, layer.page || activePage));
+    // A group draws nothing itself: moving it means moving its members. A
+    // template group used to fall through to the plain override below, which
+    // recorded new geometry on the group while every child stayed where it was.
+    if (layer.type === "group") {
+      return Object.keys(allowed).length ? { id: layer.id, kind: "group", patch: allowed } : null;
+    }
+    // Corner scaling carries letter spacing with font size; each is gated by
+    // its own administrator permission.
+    const styleUpdate: Record<string, unknown> = {};
+    if (requestedTextStyle?.fontSize !== undefined && permissions.changeFontSize) {
+      styleUpdate.fontSize = requestedTextStyle.fontSize;
+    }
+    if (requestedTextStyle?.letterSpacing !== undefined && permissions.changeLetterSpacing) {
+      styleUpdate.letterSpacing = requestedTextStyle.letterSpacing;
+    }
+    const transform = Object.keys(allowed).length ? allowed : null;
+    const textStyle = Object.keys(styleUpdate).length ? styleUpdate : null;
+    if (!transform && !textStyle) return null;
+    return { id: layer.id, kind: "template", transform, textStyle };
+  };
+
+  const applyTransformPlan = (current: EditorState, plan: TransformPlan): EditorState => {
+    if (plan.kind === "group") return transformCustomerGroupState(current, plan.id, plan.patch);
+    if (plan.kind === "user") {
+      return {
+        ...current,
+        userLayers: current.userLayers.map((item) =>
+          item.id === plan.id
+            ? {
+                ...item,
+                ...plan.patch,
+                ...(plan.textStyle ? { textStyle: { ...(item.textStyle || {}), ...plan.textStyle } } : {}),
+              }
+            : item,
+        ),
+      };
+    }
+    const existing = current.layerOverrides[plan.id] || {};
+    return {
+      ...current,
+      layerOverrides: {
+        ...current.layerOverrides,
+        [plan.id]: {
+          ...existing,
+          ...(plan.transform ? { transform: { ...(existing.transform || {}), ...plan.transform } } : {}),
+          ...(plan.textStyle ? { textStyle: { ...(existing.textStyle || {}), ...plan.textStyle } } : {}),
+        },
+      },
+    };
+  };
+
+  /**
+   * Commit a set of layer transforms as ONE document transaction.
+   *
+   * However many layers a gesture moved, this is one history entry, one
+   * canonical document write, one dirty transition and therefore one autosave
+   * request — applied inside a single functional state update, so no
+   * intermediate state with only some of the layers moved ever exists.
+   */
+  const commitLayerTransforms = (changes: LayerTransformChange[], historyGroup?: string) => {
+    const layersById = new Map(effectiveLayers.map((layer: any) => [layer.id, layer]));
+    const plans: TransformPlan[] = [];
+    for (const change of changes) {
+      const layer = layersById.get(change.id);
+      if (!layer) continue;
+      const plan = planLayerTransform(layer, change.patch);
+      if (plan) plans.push(plan);
+    }
+    if (!plans.length) return;
+
+    recordHistory(historyGroup);
+    recordDocumentCommit("transform");
+    if (plans.length > 1) recordEditorEvent("batchTransformCommit");
+    markDirty();
+    setEditorState((current) => plans.reduce(applyTransformPlan, current));
+  };
+
+  /**
+   * Single-layer entry point, kept for existing callers. "start" is accepted for
+   * compatibility and does nothing: history is recorded when the transaction
+   * commits, so an abandoned gesture can never leave an empty undo step.
+   */
+  const onLayerTransform = (
+    layerId: string,
+    patch: any,
+    phase: "start" | "move",
+    historyGroup?: string,
+  ) => {
+    if (phase === "start") return;
+    commitLayerTransforms([{ id: layerId, patch }], historyGroup);
   };
 
   const onToolbarStyleChange = (patch: any, group?: string) => {
@@ -2098,14 +2420,29 @@ export default function PersonalizeClient({ product, template }: { product: any;
   // just performs one write and reports what happened.
   const saveCustomizationDraft = async (status = "draft", { silent = false }: any = {}) => {
     if (!silent) setMessage("");
+    saveAttemptRef.current += 1;
+    recordEditorEvent("saveStarted");
     const savingVersion = changeVersionRef.current;
 
     const payload = await buildCustomizationPayload(status);
+    await awaitDevSaveGate();
+
+    // A response may only clear dirty if the document is still the version this
+    // save captured. Anything committed — or rolled back — since then advanced
+    // the version, so the newer state stays dirty and the queue saves it next.
+    const settleDirty = () => {
+      if (changeVersionRef.current === savingVersion) {
+        setDirty(false);
+        recordEditorEvent("saveClearedDirty");
+      } else {
+        recordEditorEvent("saveKeptDirty");
+      }
+    };
 
     if (!user) {
       const localDraft = writeLocalDraft(localDraftKey, payload);
       setCustomizationId(localDraft.id);
-      if (changeVersionRef.current === savingVersion) setDirty(false);
+      settleDirty();
       return { ok: true, customization: localDraft, local: true };
     }
 
@@ -2124,7 +2461,7 @@ export default function PersonalizeClient({ product, template }: { product: any;
     const saved = data.customization || {};
     if (saved.id) setCustomizationId(saved.id);
     if (saved.cartItemId) setCartItemId(saved.cartItemId);
-    if (changeVersionRef.current === savingVersion) setDirty(false);
+    settleDirty();
     return { ok: true, customization: saved, local: false };
   };
 
@@ -2358,15 +2695,33 @@ export default function PersonalizeClient({ product, template }: { product: any;
         }
         if (key === "c") {
           event.preventDefault();
-          if (canDuplicateSelection) customerClipboardRef.current = selectedLayers.map((layer: any) => structuredClone(layer));
+          // Copy the whole SUBTREE, not just the selected rows. Storing a group
+          // container without its members produced a clipboard entry that could
+          // only ever paste as an empty group.
+          if (canDuplicateSelection) {
+            const rootIds = selectedLayers.map((layer: any) => layer.id);
+            customerClipboardRef.current = {
+              rootIds,
+              layers: expandCloneSelection(effectiveLayers, rootIds).map((layer: any) => structuredClone(layer)),
+            };
+          }
           return;
         }
-        if (key === "v" && customerClipboardRef.current.length) {
+        if (key === "v" && customerClipboardRef.current.layers.length) {
           event.preventDefault();
-          const copies = customerClipboardRef.current.map((layer: any) => normalizeUserLayer({ ...layer, id: "", groupId: "", x: Number(layer.x || 0) + 32, y: Number(layer.y || 0) + 32 })).filter(Boolean);
+          // Paste goes through the same clone path as Duplicate. Forcing
+          // `groupId: ""` and leaving `childIds` untouched (as this used to)
+          // pasted a group whose childIds still named the ORIGINAL children —
+          // a GROUP_PARENT_MISSING document where moving either group dragged
+          // the other one's contents.
+          const { copies, selectionIds } = cloneLayerSet(
+            customerClipboardRef.current.layers,
+            customerClipboardRef.current.rootIds,
+          );
+          if (!copies.length) return;
           recordHistory();
           patchEditorState((current) => ({ ...current, userLayers: [...current.userLayers, ...copies] }));
-          applySelection(copies.map((copy: any) => copy.id));
+          applySelection(selectionIds);
           return;
         }
         // Ctrl/Cmd+G groups, Ctrl/Cmd+Shift+G ungroups. Both run through the
@@ -2423,8 +2778,10 @@ export default function PersonalizeClient({ product, template }: { product: any;
         const amount = event.shiftKey ? 40 : 8;
         const dx = event.key === "ArrowLeft" ? -amount : event.key === "ArrowRight" ? amount : 0;
         const dy = event.key === "ArrowUp" ? -amount : event.key === "ArrowDown" ? amount : 0;
-        onLayerTransform(selectedLayers[0].id, {}, "start");
-        selectedLayers.forEach((layer: any) => onLayerTransform(layer.id, { x: (layer.x || 0) + dx, y: (layer.y || 0) + dy }, "move"));
+        commitLayerTransforms(
+          selectedLayers.map((layer: any) => ({ id: layer.id, patch: { x: (layer.x || 0) + dx, y: (layer.y || 0) + dy } })),
+          "nudge",
+        );
       }
     };
     window.addEventListener("keydown", onKey);
@@ -2828,6 +3185,7 @@ export default function PersonalizeClient({ product, template }: { product: any;
       onSelectLayer={previewMode ? undefined : onSelectLayer}
       onSelectionChange={previewMode ? undefined : onSelectionChange}
       onLayerTransform={onLayerTransform}
+      onLayerTransforms={commitLayerTransforms}
       onTextEditStart={onCanvasTextEditStart}
       onTextDraftChange={onCanvasTextDraftChange}
       onTextMultilineActivate={onCanvasTextMultilineActivate}
@@ -2839,6 +3197,7 @@ export default function PersonalizeClient({ product, template }: { product: any;
       onTextCommit={onCanvasTextCommit}
       cropLayerId={previewMode ? null : cropLayerId}
       onImageTransform={onImageTransformChange}
+      cropSessionApi={cropSessionApiRef}
       cropGridSlotId={previewMode || !gridsEnabled ? null : cropGridSlotId}
       onGridSlotTransform={gridsEnabled ? onGridSlotTransformChange : undefined}
       onGridSlotSelect={gridsEnabled ? (_layerId, slotId) => setSelectedGridSlotId(slotId) : undefined}
@@ -3039,15 +3398,13 @@ export default function PersonalizeClient({ product, template }: { product: any;
                       onEnterCrop={() => enterCropMode(selectedLayer.id)}
                       onConfirmCrop={confirmCrop}
                       onCancelCrop={cancelCrop}
-                      onImagePatch={(patch) => {
-                        onImageTransformChange(selectedLayer.id, {}, "start");
-                        onImageTransformChange(selectedLayer.id, patch, "move");
-                      }}
+                      onImagePatch={(patch, group) =>
+                        onImageTransformChange(selectedLayer.id, patch, "move", group)
+                      }
                       onLayerRotate={
                         (selectedPermissions as any).rotate
                           ? (rotation) => {
-                              onLayerTransform(selectedLayer.id, {}, "start");
-                              onLayerTransform(selectedLayer.id, { rotation }, "move");
+                              onLayerTransform(selectedLayer.id, { rotation }, "move", `rotate-${selectedLayer.id}`);
                             }
                           : undefined
                       }
@@ -3064,19 +3421,29 @@ export default function PersonalizeClient({ product, template }: { product: any;
                       onSelectSlot={setSelectedGridSlotId}
                       onUpload={(file: File) => replaceGridSlot(selectedLayer.id, selectedGridSlotId, file)}
                       onClear={() => clearGridSlot(selectedLayer.id, selectedGridSlotId)}
-                      onReset={() => {
-                        onGridSlotTransformChange(selectedLayer.id, selectedGridSlotId, {}, "start");
-                        onGridSlotTransformChange(selectedLayer.id, selectedGridSlotId, { zoom: 1, offsetX: 0, offsetY: 0, rotation: 0, flipX: false, flipY: false, fitMode: "cover" }, "move");
-                      }}
+                      onReset={() =>
+                        onGridSlotTransformChange(
+                          selectedLayer.id,
+                          selectedGridSlotId,
+                          { zoom: 1, offsetX: 0, offsetY: 0, rotation: 0, flipX: false, flipY: false, fitMode: "cover" },
+                          "move",
+                          `grid-crop-reset-${selectedGridSlotId}`,
+                        )
+                      }
                       onMove={(direction: number) => moveGridSlotPhoto(selectedLayer.id, selectedGridSlotId, direction)}
                       cropping={cropGridSlotId === selectedGridSlotId}
                       onEnterCrop={() => enterGridCropMode(selectedLayer.id, selectedGridSlotId)}
                       onConfirmCrop={confirmGridCrop}
                       onCancelCrop={cancelGridCrop}
-                      onTransform={(patch: any) => {
-                        onGridSlotTransformChange(selectedLayer.id, selectedGridSlotId, {}, "start");
-                        onGridSlotTransformChange(selectedLayer.id, selectedGridSlotId, patch, "move");
-                      }}
+                      onTransform={(patch: any) =>
+                        onGridSlotTransformChange(
+                          selectedLayer.id,
+                          selectedGridSlotId,
+                          patch,
+                          "move",
+                          `grid-crop-${selectedGridSlotId}`,
+                        )
+                      }
                     />
                   )}
                 </div>
@@ -3095,9 +3462,9 @@ export default function PersonalizeClient({ product, template }: { product: any;
                   </div>
                 )}
                 {workspaceMode === "product" && productPreviewEditingEnabled ? (
-                  <CustomerProductEditingPreview template={template} values={values} editorState={editorState} pageId={activePage} zoom={viewZoom} onZoomChange={setZoomSafely} selectedLayerIds={selectedLayerIds} onSelectLayer={onSelectLayer} onSelectionChange={onSelectionChange} onLayerTransform={onLayerTransform} editingGroupId={editingGroupId} onEnterGroup={enterGroup} showWatermark={protectionEnabled} />
+                  <CustomerProductEditingPreview template={template} values={values} editorState={editorState} pageId={activePage} zoom={viewZoom} onZoomChange={setZoomSafely} selectedLayerIds={selectedLayerIds} onSelectLayer={onSelectLayer} onSelectionChange={onSelectionChange} onLayerTransform={onLayerTransform} onLayerTransforms={commitLayerTransforms} editingGroupId={editingGroupId} onEnterGroup={enterGroup} showWatermark={protectionEnabled} />
                 ) : workspaceMode === "split" && splitViewEnabled ? (
-                  <div className="grid h-full min-h-0 grid-rows-2 divide-y divide-[#303839]/10 xl:grid-cols-2 xl:grid-rows-1 xl:divide-x xl:divide-y-0"><div className="min-h-0 min-w-0">{printCanvas}</div><div className="min-h-0 min-w-0"><CustomerProductEditingPreview template={template} values={values} editorState={editorState} pageId={activePage} zoom={viewZoom} onZoomChange={setZoomSafely} selectedLayerIds={selectedLayerIds} onSelectLayer={onSelectLayer} onSelectionChange={onSelectionChange} onLayerTransform={onLayerTransform} editingGroupId={editingGroupId} onEnterGroup={enterGroup} showWatermark={protectionEnabled} /></div></div>
+                  <div className="grid h-full min-h-0 grid-rows-2 divide-y divide-[#303839]/10 xl:grid-cols-2 xl:grid-rows-1 xl:divide-x xl:divide-y-0"><div className="min-h-0 min-w-0">{printCanvas}</div><div className="min-h-0 min-w-0"><CustomerProductEditingPreview template={template} values={values} editorState={editorState} pageId={activePage} zoom={viewZoom} onZoomChange={setZoomSafely} selectedLayerIds={selectedLayerIds} onSelectLayer={onSelectLayer} onSelectionChange={onSelectionChange} onLayerTransform={onLayerTransform} onLayerTransforms={commitLayerTransforms} editingGroupId={editingGroupId} onEnterGroup={enterGroup} showWatermark={protectionEnabled} /></div></div>
                 ) : printCanvas}
               </div>
 

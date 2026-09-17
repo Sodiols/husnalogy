@@ -327,6 +327,56 @@ describe("grouping — duplicate, delete and rendering", () => {
     expect(validateGroupRelationships(next.layers)).toEqual([]);
   });
 
+  it("stacks the duplicated group above everything already on the page", () => {
+    // Regression: the copies used to inherit each source's own zIndex. Because
+    // `layersForPage` sorts by zIndex and JS sort is stable, the duplicate then
+    // INTERLEAVED with the original member for member, and the copied group
+    // kept the original's place in the stack instead of landing on top of it —
+    // so a duplicate could render underneath a layer the original was above.
+    const base = template();
+    const withNeighbour = {
+      ...base,
+      layers: [...base.layers, box("top", 50, 50, { id: "top", zIndex: 99 })],
+    };
+    const { template: next, newId } = duplicateLayer(withNeighbour, "g1");
+
+    const originalIds = new Set(withNeighbour.layers.map((layer: any) => layer.id));
+    const copies = next.layers.filter((layer: any) => !originalIds.has(layer.id));
+    expect(copies).toHaveLength(3); // the group plus both children
+
+    const highestOriginal = Math.max(
+      ...withNeighbour.layers.map((layer: any) => Number(layer.zIndex) || 0),
+    );
+    for (const copy of copies) expect(Number(copy.zIndex)).toBeGreaterThan(highestOriginal);
+
+    // The copy is a contiguous block: no original can sit between two copies.
+    const copyZ = copies.map((copy: any) => Number(copy.zIndex)).sort((a: number, b: number) => a - b);
+    expect(copyZ[copyZ.length - 1] - copyZ[0]).toBe(copies.length - 1);
+    // ...and no copy shares a zIndex with an original, so the stacking order of
+    // the two groups is decided by the document rather than by array position.
+    const originalZ = new Set(withNeighbour.layers.map((layer: any) => Number(layer.zIndex)));
+    for (const z of copyZ) expect(originalZ.has(z)).toBe(false);
+    expect(newId).toBeTruthy();
+  });
+
+  it("keeps a group's childIds in step when one of its members is duplicated", () => {
+    // `groupId` is the authority for membership, so the copy was already inside
+    // the group — but the container's derived `childIds` mirror did not know
+    // about it, leaving the document describing itself two different ways.
+    const { template: next, newId } = duplicateLayer(template(), "a");
+    const copy = next.layers.find((layer: any) => layer.id === newId);
+    expect(copy.groupId).toBe("g1");
+    const group = next.layers.find((layer: any) => layer.id === "g1");
+    expect(group.childIds).toContain(newId);
+    // The mirror still matches what `groupId` actually says.
+    const membersByGroupId = next.layers
+      .filter((layer: any) => layer.groupId === "g1")
+      .map((layer: any) => layer.id)
+      .sort();
+    expect([...group.childIds].sort()).toEqual(membersByGroupId);
+    expect(validateGroupRelationships(next.layers)).toEqual([]);
+  });
+
   it("deletes a group together with its children", () => {
     const next = removeLayer(template(), "g1");
     expect(next.layers).toHaveLength(0);

@@ -315,6 +315,7 @@ export function normalizeCustomizerLayer(input: any = {}): any {
     adminEditable: input.adminEditable === undefined ? true : normalizeBoolean(input.adminEditable),
     customerEditable: normalizeBoolean(input.customerEditable),
     groupId: cleanString(input.groupId),
+    // Inert legacy field — see the note on LayerBase.scale in types.ts.
     scale: Math.max(0.0001, toNumber(input.scale, 1)),
     metadata: input.metadata && typeof input.metadata === "object" ? input.metadata : {},
   };

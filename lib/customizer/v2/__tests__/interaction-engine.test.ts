@@ -34,8 +34,12 @@ import {
   resolveHitExtents,
   resolveVisibleHandles,
 } from "../interaction/handles";
+import { applySelectionDelta, rotatePoint } from "../interaction/gesture-math";
+// The resize/rotation MODEL, which the shipped editor does not execute — Konva's
+// Transformer does. Imported from its own module so these tests cannot be
+// mistaken for coverage of production transforms; the live path is covered by
+// e2e/customizer-resize.spec.ts. See reference-geometry.ts for the full rationale.
 import {
-  applySelectionDelta,
   clampBoxIntoBounds,
   fromSurfaceDelta,
   resolveMultiResize,
@@ -43,9 +47,8 @@ import {
   resolveNudge,
   resolveResize,
   resolveRotation,
-  rotatePoint,
   toLocalDelta,
-} from "../interaction/gesture-math";
+} from "../interaction/reference-geometry";
 import { hitTestMarquee, hitTestPoint, isTargetable, resolveSelectionTarget } from "../interaction/hit-test";
 import { gridSlotNodeId, layerNodeId, owningLayerId, parseNodeId } from "../interaction/node-identity";
 import {
@@ -361,6 +364,49 @@ describe("gesture mathematics", () => {
   it("keeps the aspect ratio when asked", () => {
     const scaled = resolveResize({ handle: "se", start, dx: 100, dy: 0, preserveAspect: true });
     expect(scaled.width / scaled.height).toBeCloseTo(start.width / start.height, 5);
+  });
+
+  it("keeps the aspect ratio from a plain EDGE handle too", () => {
+    // Regression: the rule used to compare the two RESULTING sizes against the
+    // starting ratio. An edge handle only produces a delta on one axis, so that
+    // comparison always cancelled the drag straight back to the starting size
+    // and Shift-resizing from an edge did nothing whatsoever.
+    const wide = { x: 100, y: 100, width: 100, height: 50 };
+    const east = resolveResize({ handle: "e", start: wide, dx: 50, dy: 0, preserveAspect: true });
+    expect(east.width).toBe(150);
+    expect(east.width / east.height).toBeCloseTo(2, 5);
+    // The untouched axis grows about its own centre rather than pivoting on a
+    // side the customer never grabbed.
+    expect(east.y).toBe(100);
+    // The grabbed axis still anchors to the opposite edge.
+    expect(east.x - east.width / 2).toBe(50);
+
+    const south = resolveResize({ handle: "s", start: wide, dx: 0, dy: 50, preserveAspect: true });
+    expect(south.height).toBe(100);
+    expect(south.width / south.height).toBeCloseTo(2, 5);
+    expect(south.x).toBe(100);
+  });
+
+  it("keeps the returned centre consistent with the returned size at the minimum", () => {
+    // Regression: an aspect-locked collapse clamped width/height on the way OUT
+    // but had already derived the centre from the unclamped values, so the box
+    // reported edges it did not actually have and the anchored edge jumped.
+    const tall = { x: 100, y: 100, width: 20, height: 100 };
+    const collapsed = resolveResize({
+      handle: "se",
+      start: tall,
+      dx: -500,
+      dy: -500,
+      preserveAspect: true,
+      minSize: 8,
+    });
+    expect(collapsed.x - collapsed.width / 2).toBe(90); // left edge held
+    expect(collapsed.y - collapsed.height / 2).toBe(50); // top edge held
+    expect(collapsed.width).toBeGreaterThanOrEqual(8);
+    expect(collapsed.height).toBeGreaterThanOrEqual(8);
+    // The minimum is applied ALONG the ratio: clamping each axis on its own
+    // would silently unlock the aspect the customer asked to keep.
+    expect(collapsed.width / collapsed.height).toBeCloseTo(20 / 100, 5);
   });
 
   it("never resizes below the minimum", () => {

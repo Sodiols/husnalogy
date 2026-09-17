@@ -600,9 +600,15 @@ drop policy if exists "newsletter_campaigns_admin_manage" on public.newsletter_c
 create policy "newsletter_campaigns_admin_manage" on public.newsletter_campaigns
 for all using (public.is_admin()) with check (public.is_admin());
 
+-- Admin-only read. The row is a single JSONB blob that also holds SMTP and
+-- payment-gateway secrets, and the publishable key ships in every browser
+-- bundle, so a world-readable policy here leaks credentials. Nothing in the
+-- app needs anon access: lib/settings reads through the service-role client
+-- and the public surface is the redacted toPublicSettings() projection.
 drop policy if exists "site_settings_public_read" on public.site_settings;
-create policy "site_settings_public_read" on public.site_settings
-for select using (true);
+drop policy if exists "site_settings_admin_read" on public.site_settings;
+create policy "site_settings_admin_read" on public.site_settings
+for select using (public.is_admin());
 
 drop policy if exists "site_settings_admin_manage" on public.site_settings;
 create policy "site_settings_admin_manage" on public.site_settings

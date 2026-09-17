@@ -82,17 +82,20 @@ describe("single-line text resize canvas contract", () => {
     ).toBe(true);
   });
 
-  it("keeps one history start while live geometry and toolbar values update", () => {
+  it("records one history entry per committed gesture while live geometry updates", () => {
     const canvas = readFileSync("app/components/customizer/CustomizerWorkspace.tsx", "utf8");
     const stage = readFileSync(
       "app/components/customizer/interaction/CustomizerInteractionStage.tsx",
       "utf8",
     );
-    // The gesture takes ONE snapshot, on start, and commits geometry after.
+    // History is taken when the gesture COMMITS, as one transaction for every
+    // layer it moved — not when it starts, where an abandoned gesture would
+    // have left an empty undo step.
     expect(stage).toContain("onGestureStart?.();");
-    expect(canvas).toContain('onLayerTransform?.(lead, {}, "start")');
-    expect(customerEditor).toContain('if (phase === "start")');
-    expect(customerEditor).toContain("recordHistory(`transform-${layerId}`)");
+    expect(canvas).toContain("onLayerTransforms(constrained);");
+    expect(customerEditor).toContain('if (phase === "start") return;');
+    expect(customerEditor).toContain("recordHistory(historyGroup);");
+    expect(customerEditor).toContain("setEditorState((current) => plans.reduce(applyTransformPlan, current));");
     expect(customerEditor).toContain("existing.textStyle");
     // A gesture that ended where it started writes nothing at all.
     expect(stage).toContain("if (changes.length) onGestureCommit(changes);");

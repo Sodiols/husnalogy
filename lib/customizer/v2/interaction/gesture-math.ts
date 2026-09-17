@@ -1,205 +1,42 @@
 /**
- * The transform mathematics shared by the customer workspace and the admin
- * design builder (spec §40: "Do not maintain completely different transform
- * mathematics for customer and admin after the migration").
+ * The transform maths the shipped editor actually executes.
  *
- * Both canvases previously carried their own copy of resize anchoring, rotation
- * snapping, multi-object scaling and rotation-about-a-pivot — inline, inside a
- * 1,500 line component, reachable only through a real pointer. Two copies of
- * geometry drift, and there was no way to test either of them.
+ * Everything in this file has a LIVE caller in `CustomizerInteractionStage`,
+ * which both the admin builder and the customer editor mount — so there is one
+ * implementation of each of these behaviours, not two.
+ *
+ *   rotatePoint          — un-rotating a pointer to find the grid slot under it
+ *   applySelectionDelta  — propagating a snapped drag across a multi-selection
+ *   ROTATION_SNAP_STEP   — the angles the rotation handle snaps to
+ *
+ * What is NOT here, deliberately: single-object and multi-object RESIZE and
+ * ROTATION maths. Konva's `Transformer` owns those on the live path — it
+ * resolves the anchor, the rotated axes and the aspect modifier — and
+ * `konva-adapter` converts its output into Husnalogy geometry. A pure model of
+ * the same operations exists in `reference-geometry.ts`, which the editor does
+ * not import; see that file's header for why it is kept and what its tests do
+ * and do not prove.
  *
  * Everything here is pure: numbers in, numbers out, no DOM, no Konva, no React.
- * The Konva layer supplies the pointer deltas; this decides what they mean; the
- * adapter normalises the result into the Husnalogy document.
  */
-
-import { MIN_OBJECT_SIZE, normalizeRotation } from "./konva-adapter";
-import type { HandleId } from "./handles";
-import type { SelectionRect } from "../selection-geometry";
 
 const finite = (value: unknown, fallback = 0): number => {
   const number = Number(value);
   return Number.isFinite(number) ? number : fallback;
 };
 
-export type Box = { x: number; y: number; width: number; height: number };
-
 /* ---------------------------------------------------------------------------
- * Rotation-aware delta
+ * Rotation snapping
  * ------------------------------------------------------------------------ */
 
 /**
- * A pointer delta expressed in the object's OWN frame.
- *
- * Dragging the east handle of an object rotated 90° must widen it along the
- * direction the handle points, not along the screen's x axis. Without this the
- * object appears to resize on the wrong edge as soon as it is rotated.
+ * Degrees the rotation handle snaps to when the modifier is NOT held. Passed
+ * straight to the Konva Transformer's `rotationSnaps`, so this constant is the
+ * live contract rather than a description of one.
  */
-export function toLocalDelta(dx: number, dy: number, rotationDegrees: number): { dx: number; dy: number } {
-  const radians = (finite(rotationDegrees) * Math.PI) / 180;
-  const cos = Math.cos(radians);
-  const sin = Math.sin(radians);
-  return {
-    dx: finite(dx) * cos + finite(dy) * sin,
-    dy: -finite(dx) * sin + finite(dy) * cos,
-  };
-}
-
-/**
- * The inverse: a delta measured on a rotated SURFACE (a canvas embedded in a
- * rotated product mockup) converted back into document space.
- */
-export function fromSurfaceDelta(dx: number, dy: number, surfaceRotationDegrees: number): { dx: number; dy: number } {
-  const radians = (-finite(surfaceRotationDegrees) * Math.PI) / 180;
-  const cos = Math.cos(radians);
-  const sin = Math.sin(radians);
-  return {
-    dx: finite(dx) * cos - finite(dy) * sin,
-    dy: finite(dx) * sin + finite(dy) * cos,
-  };
-}
-
-/* ---------------------------------------------------------------------------
- * Single-object resize
- * ------------------------------------------------------------------------ */
-
-export type ResizeInput = {
-  handle: HandleId;
-  /** Starting geometry, centre-origin, as stored in the document. */
-  start: Box;
-  /** Pointer delta in the OBJECT's frame (see `toLocalDelta`). */
-  dx: number;
-  dy: number;
-  /** Shift: keep the starting aspect ratio. */
-  preserveAspect?: boolean;
-  minSize?: number;
-  /** Clamp the result inside these document bounds (text safe area). */
-  bounds?: SelectionRect | null;
-};
-
-/**
- * Resize anchored to the OPPOSITE edge/corner, which is what every editor does
- * and what makes a handle feel attached to the thing it is dragging.
- *
- * Returns centre-origin geometry so the caller can hand it straight to the
- * document without another conversion.
- */
-export function resolveResize(input: ResizeInput): Box {
-  const minimum = Math.max(1, finite(input.minSize, MIN_OBJECT_SIZE));
-  const startWidth = Math.abs(finite(input.start?.width));
-  const startHeight = Math.abs(finite(input.start?.height));
-  const left = finite(input.start?.x) - startWidth / 2;
-  const top = finite(input.start?.y) - startHeight / 2;
-  const right = left + startWidth;
-  const bottom = top + startHeight;
-  const handle = String(input.handle);
-
-  let nextLeft = left;
-  let nextTop = top;
-  let nextRight = right;
-  let nextBottom = bottom;
-
-  if (handle.includes("w")) nextLeft = Math.min(left + finite(input.dx), right - minimum);
-  if (handle.includes("e")) nextRight = Math.max(right + finite(input.dx), left + minimum);
-  if (handle.includes("n")) nextTop = Math.min(top + finite(input.dy), bottom - minimum);
-  if (handle.includes("s")) nextBottom = Math.max(bottom + finite(input.dy), top + minimum);
-
-  let width = Math.round(nextRight - nextLeft);
-  let height = Math.round(nextBottom - nextTop);
-
-  if (input.preserveAspect && startWidth > 0 && startHeight > 0) {
-    const ratio = startWidth / startHeight;
-    if (height > 0 && width / height > ratio) width = Math.round(height * ratio);
-    else height = Math.round(width / ratio);
-    if (handle.includes("w")) nextLeft = nextRight - width;
-    else nextRight = nextLeft + width;
-    if (handle.includes("n")) nextTop = nextBottom - height;
-    else nextBottom = nextTop + height;
-  }
-
-  if (input.bounds) {
-    const clamped = clampBoxIntoBounds(
-      { left: nextLeft, top: nextTop, right: nextLeft + width, bottom: nextTop + height },
-      input.bounds,
-    );
-    nextLeft = clamped.left;
-    nextTop = clamped.top;
-  }
-
-  return {
-    x: Math.round(nextLeft + width / 2),
-    y: Math.round(nextTop + height / 2),
-    width: Math.max(minimum, width),
-    height: Math.max(minimum, height),
-  };
-}
-
-/**
- * Slide a box back inside bounds without shrinking it. A box larger than the
- * bounds on an axis is left alone on that axis: shrinking artwork to fit the
- * safe area silently would be a worse outcome than showing it overflowing.
- */
-export function clampBoxIntoBounds(box: SelectionRect, bounds: SelectionRect): SelectionRect {
-  let { left, top, right, bottom } = box;
-  const width = right - left;
-  const height = bottom - top;
-  if (width <= bounds.right - bounds.left) {
-    if (left < bounds.left) {
-      right += bounds.left - left;
-      left = bounds.left;
-    }
-    if (right > bounds.right) {
-      left -= right - bounds.right;
-      right = bounds.right;
-    }
-  }
-  if (height <= bounds.bottom - bounds.top) {
-    if (top < bounds.top) {
-      bottom += bounds.top - top;
-      top = bounds.top;
-    }
-    if (bottom > bounds.bottom) {
-      top -= bottom - bounds.bottom;
-      bottom = bounds.bottom;
-    }
-  }
-  return { left, top, right, bottom };
-}
-
-/* ---------------------------------------------------------------------------
- * Rotation
- * ------------------------------------------------------------------------ */
-
-/** Degrees the rotation handle snaps to when the modifier is NOT held. */
 export const ROTATION_SNAP_STEP = 15;
 /** How close the pointer must be, in degrees, before the snap engages. */
 export const ROTATION_SNAP_TOLERANCE = 4;
-
-/**
- * Rotation from a pointer position around a pivot.
- *
- * `+90` because the rotation handle sits ABOVE the object: with the pointer
- * directly above the centre, `atan2` reports -90°, which must read as 0.
- */
-export function resolveRotation(input: {
-  pointerX: number;
-  pointerY: number;
-  pivotX: number;
-  pivotY: number;
-  /** Shift held: free rotation, no snapping. */
-  freeRotation?: boolean;
-}): number {
-  const angle =
-    (Math.atan2(finite(input.pointerY) - finite(input.pivotY), finite(input.pointerX) - finite(input.pivotX)) * 180) /
-      Math.PI +
-    90;
-  let rotation = Math.round(angle);
-  if (!input.freeRotation) {
-    const nearest = Math.round(rotation / ROTATION_SNAP_STEP) * ROTATION_SNAP_STEP;
-    if (Math.abs(rotation - nearest) <= ROTATION_SNAP_TOLERANCE) rotation = nearest;
-  }
-  return normalizeRotation(rotation);
-}
 
 /** Rotate a point about a pivot. The primitive multi-rotation is built on. */
 export function rotatePoint(
@@ -220,10 +57,6 @@ export function rotatePoint(
   };
 }
 
-/* ---------------------------------------------------------------------------
- * Multi-object transforms (spec §18)
- * ------------------------------------------------------------------------ */
-
 export type MultiMember = {
   id: string;
   x: number;
@@ -233,99 +66,8 @@ export type MultiMember = {
   rotation?: number;
 };
 
-export type MultiResizeResult = Array<{ id: string; x: number; y: number; width: number; height: number }>;
-
-/**
- * Scale a whole selection about its combined bounding box.
- *
- * Every member keeps its RELATIVE position inside the box, so an arrangement
- * the customer built stays an arrangement after the resize. Each member's size
- * may then be constrained further by the caller (text has minimum widths the
- * layout engine enforces), which is why `constrain` is injected rather than
- * baked in — the customer and admin text rules differ.
- */
-export function resolveMultiResize(input: {
-  handle: HandleId;
-  startBounds: SelectionRect & { width: number; height: number };
-  dx: number;
-  dy: number;
-  members: readonly MultiMember[];
-  preserveAspect?: boolean;
-  minSize?: number;
-  constrain?: (member: MultiMember, width: number, height: number) => { width: number; height: number };
-}): MultiResizeResult {
-  const minimum = Math.max(1, finite(input.minSize, MIN_OBJECT_SIZE));
-  const start = input.startBounds;
-  const handle = String(input.handle);
-
-  let left = start.left;
-  let top = start.top;
-  let right = start.right;
-  let bottom = start.bottom;
-
-  if (handle.includes("w")) left = Math.min(start.left + finite(input.dx), start.right - minimum);
-  if (handle.includes("e")) right = Math.max(start.right + finite(input.dx), start.left + minimum);
-  if (handle.includes("n")) top = Math.min(start.top + finite(input.dy), start.bottom - minimum);
-  if (handle.includes("s")) bottom = Math.max(start.bottom + finite(input.dy), start.top + minimum);
-
-  let width = right - left;
-  let height = bottom - top;
-
-  if (input.preserveAspect && start.width > 0 && start.height > 0) {
-    const factor = Math.max(width / start.width, height / start.height);
-    width = start.width * factor;
-    height = start.height * factor;
-    if (handle.includes("w")) left = right - width;
-    else right = left + width;
-    if (handle.includes("n")) top = bottom - height;
-    else bottom = top + height;
-  }
-
-  const scaleX = start.width > 0 ? width / start.width : 1;
-  const scaleY = start.height > 0 ? height / start.height : 1;
-
-  return input.members.map((member) => {
-    const requestedWidth = finite(member.width) * scaleX;
-    const requestedHeight = finite(member.height) * scaleY;
-    const constrained = input.constrain
-      ? input.constrain(member, requestedWidth, requestedHeight)
-      : { width: requestedWidth, height: requestedHeight };
-    return {
-      id: member.id,
-      x: Math.round(left + (finite(member.x) - start.left) * scaleX),
-      y: Math.round(top + (finite(member.y) - start.top) * scaleY),
-      width: Math.max(1, Math.round(constrained.width)),
-      height: Math.max(1, Math.round(constrained.height)),
-    };
-  });
-}
-
-/**
- * Rotate a selection as one rigid body: every member orbits the shared pivot
- * AND spins by the same delta, which is what keeps the arrangement intact.
- */
-export function resolveMultiRotate(input: {
-  members: readonly MultiMember[];
-  pivotX: number;
-  pivotY: number;
-  deltaDegrees: number;
-  freeRotation?: boolean;
-}): Array<{ id: string; x: number; y: number; rotation: number }> {
-  let delta = finite(input.deltaDegrees);
-  if (!input.freeRotation) delta = Math.round(delta / ROTATION_SNAP_STEP) * ROTATION_SNAP_STEP;
-  return input.members.map((member) => {
-    const point = rotatePoint(member.x, member.y, input.pivotX, input.pivotY, delta);
-    return {
-      id: member.id,
-      x: Math.round(point.x),
-      y: Math.round(point.y),
-      rotation: normalizeRotation(finite(member.rotation) + delta),
-    };
-  });
-}
-
 /* ---------------------------------------------------------------------------
- * Movement
+ * Multi-object movement (spec §18)
  * ------------------------------------------------------------------------ */
 
 /**
@@ -354,22 +96,82 @@ export function applySelectionDelta(
   );
 }
 
-/** Arrow-key nudge (spec §33). Shift takes a bigger step. */
-export const NUDGE_STEP = 1;
-export const NUDGE_STEP_LARGE = 10;
+/* ---------------------------------------------------------------------------
+ * Committing a drag (spec §18)
+ * ------------------------------------------------------------------------ */
 
-export function resolveNudge(key: string, large: boolean): { dx: number; dy: number } | null {
-  const step = large ? NUDGE_STEP_LARGE : NUDGE_STEP;
-  switch (key) {
-    case "ArrowLeft":
-      return { dx: -step, dy: 0 };
-    case "ArrowRight":
-      return { dx: step, dy: 0 };
-    case "ArrowUp":
-      return { dx: 0, dy: -step };
-    case "ArrowDown":
-      return { dx: 0, dy: step };
-    default:
-      return null;
+/** A dragged object, carrying BOTH geometries it is described by. */
+export type DragCommitMember = {
+  id: string;
+  /** Resolved centre at pointer-down — the box the gesture moved on screen. */
+  x: number;
+  y: number;
+  /** Persisted centre at pointer-down — the origin the document stores. */
+  documentX: number;
+  documentY: number;
+};
+
+/**
+ * Turn the resolved positions a gesture ended at into document patches.
+ *
+ * A drag is a TRANSLATION, and this is the one place that fact is enforced.
+ * The interaction layer works in RESOLVED geometry — for auto-sized text that
+ * is the measured glyph box, which `resolveTextBox` re-anchors inside the
+ * authored box, so its centre is NOT the centre the document stores. Writing
+ * the resolved position straight into the document therefore silently moved the
+ * layer by the difference between the two, on every drag, for as long as that
+ * difference existed. Measured on the fixture's auto-width layer: a drag
+ * intended to move 161.5 document pixels moved 119 — a 42.5px error, and the
+ * error grew with the gap between the stored and measured box, which is why it
+ * appeared after resizing type.
+ *
+ * Taking the delta and applying it to the persisted origin makes the committed
+ * movement identical to the movement the customer saw, independently of font
+ * size, alignment, auto-sizing mode, zoom or rotation.
+ */
+export function resolveDragCommits(
+  members: readonly DragCommitMember[],
+  moves: ReadonlyArray<{ id: string; x: number; y: number }>,
+  leadId?: string,
+): Array<{ id: string; patch: { x?: number; y?: number } }> {
+  const byId = new Map(members.map((member) => [member.id, member]));
+  const moveById = new Map(moves.map((move) => [move.id, move]));
+
+  /**
+   * ONE delta for the whole selection, taken from the object the pointer
+   * actually held.
+   *
+   * Deriving each member's delta from its own entry in `moves` looks
+   * equivalent, but those positions are rounded to whole document pixels while
+   * a resolved text centre is frequently fractional (621.5). Rounding a
+   * fractional start plus an exact delta yields a delta that is off by up to
+   * half a pixel — enough to shift text by 1px relative to the shape it was
+   * selected with, which is exactly the rigidity a multi-selection promises not
+   * to break.
+   */
+  let sharedDelta: { dx: number; dy: number } | null = null;
+  const lead = leadId ? byId.get(leadId) : null;
+  const leadMove = leadId ? moveById.get(leadId) : null;
+  if (lead && leadMove) {
+    sharedDelta = { dx: finite(leadMove.x) - finite(lead.x), dy: finite(leadMove.y) - finite(lead.y) };
   }
+
+  const changes: Array<{ id: string; patch: { x?: number; y?: number } }> = [];
+  for (const move of moves) {
+    const member = byId.get(move.id);
+    if (!member) continue;
+    const delta = sharedDelta ?? {
+      dx: finite(move.x) - finite(member.x),
+      dy: finite(move.y) - finite(member.y),
+    };
+    const startX = Number.isFinite(Number(member.documentX)) ? Number(member.documentX) : finite(member.x);
+    const startY = Number.isFinite(Number(member.documentY)) ? Number(member.documentY) : finite(member.y);
+    const nextX = Math.round(startX + delta.dx);
+    const nextY = Math.round(startY + delta.dy);
+    const patch: { x?: number; y?: number } = {};
+    if (Math.round(startX) !== nextX) patch.x = nextX;
+    if (Math.round(startY) !== nextY) patch.y = nextY;
+    if (patch.x !== undefined || patch.y !== undefined) changes.push({ id: move.id, patch });
+  }
+  return changes;
 }

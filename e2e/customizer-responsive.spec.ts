@@ -99,6 +99,13 @@ test.describe("customer customizer responsive shell", () => {
       await page.setViewportSize({ width: viewport.width, height: viewport.height });
       await page.goto(url);
       await expect(page.locator("[data-customizer-root]")).toBeVisible();
+      // The shell mounts before the artwork does. Measuring the fitted page
+      // while the canvas is still laying out reads a page box of zero (or a
+      // transient overflow), so wait for the design surface itself and let the
+      // fit settle before taking any numbers.
+      await expect(page.locator('[data-customizer-canvas="main"] svg').first()).toBeVisible({ timeout: 30_000 });
+      await page.evaluate(() => (document as any).fonts?.ready);
+      await page.waitForTimeout(600);
 
       const layout = await measure(page);
 

@@ -104,6 +104,11 @@ export function useInteractionNodes({
         y: Number(resolved.y) || 0,
         width: Math.abs(Number(resolved.width) || 0),
         height: Math.abs(Number(resolved.height) || 0),
+        // The PERSISTED origin, deliberately taken from the raw layer rather
+        // than from `resolved`. They differ for auto-sized text, and a drag has
+        // to translate the stored origin — see InteractionNode.documentX.
+        documentX: Number(layer.x) || 0,
+        documentY: Number(layer.y) || 0,
         rotation: Number(layer.rotation) || 0,
         opacity: layer.opacity,
         hidden: Boolean(layer.hidden),

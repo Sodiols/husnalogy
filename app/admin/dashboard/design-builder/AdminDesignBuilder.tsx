@@ -48,7 +48,7 @@ import {
 } from "@/lib/customizer/v2/text-editing";
 import { getFieldById, resolveLayerText } from "@/app/components/customizer/customizer-utils";
 import { formatCustomizerVersion, nextCustomizerVersion, type CustomizerUpdateType } from "@/lib/customizer/public-version";
-import {
+import { applyCanvasLayerPatches,
   addLayer,
   addPage,
   alignLayers,
@@ -60,6 +60,10 @@ import {
   duplicatePage,
   getEnabledBuilderPages,
   getLayer,
+  copyLayersToClipboard,
+  cutLayers,
+  pasteLayers,
+  type LayerClipboard,
   genId,
   layersForPage,
   linkLayerToField,
@@ -312,6 +316,24 @@ export default function AdminDesignBuilder({
         if (k === "d" && selectedLayerIds.length) {
           e.preventDefault();
           duplicateSelectedLayers();
+          return;
+        }
+        // Copy / Cut / Paste. `typing` is already excluded by the enclosing
+        // guard, so these never fire while a text field or the inline canvas
+        // editor has focus.
+        if (k === "c" && selectedLayerIds.length) {
+          e.preventDefault();
+          copySelectedLayers();
+          return;
+        }
+        if (k === "x" && selectedLayerIds.length) {
+          e.preventDefault();
+          cutSelectedLayers();
+          return;
+        }
+        if (k === "v") {
+          e.preventDefault();
+          pasteClipboardLayers();
           return;
         }
         // Ctrl/Cmd+G groups, Ctrl/Cmd+Shift+G ungroups. Both are preventDefault-ed
@@ -664,10 +686,14 @@ export default function AdminDesignBuilder({
     setSelectedLayerIds([]);
     bump();
   };
+  /**
+   * One canvas gesture, however many objects it touched, is ONE document
+   * application — one history step and one dirty transition. Text corner
+   * scaling carries `textStyle`, which is folded into the same template value
+   * rather than sent through a second, separate write.
+   */
   const onCanvasLayersChange = (patches: Record<string, any>) => {
-    let next = tRef.current;
-    for (const [id, patch] of Object.entries(patches)) next = updateLayer(next, id, patch);
-    apply(next);
+    apply(applyCanvasLayerPatches(tRef.current, patches));
   };
 
   /* ----- selection + alignment commands (spec §2–§8) ----- */
@@ -794,6 +820,45 @@ export default function AdminDesignBuilder({
     commit(next);
     setSelectedLayerIds(newIds);
   };
+  /**
+   * Admin clipboard (spec §32).
+   *
+   * Shares `cloneLayersInto` with Duplicate and, through
+   * `lib/customizer/v2/clipboard`, with the customer editor — so "what does a
+   * copy of a group mean" is answered once. The clipboard holds the whole
+   * SUBTREE plus the ids that were actually selected: a group container without
+   * its members could only ever paste as an empty group.
+   *
+   * Each command is a single `commit`, which is what makes a cut-and-paste pair
+   * two clean undo steps rather than a scattering of partial ones.
+   */
+  const clipboardRef = useRef<LayerClipboard>({ rootIds: [], layers: [] });
+
+  const copySelectedLayers = () => {
+    if (!selectedLayerIds.length) return;
+    clipboardRef.current = copyLayersToClipboard(tRef.current, selectedLayerIds);
+  };
+
+  const cutSelectedLayers = () => {
+    if (!selectedLayerIds.length) return;
+    const { template: next, clipboard, removedIds } = cutLayers(tRef.current, selectedLayerIds);
+    clipboardRef.current = clipboard;
+    // A selection of nothing but locked layers copies but removes nothing, so
+    // there is no document change to record.
+    if (!removedIds.length) return;
+    commit(next);
+    setEditingGroupId(null);
+    setSelectedLayerIds([]);
+  };
+
+  const pasteClipboardLayers = () => {
+    const { template: next, newIds } = pasteLayers(tRef.current, clipboardRef.current, activePage);
+    if (!newIds.length) return;
+    commit(next);
+    setEditingGroupId(null);
+    setSelectedLayerIds(newIds);
+  };
+
   const arrangeSelectedLayers = (action: LayerArrangeMode) => {
     if (!selectedLayerIds.length) return;
     commit(arrangeLayerSelection(tRef.current, selectedLayerIds, action));

@@ -14,34 +14,17 @@ import { seedManifest } from "./helpers";
 // and the "Edit Text" button in the selection toolbar (which reopens it for
 // an already-selected layer) — instead of guessing canvas pixel coordinates.
 
-async function personalizeUrl(page: Page): Promise<string> {
-  const fromEnv = process.env.E2E_CUSTOMIZER_URL || seedManifest.customizerUrl || "";
-  if (fromEnv) return fromEnv;
-  await page.goto("/products");
-  const slugs = await page.evaluate(() =>
-    Array.from(document.querySelectorAll('a[href^="/products/"]'))
-      .map((a) => (a.getAttribute("href") || "").split("/")[2])
-      .filter((slug, index, all) => slug && all.indexOf(slug) === index),
-  );
-  for (const slug of slugs) {
-    const candidate = `/products/${slug}/personalize`;
-    await page.goto(candidate);
-    const root = page.locator("[data-customizer-root]");
-    if (!(await root.count())) continue;
-    await switchToAdvancedCustomize(page);
-    const textTool = root.getByRole("button", { name: "Text", exact: true });
-    if (!(await textTool.count())) continue;
-    // The Text tool can appear because *some* page allows customer text, even
-    // when the page that's active by default does not — only the preset
-    // buttons confirm the default page itself accepts a new text layer.
-    await textTool.click();
-    const hasPreset = await root
-      .getByRole("button", { name: "Add Body Text", exact: true })
-      .waitFor({ state: "visible", timeout: 3000 })
-      .then(() => true, () => false);
-    if (hasPreset) return candidate;
-  }
-  throw new Error("No product exposes a personalize page whose default page accepts customer text.");
+/**
+ * The customizer to test. An explicit URL (env or seed manifest) still wins, so
+ * the suite can run against a staging product; otherwise it uses the in-memory
+ * fixture, whose default page accepts customer text by construction.
+ *
+ * This used to hunt the live catalogue for a suitable product and SKIP when
+ * none existed — which silently hid the fact that its own selectors had gone
+ * stale against the current Text panel.
+ */
+function personalizeUrl(): string {
+  return process.env.E2E_CUSTOMIZER_URL || seedManifest.customizerUrl || "/__e2e/customizer";
 }
 
 /** The Text tool lives behind "Advanced Customize" — Easy Personalize (the
@@ -60,14 +43,17 @@ const editorState = (page: Page) =>
     return { open: Boolean(el), tag: el?.tagName ?? null, value: el?.value ?? null };
   });
 
-/** Adds a new customer text layer and waits for its on-canvas editor to open. */
-async function addAndOpenTextLayer(
-  page: Page,
-  preset: "Add Heading" | "Add Subheading" | "Add Body Text" = "Add Body Text",
-) {
+/**
+ * Adds a new customer text layer and waits for its on-canvas editor to open.
+ *
+ * The Text tool itself inserts a text object — the default "body" preset, which
+ * is multiline — and opens its editor straight away. That is the path a
+ * customer can actually use today; see the known-defect test at the end of this
+ * file for why the preset buttons are not driven here.
+ */
+async function addAndOpenTextLayer(page: Page) {
   const root = page.locator("[data-customizer-root]");
   await root.getByRole("button", { name: "Text", exact: true }).click();
-  await root.getByRole("button", { name: preset, exact: true }).click();
   await expect.poll(async () => (await editorState(page)).open, { timeout: 5000 }).toBe(true);
   return editorState(page);
 }
@@ -77,7 +63,8 @@ async function addAndOpenTextLayer(
 async function reopenTextLayerEditor(page: Page) {
   const root = page.locator("[data-customizer-root]");
   await root.getByRole("button", { name: "Layers", exact: true }).click();
-  await root.getByRole("button", { name: /Customer text/i }).first().click();
+  // Rows are named "<icon> <layer name> <origin>", e.g. "T Body text Customer created".
+  await root.getByRole("button", { name: /Customer created/i }).first().click();
   await root.getByRole("button", { name: "Edit Text", exact: true }).click();
   await expect.poll(async () => (await editorState(page)).open, { timeout: 5000 }).toBe(true);
 }
@@ -85,16 +72,7 @@ async function reopenTextLayerEditor(page: Page) {
 test.describe("on-canvas text editing keyboard contract", () => {
   test("Ctrl+Enter finishes editing and commits, exactly like Done", async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 900 });
-    let url: string;
-    try {
-      url = await personalizeUrl(page);
-    } catch (error) {
-      // No live product currently has "customer added text" enabled on any
-      // page — that's an admin/catalog configuration choice, not a code bug.
-      test.skip(true, (error as Error).message);
-      return;
-    }
-    await page.goto(url);
+    await page.goto(personalizeUrl());
     await expect(page.locator("[data-customizer-root]")).toBeVisible();
     await switchToAdvancedCustomize(page);
 
@@ -114,16 +92,7 @@ test.describe("on-canvas text editing keyboard contract", () => {
 
   test("Escape leaves editing without stranding the editor open", async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 900 });
-    let url: string;
-    try {
-      url = await personalizeUrl(page);
-    } catch (error) {
-      // No live product currently has "customer added text" enabled on any
-      // page — that's an admin/catalog configuration choice, not a code bug.
-      test.skip(true, (error as Error).message);
-      return;
-    }
-    await page.goto(url);
+    await page.goto(personalizeUrl());
     await expect(page.locator("[data-customizer-root]")).toBeVisible();
     await switchToAdvancedCustomize(page);
 
@@ -151,22 +120,13 @@ test.describe("on-canvas text editing keyboard contract", () => {
 
   test("Enter inserts a real line break in a multiline editor and never closes it", async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 900 });
-    let url: string;
-    try {
-      url = await personalizeUrl(page);
-    } catch (error) {
-      // No live product currently has "customer added text" enabled on any
-      // page — that's an admin/catalog configuration choice, not a code bug.
-      test.skip(true, (error as Error).message);
-      return;
-    }
-    await page.goto(url);
+    await page.goto(personalizeUrl());
     await expect(page.locator("[data-customizer-root]")).toBeVisible();
     await switchToAdvancedCustomize(page);
 
-    // "Add Body Text" is the multiline preset (spec: customer text presets —
-    // heading and subheading are single-line, body is multiline).
-    await addAndOpenTextLayer(page, "Add Body Text");
+    // The Text tool inserts the "body" preset, which is the multiline one
+    // (heading and subheading are single-line).
+    await addAndOpenTextLayer(page);
     await page.keyboard.type("LINE ONE");
     await page.keyboard.press("Enter");
     // A plain Enter in a multiline editor inserts a line break and keeps editing open.
@@ -177,5 +137,31 @@ test.describe("on-canvas text editing keyboard contract", () => {
 
     await page.keyboard.press("Control+Enter");
     await expect.poll(async () => (await editorState(page)).open, { timeout: 5000 }).toBe(false);
+  });
+
+  /**
+   * KNOWN DEFECT, asserted rather than skipped.
+   *
+   * The preset buttons ("Add Heading", "Add Subheading", "Add Body Text") are
+   * only visible while the Text tool's freshly inserted, still-empty text layer
+   * is being edited. Pressing one moves focus out of that editor first; the
+   * empty layer is discarded, the panel closes, and the click lands on nothing —
+   * so no preset can ever be applied.
+   *
+   * `test.fail()` runs this and expects it to fail. When the defect is fixed the
+   * test passes, Playwright reports that as an error, and the marker must be
+   * removed — it cannot silently outlive the bug.
+   */
+  test("choosing a text preset inserts a text object in that style", async ({ page }) => {
+    test.fail(true, "Known defect: text presets are unreachable — the preset click is lost when the auto-inserted empty text layer is discarded.");
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto(personalizeUrl());
+    await expect(page.locator("[data-customizer-root]")).toBeVisible();
+    await switchToAdvancedCustomize(page);
+
+    const root = page.locator("[data-customizer-root]");
+    await root.getByRole("button", { name: "Text", exact: true }).click();
+    await root.getByRole("button", { name: /Add Heading/ }).click({ timeout: 5000 });
+    await expect.poll(async () => (await editorState(page)).open, { timeout: 5000 }).toBe(true);
   });
 });

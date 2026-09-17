@@ -13,6 +13,7 @@
 import { DEFAULT_FONT_FAMILY } from "@/lib/customizer/v2/google-fonts";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import CustomizerPreview from "@/app/components/customizer/CustomizerPreview";
+import { createTransientGeometryStore, type TransientGeometryStore } from "@/lib/customizer/v2/interaction/transient-preview";
 import InteractionStageClient from "@/app/components/customizer/interaction/InteractionStageClient";
 import { useInteractionNodes } from "@/app/components/customizer/interaction/useInteractionNodes";
 import EditableNumericStepper from "@/app/components/customizer/EditableNumericStepper";
@@ -106,7 +107,15 @@ export default function AdminCanvas({
   const previewRootRef = useRef<HTMLDivElement>(null);
   // Exact in-progress geometry during a resize/rotation — see the customer
   // workspace for the reasoning. Same shared mechanism, same renderer.
-  const [transientGeometry, setTransientGeometry] = useState<Record<string, Record<string, any>> | null>(null);
+  // Live gesture geometry, delivered per layer so a resize or rotation
+  // re-renders only the object being changed (spec §19).
+  const transientStoreRef = useRef<TransientGeometryStore | null>(null);
+  if (!transientStoreRef.current) transientStoreRef.current = createTransientGeometryStore();
+  const transientStore = transientStoreRef.current;
+  const setTransientGeometry = useCallback(
+    (overrides: Record<string, Record<string, unknown>> | null) => transientStore.set(overrides),
+    [transientStore],
+  );
 
   const canvasW = template?.canvasWidthPx || 1500;
   const canvasH = template?.canvasHeightPx || 2100;
@@ -385,18 +394,17 @@ export default function AdminCanvas({
   );
 
   /**
-   * Commit normalised Husnalogy geometry for a finished (or in-flight) gesture.
+   * Commit normalised Husnalogy geometry for a finished gesture.
    *
-   * A multi-object change goes through `onLayersChange` so the whole set lands
-   * in ONE document application — and therefore one history step (spec §45).
-   * A change carrying `textStyle` cannot use that path, because the batch
-   * handler applies plain layer patches only, so those commit individually.
+   * Every gesture — one object or many, with or without a text-style change —
+   * goes through `onLayersChange`, so the whole set lands in ONE document
+   * application and therefore one history step (spec §8, §45). The per-layer
+   * path remains only for an owner that does not provide the batch handler.
    */
   const commitChanges = useCallback(
     (changes: Array<{ id: string; patch: Record<string, unknown> }>) => {
       if (!changes.length) return;
-      const carriesStyle = changes.some((change) => change.patch.textStyle);
-      if (changes.length > 1 && !carriesStyle && onLayersChange) {
+      if (onLayersChange) {
         const patches: Record<string, unknown> = {};
         for (const change of changes) patches[change.id] = withTextConstraints(change.id, change.patch);
         onLayersChange(patches);
@@ -587,7 +595,7 @@ export default function AdminCanvas({
       >
         {/* Base render (shared with the customer) */}
         <div ref={previewRootRef} className="pointer-events-none absolute inset-0">
-          <CustomizerPreview template={template} values={values} page={pageId} showSafeArea={showSafeArea} showBleed={showBleed} hiddenLayerIds={[]} geometryOverrides={transientGeometry} />
+          <CustomizerPreview template={template} values={values} page={pageId} showSafeArea={showSafeArea} showBleed={showBleed} hiddenLayerIds={[]} transientStore={transientStore} />
         </div>
 
         {/* Shared Konva interaction layer — the SAME component the customer
