@@ -1,4 +1,4 @@
-import { requireAdmin } from "@/lib/auth/admin-server";
+import { requireDesignerOrAdmin } from "@/lib/auth/roles";
 import { createServiceRoleClient } from "@/lib/supabase/server";
 import { categoryFromRow } from "@/lib/customizer/assets";
 
@@ -12,8 +12,10 @@ function slugify(value: string): string {
 
 // GET /api/admin/customizer/asset-categories — list all categories.
 export async function GET() {
-  const admin = await requireAdmin();
-  if (!admin.ok) return admin.response;
+  // Library taxonomy is shared studio content.
+  const session = await requireDesignerOrAdmin();
+  if (!session.ok) return session.response;
+  const admin = { ok: true, admin: session.actor } as const;
 
   const supabase = createServiceRoleClient();
   const { data, error } = await supabase
@@ -27,8 +29,10 @@ export async function GET() {
 
 // POST /api/admin/customizer/asset-categories — create a category.
 export async function POST(request: Request) {
-  const admin = await requireAdmin();
-  if (!admin.ok) return admin.response;
+  // Library taxonomy is shared studio content.
+  const session = await requireDesignerOrAdmin();
+  if (!session.ok) return session.response;
+  const admin = { ok: true, admin: session.actor } as const;
 
   const body = await request.json().catch(() => ({}));
   const name = String(body.name || "").trim().slice(0, 120);

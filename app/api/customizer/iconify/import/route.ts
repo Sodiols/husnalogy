@@ -7,6 +7,7 @@
 // After this returns, the design references an ordinary `customizer_assets`
 // row and never depends on Iconify again (spec §55).
 
+import { canUseLibraryProducerAudience, normalizeRole } from "@/lib/auth/roles";
 import { createClient, createServiceRoleClient } from "@/lib/supabase/server";
 import { rateLimitDistributed } from "@/lib/security/rate-limit";
 import { evaluateLicense, friendlyIconName, parseIconIdentity } from "@/lib/customizer/v2/iconify";
@@ -43,7 +44,14 @@ export async function POST(request: Request) {
   }
 
   const { data: profile } = await supabase.from("profiles").select("role").eq("id", user.id).maybeSingle();
-  const isAdmin = profile?.role === "admin";
+  // Producer audience = admin OR designer. Decided by the capability layer so
+  // this route does not carry its own idea of what a role means.
+  const isAdmin = canUseLibraryProducerAudience({
+    id: user.id,
+    email: "",
+    name: "",
+    role: normalizeRole(profile?.role),
+  });
 
   const service = createServiceRoleClient();
 

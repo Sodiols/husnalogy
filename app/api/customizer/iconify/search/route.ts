@@ -3,6 +3,7 @@
 // The browser talks to Husnalogy, never to Iconify: the server owns the
 // upstream URL, the license policy and the caching (spec §6).
 
+import { canUseLibraryProducerAudience, normalizeRole } from "@/lib/auth/roles";
 import { createClient } from "@/lib/supabase/server";
 import { rateLimit } from "@/lib/security/rate-limit";
 import { normalizePage, normalizePageSize, normalizeSearchQuery } from "@/lib/customizer/v2/iconify";
@@ -32,7 +33,14 @@ export async function GET(request: Request) {
   // Admins may see license-blocked collections labelled with a verdict, so the
   // policy is diagnosable; customers only ever receive permitted results.
   const { data: profile } = await supabase.from("profiles").select("role").eq("id", user.id).maybeSingle();
-  const audience = profile?.role === "admin" ? "admin" : "customer";
+  const audience = canUseLibraryProducerAudience({
+    id: user.id,
+    email: "",
+    name: "",
+    role: normalizeRole(profile?.role),
+  })
+    ? "admin"
+    : "customer";
 
   try {
     const { results, total, filtered } = await searchIcons({ query, page, pageSize, audience });

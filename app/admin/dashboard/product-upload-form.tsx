@@ -1152,7 +1152,23 @@ function LivePreview({ form, collections }) {
 /* Main form                                                            */
 /* ------------------------------------------------------------------ */
 
-export default function ProductUploadForm({ product = null, onSaved, onClose }) {
+/**
+ * Shared by the admin dashboard and the designer workspace.
+ *
+ * `mode` changes only which ACTIONS the footer offers — the fields, the media
+ * uploads and the embedded Design Builder are identical, so there is one
+ * product editor rather than two that drift. The server enforces the same
+ * boundary independently: a designer's payload is stripped of status,
+ * publication and workflow fields whatever this component renders.
+ */
+export default function ProductUploadForm({
+  product = null,
+  onSaved,
+  onClose,
+  mode = "admin",
+  onSubmitForReview,
+}: any) {
+  const isDesigner = mode === "designer";
   const [form, setForm] = useState(() => buildInitialForm(product));
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [collections, setCollections] = useState([]);
@@ -1880,14 +1896,31 @@ export default function ProductUploadForm({ product = null, onSaved, onClose }) 
               >
                 {saving === "draft" ? "Saving..." : "Save as Draft"}
               </button>
-              <button
-                type="button"
-                onClick={() => save("publish")}
-                disabled={Boolean(saving)}
-                className="bg-[#111111] px-6 py-3 text-sm font-extrabold text-white transition hover:bg-[#222222] disabled:opacity-50"
-              >
-                {saving === "publish" ? "Publishing..." : "Publish Product"}
-              </button>
+              {/* Publishing is an administrator's decision. A designer hands the
+                  work over for review instead; the server refuses the publish
+                  transition for them regardless of what is rendered here. */}
+              {isDesigner ? (
+                <button
+                  type="button"
+                  onClick={async () => {
+                    await save("draft");
+                    onSubmitForReview?.(editingId);
+                  }}
+                  disabled={Boolean(saving)}
+                  className="bg-[#111111] px-6 py-3 text-sm font-extrabold text-white transition hover:bg-[#222222] disabled:opacity-50"
+                >
+                  {saving ? "Saving..." : "Save & Submit for Review"}
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => save("publish")}
+                  disabled={Boolean(saving)}
+                  className="bg-[#111111] px-6 py-3 text-sm font-extrabold text-white transition hover:bg-[#222222] disabled:opacity-50"
+                >
+                  {saving === "publish" ? "Publishing..." : "Publish Product"}
+                </button>
+              )}
             </div>
           </FormSection>
 

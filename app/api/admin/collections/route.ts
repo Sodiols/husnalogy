@@ -1,9 +1,12 @@
+import { requireDesignerOrAdmin } from "@/lib/auth/roles";
 import { requireAdmin } from "@/lib/auth/admin-server";
 import { createProductCollection, deleteProductCollection, getProductCollections, updateProductCollection } from "@/lib/collections/store";
 
 export async function GET() {
-  const admin = await requireAdmin();
-  if (!admin.ok) return admin.response;
+  // Read-only for the product form's collection picker. Writes below stay admin-only.
+  const session = await requireDesignerOrAdmin();
+  if (!session.ok) return session.response;
+  const admin = { ok: true, admin: session.actor } as const;
 
   const collections = await getProductCollections();
   return Response.json({ ok: true, collections });

@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 import { createId, nowIso } from "@/lib/core/id";
 import { getProductCollections } from "@/lib/collections/store";
 import { createServiceRoleClient } from "@/lib/supabase/server";
+import { sanitizeProductInputForActor, workflowStateForStatusChange } from "@/lib/products/workflow";
 import { normalizeCustomizerTemplate, templateFromRow } from "@/lib/customizer";
 import { hydrateAdminAssetUrls } from "@/lib/customizer/server/admin-assets";
 import { migrateTextAutoSizing } from "@/lib/customizer/v2/text-layout";
@@ -648,6 +649,15 @@ function productFromRow(row: any = {}) {
     updatedAt: row.updated_at || product.updatedAt,
     publishedAt: row.published_at ?? product.publishedAt,
     deletedAt: row.deleted_at ?? product.deletedAt,
+    // Ownership + editorial workflow. Read straight from the COLUMNS, never
+    // from `data`, so a crafted product body cannot fake ownership.
+    createdBy: row.created_by ?? null,
+    assignedDesignerId: row.assigned_designer_id ?? null,
+    workflowState: row.workflow_state || "draft",
+    submittedAt: row.submitted_at ?? null,
+    reviewedAt: row.reviewed_at ?? null,
+    reviewedBy: row.reviewed_by ?? null,
+    reviewNote: row.review_note ?? null,
   };
 }
 
@@ -689,10 +699,29 @@ async function toProductRow(product) {
     coming_in_days: product.isStockOut ? product.comingInDays : null,
     deleted_at: product.deletedAt || null,
     published_at: product.publishedAt || null,
-    data: product,
+    // The JSONB mirror must not carry ownership or workflow: the columns are
+    // the only authority, and a stale copy inside `data` would be a second,
+    // forgeable source of truth.
+    data: stripWorkflowFields(product),
     created_at: product.createdAt,
     updated_at: product.updatedAt,
   };
+}
+
+const WORKFLOW_FIELDS = [
+  "createdBy",
+  "assignedDesignerId",
+  "workflowState",
+  "submittedAt",
+  "reviewedAt",
+  "reviewedBy",
+  "reviewNote",
+];
+
+function stripWorkflowFields(product) {
+  const clone = { ...product };
+  for (const key of WORKFLOW_FIELDS) delete clone[key];
+  return clone;
 }
 
 async function replaceProductMedia(productId, table, urlColumn, urls = []) {
@@ -794,16 +823,52 @@ export async function hydrateProductCustomizerAssets(input) {
   return hydrateAdminAssetUrls(input, supabase);
 }
 
+/**
+ * One product, by slug — as ONE query.
+ *
+ * This used to call `getProducts()` and then `.find()` in JavaScript, so
+ * opening a single product detail page downloaded the ENTIRE catalog: every
+ * product, with all of its images, mockups, videos, reviews and full customizer
+ * template JSON, to return one row. That cost grows linearly with the catalog
+ * and it sits on the hottest public page in the shop.
+ */
 export async function getProductBySlug(slug, includeInactive = false) {
-  const products = await getProducts();
-  const product = products.find((item) => item.slug === slug);
+  const cleanSlug = String(slug || "").trim();
+  if (!cleanSlug) return null;
 
-  if (!product) return null;
+  const supabase = createServiceRoleClient();
+  const { data, error } = await supabase
+    .from("products")
+    .select(PRODUCT_SELECT)
+    .eq("slug", cleanSlug)
+    .neq("status", "deleted")
+    .maybeSingle();
+  if (error) throw error;
+  if (!data) return null;
+
+  const product = productFromRow(data);
   // "direct" visibility stays reachable through its link but never in listings;
   // "hidden" visibility is admin-only even when the product status is active.
   if (!includeInactive && (product.status !== "active" || (product.visibility || "public") === "hidden")) return null;
 
-  return product.customizerTemplate ? hydrateProductCustomizerAssets(product) : product;
+  /**
+   * Whether a customer can actually personalize this product.
+   *
+   * Deliberately NOT `customizerTemplate.enabled`: that flag lives on the
+   * working draft, so an enabled-but-never-published design would offer a
+   * Personalize button that bounces straight back here. The public answer is
+   * "has a published version been created", which is the same condition
+   * `/personalize` enforces.
+   */
+  const { count } = await supabase
+    .from("customizer_template_versions")
+    .select("id", { count: "exact", head: true })
+    .eq("product_id", product.id);
+  const withCustomizerFlag = { ...product, hasPublishedCustomizer: Number(count || 0) > 0 };
+
+  return withCustomizerFlag.customizerTemplate
+    ? hydrateProductCustomizerAssets(withCustomizerFlag)
+    : withCustomizerFlag;
 }
 
 export async function getOtherStyles(productOrSlug, limit = 12) {
@@ -967,9 +1032,18 @@ function generateUniqueSlug(products, baseSlug) {
   return `${baseSlug}-${counter}`;
 }
 
-export async function createProduct(input) {
+/**
+ * Create a product.
+ *
+ * `actor` is the AUTHENTICATED session, supplied by the route. Ownership and
+ * workflow state are written from it, never from the request body — a designer
+ * cannot post `created_by` and claim someone else's product, and cannot post a
+ * workflow state to skip review.
+ */
+export async function createProduct(input, options: { actor?: any } = {}) {
+  const actor = options.actor || null;
   const products = await getProducts();
-  const product = normalizeProduct(input);
+  const product = normalizeProduct(sanitizeProductInputForActor(input, actor, null));
   const errors = validateProduct(product);
 
   if (Object.keys(errors).length) {
@@ -979,14 +1053,35 @@ export async function createProduct(input) {
   product.slug = generateUniqueSlug(products, product.slug);
 
   const supabase = createServiceRoleClient();
-  const { error } = await supabase.from("products").insert(await toProductRow(product));
+  const row: Record<string, any> = await toProductRow(product);
+  // Every new product starts as an unreviewed draft, whoever made it.
+  row.workflow_state = "draft";
+  row.created_by = actor?.id || null;
+  // An admin creating on a designer's behalf can assign later; a designer owns
+  // what they create.
+  row.assigned_designer_id = actor?.role === "designer" ? actor.id : null;
+
+  const { error } = await supabase.from("products").insert(row);
   if (error) throw error;
 
   await syncProductDetails(product);
-  return { ok: true, product };
+  return {
+    ok: true,
+    product: { ...product, createdBy: row.created_by, assignedDesignerId: row.assigned_designer_id, workflowState: "draft" },
+  };
 }
 
-export async function updateProduct(id, input) {
+/**
+ * Update a product.
+ *
+ * `actor` gates which fields the payload may carry. Ownership, workflow state
+ * and review metadata are stripped for everyone (they move through the
+ * dedicated submit/review/assign endpoints), and publication fields are
+ * additionally stripped for a designer — so the widest endpoint in the product
+ * surface cannot be used to escape the review workflow.
+ */
+export async function updateProduct(id, input, options: { actor?: any } = {}) {
+  const actor = options.actor || null;
   const products = await getProducts();
   const index = products.findIndex((product) => product.id === id);
 
@@ -994,7 +1089,7 @@ export async function updateProduct(id, input) {
     return { ok: false, errors: { product: "Product not found." } };
   }
 
-  const product = normalizeProduct(input, products[index]);
+  const product = normalizeProduct(sanitizeProductInputForActor(input, actor, products[index]), products[index]);
   const errors = validateProduct(product);
 
   if (Object.keys(errors).length) {
@@ -1006,11 +1101,27 @@ export async function updateProduct(id, input) {
   }
 
   const supabase = createServiceRoleClient();
-  const { error } = await supabase.from("products").update(await toProductRow(product)).eq("id", id);
+  const row: Record<string, any> = await toProductRow(product);
+
+  // Putting a product on sale from the product editor IS publishing it, so the
+  // editorial state has to follow. Without this the two publish surfaces
+  // disagree: the storefront shows the product while the review queue still
+  // lists it under "Awaiting review". `toProductRow` never writes the workflow
+  // columns, so this is the only line in the ordinary update path that touches
+  // them, and it is reached only for an actor who may publish.
+  const nextWorkflowState = workflowStateForStatusChange(actor, products[index], product.status);
+  if (nextWorkflowState) {
+    row.workflow_state = nextWorkflowState;
+    row.reviewed_at = nowIso();
+    row.reviewed_by = actor?.id || null;
+    if (nextWorkflowState === "published" && !row.published_at) row.published_at = nowIso();
+  }
+
+  const { error } = await supabase.from("products").update(row).eq("id", id);
   if (error) throw error;
 
   await syncProductDetails(product);
-  return { ok: true, product };
+  return { ok: true, product: { ...product, workflowState: nextWorkflowState || products[index].workflowState } };
 }
 
 export async function getDeletedProducts() {

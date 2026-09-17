@@ -1,11 +1,14 @@
-import { requireAdmin } from "@/lib/auth/admin-server";
+import { requireProductEditor } from "@/lib/auth/roles";
 import { loadNormalizedMockupTemplate, saveNormalizedMockupTemplate } from "@/lib/customizer/mockup-store";
 import { rejectLargeRequest } from "@/lib/security/rate-limit";
 
 export async function GET(_request: Request, { params }: any) {
-  const admin = await requireAdmin();
-  if (!admin.ok) return admin.response;
   const { productId } = await params;
+  // Ownership is re-read from the database: a designer cannot reach another
+  // designer's design by guessing a product id.
+  const session = await requireProductEditor(productId);
+  if (!session.ok) return session.response;
+  const admin = { ok: true, admin: session.actor } as const;
   try {
     const mockup = await loadNormalizedMockupTemplate(String(productId), { includeDraft: true });
     return Response.json({ ok: true, mockup });
@@ -16,11 +19,14 @@ export async function GET(_request: Request, { params }: any) {
 }
 
 export async function PUT(request: Request, { params }: any) {
-  const admin = await requireAdmin();
-  if (!admin.ok) return admin.response;
+  const { productId } = await params;
+  // Ownership is re-read from the database: a designer cannot reach another
+  // designer's design by guessing a product id.
+  const session = await requireProductEditor(productId);
+  if (!session.ok) return session.response;
+  const admin = { ok: true, admin: session.actor } as const;
   const tooLarge = rejectLargeRequest(request, 512 * 1024);
   if (tooLarge) return tooLarge;
-  const { productId } = await params;
   const body = await request.json().catch(() => null);
   if (!body?.mockup) return Response.json({ ok: false, error: "Mockup configuration is required." }, { status: 400 });
   try {

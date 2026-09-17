@@ -349,8 +349,11 @@ export default function ProductInfo({ product, initialUser = undefined }) {
   // The full live customizer is available when the product has an enabled
   // template, or (backward compatible) when it has legacy personalization
   // fields — the /personalize route builds a fallback template for those.
+  // A PUBLISHED customizer version, not an enabled draft: /personalize serves
+  // published snapshots only, so gating on the draft flag would offer a button
+  // that redirects straight back here.
   const hasCustomizer =
-    Boolean(product.customizerTemplate?.enabled) ||
+    Boolean(product.hasPublishedCustomizer) ||
     (product.customizeEnabled !== false && fields.length > 0);
 
   const quantityOptions = product.quantityOptions?.length

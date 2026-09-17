@@ -139,6 +139,106 @@ export async function getTemplateVersion(templateId: string, version: number): P
   return versionFromRow({ ...data, document: hydratedDocument });
 }
 
+
+/**
+ * An immutable published snapshot, in the flat template shape the editor, the
+ * validators and the renderers all consume.
+ *
+ * V2 documents round-trip into that shape through the pages/layers overlap.
+ * This is deliberately the ONE conversion: the public customizer, the save
+ * validator and the print renderer must all be looking at the same bytes, or a
+ * customer can be shown one design and sold another.
+ */
+export function templateFromVersionSnapshot(snapshot: TemplateVersionRow | null): any | null {
+  if (!snapshot || !snapshot.document || !Object.keys(snapshot.document).length) return null;
+  const doc: any = snapshot.document;
+  return {
+    id: snapshot.templateId,
+    version: snapshot.version,
+    publicVersion: snapshot.displayVersion,
+    enabled: true,
+    engine: "svg",
+    canvasWidthPx: doc.canvas?.widthPx,
+    canvasHeightPx: doc.canvas?.heightPx,
+    cardWidthIn: doc.canvas?.widthIn,
+    cardHeightIn: doc.canvas?.heightIn,
+    dpi: doc.canvas?.dpi,
+    orientation: doc.canvas?.orientation,
+    defaultPage: doc.pages?.[0]?.id || "front",
+    pages: (doc.pages || []).map((page: any) => ({
+      id: page.id,
+      label: page.name,
+      enabled: page.enabled,
+      backgroundImage: page.backgroundImage || "",
+      backgroundColor: page.backgroundColor || "#ffffff",
+      thumbnail: page.thumbnail || page.backgroundImage || "",
+      allowCustomerText: page.allowCustomerText,
+    })),
+    fields: doc.fields || [],
+    layers: (doc.layers || []).map((layer: any) => ({
+      ...layer,
+      page: layer.pageId || layer.page,
+    })),
+    safeArea: doc.pages?.[0]?.safeArea || {},
+    bleed: doc.pages?.[0]?.bleed || {},
+    settings: doc.settings || {},
+    assets: doc.assets || {},
+  };
+}
+
+/**
+ * The newest published snapshot for a product, or null when nothing has been
+ * published yet.
+ *
+ * This is what a NEW customer must be given. The working draft in
+ * `product_customizer_templates` is the designer's scratch pad: it changes on
+ * every autosave, it has not been reviewed, and it is not what the save
+ * validator or the print renderer will use. Serving it to the public means the
+ * customer designs against one document and is sold another.
+ */
+export async function getLatestPublishedVersion(productId: string): Promise<TemplateVersionRow | null> {
+  if (!productId) return null;
+  const supabase = createServiceRoleClient();
+  const { data, error } = await supabase
+    .from("customizer_template_versions")
+    .select("*")
+    .eq("product_id", productId)
+    .order("version", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) throw error;
+  if (!data) return null;
+  const hydratedDocument = await hydrateAdminAssetUrls(data.document, supabase);
+  return versionFromRow({ ...data, document: hydratedDocument });
+}
+
+/**
+ * The template a PUBLIC customizer session must run against.
+ *
+ * `pinnedVersion` resumes an existing customization on the exact snapshot it
+ * was started from, so a customer who began before a re-publish keeps working
+ * on — and is rendered from — the design they actually chose. Without it, a
+ * mid-session publish would silently change the artwork under them.
+ */
+export async function getPublicCustomizerTemplate(
+  productId: string,
+  pinnedVersion?: number | null,
+): Promise<{ template: any; snapshot: TemplateVersionRow } | null> {
+  const wanted = Number(pinnedVersion) || 0;
+  if (wanted > 0) {
+    const draft = await getCustomizerTemplateByProductId(productId);
+    if (draft?.id) {
+      const pinned = await getTemplateVersion(draft.id, wanted);
+      const template = templateFromVersionSnapshot(pinned);
+      if (template && pinned) return { template, snapshot: pinned };
+    }
+  }
+  const latest = await getLatestPublishedVersion(productId);
+  const template = templateFromVersionSnapshot(latest);
+  if (!template || !latest) return null;
+  return { template, snapshot: latest };
+}
+
 // The trusted template a customization must be validated and rendered
 // against: its exact published version snapshot when one exists, otherwise
 // the live template row (legacy templates published before versioning).
@@ -152,45 +252,8 @@ export async function getTrustedTemplateForCustomization(customization: {
 
   if (templateId && version) {
     const snapshot = await getTemplateVersion(templateId, version);
-    if (snapshot && snapshot.document && Object.keys(snapshot.document).length) {
-      // V2 documents round-trip into the flat template shape for the V1
-      // validators/renderers via the pages/layers overlap.
-      const doc: any = snapshot.document;
-      return {
-        template: {
-          id: snapshot.templateId,
-          version: snapshot.version,
-          enabled: true,
-          engine: "svg",
-          canvasWidthPx: doc.canvas?.widthPx,
-          canvasHeightPx: doc.canvas?.heightPx,
-          cardWidthIn: doc.canvas?.widthIn,
-          cardHeightIn: doc.canvas?.heightIn,
-          dpi: doc.canvas?.dpi,
-          orientation: doc.canvas?.orientation,
-          defaultPage: doc.pages?.[0]?.id || "front",
-          pages: (doc.pages || []).map((page: any) => ({
-            id: page.id,
-            label: page.name,
-            enabled: page.enabled,
-            backgroundImage: page.backgroundImage || "",
-            backgroundColor: page.backgroundColor || "#ffffff",
-            thumbnail: page.thumbnail || page.backgroundImage || "",
-            allowCustomerText: page.allowCustomerText,
-          })),
-          fields: doc.fields || [],
-          layers: (doc.layers || []).map((layer: any) => ({
-            ...layer,
-            page: layer.pageId || layer.page,
-          })),
-          safeArea: doc.pages?.[0]?.safeArea || {},
-          bleed: doc.pages?.[0]?.bleed || {},
-          settings: doc.settings || {},
-          assets: doc.assets || {},
-        },
-        source: "version",
-      };
-    }
+    const template = templateFromVersionSnapshot(snapshot);
+    if (template) return { template, source: "version" };
   }
 
   if (customization.productId) {

@@ -1,5 +1,5 @@
+import { requireDesignerOrAdmin } from "@/lib/auth/roles";
 import path from "node:path";
-import { requireAdmin } from "@/lib/auth/admin-server";
 import { canUseSupabaseStorage, uploadToSupabaseStorage } from "@/lib/storage/supabase-storage";
 
 export const runtime = "nodejs";
@@ -115,8 +115,10 @@ async function parseUploadForm(request) {
 }
 
 export async function POST(request) {
-  const admin = await requireAdmin();
-  if (!admin.ok) return admin.response;
+  // Designers upload their own product media; the storage path is derived server side.
+  const session = await requireDesignerOrAdmin();
+  if (!session.ok) return session.response;
+  const admin = { ok: true, admin: session.actor } as const;
 
   const formData = await parseUploadForm(request);
 

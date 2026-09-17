@@ -1,14 +1,17 @@
-import { requireAdmin } from "@/lib/auth/admin-server";
+import { requireProductEditor } from "@/lib/auth/roles";
 import { getCustomizerTemplateByProductId } from "@/lib/customizer/store";
 import { listTemplateVersions } from "@/lib/customizer/versions";
 
 // GET /api/admin/customizer/templates/[productId]/versions
 // Version history for the product's template (spec §17, §19).
 export async function GET(_request: Request, { params }: any) {
-  const admin = await requireAdmin();
-  if (!admin.ok) return admin.response;
-
   const { productId } = await params;
+  // Ownership is re-read from the database: a designer cannot reach another
+  // designer's design by guessing a product id.
+  const session = await requireProductEditor(productId);
+  if (!session.ok) return session.response;
+  const admin = { ok: true, admin: session.actor } as const;
+
   try {
     const template = await getCustomizerTemplateByProductId(productId);
     if (!template) return Response.json({ ok: true, versions: [], currentPublishedVersion: null });

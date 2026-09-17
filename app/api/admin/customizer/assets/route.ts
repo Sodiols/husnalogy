@@ -1,6 +1,6 @@
+import { requireDesignerOrAdmin } from "@/lib/auth/roles";
 import { createHash, randomUUID } from "node:crypto";
 import { z } from "zod";
-import { requireAdmin } from "@/lib/auth/admin-server";
 import { createServiceRoleClient } from "@/lib/supabase/server";
 import { sniffImageType, sanitizeSvg, detectTintable, safeFileName } from "@/lib/customizer/v2/uploads";
 import { categoryFromRow, folderFromRow } from "@/lib/customizer/assets";
@@ -97,8 +97,10 @@ function cleanSearchTerm(value: string) {
 
 // GET /api/admin/customizer/assets — permanent administrator asset library.
 export async function GET(request: Request) {
-  const admin = await requireAdmin();
-  if (!admin.ok) return admin.response;
+  // The element library is shared studio content, not business administration.
+  const session = await requireDesignerOrAdmin();
+  if (!session.ok) return session.response;
+  const admin = { ok: true, admin: session.actor } as const;
 
   const url = new URL(request.url);
   const search = cleanSearchTerm((url.searchParams.get("search") || "").slice(0, 120));
@@ -158,8 +160,10 @@ export async function GET(request: Request) {
 // an administrator upload. Original bytes are never overwritten; sanitized SVG
 // is the protected source because unsafe SVG input is rejected before storage.
 export async function POST(request: Request) {
-  const admin = await requireAdmin();
-  if (!admin.ok) return admin.response;
+  // The element library is shared studio content, not business administration.
+  const session = await requireDesignerOrAdmin();
+  if (!session.ok) return session.response;
+  const admin = { ok: true, admin: session.actor } as const;
 
   const formData = await request.formData().catch(() => null);
   const file = formData?.get("file") as File | null;

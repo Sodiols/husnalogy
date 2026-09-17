@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { homePathForRole, isForbiddenWorkspacePath, normalizeRole } from "@/lib/auth/roles";
 import { createClient } from "@/lib/supabase/server";
 
 function getSafeRedirectPath(value: string | null) {
@@ -56,14 +57,21 @@ async function getPostCallbackRedirectPath(supabase, next: string) {
 
     if (error) throw error;
 
-    if (profile?.role === "admin") {
-      return safePath.startsWith("/admin") ? safePath : "/admin/dashboard";
+    // Each role lands in the workspace that exists for it. A designer sent to
+    // /admin/dashboard would get a 404, which is exactly what used to happen.
+    // The mapping lives in the capability layer, not here.
+    const role = normalizeRole(profile?.role);
+    const home = homePathForRole(role);
+    if (home !== "/") {
+      // Honour an explicit `next` only when the role may actually open it.
+      return isForbiddenWorkspacePath(role, safePath) ? home : safePath === "/" ? home : safePath;
     }
   } catch (error) {
     console.warn("Could not resolve post-login role:", error?.message || error);
   }
 
-  return safePath.startsWith("/admin") ? "/" : safePath;
+  // Customers (and anyone whose role could not be read) never land in /admin.
+  return safePath.startsWith("/admin") || safePath.startsWith("/designer") ? "/" : safePath;
 }
 
 export async function GET(request: Request) {
