@@ -14,7 +14,7 @@ No secrets belong in this file, in git, or in any `NEXT_PUBLIC_` variable.
 |---|---|
 | Node.js version | **22.x (LTS)**. Pinned in `package.json` `engines` and `.nvmrc`. |
 | Install command | `npm ci` |
-| Build command | `npm run build` |
+| Build command | `npm run build` (runs `next build --webpack`; see below) |
 | Start command | `npm start` (runs `next start`; it honours Hostinger's `PORT`) |
 | Application root | the repository root (the folder containing `package.json`) |
 
@@ -24,6 +24,11 @@ Supabase host may serve images. A production build stops with a clear error
 when it is missing, or when `NEXT_PUBLIC_SITE_URL` is not an `https://` public
 origin. **Changing a `NEXT_PUBLIC_` value in hPanel needs a rebuild to take
 effect.**
+
+The production build uses **Webpack, not Turbopack**. Hostinger's build servers
+have glibc older than 2.29, so Next.js's native SWC binary cannot load and it
+falls back to WebAssembly bindings, which Turbopack does not support. Keep
+`--webpack` in the build script; `npm run dev` still uses Turbopack locally.
 
 At `npm start` the server checks every required variable (see
 `instrumentation.ts` and `lib/env/server-env.ts`). If one is missing or
