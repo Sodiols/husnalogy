@@ -29,7 +29,7 @@ const weddingCategories = [
   },
   {
     title: "Wedding Supplies & Decorations",
-    image: "/images/weddings/weddingHeroImg.png",
+    image: "/images/weddings/WeddingHeroIMG.png",
     imageAlt: "Wedding supplies and decorations",
     groups: [
       [

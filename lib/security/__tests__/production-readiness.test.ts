@@ -159,3 +159,43 @@ describe("launch configuration", () => {
     expect(migration).not.toMatch(/protect_profile_role\(\)[\s\S]{0,80}security definer/i);
   });
 });
+
+describe("PGRST303 clock-skew retry", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.useRealTimers();
+  });
+
+  const skew = () => new Response(JSON.stringify({ code: "PGRST303", message: "JWT issued at future" }), { status: 401 });
+  const ok = () => new Response(JSON.stringify([{ id: 1 }]), { status: 200 });
+
+  it("retries a PostgREST request exactly once after PGRST303", async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi.fn().mockResolvedValueOnce(skew()).mockResolvedValueOnce(ok());
+    vi.stubGlobal("fetch", fetchMock);
+    const { clockSkewRetryFetch } = await import("@/lib/supabase/server");
+    const pending = clockSkewRetryFetch("https://p.supabase.co/rest/v1/site_settings?select=settings");
+    await vi.runAllTimersAsync();
+    expect((await pending).status).toBe(200);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not retry other 401s or non-PostgREST requests", async () => {
+    const other401 = new Response(JSON.stringify({ code: "PGRST301" }), { status: 401 });
+    const fetchMock = vi.fn().mockResolvedValueOnce(other401).mockResolvedValueOnce(skew());
+    vi.stubGlobal("fetch", fetchMock);
+    const { clockSkewRetryFetch } = await import("@/lib/supabase/server");
+    expect((await clockSkewRetryFetch("https://p.supabase.co/rest/v1/orders")).status).toBe(401);
+    expect((await clockSkewRetryFetch("https://p.supabase.co/storage/v1/object/x")).status).toBe(401);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("public asset paths match the files on disk exactly", () => {
+  it("references the wedding hero image with its real (case-sensitive) name", () => {
+    for (const file of ["app/weddings/components/weddingHero.tsx", "app/weddings/components/shopByCategory.tsx"]) {
+      expect(read(file)).toContain("/images/weddings/WeddingHeroIMG.png");
+    }
+    expect(read("app/weddings/components/weddingHero.tsx")).not.toContain("weddingHeroImg.png");
+  });
+});

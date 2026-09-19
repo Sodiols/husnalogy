@@ -24,10 +24,39 @@ function getPublishableKey() {
   return value;
 }
 
+const CLOCK_SKEW_RETRY_DELAY_MS = 1200;
+
+/**
+ * `fetch` that retries a PostgREST request ONCE when it is rejected with
+ * PGRST303 "JWT issued at future".
+ *
+ * The token in question is minted per request by Supabase's own gateway (the
+ * `sb_secret_`/`sb_publishable_` API keys), not by this app, so a brief clock
+ * difference between the gateway and PostgREST occasionally dates it a moment
+ * ahead. PostgREST rejects the request during authentication, before any SQL
+ * runs, so replaying it is safe for every method. Only /rest/v1 is retried:
+ * its bodies are JSON strings and can be re-sent, unlike storage uploads.
+ */
+export async function clockSkewRetryFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+  const response = await fetch(input, init);
+  if (response.status !== 401) return response;
+
+  const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+  if (!url.includes("/rest/v1/")) return response;
+
+  const body = await response.clone().json().catch(() => null);
+  if (body?.code !== "PGRST303") return response;
+
+  console.warn(`[supabase] PGRST303 (JWT issued at future) from ${new URL(url).pathname}; retrying once.`);
+  await new Promise((resolve) => setTimeout(resolve, CLOCK_SKEW_RETRY_DELAY_MS));
+  return fetch(input, init);
+}
+
 export async function createClient() {
   const cookieStore = await cookies();
 
   return createServerClient(getSupabaseUrl(), getPublishableKey(), {
+    global: { fetch: clockSkewRetryFetch },
     cookies: {
       getAll() {
         return cookieStore.getAll();
@@ -53,6 +82,7 @@ export function createServiceRoleClient() {
   }
 
   return createSupabaseClient(getSupabaseUrl(), serviceRoleKey, {
+    global: { fetch: clockSkewRetryFetch },
     auth: {
       persistSession: false,
       autoRefreshToken: false,

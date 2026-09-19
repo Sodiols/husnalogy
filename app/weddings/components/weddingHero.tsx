@@ -10,7 +10,7 @@ export default function WeddingHero() {
   return (
     <section className="relative isolate overflow-hidden bg-[#f8f6f1]">
       <Image
-        src="/images/weddings/weddingHeroImg.png"
+        src="/images/weddings/WeddingHeroIMG.png"
         alt=""
         aria-hidden="true"
         fill
