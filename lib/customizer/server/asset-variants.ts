@@ -80,7 +80,7 @@ export async function orientedDimensions(source: Buffer): Promise<{ width: numbe
 export async function decodeImage(buffer: Buffer | null | undefined) {
   if (!buffer?.byteLength) return null;
   try {
-    const meta = await sharp(buffer).metadata();
+    const meta = await sharp(buffer, limits).metadata();
     if (!meta.width || !meta.height) return null;
     return { width: meta.width, height: meta.height, format: String(meta.format || "") };
   } catch {

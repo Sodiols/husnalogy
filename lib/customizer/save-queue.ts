@@ -50,6 +50,14 @@ export type SaveQueue = {
   flush: () => Promise<void>;
   /** Stop all timers. Any in-flight save is left to finish. */
   destroy: () => void;
+  /**
+   * Undo `destroy()`. React may run an effect's cleanup and then re-run the
+   * effect on the SAME component instance (StrictMode in development, and
+   * Activity/route preservation in production). A queue held in a ref survives
+   * that, so the effect must be able to bring it back; unsaved changes are
+   * rescheduled.
+   */
+  resume: () => void;
   getStatus: () => SaveQueueStatus;
   getLastSavedAt: () => number | null;
   /** True while there are unsaved changes or a save is running. */
@@ -191,6 +199,11 @@ export function createSaveQueue(options: SaveQueueOptions): SaveQueue {
       clearPendingTimer();
       settleWaiters.forEach((resolve) => resolve());
       settleWaiters = [];
+    },
+    resume() {
+      if (!destroyed) return;
+      destroyed = false;
+      if (dirty && !running) schedule(debounceMs);
     },
     getStatus: () => status,
     getLastSavedAt: () => lastSavedAt,

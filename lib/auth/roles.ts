@@ -26,8 +26,18 @@
  */
 
 import { createClient, createServiceRoleClient } from "@/lib/supabase/server";
+import { normalizeRole, type AppRole } from "./redirects";
 
-export type AppRole = "customer" | "designer" | "admin";
+// Role routing lives in a client-safe module so the browser login forms and the
+// server OAuth callback share one implementation. Re-exported here so server
+// code keeps a single import site for everything role related.
+export {
+  homePathForRole,
+  isForbiddenWorkspacePath,
+  normalizeRole,
+  resolvePostLoginPath,
+  type AppRole,
+} from "./redirects";
 
 export type Actor = {
   id: string;
@@ -46,11 +56,6 @@ export const PRODUCT_WORKFLOW_STATES = [
   "archived",
 ] as const;
 export type ProductWorkflowState = (typeof PRODUCT_WORKFLOW_STATES)[number];
-
-export function normalizeRole(value: unknown): AppRole {
-  const role = String(value || "").toLowerCase();
-  return role === "admin" || role === "designer" ? role : "customer";
-}
 
 /**
  * The signed-in actor, or null.
@@ -77,26 +82,6 @@ export async function getCurrentActor(): Promise<Actor | null> {
     name: profile?.full_name || user.email?.split("@")[0] || "User",
     role: normalizeRole(profile?.role),
   };
-}
-
-/**
- * Where a role's work lives.
- *
- * Centralised so the post-login redirect does not carry its own role knowledge:
- * sending a designer to `/admin/dashboard` is what produced a 404 on every
- * designer sign-in before this existed.
- */
-export function homePathForRole(role: AppRole): string {
-  if (role === "admin") return "/admin/dashboard";
-  if (role === "designer") return "/designer";
-  return "/";
-}
-
-/** Is this path part of a workspace the role may not open at all? */
-export function isForbiddenWorkspacePath(role: AppRole, path: string): boolean {
-  if (path.startsWith("/admin")) return role !== "admin";
-  if (path.startsWith("/designer")) return role !== "designer" && role !== "admin";
-  return false;
 }
 
 /* -------------------------------------------------------------------------- */

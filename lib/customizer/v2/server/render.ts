@@ -51,10 +51,10 @@ function isTrustedRemote(url: URL): boolean {
       return "";
     }
   })();
-  if (supabaseHost && url.host === supabaseHost) return true;
-  // Any *.supabase.co storage host (matches next.config image allowlist).
-  if (/\.supabase\.co$/i.test(url.host)) return true;
-  return false;
+  // Only THIS project's storage (matches the next.config image allowlist).
+  // Any other *.supabase.co tenant is somebody else's bucket and could feed
+  // attacker-controlled bytes into the decoder.
+  return Boolean(supabaseHost) && url.host === supabaseHost && url.pathname.startsWith("/storage/v1/");
 }
 
 async function fetchAsDataUri(source: string): Promise<string> {
@@ -86,7 +86,15 @@ async function fetchAsDataUri(source: string): Promise<string> {
     throw new RenderError("ASSET_ACCESS_DENIED", `Refusing to render asset from untrusted host: ${url.host}`);
   }
 
-  const response = await fetch(url.toString());
+  // No redirects: a trusted host must not be able to bounce the fetch to an
+  // arbitrary one. Bounded in time so one stuck asset cannot stall the worker.
+  const response = await fetch(url.toString(), { redirect: "error", signal: AbortSignal.timeout(60_000) }).catch((error) => {
+    throw new RenderError("ASSET_NOT_FOUND", `Asset fetch failed: ${url.pathname} (${error?.name || "error"})`);
+  });
+  const declaredLength = Number(response.headers.get("content-length") || 0);
+  if (declaredLength > MAX_IMAGE_BYTES) {
+    throw new RenderError("asset-too-large", `Asset exceeds size limit: ${url.pathname}`);
+  }
   if (!response.ok) {
     throw new RenderError(response.status === 403 ? "ASSET_ACCESS_DENIED" : "ASSET_NOT_FOUND", `Asset fetch failed (${response.status}): ${url.pathname}`);
   }

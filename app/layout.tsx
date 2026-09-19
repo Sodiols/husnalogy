@@ -7,6 +7,7 @@ import { formatSupabaseUser } from "./lib/format-user";
 import { getSettings, toPublicSettings } from "@/lib/settings";
 import { logServerFailure } from "@/lib/core/server-errors";
 import { BUSINESS_INFO } from "@/lib/launch-config";
+import { getSiteUrl } from "@/lib/site-url";
 
 const fontDisplay = localFont({
   src: [
@@ -34,7 +35,7 @@ const fontBody = localFont({
 });
 const fontVariables = `${fontDisplay.variable} ${fontBody.variable}`;
 
-const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || "https://husnalogy.com";
+const SITE_URL = getSiteUrl();
 
 const DESCRIPTION =
   "Husnalogy creates premium personalized wedding invitations, save the dates, nikah invitations, cards, gifts and stationery with a refined, minimalist design.";

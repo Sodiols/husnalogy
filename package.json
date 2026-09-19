@@ -2,6 +2,9 @@
   "name": "husnalogy-nextjs",
   "version": "1.0.0",
   "private": true,
+  "engines": {
+    "node": "22.x"
+  },
   "scripts": {
     "dev": "node --max-http-header-size=65536 node_modules/next/dist/bin/next dev -H 0.0.0.0",
     "build": "npm run validate:fonts && npm run repair:next-types && next build",
@@ -26,15 +29,15 @@
     "@supabase/supabase-js": "^2.57.4",
     "@tailwindcss/postcss": "4.3.0",
     "konva": "^10.3.1",
-    "next": "16.2.7",
+    "next": "16.3.5",
     "openai": "6.42.0",
     "opentype.js": "^2.0.0",
     "pdf-lib": "^1.17.1",
     "qrcode": "^1.5.4",
-    "react": "19.2.4",
-    "react-dom": "19.2.4",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
     "react-konva": "^19.2.5",
-    "sharp": "^0.35.3",
+    "sharp": "^0.35.4",
     "tailwindcss": "4.3.0",
     "zod": "^4.4.3"
   },
@@ -44,11 +47,11 @@
     "@types/qrcode": "^1.5.6",
     "@types/react": "19.2.17",
     "eslint": "^9.39.5",
-    "eslint-config-next": "^16.2.7",
+    "eslint-config-next": "^16.3.5",
     "typescript": "6.0.3",
     "vitest": "^4.1.10"
   },
   "overrides": {
-    "postcss": "^8.5.10"
+    "postcss": "^8.5.28"
   }
 }

@@ -2,7 +2,7 @@ import sharp from "sharp";
 import type { Metadata } from "sharp";
 import { createHash } from "crypto";
 import { createClient } from "@/lib/supabase/server";
-import { rateLimitDistributed } from "@/lib/security/rate-limit";
+import { rateLimitDistributed, rejectLargeRequest } from "@/lib/security/rate-limit";
 import { sniffImageType, safeFileName } from "@/lib/customizer/v2/uploads";
 import { resolvePrivateAssetUrl } from "@/lib/customizer/server/private-assets";
 
@@ -20,6 +20,10 @@ const THUMB_PX = 384;
 export async function POST(request: Request) {
   const limited = await rateLimitDistributed(request, { name: "customizer-upload", limit: 40, windowMs: 10 * 60 * 1000 });
   if (limited) return limited;
+
+  // Refuse an oversized body before it is buffered into memory by formData().
+  const tooLarge = rejectLargeRequest(request, MAX_SIZE + 1024 * 1024);
+  if (tooLarge) return tooLarge;
 
   const supabase = await createClient();
   const {

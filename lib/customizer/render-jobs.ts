@@ -6,6 +6,7 @@
 // of re-rendering. Failed jobs keep their error and can be retried.
 
 import { createHash, randomUUID } from "crypto";
+import { hostname } from "os";
 import { createServiceRoleClient } from "@/lib/supabase/server";
 import { customizationFromRow } from "@/lib/customizer/customizations";
 import { getTrustedTemplateForCustomization } from "@/lib/customizer/versions";
@@ -264,7 +265,7 @@ export async function processRenderJob(jobId: string): Promise<RenderJobRow> {
   const supabase = createServiceRoleClient();
 
   // Claim the job: queued → processing. A concurrent worker loses the race.
-  const workerId = `${process.env.VERCEL_REGION || "local"}:${process.pid}:${randomUUID()}`;
+  const workerId = `${hostname()}:${process.pid}:${randomUUID()}`;
   const { data: claimResult, error: claimError } = await supabase.rpc("claim_customizer_render_job", {
     p_job_id: jobId,
     p_worker_id: workerId,
@@ -595,26 +596,107 @@ export async function processRenderJob(jobId: string): Promise<RenderJobRow> {
   }
 }
 
-// Worker entry: claim and process up to `limit` queued jobs by priority.
-export async function processQueuedRenderJobs(limit = 3): Promise<RenderJobRow[]> {
-  const supabase = createServiceRoleClient();
-  const { error: recoveryError } = await supabase.rpc("recover_abandoned_customizer_render_jobs");
-  if (recoveryError) throw recoveryError;
-  const { data, error } = await supabase
-    .from("customizer_render_jobs")
-    .select("id")
-    .in("status", ["queued", "retrying"])
-    .or(`next_attempt_at.is.null,next_attempt_at.lte.${new Date().toISOString()}`)
-    .order("priority", { ascending: false })
-    .order("created_at", { ascending: true })
-    .limit(limit);
-  if (error) throw error;
+/** Default and ceiling for one worker run (one cron invocation). */
+export const RENDER_WORKER_DEFAULT_BATCH = 20;
+export const RENDER_WORKER_MAX_BATCH = 50;
+/**
+ * Wall-clock budget for one run. The worker stops CLAIMING new jobs once this
+ * elapses and returns; a job already claimed always runs to completion under
+ * its own heartbeat lease. Keeps each HTTP cron request bounded well inside a
+ * typical 5-minute client timeout.
+ */
+export const RENDER_WORKER_DEFAULT_BUDGET_MS = 240_000;
 
-  const results: RenderJobRow[] = [];
-  for (const row of data || []) {
-    results.push(await processRenderJob(row.id));
+export type RenderWorkerRunResult = {
+  jobs: RenderJobRow[];
+  failures: Array<{ id: string; error: string }>;
+  recovered: number;
+  remaining: number;
+  stoppedReason: "queue-empty" | "batch-limit" | "time-budget";
+  durationMs: number;
+};
+
+async function countDueRenderJobs(supabase: ReturnType<typeof createServiceRoleClient>): Promise<number> {
+  const { count } = await supabase
+    .from("customizer_render_jobs")
+    .select("id", { count: "exact", head: true })
+    .in("status", ["queued", "retrying"])
+    .or(`next_attempt_at.is.null,next_attempt_at.lte.${new Date().toISOString()}`);
+  return count || 0;
+}
+
+/**
+ * One worker run: recover abandoned leases, then claim and process due jobs by
+ * priority until the queue is empty, the batch limit is reached, or the time
+ * budget is spent.
+ *
+ * Safe to call repeatedly and concurrently: every job is claimed through the
+ * `claim_customizer_render_job` RPC, which atomically moves it to `processing`
+ * under a lease token, so two overlapping runs can never render the same job.
+ * A job that fails to claim or throws is recorded and the run continues.
+ */
+export async function runRenderWorker(options: { limit?: number; timeBudgetMs?: number } = {}): Promise<RenderWorkerRunResult> {
+  const startedAt = Date.now();
+  const limit = Math.max(1, Math.min(RENDER_WORKER_MAX_BATCH, Math.floor(Number(options.limit) || RENDER_WORKER_DEFAULT_BATCH)));
+  const budgetMs = Math.max(1_000, Number(options.timeBudgetMs) || RENDER_WORKER_DEFAULT_BUDGET_MS);
+  const supabase = createServiceRoleClient();
+
+  const { data: recoveredCount, error: recoveryError } = await supabase.rpc("recover_abandoned_customizer_render_jobs");
+  if (recoveryError) throw recoveryError;
+
+  const jobs: RenderJobRow[] = [];
+  const failures: Array<{ id: string; error: string }> = [];
+  const attempted = new Set<string>();
+  let stoppedReason: RenderWorkerRunResult["stoppedReason"] = "queue-empty";
+
+  outer: while (attempted.size < limit) {
+    const { data, error } = await supabase
+      .from("customizer_render_jobs")
+      .select("id")
+      .in("status", ["queued", "retrying"])
+      .or(`next_attempt_at.is.null,next_attempt_at.lte.${new Date().toISOString()}`)
+      .order("priority", { ascending: false })
+      .order("created_at", { ascending: true })
+      .limit(Math.min(limit, 25) + attempted.size);
+    if (error) throw error;
+
+    const candidates = (data || []).map((row) => String(row.id)).filter((id) => !attempted.has(id));
+    if (!candidates.length) break;
+
+    for (const id of candidates) {
+      if (attempted.size >= limit) {
+        stoppedReason = "batch-limit";
+        break outer;
+      }
+      if (Date.now() - startedAt >= budgetMs) {
+        stoppedReason = "time-budget";
+        break outer;
+      }
+      attempted.add(id);
+      try {
+        jobs.push(await processRenderJob(id));
+      } catch (error: any) {
+        console.error(`[customizer] Render worker could not process job ${id}:`, error);
+        failures.push({ id, error: getRenderErrorCode(error) });
+      }
+    }
   }
-  return results;
+  if (stoppedReason === "queue-empty" && attempted.size >= limit) stoppedReason = "batch-limit";
+
+  const remaining = stoppedReason === "queue-empty" ? 0 : await countDueRenderJobs(supabase);
+  return {
+    jobs,
+    failures,
+    recovered: Number(recoveredCount) || 0,
+    remaining,
+    stoppedReason,
+    durationMs: Date.now() - startedAt,
+  };
+}
+
+// Back-compatible entry: claim and process up to `limit` queued jobs by priority.
+export async function processQueuedRenderJobs(limit = RENDER_WORKER_DEFAULT_BATCH): Promise<RenderJobRow[]> {
+  return (await runRenderWorker({ limit })).jobs;
 }
 
 export async function cancelRenderJob(jobId: string): Promise<RenderJobRow | null> {

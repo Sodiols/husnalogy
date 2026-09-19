@@ -1,5 +1,8 @@
 # Husnalogy production launch checklist
 
+Deployment steps, environment variables, migrations and cron: see
+[`HOSTINGER_DEPLOYMENT.md`](../HOSTINGER_DEPLOYMENT.md).
+
 Work top to bottom. Anything marked **BLOCKER** must be green before the site
 takes a real customer order.
 
@@ -64,7 +67,7 @@ count(v.id) = 0;`
 | Server recalculates prices | ✅ | Browser-submitted prices are never trusted. |
 | Order idempotency | ✅ | `20260824090000_checkout_idempotency.sql`. |
 | Design snapshots stored per order | ✅ | `order_design_snapshots`. |
-| Render worker scheduled | ⚠️ Review | Confirm the cron cadence in `vercel.json` meets fulfilment needs. |
+| Render worker scheduled | Manual | Hostinger cron every 5 minutes calling `/api/admin/customizer/render/process` with `Authorization: Bearer $CRON_SECRET`. See `HOSTINGER_DEPLOYMENT.md` §5. |
 | Transactional order emails | ❌ Not implemented | Neither customer confirmation nor admin notification is sent. |
 | Admin notification recipients configurable | ❌ Not implemented | |
 

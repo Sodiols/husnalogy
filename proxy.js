@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createServerClient } from "@supabase/ssr";
+import { normalizeRole, resolvePostLoginPath } from "@/lib/auth/redirects";
 
 const PROTECTED_PREFIXES = [
   "/account",
@@ -22,8 +23,8 @@ const ADMIN_PREFIXES = [
   "/api/admin",
 ];
 
-// The render worker endpoint authenticates itself with a Bearer CRON_SECRET
-// (Vercel Cron) or x-render-secret, and never carries a Supabase session. The
+// The render worker endpoint authenticates itself with a Bearer secret
+// (Hostinger cron job) or x-render-secret, and never carries a Supabase session. The
 // proxy must not answer 401 before the route can validate that secret. Only the
 // short-circuit is skipped — the route still validates the secret with a
 // timing-safe compare and fails closed on a wrong or missing one.
@@ -144,8 +145,12 @@ export async function proxy(request) {
 
   if ((pathname === "/login" || pathname === "/signup") && user) {
     const { data: profile } = await supabase.from("profiles").select("role").eq("id", user.id).maybeSingle();
-    const destination =
-      profile?.role === "admin" ? "/admin/dashboard" : profile?.role === "designer" ? "/designer" : "/account";
+    // Same resolver as every sign-in path. A signed-in customer with no
+    // explicit destination lands on their account page rather than the home page.
+    const next = request.nextUrl.searchParams.get("next") || "/";
+    const role = normalizeRole(profile?.role);
+    const resolved = resolvePostLoginPath(role, next);
+    const destination = role === "customer" && resolved === "/" ? "/account" : resolved;
     return NextResponse.redirect(new URL(destination, request.url));
   }
 

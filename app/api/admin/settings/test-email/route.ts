@@ -25,8 +25,15 @@ export async function POST(request) {
     );
   }
 
-  return Response.json({
-    ok: true,
-    message: `Test email request accepted for ${recipient}. Connect the configured provider to send real email.`,
-  });
+  // No transactional email provider is wired into the application yet (see
+  // HOSTINGER_DEPLOYMENT.md, "Transactional email"). Saved SMTP settings are
+  // stored but nothing sends with them, so this must not report success.
+  return Response.json(
+    {
+      ok: false,
+      configured: false,
+      error: "Transactional email is not connected yet. Settings are saved, but no email was sent.",
+    },
+    { status: 501 }
+  );
 }

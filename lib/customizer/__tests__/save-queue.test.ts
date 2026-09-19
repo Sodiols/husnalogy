@@ -200,6 +200,28 @@ describe("createSaveQueue", () => {
     expect(save).not.toHaveBeenCalled();
   });
 
+  it("resumes after destroy, as an effect remount on the same instance requires", async () => {
+    const save = vi.fn(async (): Promise<SaveOutcome> => ({ ok: true }));
+    const queue = createSaveQueue({ save, debounceMs: 10 });
+    queue.destroy();
+    queue.resume();
+    queue.request();
+    await vi.advanceTimersByTimeAsync(10);
+    expect(save).toHaveBeenCalledTimes(1);
+  });
+
+  it("reschedules changes that were pending when it was destroyed", async () => {
+    const save = vi.fn(async (): Promise<SaveOutcome> => ({ ok: true }));
+    const queue = createSaveQueue({ save, debounceMs: 10 });
+    queue.request();
+    queue.destroy();
+    await vi.advanceTimersByTimeAsync(100);
+    expect(save).not.toHaveBeenCalled();
+    queue.resume();
+    await vi.advanceTimersByTimeAsync(10);
+    expect(save).toHaveBeenCalledTimes(1);
+  });
+
   it("reports pending work while changes are unsaved", async () => {
     const queue = createSaveQueue({ save: async () => ({ ok: true }), debounceMs: 10 });
     expect(queue.hasPendingWork()).toBe(false);

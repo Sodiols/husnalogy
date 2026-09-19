@@ -20,8 +20,9 @@ import RecentlyViewedTracker from "../RecentlyViewedTracker";
 import RecentlyViewedCarousel from "../RecentlyViewedCarousel";
 import { getMainMockupImage } from "../product-image";
 import { normalizeCurrency } from "@/lib/currency";
+import { getSiteUrl } from "@/lib/site-url";
 
-const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || "https://husnalogy.com";
+const SITE_URL = getSiteUrl();
 
 function hasCollection(product, collectionIds = []) {
   if (!collectionIds.length) return false;

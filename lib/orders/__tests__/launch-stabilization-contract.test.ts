@@ -50,13 +50,18 @@ describe("launch ownership and render immutability", () => {
     expect(renderJobs).toContain('existingQuery.eq("order_id", options.orderId)');
   });
 
-  it("keeps the scheduled worker authenticated and running daily", () => {
-    expect(worker).toContain("safeSecretMatch(bearerToken(request), secret)");
-    expect(worker).toContain('status: 401');
-    const vercelConfig = read("vercel.json");
-    expect(vercelConfig).toContain('"/api/admin/customizer/render/process"');
-    // Vercel Hobby allows at most one cron run per day.
-    expect(vercelConfig).toContain('"0 0 * * *"');
+  it("keeps the scheduled worker authenticated and platform independent", () => {
+    expect(worker).toContain("safeSecretMatch(candidate, secret)");
+    expect(worker).toContain("getRenderWorkerSecrets()");
+    expect(worker).toContain("status: 401");
+    // Overlap guard and bounded batches: repeated cron ticks cannot stack up.
+    expect(worker).toContain("status: 409");
+    expect(renderJobs).toContain("claim_customizer_render_job");
+    expect(renderJobs).toContain("RENDER_WORKER_DEFAULT_BUDGET_MS");
+    // The secret is never read from the query string.
+    expect(worker).not.toMatch(/searchParams\.get\("(secret|token|key)"\)/);
+    // Scheduling is platform independent: Hostinger runs it via cron.
+    expect(read("HOSTINGER_DEPLOYMENT.md")).toContain("/api/admin/customizer/render/process");
   });
 });
 

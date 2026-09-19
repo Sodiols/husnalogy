@@ -1,5 +1,7 @@
 "use client";
 
+import { getSafeRedirectPath as toSafePath, normalizeRole, resolvePostLoginPath } from "@/lib/auth/redirects";
+import { getConfiguredSiteUrl } from "@/lib/site-url";
 import { createClient } from "@/lib/supabase/client";
 import { clearCustomerCommerceData } from "./customer-lists";
 
@@ -10,38 +12,34 @@ function authError(message, code = "auth/error") {
 }
 
 function getOrigin() {
-  // Always redirect back to whichever domain the flow was started from —
-  // localhost, a Vercel preview URL, or a custom domain — instead of a single
-  // hardcoded origin, so auth works no matter which domain the app is
-  // deployed to. The only exception is `next dev -H 0.0.0.0`, which reports
-  // window.location as the unbrowsable bind address 0.0.0.0 instead of
-  // localhost; NEXT_PUBLIC_SITE_URL is used as a fallback there and when
-  // window isn't available at all.
-  if (typeof window === "undefined") {
-    const configured = process.env.NEXT_PUBLIC_SITE_URL;
-    return configured ? configured.replace(/\/+$/, "") : "";
-  }
+  // Redirect back to whichever domain the flow was started from, so the PKCE
+  // verifier cookie and the resulting session stay on the same host (apex or
+  // www). The exception is `next dev -H 0.0.0.0`, which reports the
+  // unbrowsable bind address 0.0.0.0; NEXT_PUBLIC_SITE_URL is used there and
+  // when window isn't available at all.
+  const configured = getConfiguredSiteUrl();
+  if (typeof window === "undefined") return configured;
 
   const { origin, hostname } = window.location;
   if (hostname !== "0.0.0.0") return origin;
-
-  const configured = process.env.NEXT_PUBLIC_SITE_URL;
-  return configured ? configured.replace(/\/+$/, "") : origin.replace("0.0.0.0", "localhost");
+  return configured || origin.replace("0.0.0.0", "localhost");
 }
 
 export function getSafeRedirectPath(value = "/") {
-  const next = String(value || "/");
-  if (!next.startsWith("/") || next.startsWith("//")) return "/";
-  if (next.startsWith("/login") || next.startsWith("/signup")) return "/";
-  return next;
+  return toSafePath(value);
 }
 
+/**
+ * Where to send a user who just signed in with a password.
+ *
+ * Uses the same resolver as the OAuth callback (lib/auth/redirects.ts): admin →
+ * /admin/dashboard, designer → /designer, customer → the requested storefront
+ * page. The role is read from the user's own `profiles` row (RLS allows a user
+ * to read only their own); a failed lookup routes as a customer. This is
+ * routing only — every workspace re-checks the role on the server.
+ */
 export async function getPostLoginRedirectPath(user, next = "/") {
-  const safePath = getSafeRedirectPath(next);
-
-  if (!user?.id) {
-    return safePath.startsWith("/admin") ? "/" : safePath;
-  }
+  if (!user?.id) return resolvePostLoginPath(null, next);
 
   try {
     const supabase = createClient();
@@ -52,15 +50,12 @@ export async function getPostLoginRedirectPath(user, next = "/") {
       .maybeSingle();
 
     if (error) throw error;
-
-    if (profile?.role === "admin") {
-      return safePath.startsWith("/admin") ? safePath : "/admin/dashboard";
-    }
+    return resolvePostLoginPath(normalizeRole(profile?.role), next);
   } catch (error) {
     console.warn("Could not resolve post-login role:", error?.message || error);
   }
 
-  return safePath.startsWith("/admin") ? "/" : safePath;
+  return resolvePostLoginPath(null, next);
 }
 
 export async function createUserWithEmailAndPassword(email, password, name) {

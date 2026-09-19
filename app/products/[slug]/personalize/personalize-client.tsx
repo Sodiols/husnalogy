@@ -2497,7 +2497,13 @@ export default function PersonalizeClient({ product, template }: { product: any;
   }
   const saveQueue = saveQueueRef.current;
 
-  useEffect(() => () => saveQueue.destroy(), [saveQueue]);
+  // The queue lives in a ref, so it outlives an effect cleanup that React
+  // follows with a re-run on the same instance (StrictMode, Activity). Resume on
+  // every (re)mount; a permanently destroyed queue silently stopped autosave.
+  useEffect(() => {
+    saveQueue.resume();
+    return () => saveQueue.destroy();
+  }, [saveQueue]);
 
   // One tracked explicit save, used by Save & Exit and Add to cart so their
   // status reporting matches the queue's exactly.

@@ -1,7 +1,11 @@
 node_modules
 .next
 out
+# Real environment files are never committed; only the placeholder template is.
+.env
+.env.*
 .env*.local
+!.env.example
 .DS_Store
 npm-debug.log*
 yarn-debug.log*
@@ -9,6 +13,10 @@ yarn-error.log*
 pnpm-debug.log*
 *.tsbuildinfo
 codex-dev-server*.log
+
+# Agent guidance files `next dev` (16.3+) writes into the project root.
+AGENTS.md
+CLAUDE.md
 test-results/
 playwright-report/
 .customizer-e2e.json

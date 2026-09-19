@@ -413,6 +413,41 @@ create policy "profiles_update_own_or_admin" on public.profiles
 for update using (id = auth.uid() or public.is_admin())
 with check (id = auth.uid() or public.is_admin());
 
+-- RLS cannot restrict columns, so `role` is guarded by a trigger: only the
+-- service role, a database owner session or an admin may set or change it.
+-- See migrations/20260919120000_production_security_hardening.sql.
+create or replace function public.protect_profile_role()
+returns trigger
+language plpgsql
+set search_path = public
+as $$
+declare
+  privileged boolean;
+begin
+  privileged :=
+    current_user in ('postgres', 'supabase_admin', 'service_role')
+    or coalesce(auth.role(), '') = 'service_role'
+    or public.is_admin();
+
+  if tg_op = 'INSERT' then
+    if coalesce(new.role, 'customer') <> 'customer' and not privileged then
+      raise exception 'Only an administrator can assign a profile role.'
+        using errcode = '42501';
+    end if;
+  elsif new.role is distinct from old.role and not privileged then
+    raise exception 'Only an administrator can change a profile role.'
+      using errcode = '42501';
+  end if;
+
+  return new;
+end;
+$$;
+
+drop trigger if exists protect_profile_role on public.profiles;
+create trigger protect_profile_role
+before insert or update on public.profiles
+for each row execute function public.protect_profile_role();
+
 drop policy if exists "categories_public_read_active" on public.categories;
 create policy "categories_public_read_active" on public.categories
 for select using (status = 'active' or public.is_admin());
@@ -511,9 +546,9 @@ drop policy if exists "orders_customer_read" on public.orders;
 create policy "orders_customer_read" on public.orders
 for select using (customer_id = auth.uid() or lower(customer_email) = lower(auth.jwt()->>'email') or public.is_admin());
 
+-- Orders are created only by the server (service role) after it recalculates
+-- prices; customers never insert order rows directly.
 drop policy if exists "orders_customer_insert_own" on public.orders;
-create policy "orders_customer_insert_own" on public.orders
-for insert with check (customer_id = auth.uid() or public.is_admin());
 
 drop policy if exists "orders_admin_manage" on public.orders;
 create policy "orders_admin_manage" on public.orders

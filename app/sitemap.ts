@@ -1,6 +1,7 @@
 import { getActiveProducts } from "@/lib/products";
+import { getSiteUrl } from "@/lib/site-url";
 
-const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || "https://husnalogy.com";
+const SITE_URL = getSiteUrl();
 
 // Refresh the sitemap periodically so newly added products are included.
 export const revalidate = 3600;

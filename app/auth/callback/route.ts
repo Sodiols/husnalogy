@@ -1,33 +1,10 @@
 import { NextResponse } from "next/server";
-import { homePathForRole, isForbiddenWorkspacePath, normalizeRole } from "@/lib/auth/roles";
+import { getSafeRedirectPath as toSafePath, normalizeRole, resolvePostLoginPath } from "@/lib/auth/redirects";
+import { resolveRequestOrigin } from "@/lib/site-url";
 import { createClient } from "@/lib/supabase/server";
 
 function getSafeRedirectPath(value: string | null) {
-  const next = String(value || "/");
-  if (!next.startsWith("/") || next.startsWith("//")) return "/";
-  if (next.startsWith("/login") || next.startsWith("/signup")) return "/";
-  return next;
-}
-
-function getOrigin(request: Request, url: URL) {
-  // Always redirect back to whichever domain/deployment the flow was started
-  // from — localhost, a Vercel preview URL, or a custom domain — instead of a
-  // single hardcoded origin, so auth works no matter where the app is
-  // deployed. Behind Vercel's proxy, x-forwarded-host/proto reflect the
-  // public request; url.host/protocol are the reliable local fallback.
-  // Mirrors getOrigin() in app/lib/auth.ts.
-  const forwardedHost = request.headers.get("x-forwarded-host");
-  const forwardedProto = request.headers.get("x-forwarded-proto");
-  const host = forwardedHost || request.headers.get("host") || url.host;
-  const protocol = forwardedProto ? `${forwardedProto}:` : url.protocol;
-
-  if (!host.startsWith("0.0.0.0")) return `${protocol}//${host}`;
-
-  // `next dev -H 0.0.0.0` binds to all interfaces, which isn't a real
-  // browsable address; fall back to the configured site URL, then localhost.
-  const configured = process.env.NEXT_PUBLIC_SITE_URL;
-  if (configured) return configured.replace(/\/+$/, "");
-  return `${protocol}//${host.replace("0.0.0.0", "localhost")}`;
+  return toSafePath(value || "/");
 }
 
 // A password-recovery link must always land on the reset form. It must never
@@ -40,14 +17,12 @@ function getRecoveryRedirectPath(next: string) {
 }
 
 async function getPostCallbackRedirectPath(supabase, next: string) {
-  const safePath = getSafeRedirectPath(next);
-
   try {
     const {
       data: { user },
     } = await supabase.auth.getUser();
 
-    if (!user?.id) return safePath.startsWith("/admin") ? "/" : safePath;
+    if (!user?.id) return resolvePostLoginPath(null, next);
 
     const { data: profile, error } = await supabase
       .from("profiles")
@@ -57,26 +32,21 @@ async function getPostCallbackRedirectPath(supabase, next: string) {
 
     if (error) throw error;
 
-    // Each role lands in the workspace that exists for it. A designer sent to
-    // /admin/dashboard would get a 404, which is exactly what used to happen.
-    // The mapping lives in the capability layer, not here.
-    const role = normalizeRole(profile?.role);
-    const home = homePathForRole(role);
-    if (home !== "/") {
-      // Honour an explicit `next` only when the role may actually open it.
-      return isForbiddenWorkspacePath(role, safePath) ? home : safePath === "/" ? home : safePath;
-    }
+    // One resolver for every sign-in path (lib/auth/redirects.ts), so OAuth
+    // and email/password can never route the same account differently.
+    return resolvePostLoginPath(normalizeRole(profile?.role), next);
   } catch (error) {
     console.warn("Could not resolve post-login role:", error?.message || error);
   }
 
-  // Customers (and anyone whose role could not be read) never land in /admin.
-  return safePath.startsWith("/admin") || safePath.startsWith("/designer") ? "/" : safePath;
+  // A role that could not be read is treated as a customer: never a workspace.
+  return resolvePostLoginPath(null, next);
 }
 
 export async function GET(request: Request) {
   const url = new URL(request.url);
-  const origin = getOrigin(request, url);
+  // Never the internal bind address the Node server sees behind the proxy.
+  const origin = resolveRequestOrigin(request);
   const code = url.searchParams.get("code");
   // Supabase delivers a recovery/confirmation link in one of three shapes
   // depending on the project's email template and auth flow: a PKCE `code`, a
