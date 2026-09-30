@@ -9,14 +9,7 @@ const ORDER_KEY = "husnalogy_orders";
 const PROFILE_KEY = "husnalogy_profile";
 const EVENT_NAME = "husnalogy-commerce-change";
 const USER_REQUIRED_ERROR = "Sign in to use cart and wishlist.";
-const MAX_CUSTOMER_UPLOAD_SIZE = 25 * 1024 * 1024;
-const CUSTOMER_UPLOAD_TYPES = new Set([
-  "image/jpeg",
-  "image/png",
-  "image/webp",
-  "image/gif",
-  "application/pdf",
-]);
+const MAX_CUSTOMER_UPLOAD_SIZE = 15 * 1024 * 1024;
 const loggedRemoteReadWarnings = new Set();
 const REMOTE_CACHE_TTL = 5 * 1000;
 const remoteCache: any = {
@@ -659,66 +652,37 @@ export function getCartTotals(items = []) {
   };
 }
 
-function safeFileName(name) {
-  const original = String(name || "file");
-  const parts = original.split(".");
-  const ext = parts.length > 1 ? `.${parts.pop()}` : "";
-  const base = parts
-    .join(".")
-    .replace(/[^a-z0-9]+/gi, "-")
-    .replace(/^-+|-+$/g, "")
-    .toLowerCase();
-  return `${base || "file"}${ext.toLowerCase()}`;
-}
-
-function validateCustomerUpload(file) {
-  if (!file) return;
-
-  if (file.size > MAX_CUSTOMER_UPLOAD_SIZE) {
-    throw new Error("Upload files must be 25MB or smaller.");
-  }
-
-  if (file.type && !CUSTOMER_UPLOAD_TYPES.has(file.type)) {
-    throw new Error("Upload file type is not allowed. Use JPG, PNG, WebP, GIF, or PDF.");
-  }
-}
-
+/**
+ * Upload a file for a product personalization field.
+ *
+ * Goes through /api/customizer/upload, which verifies the real file type
+ * (magic bytes + full image decode), strips metadata, generates the storage
+ * name and writes into the customer's own folder. The browser no longer
+ * writes to Storage directly (its old path trusted `file.type`).
+ */
 export async function uploadCustomerFile(user, file, folder = "product-customization") {
-  const userId = requireUser(user);
+  requireUser(user);
   if (!file) return null;
-  validateCustomerUpload(file);
+  if (file.size > MAX_CUSTOMER_UPLOAD_SIZE) throw new Error("Upload files must be 15MB or smaller.");
 
-  const supabase = createClient();
-  const fileName = `${Date.now()}-${safeFileName(file.name)}`;
-  const path = `${userId}/${folder}/${fileName}`;
-  const { error } = await supabase.storage.from("customer-uploads").upload(path, file, {
-    contentType: file.type || "application/octet-stream",
-    upsert: false,
-  });
-
-  if (error) throw error;
-
-  const { data } = await supabase.storage.from("customer-uploads").createSignedUrl(path, 60 * 60);
-
-  await supabase.from("customer_uploads").insert({
-    user_id: userId,
-    bucket: "customer-uploads",
-    path,
-    file_name: file.name,
-    mime_type: file.type || null,
-    size_bytes: file.size || null,
-    metadata: {
-      folder,
-    },
-  });
+  const form = new FormData();
+  form.append("file", file);
+  form.append("folder", String(folder || "product-customization"));
+  form.append("purpose", "field-file");
+  const response = await fetch("/api/customizer/upload", { method: "POST", body: form });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok || data?.ok === false || !data?.file) {
+    throw new Error(data?.error || "Could not upload this file. Please try again.");
+  }
 
   return {
-    bucket: "customer-uploads",
-    path,
-    name: file.name,
-    type: file.type,
-    size: file.size,
-    signedUrl: data?.signedUrl || "",
+    bucket: data.file.bucket,
+    // The permanent reference used by checkout is the ORIGINAL's path.
+    path: data.file.originalPath || data.file.path,
+    name: data.file.name,
+    type: data.file.type,
+    size: data.file.size,
+    signedUrl: data.file.signedUrl || "",
   };
 }
 

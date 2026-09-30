@@ -8,6 +8,7 @@ import { getSettings, toPublicSettings } from "@/lib/settings";
 import { logServerFailure } from "@/lib/core/server-errors";
 import { BUSINESS_INFO } from "@/lib/launch-config";
 import { getSiteUrl } from "@/lib/site-url";
+import { serializeJsonLd } from "@/lib/security/json-ld";
 
 const fontDisplay = localFont({
   src: [
@@ -166,11 +167,11 @@ export default async function RootLayout({ children }) {
         />
         <script
           type="application/ld+json"
-          dangerouslySetInnerHTML={{ __html: JSON.stringify(organizationJsonLd) }}
+          dangerouslySetInnerHTML={{ __html: serializeJsonLd(organizationJsonLd) }}
         />
         <script
           type="application/ld+json"
-          dangerouslySetInnerHTML={{ __html: JSON.stringify(websiteJsonLd) }}
+          dangerouslySetInnerHTML={{ __html: serializeJsonLd(websiteJsonLd) }}
         />
       </head>
 

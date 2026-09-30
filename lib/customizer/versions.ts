@@ -14,7 +14,7 @@ import { collectFontDependencies } from "@/lib/customizer/v2/google-fonts";
 import { getFontCatalogSafe } from "@/lib/customizer/v2/server/google-fonts-catalog";
 import { CUSTOMIZER_ENGINE_VERSION, CUSTOMIZER_SCHEMA_VERSION } from "@/lib/customizer/v2/types";
 import type { CustomizerRow } from "@/lib/supabase/database.types";
-import { hydrateAdminAssetUrls, stripAdminAssetUrls } from "@/lib/customizer/server/admin-assets";
+import { hydrateAdminAssetUrls, stripAdminAssetUrls, type AdminAssetAudience } from "@/lib/customizer/server/admin-assets";
 import {
   formatCustomizerVersion,
   type CustomizerUpdateType,
@@ -124,7 +124,11 @@ export async function listTemplateVersions(templateId: string): Promise<Template
   return (data || []).map((row) => versionFromRow({ ...row, document: {} }));
 }
 
-export async function getTemplateVersion(templateId: string, version: number): Promise<TemplateVersionRow | null> {
+export async function getTemplateVersion(
+  templateId: string,
+  version: number,
+  audience: AdminAssetAudience = "customer",
+): Promise<TemplateVersionRow | null> {
   if (!templateId || !version) return null;
   const supabase = createServiceRoleClient();
   const { data, error } = await supabase
@@ -135,7 +139,7 @@ export async function getTemplateVersion(templateId: string, version: number): P
     .maybeSingle();
   if (error) throw error;
   if (!data) return null;
-  const hydratedDocument = await hydrateAdminAssetUrls(data.document, supabase);
+  const hydratedDocument = await hydrateAdminAssetUrls(data.document, supabase, undefined, audience);
   return versionFromRow({ ...data, document: hydratedDocument });
 }
 
@@ -208,7 +212,7 @@ export async function getLatestPublishedVersion(productId: string): Promise<Temp
     .maybeSingle();
   if (error) throw error;
   if (!data) return null;
-  const hydratedDocument = await hydrateAdminAssetUrls(data.document, supabase);
+  const hydratedDocument = await hydrateAdminAssetUrls(data.document, supabase, undefined, "customer");
   return versionFromRow({ ...data, document: hydratedDocument });
 }
 
@@ -242,23 +246,32 @@ export async function getPublicCustomizerTemplate(
 // The trusted template a customization must be validated and rendered
 // against: its exact published version snapshot when one exists, otherwise
 // the live template row (legacy templates published before versioning).
+//
+// Identity binding: a template id and version are only honoured when that
+// version was published FOR THE CUSTOMIZATION'S PRODUCT. Previously any
+// (templateId, version) pair resolved, so a customization for product A could
+// be validated and rendered against product B's template.
 export async function getTrustedTemplateForCustomization(customization: {
   templateId?: string;
   productId?: string;
   templateVersion?: number;
-}): Promise<{ template: any; source: "version" | "live" } | null> {
+}): Promise<{ template: any; source: "version" | "live"; versionId?: string } | null> {
   const templateId = customization.templateId || "";
+  const productId = customization.productId || "";
   const version = Number(customization.templateVersion) || 0;
+  if (!productId) return null;
 
   if (templateId && version) {
     const snapshot = await getTemplateVersion(templateId, version);
+    if (snapshot && snapshot.productId !== productId) return null;
     const template = templateFromVersionSnapshot(snapshot);
-    if (template) return { template, source: "version" };
+    if (template && snapshot) return { template, source: "version", versionId: snapshot.id };
   }
 
-  if (customization.productId) {
-    const live = await getCustomizerTemplateByProductId(customization.productId);
-    if (live) return { template: live, source: "live" };
-  }
-  return null;
+  const live = await getCustomizerTemplateByProductId(productId);
+  if (!live) return null;
+  // A template id that belongs to a different product is a mismatch, not a
+  // reason to fall back to this product's template.
+  if (templateId && String(live.id) !== templateId) return null;
+  return { template: live, source: "live" };
 }

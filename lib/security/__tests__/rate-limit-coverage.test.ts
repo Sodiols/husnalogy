@@ -52,8 +52,8 @@ describe("rate limiting covers the priority abuse surfaces", () => {
 describe("rate limiter fails safe", () => {
   const source = read("lib/security/rate-limit.ts");
 
-  it("keys buckets per endpoint name and client IP, not globally", () => {
-    expect(source).toContain("`${name}:${getClientIp(request)}`");
+  it("keys buckets per endpoint name and account or client IP, not globally", () => {
+    expect(source).toContain("`${name}:${identity || getClientIp(request)}`");
   });
 
   it("returns 429 with Retry-After once the limit is exceeded", () => {
@@ -73,7 +73,7 @@ describe("rate limiter fails safe", () => {
   it("falls back to the in-memory limiter instead of taking checkout down when Redis is unreachable", () => {
     const catchIndex = source.indexOf("} catch (error) {");
     const catchBody = source.slice(catchIndex, source.indexOf("\n}", catchIndex));
-    expect(catchBody).toContain("rateLimit(request, { name, limit, windowMs })");
+    expect(catchBody).toContain("rateLimit(request, { name, limit, windowMs, identity })");
     expect(catchBody).toContain("falling back to the in-memory limiter");
   });
 

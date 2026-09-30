@@ -1,17 +1,20 @@
-import { createClient } from "@/lib/supabase/server";
-import {
-  customizationFromRow,
-  customizationUpdateRow,
-} from "@/lib/customizer/customizations";
+import { createClient, createServiceRoleClient } from "@/lib/supabase/server";
+import { customizationFromRow, customizationUpdateRow } from "@/lib/customizer/customizations";
 import { validateCustomizationSave } from "@/lib/customizer/save-validation";
+import { prepareCustomerWrite } from "@/lib/customizer/customization-write";
 import { resolvePrivateAssetsForDelivery } from "@/lib/customizer/server/private-assets";
 import { writeCustomizerAudit } from "@/lib/customizer/audit";
 import { rateLimit } from "@/lib/security/rate-limit";
+import { rejectCrossSiteRequest } from "@/lib/security/same-origin";
+import { bodyErrorResponse, readJsonBody } from "@/lib/http/read-body";
+import { logEvent, requestIdFrom } from "@/lib/observability/logger";
 
-// Generous enough for the real autosave cadence (900ms debounce, spec
-// lib/customizer/save-queue.ts) plus retries, but still bounds a runaway or
-// scripted client from hammering the save endpoint.
 const SAVE_RATE_LIMIT = { name: "customizations-save", limit: 300, windowMs: 5 * 60 * 1000 };
+const MAX_CUSTOMIZATION_BODY_BYTES = 2 * 1024 * 1024;
+const PRIVATE_HEADERS = { "Cache-Control": "private, no-store, max-age=0" };
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export const dynamic = "force-dynamic";
 
 async function getUser() {
   const supabase = await createClient();
@@ -21,109 +24,151 @@ async function getUser() {
   return { supabase, user };
 }
 
-// GET /api/customizations/[id] — RLS scopes this to the owner (or admin).
-export async function GET(_request: Request, { params }: any) {
-  const { id } = await params;
-  const { supabase, user } = await getUser();
-  if (!user) return Response.json({ ok: false, error: "Sign in required." }, { status: 401 });
-
-  const { data, error } = await supabase.from("product_customizations").select("*").eq("id", id).eq("user_id", user.id).maybeSingle();
-  if (error) return Response.json({ ok: false, error: error.message }, { status: 500 });
-  if (!data) return Response.json({ ok: false, error: "Not found." }, { status: 404 });
-
-  const customization = await resolvePrivateAssetsForDelivery(customizationFromRow(data), { userId: user.id }, "editor", supabase);
-  return Response.json({ ok: true, customization });
+/** The caller's own customization, loaded with the service role + strict owner filter. */
+async function loadOwned(id: string, userId: string) {
+  if (!UUID.test(id)) return { row: null, error: null };
+  const service = createServiceRoleClient();
+  const { data, error } = await service.from("product_customizations").select("*").eq("id", id).eq("user_id", userId).maybeSingle();
+  return { row: data, error };
 }
 
-// PATCH /api/customizations/[id] — update your own customization. RLS blocks
-// updates to rows that are not yours.
-export async function PATCH(request: Request, { params }: any) {
-  const limited = rateLimit(request, SAVE_RATE_LIMIT);
-  if (limited) return limited;
+// GET /api/customizations/[id] — only the owner.
+export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+  const { supabase, user } = await getUser();
+  if (!user) return Response.json({ ok: false, error: "Sign in required." }, { status: 401, headers: PRIVATE_HEADERS });
+
+  const { row, error } = await loadOwned(id, user.id);
+  if (error) {
+    logEvent("error", "customizations.read_failed", { requestId: requestIdFrom(request), userId: user.id, error });
+    return Response.json({ ok: false, error: "Could not load this design." }, { status: 500, headers: PRIVATE_HEADERS });
+  }
+  if (!row) return Response.json({ ok: false, error: "Not found." }, { status: 404, headers: PRIVATE_HEADERS });
+
+  const customization = await resolvePrivateAssetsForDelivery(customizationFromRow(row), { userId: user.id }, "editor", supabase);
+  return Response.json({ ok: true, customization }, { headers: PRIVATE_HEADERS });
+}
+
+// PATCH /api/customizations/[id] — update the caller's own design.
+//
+// The product, template and template version are read from the STORED row and
+// are authoritative: a request can neither change them nor omit them to skip
+// validation. Design changes are validated against that exact published
+// template version before anything is written.
+export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  const requestId = requestIdFrom(request);
+  const crossSite = rejectCrossSiteRequest(request);
+  if (crossSite) return crossSite;
 
   const { id } = await params;
   const { supabase, user } = await getUser();
   if (!user) return Response.json({ ok: false, error: "Sign in required." }, { status: 401 });
 
-  const rawBody = await request.json().catch(() => ({}));
+  const limited = rateLimit(request, { ...SAVE_RATE_LIMIT, identity: user.id });
+  if (limited) return limited;
 
-  // Load the existing row first (RLS scopes to the owner) so validation knows
-  // the product/template even when the patch omits them.
-  const { data: existingRow, error: readError } = await supabase
-    .from("product_customizations")
-    .select("id, product_id, template_id, template_version, render_data, status")
-    .eq("id", id)
-    .eq("user_id", user.id)
-    .maybeSingle();
-  if (readError) return Response.json({ ok: false, error: readError.message }, { status: 500 });
+  let rawBody: Record<string, any>;
+  try {
+    rawBody = (await readJsonBody(request, MAX_CUSTOMIZATION_BODY_BYTES)) as Record<string, any>;
+  } catch (error) {
+    return bodyErrorResponse(error) || Response.json({ ok: false, error: "The request body is invalid." }, { status: 400 });
+  }
+
+  const { row: existingRow, error: readError } = await loadOwned(id, user.id);
+  if (readError) {
+    logEvent("error", "customizations.read_failed", { requestId, userId: user.id, error: readError });
+    return Response.json({ ok: false, error: "Could not load this design." }, { status: 500 });
+  }
   if (!existingRow) return Response.json({ ok: false, error: "Not found." }, { status: 404 });
-  if (existingRow.status === "ordered") {
+  if (existingRow.status === "ordered" || existingRow.order_id) {
     return Response.json({ ok: false, error: "Placed-order designs are locked. Duplicate the design to make changes." }, { status: 409 });
   }
 
-  // Server-side permission validation against the trusted template (spec §21).
-  const validation = await validateCustomizationSave(user.id, rawBody, {
-    productId: existingRow.product_id || "",
-    templateId: existingRow.template_id || "",
+  const context = {
+    productId: String(existingRow.product_id || ""),
+    templateId: String(existingRow.template_id || ""),
     templateVersion: Number(existingRow.template_version) || 0,
+  };
+  const prepared = prepareCustomerWrite(rawBody, context);
+  if (prepared.ok === false) return Response.json({ ok: false, error: prepared.error }, { status: prepared.status });
+  const body = prepared.body;
+
+  const service = createServiceRoleClient();
+  if (body.cartItemId) {
+    const { data: cartLine } = await service.from("cart_items").select("id").eq("id", String(body.cartItemId)).eq("user_id", user.id).maybeSingle();
+    if (!cartLine) return Response.json({ ok: false, error: "Cart item not found." }, { status: 404 });
+  }
+
+  const validation = await validateCustomizationSave(user.id, body, {
+    ...context,
     editorState: (existingRow.render_data as any)?.editorState || null,
   });
   if (validation.ok === false) {
-    await writeCustomizerAudit(supabase, {
+    await writeCustomizerAudit(service, {
       actorId: user.id,
       action: "customization.save_rejected",
       customizationId: id,
       productId: existingRow.product_id,
-      editorState: rawBody.editorState || rawBody.renderData?.editorState,
+      editorState: body.editorState || body.renderData?.editorState,
       details: { violationCodes: validation.violations.map((item) => item.code) },
     });
-    return Response.json(
-      { ok: false, error: validation.error, violations: validation.violations },
-      { status: validation.status },
-    );
+    return Response.json({ ok: false, error: validation.error, violations: validation.violations }, { status: validation.status });
   }
 
   const row = customizationUpdateRow(validation.body);
-
-  const { data, error } = await supabase
+  const { data, error } = await service
     .from("product_customizations")
     .update(row)
     .eq("id", id)
     .eq("user_id", user.id)
     .neq("status", "ordered")
+    .is("order_id", null)
     .select("*")
     .maybeSingle();
-  if (error) return Response.json({ ok: false, error: error.message }, { status: 500 });
-  if (!data) return Response.json({ ok: false, error: "Not found." }, { status: 404 });
+  if (error) {
+    logEvent("error", "customizations.update_failed", { requestId, userId: user.id, customizationId: id, error });
+    return Response.json({ ok: false, error: "Your changes could not be saved. Please try again." }, { status: 500 });
+  }
+  if (!data) return Response.json({ ok: false, error: "Placed-order designs are locked. Duplicate the design to make changes." }, { status: 409 });
 
-  await writeCustomizerAudit(supabase, {
+  await writeCustomizerAudit(service, {
     actorId: user.id,
     action: "customization.updated",
     customizationId: data.id,
     productId: data.product_id,
-    editorState: rawBody.editorState || rawBody.renderData?.editorState,
+    editorState: body.editorState || body.renderData?.editorState,
     details: { schemaVersion: 4 },
   });
 
   const customization = await resolvePrivateAssetsForDelivery(customizationFromRow(data), { userId: user.id }, "editor", supabase);
-  return Response.json({ ok: true, customization });
+  return Response.json({ ok: true, customization }, { headers: PRIVATE_HEADERS });
 }
 
-export async function DELETE(_request: Request, { params }: any) {
+export async function DELETE(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  const crossSite = rejectCrossSiteRequest(request);
+  if (crossSite) return crossSite;
+
   const { id } = await params;
-  const { supabase, user } = await getUser();
+  const { user } = await getUser();
   if (!user) return Response.json({ ok: false, error: "Sign in required." }, { status: 401 });
 
-  const { data: existing } = await supabase.from("product_customizations").select("product_id,status").eq("id", id).eq("user_id", user.id).maybeSingle();
+  const { row: existing } = await loadOwned(id, user.id);
   if (!existing) return Response.json({ ok: false, error: "Not found." }, { status: 404 });
-  if (existing.status === "ordered") return Response.json({ ok: false, error: "Placed-order designs cannot be deleted." }, { status: 409 });
-  const { error } = await supabase.from("product_customizations").delete().eq("id", id).eq("user_id", user.id).neq("status", "ordered");
-  if (error) return Response.json({ ok: false, error: error.message }, { status: 500 });
+  if (existing.status === "ordered" || existing.order_id) {
+    return Response.json({ ok: false, error: "Placed-order designs cannot be deleted." }, { status: 409 });
+  }
 
-  await writeCustomizerAudit(supabase, {
+  const service = createServiceRoleClient();
+  const { error } = await service.from("product_customizations").delete().eq("id", id).eq("user_id", user.id).neq("status", "ordered").is("order_id", null);
+  if (error) {
+    logEvent("error", "customizations.delete_failed", { requestId: requestIdFrom(request), userId: user.id, customizationId: id, error });
+    return Response.json({ ok: false, error: "Could not delete this design." }, { status: 500 });
+  }
+
+  await writeCustomizerAudit(service, {
     actorId: user.id,
     action: "customization.deleted",
-    productId: existing?.product_id,
+    productId: existing.product_id,
     details: { deletedCustomizationId: id },
   });
 

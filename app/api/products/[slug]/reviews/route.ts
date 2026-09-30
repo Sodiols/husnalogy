@@ -1,5 +1,5 @@
 import { addProductReviewBySlug, getProductBySlug } from "@/lib/products";
-import { getOrderRequests } from "@/lib/orders";
+import { getOrderRequestsForCustomer } from "@/lib/orders";
 import { rateLimit, rejectLargeRequest } from "@/lib/security/rate-limit";
 import { getSettings } from "@/lib/settings";
 import { cleanString } from "@/lib/validation";
@@ -27,19 +27,6 @@ function orderIncludesProduct(order, product) {
   });
 }
 
-function orderBelongsToUser(order, user) {
-  if (!order || !user) return false;
-
-  const orderEmail = cleanString(order.customerEmail).toLowerCase();
-  const userEmail = cleanString(user.email).toLowerCase();
-  const orderCustomerId = cleanString(order.customerId);
-
-  if (orderCustomerId && user.uid && orderCustomerId === user.uid) return true;
-  if (orderEmail && userEmail && orderEmail === userEmail) return true;
-
-  return false;
-}
-
 function orderCanReview(order) {
   return REVIEW_ALLOWED_STATUSES.has(String(order?.status || "").toLowerCase());
 }
@@ -53,15 +40,17 @@ function reviewAlreadyExists(product, order, user) {
   });
 }
 
+// Only the signed-in customer's OWN finalized orders are considered (strict
+// customer-id ownership). This used to scan every order in the shop and also
+// accept a matching email address as proof of ownership.
 async function findEligibleReviewOrder(product, user, requestedOrderId = "") {
-  const orders = await getOrderRequests();
+  const orders = await getOrderRequestsForCustomer({ customerId: user?.uid || "" });
   const targetOrderId = cleanString(requestedOrderId);
 
   return orders.find((order) => {
     if (targetOrderId && cleanString(order.id) !== targetOrderId) return false;
 
     return (
-      orderBelongsToUser(order, user) &&
       orderCanReview(order) &&
       orderIncludesProduct(order, product) &&
       !reviewAlreadyExists(product, order, user)

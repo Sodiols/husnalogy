@@ -43,7 +43,7 @@ export async function GET(request: Request) {
   try {
     return Response.json({
       ok: true,
-      elements: await signAdminAssetRows(supabase, data || []),
+      elements: await signAdminAssetRows(supabase, data || [], undefined, "customer"),
       categories: (categories || []).map(categoryFromRow),
       total: count || 0,
       page,

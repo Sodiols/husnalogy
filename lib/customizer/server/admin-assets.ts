@@ -33,12 +33,27 @@ export function stripAdminAssetUrls<T>(value: T): T {
   return visit(value) as T;
 }
 
-export async function signAdminAssetRow(supabase: any, row: any, ttlSeconds = ADMIN_ASSET_URL_TTL_SECONDS) {
+/**
+ * Who a signed asset URL is for. The full-resolution ORIGINAL of a Husnalogy
+ * library asset is proprietary source material: the studio (admin/designer
+ * builder) may receive it, a customer-facing page receives only the
+ * editor-optimized derivative and the thumbnail.
+ */
+export type AdminAssetAudience = "studio" | "customer";
+
+export async function signAdminAssetRow(
+  supabase: any,
+  row: any,
+  ttlSeconds = ADMIN_ASSET_URL_TTL_SECONDS,
+  audience: AdminAssetAudience = "studio",
+) {
   const bucket = row.bucket || ADMIN_ASSET_BUCKET;
   const editorPath = row.editor_path || row.path;
   const thumbnailPath = row.thumbnail_path || editorPath;
   const [original, editor, thumbnail] = await Promise.all([
-    supabase.storage.from(bucket).createSignedUrl(row.path, ttlSeconds),
+    audience === "studio" || editorPath === row.path
+      ? supabase.storage.from(bucket).createSignedUrl(row.path, ttlSeconds)
+      : Promise.resolve({ data: null }),
     supabase.storage.from(bucket).createSignedUrl(editorPath, ttlSeconds),
     supabase.storage.from(bucket).createSignedUrl(thumbnailPath, ttlSeconds),
   ]);
@@ -57,11 +72,21 @@ export async function signAdminAssetRow(supabase: any, row: any, ttlSeconds = AD
   });
 }
 
-export async function signAdminAssetRows(supabase: any, rows: any[], ttlSeconds = ADMIN_ASSET_URL_TTL_SECONDS) {
-  return Promise.all((rows || []).map((row) => signAdminAssetRow(supabase, row, ttlSeconds)));
+export async function signAdminAssetRows(
+  supabase: any,
+  rows: any[],
+  ttlSeconds = ADMIN_ASSET_URL_TTL_SECONDS,
+  audience: AdminAssetAudience = "studio",
+) {
+  return Promise.all((rows || []).map((row) => signAdminAssetRow(supabase, row, ttlSeconds, audience)));
 }
 
-export async function hydrateAdminAssetUrls<T>(value: T, supabase: any, ttlSeconds = ADMIN_ASSET_URL_TTL_SECONDS): Promise<T> {
+export async function hydrateAdminAssetUrls<T>(
+  value: T,
+  supabase: any,
+  ttlSeconds = ADMIN_ASSET_URL_TTL_SECONDS,
+  audience: AdminAssetAudience = "studio",
+): Promise<T> {
   const ids = new Set<string>();
   const collect = (current: any) => {
     if (Array.isArray(current)) return current.forEach(collect);
@@ -80,7 +105,7 @@ export async function hydrateAdminAssetUrls<T>(value: T, supabase: any, ttlSecon
     .in("status", ["ready", "archived"]);
   if (error || !data?.length) return value;
 
-  const signed = await signAdminAssetRows(supabase, data, ttlSeconds);
+  const signed = await signAdminAssetRows(supabase, data, ttlSeconds, audience);
   const byId = new Map(signed.map((asset: any) => [String(asset.id), asset]));
   const visit = (current: any): any => {
     if (Array.isArray(current)) return current.map(visit);
@@ -101,8 +126,7 @@ export async function hydrateAdminAssetUrls<T>(value: T, supabase: any, ttlSecon
           ...current,
           assetId: asset.id,
           bucket: asset.bucket,
-          path: asset.originalPath,
-          originalPath: asset.originalPath,
+          ...(audience === "studio" ? { path: asset.originalPath, originalPath: asset.originalPath } : {}),
           editorPath: asset.editorPath,
           thumbnailPath: asset.thumbnailPath,
           src: asset.editorUrl,

@@ -1,5 +1,6 @@
 import { createServiceRoleClient } from "@/lib/supabase/server";
 import { rateLimit } from "@/lib/security/rate-limit";
+import { canAccessStudio, getCurrentActor } from "@/lib/auth/roles";
 
 const ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -16,6 +17,16 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   const variant = new URL(request.url).searchParams.get("variant") || "editor";
   if (!["editor", "thumbnail", "original"].includes(variant)) {
     return Response.json({ ok: false, error: "Invalid asset variant." }, { status: 400 });
+  }
+  // Customers only ever need the editor-optimized derivative or the
+  // thumbnail. The full-resolution source file of a Husnalogy library asset
+  // is proprietary and reserved for the studio (admins and designers); the
+  // production renderer reads storage directly with the service role.
+  if (variant === "original") {
+    const actor = await getCurrentActor();
+    if (!canAccessStudio(actor)) {
+      return Response.json({ ok: false, error: "This asset variant is not available." }, { status: actor ? 403 : 401 });
+    }
   }
 
   const supabase = createServiceRoleClient();

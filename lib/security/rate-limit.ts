@@ -14,16 +14,39 @@
 
 const buckets = new Map();
 
-function getClientIp(request) {
-  const forwarded = request.headers.get("x-forwarded-for") || "";
-  const firstForwarded = forwarded.split(",")[0]?.trim();
+/**
+ * How many reverse proxies sit in front of Node and APPEND to
+ * X-Forwarded-For. Hostinger's Node.js hosting runs the app behind one proxy,
+ * so the default is 1. Set TRUSTED_PROXY_HOPS if a CDN is added in front.
+ */
+function trustedProxyHops(): number {
+  const hops = Number(process.env.TRUSTED_PROXY_HOPS ?? 1);
+  return Number.isInteger(hops) && hops >= 0 && hops <= 5 ? hops : 1;
+}
 
-  return (
-    firstForwarded ||
-    request.headers.get("x-real-ip") ||
-    request.headers.get("cf-connecting-ip") ||
-    "unknown"
-  );
+const IP_PATTERN = /^[0-9a-f.:]{3,45}$/i;
+
+/**
+ * The client address as seen by the LAST trusted proxy.
+ *
+ * The leftmost X-Forwarded-For entry is whatever the client typed: using it
+ * (as this function previously did) let anyone pick a fresh "IP" per request
+ * and bypass every rate limit. Proxies append the address they received the
+ * connection from, so the trustworthy entry is the one `hops` positions from
+ * the RIGHT. `x-real-ip`/`cf-connecting-ip` are not consulted: without a
+ * proxy guaranteed to overwrite them they are equally client controlled.
+ */
+export function getClientIp(request) {
+  const hops = trustedProxyHops();
+  if (hops > 0) {
+    const chain = String(request.headers.get("x-forwarded-for") || "")
+      .split(",")
+      .map((entry) => entry.trim())
+      .filter(Boolean);
+    const candidate = chain.length >= hops ? chain[chain.length - hops] : chain[0];
+    if (candidate && IP_PATTERN.test(candidate)) return candidate;
+  }
+  return "unknown";
 }
 
 function cleanup(now) {
@@ -49,11 +72,14 @@ export function isDistributedRateLimitConfigured() {
  * Synchronous, per-instance limiter. Kept as the default and as the fallback
  * whenever distributed limiting is unavailable.
  */
-export function rateLimit(request, { name, limit, windowMs }) {
+export function rateLimit(request, { name, limit, windowMs, identity = "" }: { name: string; limit: number; windowMs: number; identity?: string }) {
   const now = Date.now();
   cleanup(now);
 
-  const key = `${name}:${getClientIp(request)}`;
+  // `identity` (e.g. the authenticated user id) makes a limit follow the
+  // account instead of the network address, so one customer cannot spread
+  // load across addresses and many customers behind one NAT do not share it.
+  const key = `${name}:${identity || getClientIp(request)}`;
   const bucket = buckets.get(key) || { count: 0, resetAt: now + windowMs };
 
   if (bucket.resetAt <= now) {
@@ -77,13 +103,13 @@ export function rateLimit(request, { name, limit, windowMs }) {
  * FAILS OPEN to the in-memory limiter: if Redis is unreachable we must not
  * take checkout down, and the per-instance limiter still applies.
  */
-export async function rateLimitDistributed(request, { name, limit, windowMs }) {
+export async function rateLimitDistributed(request, { name, limit, windowMs, identity = "" }: { name: string; limit: number; windowMs: number; identity?: string }) {
   if (!isDistributedRateLimitConfigured()) {
-    return rateLimit(request, { name, limit, windowMs });
+    return rateLimit(request, { name, limit, windowMs, identity });
   }
 
   const windowSeconds = Math.max(1, Math.ceil(windowMs / 1000));
-  const key = `ratelimit:${name}:${getClientIp(request)}`;
+  const key = `ratelimit:${name}:${identity || getClientIp(request)}`;
   const baseUrl = String(process.env.UPSTASH_REDIS_REST_URL).replace(/\/+$/, "");
   const token = process.env.UPSTASH_REDIS_REST_TOKEN;
 
@@ -109,7 +135,7 @@ export async function rateLimitDistributed(request, { name, limit, windowMs }) {
     return null;
   } catch (error) {
     console.error(`[rate-limit] Distributed limiter unavailable for "${name}"; falling back to the in-memory limiter.`, error);
-    return rateLimit(request, { name, limit, windowMs });
+    return rateLimit(request, { name, limit, windowMs, identity });
   }
 }
 

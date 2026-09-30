@@ -8,7 +8,6 @@ import useAuth from "../lib/useAuth";
 import {
   addToCart as saveCartItem,
   formatRemoteError,
-  getOptionsSurcharge,
   getProductBasePrice,
   openCustomerLogin,
   uploadCustomerFile,
@@ -287,9 +286,14 @@ function buildConfiguredOptions(value, defaults, fallbackIcon, currency = "BDT")
 
       // Legacy string entries keep their exact preset behaviour.
       if (preset && option.kind === "string") {
-        const surcharge = Number(String(preset.price || "").replace(/[^0-9.]/g, "")) || 0;
+        // The product's CONFIGURED surcharge — the value checkout charges —
+        // not the preset's illustrative price text.
+        const surcharge = option.surcharge;
         return {
           ...preset,
+          surchargeAmount: surcharge,
+          // The configured option's identity — what checkout matches on.
+          optionKey: option.displayLabel,
           cartLabel: localizeOptionCartLabel(preset.cartLabel || preset.label, surcharge, currency),
           price: surcharge ? formatCurrencySurcharge(surcharge, currency) : "",
         };
@@ -297,6 +301,8 @@ function buildConfiguredOptions(value, defaults, fallbackIcon, currency = "BDT")
 
       return {
         value: option.value,
+        optionKey: option.displayLabel,
+        surchargeAmount: option.surcharge,
         label: option.displayLabel,
         cartLabel: localizeOptionCartLabel(option.cartValue, option.surcharge, currency),
         description: option.description || preset?.description || "",
@@ -415,22 +421,28 @@ export default function ProductInfo({ product, initialUser = undefined }) {
   const selectedPaperStyle = findOption(paperStyleOptions, paperStyle) || fallbackOption();
   const selectedPrinting = findOption(printingOptions, printing) || fallbackOption();
 
+  // Each choice is sent as the CONFIGURED option's identity (optionKey). The
+  // server prices it from its own copy of the product; any price text in a
+  // label is ignored. Presets without a configured counterpart (the built-in
+  // format list) fall back to their label, which the server also recognizes.
+  const optionIdentity = (option) => option.optionKey || option.cartLabel || option.label || "";
   const selectedOptions = {
-    format: selectedFormat.cartLabel || selectedFormat.label,
-    // cartLabel first so rich size options carry their configured surcharge;
-    // presets keep no size surcharge exactly as before.
-    size: selectedSize.price && selectedSize.cartLabel ? selectedSize.cartLabel : selectedSize.displayLabel || selectedSize.label,
-    envelope: selectedEnvelope.cartLabel,
-    corner: selectedCorner.cartLabel,
-    ...(paperStyleOptions.length ? { paperStyle: selectedPaperStyle.cartLabel } : {}),
-    paper: selectedPaper.cartLabel,
-    printing: selectedPrinting.cartLabel,
+    format: optionIdentity(selectedFormat),
+    size: optionIdentity(selectedSize),
+    envelope: optionIdentity(selectedEnvelope),
+    corner: optionIdentity(selectedCorner),
+    ...(paperStyleOptions.length ? { paperStyle: optionIdentity(selectedPaperStyle) } : {}),
+    paper: optionIdentity(selectedPaper),
+    printing: optionIdentity(selectedPrinting),
     logo,
   };
 
   const hasPrice = product.price !== null && product.price !== undefined;
   const basePrice = getProductBasePrice(product);
-  const optionsSurcharge = getOptionsSurcharge(selectedOptions);
+  // Display estimate from the configured surcharges (the checkout quote and
+  // the order API recompute it on the server).
+  const optionsSurcharge = [selectedFormat, selectedSize, selectedEnvelope, selectedCorner, paperStyleOptions.length ? selectedPaperStyle : null, selectedPaper, selectedPrinting]
+    .reduce((sum, option) => sum + (Number(option?.surchargeAmount) || 0), 0);
   const unitPrice = Number((basePrice + optionsSurcharge).toFixed(2));
   const lineTotal = Number((unitPrice * safeQuantity).toFixed(2));
 

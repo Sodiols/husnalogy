@@ -28,6 +28,19 @@ export type RichProductOption = {
 
 export type ProductOptionEntry = string | RichProductOption;
 
+/**
+ * Format choices offered when a product has no configured `formatOptions`.
+ * The product page and the customizer historically used slightly different
+ * wording for the first entry, so both spellings are recognized. None of them
+ * carries a surcharge.
+ */
+export const BUILT_IN_FORMAT_OPTIONS: string[] = [
+  "Printed Flat Card",
+  "Printed Flat Save The Date Card",
+  "Prints + Instant Download",
+  "Instant Download",
+];
+
 export type ParsedProductOption = {
   kind: "string" | "object";
   /** Internal value (stable id for the option). */
@@ -61,6 +74,8 @@ function toSurcharge(value: any): number {
   return Number.isFinite(num) && num > 0 ? Number(num.toFixed(2)) : 0;
 }
 
+// Parses a surcharge out of an ADMIN-CONFIGURED legacy string option (the
+// product's own option list). Never call this on customer-submitted text.
 export function parseSurchargeFromLabel(label: string): number {
   const match = String(label || "").match(/\+\s*(?:৳|\$|BDT\s*)?\s*(\d+(?:\.\d+)?)/i);
   return match ? Number(match[1]) : 0;
@@ -209,14 +224,9 @@ export function getDefaultOptionCartValue(value: any, fallback: ProductOptionEnt
   return (flagged || options[0]).cartValue;
 }
 
-// Surcharge for a saved selection string against a configured list. Falls back
-// to parsing "+$x" from the stored string (legacy behaviour) when the option
-// is not found — so old carts keep pricing correctly.
-export function getSurchargeForSelection(selection: string, value: any): number {
-  const stored = cleanText(selection);
-  if (!stored) return 0;
-  const options = parseProductOptionList(value);
-  const match = options.find((option) => option.cartValue === stored || option.displayLabel === stored || option.label === stored);
-  if (match) return match.surcharge;
-  return parseSurchargeFromLabel(stored);
-}
+// NOTE: there is intentionally no "surcharge for a selection string" helper.
+// Surcharges are resolved ONLY by lib/orders/pricing-resolver.ts, which matches
+// a selection to a configured option by identity and uses the server-side
+// surcharge. The previous helper fell back to parsing "+$x" out of the
+// customer-submitted string, which let a forged "+$0" suffix remove a paid
+// option's price.

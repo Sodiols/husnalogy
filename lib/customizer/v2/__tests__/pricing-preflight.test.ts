@@ -1,45 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { calculateCustomizationPrice, validateSelectedOptions } from "../pricing";
 import { runPreflight } from "../preflight";
 import { templateToDocument, resolveCustomerDocument } from "../document";
 
-const product = {
-  price: 100,
-  salePrice: 80,
-  currency: "BDT",
-  paperOptions: ["Matte", { label: "Pearl", surcharge: 25 }],
-  sizeOptions: ["5x7", "4x6 +$10"],
-  envelopeOptions: [],
-};
-
-describe("server pricing", () => {
-  it("uses sale price as the base", () => {
-    const pricing = calculateCustomizationPrice(product, {}, 1);
-    expect(pricing.basePrice).toBe(80);
-    expect(pricing.unitPrice).toBe(80);
-  });
-
-  it("adds surcharges from rich and legacy string options", () => {
-    const pricing = calculateCustomizationPrice(product, { paper: "Pearl +$25.00", size: "4x6 +$10" }, 3);
-    expect(pricing.optionsTotal).toBe(35);
-    expect(pricing.unitPrice).toBe(115);
-    expect(pricing.subtotal).toBe(345);
-    expect(pricing.optionSurcharges.map((s) => s.key).sort()).toEqual(["paper", "size"]);
-  });
-
-  it("clamps quantity into a sane range", () => {
-    expect(calculateCustomizationPrice(product, {}, -5).quantity).toBe(1);
-    expect(calculateCustomizationPrice(product, {}, 99999).quantity).toBe(9999);
-  });
-
-  it("validates selections against configured lists", () => {
-    expect(validateSelectedOptions(product, { paper: "Matte" }).ok).toBe(true);
-    expect(validateSelectedOptions(product, { paper: "Pearl +$25.00" }).ok).toBe(true);
-    const bad = validateSelectedOptions(product, { paper: "Gold Leaf" });
-    expect(bad.ok).toBe(false);
-    expect(bad.errors[0]).toContain("Gold Leaf");
-  });
-});
+// Server pricing moved to lib/orders/pricing-resolver.ts and is covered,
+// with far stricter rules, by lib/orders/__tests__/pricing-resolver.test.ts.
 
 const template = {
   id: "t1",

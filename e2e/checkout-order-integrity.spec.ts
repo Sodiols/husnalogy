@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { adminCredentials, customerCredentials, login, requireSeededAcceptance, seedManifest } from "./helpers";
+import { adminCredentials, checkoutBody, customerCredentials, login, requireSeededAcceptance, seedManifest } from "./helpers";
 
 // Full purchase journey (spec: order integrity, checkout idempotency, trusted
 // pricing, immutable snapshot, render queue, cross-account isolation). This
@@ -51,8 +51,16 @@ test.describe.serial("checkout places one trusted, immutable, render-queued orde
     await page.getByLabel(/^City/i).fill("Sylhet");
     await page.getByLabel(/^Address/i).fill("42/4c Nurani, Bonkolapara, Subidbazar");
 
+    // Terms start UNCHECKED and must be accepted explicitly.
+    const placeOrder = page.getByRole("button", { name: "Place order" });
+    const terms = page.getByRole("checkbox", { name: /accept the/i });
+    await expect(terms).not.toBeChecked();
+    await expect(placeOrder).toBeDisabled();
+    await terms.check();
+
     const responsePromise = page.waitForResponse((response) => response.url().includes("/api/order-requests") && response.request().method() === "POST");
-    await page.getByRole("button", { name: "Place order" }).click();
+    // A double click must still produce exactly one request/order.
+    await placeOrder.dblclick();
     const response = await responsePromise;
     expect(response.ok()).toBe(true);
     const payload = await response.json();
@@ -65,7 +73,12 @@ test.describe.serial("checkout places one trusted, immutable, render-queued orde
     // computed number, never client-echoed unchecked.
     expect(payload.order.subtotal).toBeGreaterThan(0);
 
-    await expect(page.getByText(/Order request placed/i)).toBeVisible();
+    await expect(page.getByText(/Order placed/i).first()).toBeVisible();
+    await expect(page.getByRole("button", { name: /Order placed|Place order/ })).toBeDisabled();
+
+    // Refreshing after success must never offer to place the same order again.
+    await page.reload();
+    await expect(page.getByRole("button", { name: /Place order|Order placed/ })).toBeDisabled();
   });
 
   test("customer's Orders page shows exactly one order for this checkout", async ({ page }) => {
@@ -154,24 +167,7 @@ test.describe.serial("checkout places one trusted, immutable, render-queued orde
 
 test("a repeated checkout submission id never creates a second order", async ({ page }) => {
   await login(page, customerCredentials.email, customerCredentials.password);
-  const checkoutSubmissionId = `e2e-idempotency-${Date.now()}`;
-  const body = {
-    checkoutSubmissionId,
-    customerName: "Idempotency Test",
-    customerPhone: "+8801711000001",
-    deliveryMethod: "store",
-    items: [
-      {
-        productId: seedManifest.productId,
-        productSlug: seedManifest.productSlug,
-        title: "Idempotency test item",
-        price: 100,
-        quantity: 1,
-        currency: "BDT",
-      },
-    ],
-    message: "Idempotency test",
-  };
+  const body = checkoutBody({ customerName: "Idempotency Test" });
 
   const first = await page.request.post("/api/order-requests", { data: body });
   expect(first.ok()).toBe(true);
@@ -208,22 +204,7 @@ test("a repeated checkout submission id never creates a second order", async ({ 
 
 test("an idempotency token is not an authorization token: Customer B cannot reuse Customer A's submission id", async ({ browser }) => {
   const submissionId = `e2e-shared-token-${Date.now()}`;
-  const orderBody = (name: string) => ({
-    checkoutSubmissionId: submissionId,
-    customerName: name,
-    customerPhone: "+8801711000004",
-    deliveryMethod: "store",
-    items: [
-      {
-        productId: seedManifest.productId,
-        productSlug: seedManifest.productSlug,
-        title: "Shared token test item",
-        price: 100,
-        quantity: 1,
-        currency: "BDT",
-      },
-    ],
-  });
+  const orderBody = (name: string) => checkoutBody({ checkoutSubmissionId: submissionId, customerName: name, customerPhone: "+8801711000004" });
 
   // Customer A places a real order using submission id X.
   const contextA = await browser.newContext();
@@ -296,15 +277,11 @@ test("manipulated checkout payloads cannot override trusted identity or pricing"
       deliveryCharge: -50,
     },
   });
+  // The contract is strict: any server-owned field in the request rejects it.
+  expect(response.status()).toBe(400);
   const payload = await response.json().catch(() => ({}));
-  if (response.ok() && payload.order) {
-    expect(payload.order.customerEmail).toBe(customerCredentials.email.toLowerCase());
-    expect(payload.order.customerId).not.toBe("00000000-0000-0000-0000-000000000000");
-    expect(payload.order.deliveryCharge).toBeGreaterThanOrEqual(0);
-  } else {
-    // Fail-closed is equally acceptable: the manipulated request is simply rejected.
-    expect(response.ok()).toBe(false);
-  }
+  expect(payload.ok).toBe(false);
+  expect(JSON.stringify(payload.errors)).toMatch(/Unexpected field/);
 });
 
 test("Customer B cannot see Customer A's order, design, snapshot, or render output", async ({ page }) => {

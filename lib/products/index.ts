@@ -797,6 +797,31 @@ export async function getProducts() {
     .sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")));
 }
 
+/**
+ * The exact product rows a checkout prices, loaded by id with the service
+ * role — including drafts, hidden, deleted and sold-out rows, so the checkout
+ * can refuse each with a precise reason instead of "not found". `updatedAt` is
+ * the raw database timestamp: the checkout transaction compares it again and
+ * aborts if the product changed after it was priced.
+ */
+export async function getProductRecordsForCheckout(ids: string[]): Promise<Map<string, { product: any; updatedAt: string }>> {
+  const unique = [...new Set(ids.map((id) => String(id || "").trim()).filter(Boolean))];
+  const records = new Map<string, { product: any; updatedAt: string }>();
+  if (!unique.length) return records;
+
+  const supabase = createServiceRoleClient();
+  const { data, error } = await supabase
+    .from("products")
+    .select("*, product_images(*), product_mockups(*)")
+    .in("id", unique);
+  if (error) throw error;
+
+  for (const row of data || []) {
+    records.set(String(row.id), { product: productFromRow(row), updatedAt: String(row.updated_at) });
+  }
+  return records;
+}
+
 export async function getActiveProducts(filters = {}) {
   const products = await getProducts();
   return filterProducts(products.filter(isPubliclyListed), filters);
@@ -817,10 +842,10 @@ export async function getActiveProducts(filters = {}) {
  * product.images, so signing every template's assets there would be wasted
  * work on the hottest page.
  */
-export async function hydrateProductCustomizerAssets(input) {
+export async function hydrateProductCustomizerAssets(input, audience: "studio" | "customer" = "studio") {
   if (!input) return input;
   const supabase = createServiceRoleClient();
-  return hydrateAdminAssetUrls(input, supabase);
+  return hydrateAdminAssetUrls(input, supabase, undefined, audience);
 }
 
 /**
@@ -866,8 +891,9 @@ export async function getProductBySlug(slug, includeInactive = false) {
     .eq("product_id", product.id);
   const withCustomizerFlag = { ...product, hasPublishedCustomizer: Number(count || 0) > 0 };
 
+  // The public product page: customer audience, never the original files.
   return withCustomizerFlag.customizerTemplate
-    ? hydrateProductCustomizerAssets(withCustomizerFlag)
+    ? hydrateProductCustomizerAssets(withCustomizerFlag, "customer")
     : withCustomizerFlag;
 }
 

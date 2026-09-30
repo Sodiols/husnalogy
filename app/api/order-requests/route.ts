@@ -1,70 +1,84 @@
 import { getSupabaseUserFromRequest } from "@/lib/auth/supabase-user";
 import { createOrderRequest, getOrderRequestsForCustomer } from "@/lib/orders/index";
-import { rateLimitDistributed, rejectLargeRequest } from "@/lib/security/rate-limit";
-import { cleanString } from "@/lib/validation";
+import { CHECKOUT_LIMITS } from "@/lib/orders/checkout-policy";
+import { rateLimitDistributed } from "@/lib/security/rate-limit";
+import { rejectCrossSiteRequest } from "@/lib/security/same-origin";
+import { bodyErrorResponse, readJsonBody } from "@/lib/http/read-body";
+import { logEvent, requestIdFrom } from "@/lib/observability/logger";
 
-export async function GET(request) {
+// Customer order data is per-user: never cache it anywhere.
+export const dynamic = "force-dynamic";
+const PRIVATE_HEADERS = { "Cache-Control": "private, no-store, max-age=0" };
+
+export async function GET(request: Request) {
+  const requestId = requestIdFrom(request);
   try {
     const user = await getSupabaseUserFromRequest(request);
-
-    if (!user?.uid && !user?.email) {
-      return Response.json({ ok: false, error: "Authentication required." }, { status: 401 });
+    if (!user?.uid) {
+      return Response.json({ ok: false, error: "Authentication required." }, { status: 401, headers: PRIVATE_HEADERS });
     }
-
-    const orders = await getOrderRequestsForCustomer({
-      customerId: user?.uid || "",
-      email: user?.email || "",
-    });
-
-    return Response.json({ ok: true, orders });
+    const orders = await getOrderRequestsForCustomer({ customerId: user.uid });
+    return Response.json({ ok: true, orders }, { headers: PRIVATE_HEADERS });
   } catch (error) {
-    console.error("Could not load customer orders:", error);
-    return Response.json({ ok: false, error: "Could not load your orders." }, { status: 500 });
+    logEvent("error", "orders.list_failed", { requestId, error });
+    return Response.json({ ok: false, error: "Could not load your orders." }, { status: 500, headers: PRIVATE_HEADERS });
   }
 }
 
-export async function POST(request) {
+export async function POST(request: Request) {
+  const requestId = requestIdFrom(request);
+  const headers = { ...PRIVATE_HEADERS, "X-Request-Id": requestId };
+
+  const crossSite = rejectCrossSiteRequest(request);
+  if (crossSite) return crossSite;
+
+  // Per address first (cheap, before any auth lookup), then per account.
+  const byAddress = await rateLimitDistributed(request, { name: "order-request-ip", limit: 30, windowMs: 10 * 60 * 1000 });
+  if (byAddress) return byAddress;
+
   try {
-    const largeRequest = rejectLargeRequest(request, 256 * 1024);
-    if (largeRequest) return largeRequest;
-
-    const limited = await rateLimitDistributed(request, {
-      name: "order-request",
-      limit: 12,
-      windowMs: 10 * 60 * 1000,
-    });
-    if (limited) return limited;
-
     const user = await getSupabaseUserFromRequest(request);
     if (!user?.uid) {
-      return Response.json({ ok: false, error: "Authentication required." }, { status: 401 });
+      return Response.json({ ok: false, error: "Please sign in to place an order." }, { status: 401, headers });
     }
-    const trustedCustomerEmail = cleanString(user.email).toLowerCase();
-    if (!trustedCustomerEmail) {
-      return Response.json({ ok: false, error: "Your signed-in account needs an email address before checkout." }, { status: 400 });
-    }
-    const body = await request.json();
+    const byAccount = await rateLimitDistributed(request, { name: "order-request-user", limit: 12, windowMs: 10 * 60 * 1000, identity: user.uid });
+    if (byAccount) return byAccount;
 
-    const result = await createOrderRequest({
-      ...body,
-      customerId: user.uid,
-      customerEmail: trustedCustomerEmail,
-      customerName: body.customerName || user?.name || "",
-      paymentMethod: "Cash on Delivery",
+    let body: unknown;
+    try {
+      body = await readJsonBody(request, CHECKOUT_LIMITS.maxBodyBytes);
+    } catch (error) {
+      logEvent("warn", "checkout.validation_failed", { requestId, userId: user.uid, stage: "body", reason: error instanceof Error ? error.name : "unknown" });
+      const response = bodyErrorResponse(error);
+      if (response) return response;
+      throw error;
+    }
+
+    const outcome = await createOrderRequest({
+      user: { id: user.uid, email: String(user.email || "").toLowerCase() },
+      body,
+      requestId,
     });
 
-    if (!result.ok) {
-      return Response.json({ ok: false, errors: result.errors }, { status: 400 });
+    if (outcome.ok === false) {
+      return Response.json(
+        { ok: false, code: outcome.code, errors: outcome.errors, ...(outcome.orderId ? { orderId: outcome.orderId } : {}), requestId },
+        { status: outcome.httpStatus, headers },
+      );
     }
 
-    // 200 for an idempotent replay of a checkout this customer already
-    // completed, 201 when the order was genuinely created just now.
+    // 201 when the order was created now; 200 for an idempotent replay of a
+    // checkout this customer already completed (retry, double click, lost
+    // response). Either way the order is finalized.
     return Response.json(
-      { ok: true, order: result.order, idempotent: Boolean((result as any).idempotent) },
-      { status: (result as any).idempotent ? 200 : 201 },
+      { ok: true, order: outcome.order, idempotent: outcome.idempotent, cartCleared: outcome.cartCleared, requestId },
+      { status: outcome.httpStatus, headers },
     );
   } catch (error) {
-    console.error("Order request failed:", error);
-    return Response.json({ ok: false, error: "Could not submit your request." }, { status: 500 });
+    logEvent("error", "checkout.unexpected_error", { requestId, stage: "route", error });
+    return Response.json(
+      { ok: false, code: "UNEXPECTED_ERROR", errors: { order: "We could not confirm your order. Please try again — retrying will never create a duplicate order." }, requestId },
+      { status: 500, headers },
+    );
   }
 }

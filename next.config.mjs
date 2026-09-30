@@ -65,6 +65,10 @@ const securityHeaders = [
   { key: "Strict-Transport-Security", value: "max-age=63072000; includeSubDomains" },
   { key: "X-Content-Type-Options", value: "nosniff" },
   { key: "X-Frame-Options", value: "DENY" },
+  // Isolates the browsing context from cross-origin windows it opens or is
+  // opened by. Supabase OAuth uses full-page redirects (not popups), so this
+  // does not affect sign-in.
+  { key: "Cross-Origin-Opener-Policy", value: "same-origin" },
   { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
   {
     key: "Permissions-Policy",

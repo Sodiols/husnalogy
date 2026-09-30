@@ -132,20 +132,31 @@ export async function validateCustomizationSave(
   body: Record<string, any>,
   existing: ExistingCustomization = {},
 ): Promise<SaveValidationResult> {
-  const productId = body.productId || existing.productId || "";
-  const templateId = body.templateId || existing.templateId || "";
-  const templateVersion = Number(body.templateVersion || existing.templateVersion) || 0;
+  // An EXISTING customization's identity is authoritative: a request can never
+  // re-point it at another product/template/version by sending new ids (the
+  // API layer also rejects such a request outright). For a brand-new design
+  // the ids come from the body and are verified by the template lookup below.
+  const productId = existing.productId || body.productId || "";
+  const templateId = existing.templateId || body.templateId || "";
+  const templateVersion = Number(existing.templateVersion || body.templateVersion) || 0;
 
   const hasValues = body.values !== undefined;
   const editorState = extractEditorState(body);
 
-  // Pure bookkeeping updates (status/cartItemId/orderId) skip design checks.
+  // Pure bookkeeping updates (cart link / draft status) carry no design state.
   if (!hasValues && !editorState) return { ok: true, body, warnings: [] };
 
   const trusted = await getTrustedTemplateForCustomization({ productId, templateId, templateVersion });
   if (!trusted) {
-    // No template — nothing to validate against (legacy/deleted product).
-    return { ok: true, body, warnings: [] };
+    // FAIL CLOSED. There used to be a "no template, nothing to validate"
+    // shortcut here: omitting (or mismatching) the product/template context
+    // skipped every permission, font, colour and upload-ownership check.
+    return {
+      ok: false,
+      status: 409,
+      error: "This design's template is no longer available. Please start a new design.",
+      violations: [{ code: "template-unavailable", message: "No published template matches this customization." }],
+    };
   }
 
   const authoritativeTemplate = await resolveFlagsIntoTemplate(trusted.template, {

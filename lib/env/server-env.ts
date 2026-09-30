@@ -113,6 +113,15 @@ export function validateProductionEnv(env: Env = process.env): EnvReport {
   const upstashToken = value(env, "UPSTASH_REDIS_REST_TOKEN");
   if (Boolean(upstashUrl) !== Boolean(upstashToken)) {
     warn("UPSTASH_REDIS_REST_URL", "and UPSTASH_REDIS_REST_TOKEN must be set together; using the in-memory limiter.");
+  } else if (!upstashUrl) {
+    warn(
+      "UPSTASH_REDIS_REST_URL",
+      "is not set: rate limits are enforced per Node process only. That is adequate for a single `npm start` process on Hostinger; configure Upstash before running more than one instance.",
+    );
+  }
+  const hops = value(env, "TRUSTED_PROXY_HOPS");
+  if (hops && !/^[0-5]$/.test(hops)) {
+    error("TRUSTED_PROXY_HOPS", "must be an integer from 0 to 5 (the number of proxies in front of Node that append to X-Forwarded-For; Hostinger: 1).");
   }
 
   // --------------------------------------------------------- Unsafe settings

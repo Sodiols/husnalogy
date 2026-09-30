@@ -1,244 +1,201 @@
 // Permanent order design snapshots (spec §22). Server-only.
 //
-// When an order is created, every customized item gets an immutable
-// order_design_snapshots row containing the complete resolved design: the
-// exact template version document, customer values, editor state, resolved
-// layers, pricing, preflight results, and an integrity hash. Editing the
-// product or template afterwards never changes the snapshot.
+// Every customized order line gets an immutable order_design_snapshots row
+// containing the complete resolved design: the exact template version
+// document, customer values, editor state, resolved layers, TRUSTED pricing,
+// preflight results, and an integrity hash. Editing the product or template
+// afterwards never changes the snapshot (a database trigger enforces that).
+//
+// Two phases, deliberately separate:
+//
+//   buildOrderDesignSnapshot  — BEFORE the checkout transaction. Pure with
+//                               respect to the database (reads only). Its
+//                               output is written by create_checkout_order in
+//                               the same transaction as the order itself, so
+//                               an order can never exist without its
+//                               snapshots.
+//   queueOrderProduction      — AFTER the order has committed. Enqueues the
+//                               print renders and writes audit rows. Every
+//                               step is idempotent (render jobs dedupe on
+//                               their input hash) and a failure is recorded on
+//                               the snapshot for the Admin retry path — it
+//                               can never undo or duplicate the order.
 
 import { createHash } from "crypto";
 import { createServiceRoleClient } from "@/lib/supabase/server";
 import { customizationFromRow } from "@/lib/customizer/customizations";
-import { getTrustedTemplateForCustomization } from "@/lib/customizer/versions";
 import { templateToDocument, resolveCustomerDocument } from "@/lib/customizer/v2/document";
 import { runPreflight } from "@/lib/customizer/v2/preflight";
-import { calculateCustomizationPrice } from "@/lib/customizer/v2/pricing";
 import { isCustomizerFeatureEnabled } from "@/lib/customizer/v2/feature-flags";
 import { collectCustomerAssetReferences, stripEphemeralAssetUrls } from "@/lib/customizer/v2/asset-references";
 import { resolvePrivateAssetsForDelivery } from "@/lib/customizer/server/private-assets";
-import { getProducts } from "@/lib/products";
 import { resolveFlagsIntoTemplate } from "@/lib/customizer/v2/feature-flags.server";
+import { getTrustedTemplateForCustomization } from "@/lib/customizer/versions";
+import { logEvent } from "@/lib/observability/logger";
+import type { DesignSnapshotPayload } from "@/lib/orders/checkout";
 
 export function computeIntegrityHash(payload: unknown): string {
   return createHash("sha256").update(JSON.stringify(payload)).digest("hex");
 }
 
-type OrderLike = {
-  id: string;
-  items?: Array<Record<string, any>>;
-};
+/**
+ * Build the immutable snapshot for one customized order line.
+ *
+ * `product`, `template`, `pricing`, `selectedOptions` and `quantity` must all
+ * be server-trusted values (the checkout pipeline resolves them); nothing
+ * here is taken from the request.
+ */
+export async function buildOrderDesignSnapshot(input: {
+  row: Record<string, any>;
+  product: Record<string, any>;
+  template: Record<string, any>;
+  templateSource: "version" | "live";
+  templateVersionId: string | null;
+  selectedOptions: Record<string, unknown>;
+  quantity: number;
+  pricing: Record<string, unknown>;
+}): Promise<DesignSnapshotPayload> {
+  const supabase = createServiceRoleClient();
+  const customization = customizationFromRow(input.row);
+  const { template, product } = input;
 
-export type SnapshotFailure = { customizationId: string; reason: string };
+  const { document } = templateToDocument(template);
+  const editorState = stripEphemeralAssetUrls(customization.renderData?.editorState || null, customization.userId);
+  const values = stripEphemeralAssetUrls(customization.values || {}, customization.userId);
+  const uploadedFiles = stripEphemeralAssetUrls(customization.uploadedFiles || {}, customization.userId);
+  const [renderValues, renderEditorState] = await Promise.all([
+    resolvePrivateAssetsForDelivery(values, { productionWorker: true }, "original", supabase),
+    resolvePrivateAssetsForDelivery(editorState, { productionWorker: true }, "original", supabase),
+  ]);
+  const resolvedForPreflight = resolveCustomerDocument(document, renderValues, renderEditorState);
+  const resolved = stripEphemeralAssetUrls(resolvedForPreflight, customization.userId);
+  const preflight = runPreflight(resolvedForPreflight);
+  const assetReferences = collectCustomerAssetReferences({ values, editorState, uploadedFiles, document: resolved }, customization.userId);
 
-export type CreateSnapshotsResult = {
-  created: number;
-  failures: SnapshotFailure[];
-};
+  const snapshot = {
+    productId: product.id,
+    productTitle: String(product.title || ""),
+    productSlug: String(product.slug || ""),
+    productSku: String(product.sku || product.slug || product.id),
+    productVariant: String(input.selectedOptions.size || ""),
+    quantity: input.quantity,
+    selectedOptions: input.selectedOptions,
+    pricing: input.pricing,
+    customizationId: customization.id,
+    customizationUpdatedAt: String(input.row.updated_at || ""),
+    templateId: customization.templateId || template.id || "",
+    templateVersion: customization.templateVersion || template.version || 1,
+    templateSource: input.templateSource,
+    document: resolved,
+    values,
+    editorState: editorState || { layerOverrides: {}, userLayers: [] },
+    uploadedFiles,
+    assetReferences,
+    canvas: {
+      widthPx: template.canvasWidthPx,
+      heightPx: template.canvasHeightPx,
+      widthIn: template.cardWidthIn,
+      heightIn: template.cardHeightIn,
+      dpi: template.dpi,
+    },
+    safeArea: template.safeArea || {},
+    bleed: template.bleed || {},
+    preflight,
+  };
+
+  return {
+    customization_id: customization.id,
+    product_id: product.id,
+    product_title: snapshot.productTitle,
+    product_sku: snapshot.productSku,
+    quantity: input.quantity,
+    selected_options: input.selectedOptions as DesignSnapshotPayload["selected_options"],
+    pricing: input.pricing,
+    template_id: snapshot.templateId,
+    template_version: snapshot.templateVersion,
+    template_version_id: input.templateVersionId,
+    snapshot,
+    preflight: preflight as unknown as Record<string, unknown>,
+    preview_files: customization.previewImages || {},
+    integrity_hash: computeIntegrityHash(snapshot),
+  };
+}
 
 /**
- * Create the permanent, immutable design snapshot for every customized item on
- * a freshly created order (spec §14).
- *
- * Failures are collected and RETURNED rather than swallowed: the caller decides
- * whether the order may stand. An order whose design was never frozen cannot be
- * printed, so it must not be reported as placed.
- *
- * `orderItemIdByCustomizationId` maps a customization to the `order_items` row
- * that was actually inserted. The previous code wrote the CART item id into
- * `order_design_snapshots.order_item_id`, which is a foreign key to
- * `order_items(id)` — a cart id never matches an order item id, so every insert
- * failed the constraint and every snapshot was silently skipped.
+ * Post-commit production work for a freshly finalized order. Safe to call
+ * more than once for the same order: render jobs are deduplicated by input
+ * hash and the status updates are idempotent.
  */
-export async function createOrderDesignSnapshots(
-  order: OrderLike,
-  orderItemIdByCustomizationId: Record<string, string> = {},
-): Promise<CreateSnapshotsResult> {
-  const items = (order.items || []).filter((item) => item.customizationId);
-  if (!items.length) return { created: 0, failures: [] };
-
+export async function queueOrderProduction(orderId: string, customizationIds: string[]): Promise<void> {
+  if (!customizationIds.length) return;
   const supabase = createServiceRoleClient();
-  const products = await getProducts().catch(() => []);
-  let created = 0;
-  const failures: SnapshotFailure[] = [];
 
-  for (const item of items) {
+  const { data: snapshots, error } = await supabase
+    .from("order_design_snapshots")
+    .select("customization_id, product_id, preflight")
+    .eq("order_id", orderId)
+    .in("customization_id", customizationIds);
+  if (error) throw error;
+
+  for (const snapshot of snapshots || []) {
+    const customizationId = String(snapshot.customization_id);
+    const preflight: any = snapshot.preflight || {};
+
+    const { error: auditError } = await supabase.from("customizer_preflight_results").insert({
+      customization_id: customizationId,
+      order_id: orderId,
+      context: "order",
+      ok: Boolean(preflight.ok),
+      blocking: Boolean(preflight.blocking),
+      issues: Array.isArray(preflight.issues) ? preflight.issues : [],
+    });
+    if (auditError) logEvent("warn", "order.preflight_audit_failed", { orderId, customizationId, error: auditError });
+
     try {
-      const { data: row, error } = await supabase
-        .from("product_customizations")
-        .select("*")
-        .eq("id", item.customizationId)
-        .maybeSingle();
-      if (error) throw error;
-      if (!row) {
-        console.error(`[customizer] Order ${order.id}: customization ${item.customizationId} not found; snapshot skipped.`);
-        failures.push({ customizationId: String(item.customizationId), reason: "customization-not-found" });
-        continue;
-      }
+      const { data: row } = await supabase.from("product_customizations").select("*").eq("id", customizationId).maybeSingle();
+      if (!row) throw new Error("customization-not-found");
       const customization = customizationFromRow(row);
-
       const trusted = await getTrustedTemplateForCustomization(customization);
-      if (!trusted) {
-        console.error(`[customizer] Order ${order.id}: no template for customization ${customization.id}; snapshot skipped.`);
-        failures.push({ customizationId: String(item.customizationId), reason: "template-version-unavailable" });
-        continue;
-      }
-      const template = trusted.template;
-
-      const product = products.find((p: any) => p.id === (customization.productId || item.productId)) || null;
-      const authoritativeTemplate = await resolveFlagsIntoTemplate(template, {
-        productId: customization.productId || item.productId || "",
-        productType: product?.productType || product?.departmentPath?.join("/") || product?.category || template?.settings?.productType,
+      if (!trusted) throw new Error("template-version-unavailable");
+      const authoritativeTemplate = await resolveFlagsIntoTemplate(trusted.template, {
+        productId: customization.productId,
+        productType: trusted.template?.settings?.productType,
         actorId: customization.userId,
       });
-      const selectedOptions = customization.selectedOptions || item.selectedOptions || {};
-      const quantity = Math.max(1, Number(item.quantity) || Number(selectedOptions.quantity) || 1);
-      const pricing = product
-        ? calculateCustomizationPrice(product, selectedOptions, quantity)
-        : { basePrice: Number(item.price) || 0, optionSurcharges: [], optionsTotal: 0, unitPrice: Number(item.price) || 0, quantity, subtotal: (Number(item.price) || 0) * quantity, currency: item.currency || "BDT" };
+      if (!isCustomizerFeatureEnabled(authoritativeTemplate, "customizer_v2_server_rendering")) continue;
 
-      // Resolve the full document for deterministic rendering later.
-      const { document } = templateToDocument(template);
-      const editorState = stripEphemeralAssetUrls(customization.renderData?.editorState || null, customization.userId);
-      const values = stripEphemeralAssetUrls(customization.values || {}, customization.userId);
-      const uploadedFiles = stripEphemeralAssetUrls(customization.uploadedFiles || {}, customization.userId);
-      const [renderValues, renderEditorState] = await Promise.all([
-        resolvePrivateAssetsForDelivery(values, { productionWorker: true }, "original", supabase),
-        resolvePrivateAssetsForDelivery(editorState, { productionWorker: true }, "original", supabase),
-      ]);
-      const resolvedForPreflight = resolveCustomerDocument(document, renderValues, renderEditorState);
-      const resolved = stripEphemeralAssetUrls(resolvedForPreflight, customization.userId);
-      const preflight = runPreflight(resolvedForPreflight);
-      const assetReferences = collectCustomerAssetReferences({ values, editorState, uploadedFiles, document: resolved }, customization.userId);
-
-      const snapshot = {
-        productId: customization.productId || item.productId || "",
-        productTitle: item.productTitle || product?.title || "",
-        productSku: product?.sku || "",
-        productVariant: selectedOptions.size || "",
-        quantity,
-        selectedOptions,
-        pricing,
-        templateId: customization.templateId || template.id || "",
-        templateVersion: customization.templateVersion || template.version || 1,
-        templateSource: trusted.source,
-        document: resolved,
-        values,
-        editorState: editorState || { layerOverrides: {}, userLayers: [] },
-        uploadedFiles,
-        assetReferences,
-        canvas: {
-          widthPx: template.canvasWidthPx,
-          heightPx: template.canvasHeightPx,
-          widthIn: template.cardWidthIn,
-          heightIn: template.cardHeightIn,
-          dpi: template.dpi,
-        },
-        safeArea: template.safeArea || {},
-        bleed: template.bleed || {},
-        preflight,
-        createdAt: new Date().toISOString(),
-      };
-
-      const integrityHash = computeIntegrityHash(snapshot);
-
-      const { data: versionRow } = customization.templateId
-        ? await supabase
-            .from("customizer_template_versions")
-            .select("id")
-            .eq("template_id", customization.templateId)
-            .eq("version", customization.templateVersion || 0)
-            .maybeSingle()
-        : { data: null };
-
-      const { error: insertError } = await supabase.from("order_design_snapshots").insert({
-        order_id: order.id,
-        order_item_id: orderItemIdByCustomizationId[String(customization.id)] || null,
-        customization_id: customization.id,
-        product_id: snapshot.productId || null,
-        product_title: snapshot.productTitle,
-        product_sku: snapshot.productSku,
-        quantity,
-        selected_options: selectedOptions,
-        pricing,
-        template_id: customization.templateId || null,
-        template_version: snapshot.templateVersion,
-        template_version_id: versionRow?.id || null,
-        snapshot,
-        preflight,
-        preview_files: customization.previewImages || {},
-        print_files: customization.printFiles || {},
-        render_status: "pending",
-        integrity_hash: integrityHash,
-      });
-      if (insertError) throw insertError;
-
-      // Persist the preflight run for the audit trail. This is a diagnostic
-      // record, not order state, so a failure is logged rather than fatal.
-      const { error: preflightLogError } = await supabase.from("customizer_preflight_results").insert({
-        customization_id: customization.id,
-        order_id: order.id,
-        context: "order",
-        ok: preflight.ok,
-        blocking: preflight.blocking,
-        issues: preflight.issues,
-      });
-      if (preflightLogError) {
-        console.error(`[customizer] Could not persist the order preflight audit row for order ${order.id}.`, preflightLogError);
+      const { enqueueRenderJob } = await import("@/lib/customizer/render-jobs");
+      await enqueueRenderJob({ customizationId, orderId, jobType: "print_png", priority: 10 });
+      if (isCustomizerFeatureEnabled(authoritativeTemplate, "customizer_v2_print_pdf")) {
+        await enqueueRenderJob({ customizationId, orderId, jobType: "print_pdf", priority: 10 });
       }
-
-      // Queue production rendering (spec §23). The protected worker endpoint
-      // (or an admin retry) processes these; enqueue failures never block the
-      // order — but they must never leave the snapshot silently looking
-      // healthy either. A snapshot whose renders were never queued is marked
-      // "failed" so Admin can see it and the existing retry path can pick it up.
-      if (isCustomizerFeatureEnabled(authoritativeTemplate, "customizer_v2_server_rendering")) {
-        try {
-          const { enqueueRenderJob } = await import("@/lib/customizer/render-jobs");
-          await enqueueRenderJob({ customizationId: customization.id, orderId: order.id, jobType: "print_png", priority: 10 });
-          if (isCustomizerFeatureEnabled(authoritativeTemplate, "customizer_v2_print_pdf")) {
-            await enqueueRenderJob({ customizationId: customization.id, orderId: order.id, jobType: "print_pdf", priority: 10 });
-          }
-          const { error: queuedStatusError } = await supabase
-            .from("order_design_snapshots")
-            .update({ render_status: "queued" })
-            .eq("order_id", order.id)
-            .eq("customization_id", customization.id);
-          if (queuedStatusError) {
-            console.error(`[customizer] RENDER_STATUS_SYNC_FAILED order=${order.id} customization=${customization.id}: renders are queued but the snapshot still reads "pending".`, queuedStatusError);
-          }
-        } catch (queueError) {
-          console.error(`[customizer] RENDER_ENQUEUE_FAILED order=${order.id} customization=${customization.id}: the order and snapshot are valid, but production renders were not queued and need an Admin retry.`, queueError);
-          const { error: failedStatusError } = await supabase
-            .from("order_design_snapshots")
-            .update({
-              render_status: "failed",
-              preflight: {
-                ...preflight,
-                renderQueueError: {
-                  code: "RENDER_ENQUEUE_FAILED",
-                  message: queueError instanceof Error ? queueError.message : String(queueError),
-                  at: new Date().toISOString(),
-                },
-              },
-            })
-            .eq("order_id", order.id)
-            .eq("customization_id", customization.id);
-          if (failedStatusError) {
-            console.error(`[customizer] Could not mark snapshot render_status=failed for order ${order.id}.`, failedStatusError);
-          }
-        }
-      }
-
-      created += 1;
-    } catch (error) {
-      console.error(`[customizer] Order ${order.id}: snapshot failed for item ${item.customizationId}:`, error);
-      failures.push({
-        customizationId: String(item.customizationId),
-        reason: error instanceof Error ? error.message : "snapshot-insert-failed",
-      });
+      const { error: queuedError } = await supabase
+        .from("order_design_snapshots")
+        .update({ render_status: "queued" })
+        .eq("order_id", orderId)
+        .eq("customization_id", customizationId)
+        .eq("render_status", "pending");
+      if (queuedError) logEvent("error", "order.render_status_sync_failed", { orderId, customizationId, error: queuedError });
+    } catch (queueError) {
+      logEvent("error", "order.render_enqueue_failed", { orderId, customizationId, error: queueError });
+      const { error: failedStatusError } = await supabase
+        .from("order_design_snapshots")
+        .update({
+          render_status: "failed",
+          preflight: {
+            ...preflight,
+            renderQueueError: {
+              code: "RENDER_ENQUEUE_FAILED",
+              message: queueError instanceof Error ? queueError.message : String(queueError),
+              at: new Date().toISOString(),
+            },
+          },
+        })
+        .eq("order_id", orderId)
+        .eq("customization_id", customizationId);
+      if (failedStatusError) logEvent("error", "order.render_status_sync_failed", { orderId, customizationId, error: failedStatusError });
     }
   }
-  return { created, failures };
 }
 
 export async function getOrderDesignSnapshots(orderId: string, includeDocument = false) {

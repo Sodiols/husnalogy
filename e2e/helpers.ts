@@ -34,3 +34,33 @@ export const adminCredentials = {
   email: process.env.E2E_ADMIN_EMAIL || seedManifest.adminEmail || "",
   password: process.env.E2E_ADMIN_PASSWORD || seedManifest.password || "",
 };
+
+/**
+ * The seeded fixture product uses the default option lists, so these are the
+ * valid identities. The order API accepts ONLY identifiers, choices and
+ * contact details — never prices, titles, currencies or statuses.
+ */
+export const SEEDED_OPTIONS = {
+  format: "Printed Flat Card",
+  size: '5" x 7"',
+  paper: "Signature Matte",
+  envelope: "No Envelopes",
+  corner: "Squared",
+  printing: "Standard",
+};
+
+export const TERMS_VERSION = "2026-09-30";
+
+export function checkoutBody(overrides: Record<string, unknown> = {}) {
+  return {
+    checkoutSubmissionId: `e2e-${Date.now()}-${Math.random().toString(36).slice(2, 12)}`,
+    customerName: "E2E Customer",
+    customerPhone: "01711000001",
+    deliveryMethod: "store",
+    deliveryNote: "",
+    acceptTerms: true,
+    termsVersion: TERMS_VERSION,
+    items: [{ productId: seedManifest.productId, quantity: 1, selectedOptions: { ...SEEDED_OPTIONS } }],
+    ...overrides,
+  };
+}

@@ -6,27 +6,29 @@ const read = (path: string) => readFileSync(join(process.cwd(), path), "utf8");
 
 describe("launch checkout contract", () => {
   const route = read("app/api/order-requests/route.ts");
-  const orders = read("lib/orders/index.ts");
-  const checkout = read("app/checkout/checkout-client.tsx");
+  const checkout = read("lib/orders/checkout.ts");
+  const schema = read("lib/orders/checkout-schema.ts");
+  const migration = read("supabase/migrations/20260930120000_checkout_integrity_hardening.sql");
+  const client = read("app/checkout/checkout-client.tsx");
 
-  it("requires a signed-in server identity and never falls back to a submitted email", () => {
+  it("requires a signed-in server identity and takes the email from the session only", () => {
     expect(route).toContain("if (!user?.uid)");
-    expect(route).toContain('status: 401');
-    expect(route).toContain("cleanString(user.email)");
-    expect(route).not.toContain("user?.email || cleanString(body.customerEmail)");
+    expect(route).toContain("status: 401");
+    expect(route).toContain('email: String(user.email || "").toLowerCase()');
+    // The request schema is strict: a submitted customerEmail/customerId is rejected.
+    expect(schema).toContain(".strict()");
+    expect(schema).not.toMatch(/customerEmail:\s*z\./);
+    expect(checkout).toContain("customer_email: user.email.toLowerCase()");
   });
 
-  it("stores fulfillment and payment from a constrained server-side policy", () => {
-    expect(orders).toContain('deliveryMethodInput === "store" ? "store" : "delivery"');
-    expect(orders).toContain('paymentMethod: "Cash on Delivery"');
-    expect(route).toContain('paymentMethod: "Cash on Delivery"');
+  it("fixes the Cash on Delivery initial state inside the database transaction", () => {
+    expect(migration).toContain("'unpaid', 'pending', 'cash_on_delivery'");
   });
 
-  it("requires an address for delivery but clears it for store pickup", () => {
-    expect(orders).toContain('deliveryMethod === "delivery" ? normalizeAddress');
-    expect(orders).toContain('deliveryMethod === "delivery" && !order.address?.addressLine1');
-    expect(checkout).toContain('deliveryMethod === "delivery" ? (');
-    expect(checkout).toContain("No delivery address or delivery charge is required for store pickup");
+  it("requires an address for delivery and refuses one for store pickup", () => {
+    expect(schema).toContain('if (input.deliveryMethod === "delivery")');
+    expect(schema).toContain("Store pickup orders do not take a delivery address.");
+    expect(client).toContain("No delivery address or delivery charge is required for store pickup");
   });
 });
 

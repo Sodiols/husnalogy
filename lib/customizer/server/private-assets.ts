@@ -160,7 +160,12 @@ export async function resolvePrivateAssetsForDelivery<T>(
   // expired — and without any dependency on the original upstream source
   // (spec §43, §55).
   try {
-    return await hydrateAdminAssetUrls(withCustomerUploads, supabase);
+    return await hydrateAdminAssetUrls(
+      withCustomerUploads,
+      supabase,
+      undefined,
+      actor.administrator || actor.productionWorker ? "studio" : "customer",
+    );
   } catch (error) {
     // A hydration failure must not take down a read path; the layer simply
     // keeps whatever it already had.

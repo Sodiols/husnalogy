@@ -37,8 +37,21 @@ export function isForbiddenWorkspacePath(role: AppRole, path: string): boolean {
 export function getSafeRedirectPath(value: unknown = "/"): string {
   const next = String(value || "/");
   if (!next.startsWith("/") || next.startsWith("//") || next.startsWith("/\\")) return "/";
-  if (next.startsWith("/login") || next.startsWith("/signup")) return "/";
-  return next;
+  // The URL parser (and every browser) silently drops tabs/newlines and treats
+  // "\" as "/", so "/\t/evil.com" would become "//evil.com". Refuse those
+  // characters outright, then let the real parser confirm the result stays on
+  // this origin.
+  if (/[\u0000-\u001F\u007F\\]/.test(next)) return "/";
+  let parsed: URL;
+  try {
+    parsed = new URL(next, "https://same-origin.invalid");
+  } catch {
+    return "/";
+  }
+  if (parsed.origin !== "https://same-origin.invalid") return "/";
+  const path = `${parsed.pathname}${parsed.search}${parsed.hash}`;
+  if (path.startsWith("/login") || path.startsWith("/signup")) return "/";
+  return path;
 }
 
 /**

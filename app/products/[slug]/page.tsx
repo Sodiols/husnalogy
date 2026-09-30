@@ -21,6 +21,7 @@ import RecentlyViewedCarousel from "../RecentlyViewedCarousel";
 import { getMainMockupImage } from "../product-image";
 import { normalizeCurrency } from "@/lib/currency";
 import { getSiteUrl } from "@/lib/site-url";
+import { serializeJsonLd } from "@/lib/security/json-ld";
 
 const SITE_URL = getSiteUrl();
 
@@ -211,7 +212,7 @@ export default async function ProductDetailsPage({ params }) {
     <main className="overflow-x-hidden bg-white px-3 pb-10 pt-4 text-[#303839] sm:px-4 lg:px-8">
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(productJsonLd) }}
+        dangerouslySetInnerHTML={{ __html: serializeJsonLd(productJsonLd) }}
       />
       <RecentlyViewedTracker product={product} />
 

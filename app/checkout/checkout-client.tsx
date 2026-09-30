@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { formatCurrency } from "@/lib/currency";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import useAuth from "../lib/useAuth";
 import {
   clearCart,
@@ -14,6 +14,16 @@ import {
 } from "../lib/customer-lists";
 import ServerCustomizationImage from "@/app/components/customizer/ServerCustomizationImage";
 import { ORDER_POLICY } from "@/lib/launch-config";
+import { CURRENT_TERMS_VERSION } from "@/lib/orders/checkout-policy";
+import { normalizeBangladeshPhone } from "@/lib/orders/bd-contact";
+import {
+  attemptForCart,
+  buildCheckoutItems,
+  cartFingerprint,
+  readAttempt,
+  writeAttempt,
+  type CheckoutAttempt,
+} from "@/lib/orders/checkout-client";
 
 const initialCustomer = {
   firstName: "",
@@ -25,11 +35,16 @@ const initialCustomer = {
   deliveryNote: "",
 };
 
-function newCheckoutSubmissionId() {
-  return typeof crypto !== "undefined" && crypto.randomUUID
-    ? crypto.randomUUID()
-    : `checkout_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+function sessionStore(): Storage | null {
+  try {
+    return typeof window !== "undefined" ? window.sessionStorage : null;
+  } catch {
+    return null;
+  }
 }
+
+// Server field names that map onto a differently named form input.
+const FIELD_ALIASES: Record<string, string> = { customerName: "firstName" };
 
 export default function CheckoutClient({ initialUser = undefined }: any) {
   const { user, authLoading } = useAuth(initialUser);
@@ -37,17 +52,63 @@ export default function CheckoutClient({ initialUser = undefined }: any) {
   const [customer, setCustomer] = useState(initialCustomer);
   const [deliveryMethod, setDeliveryMethod] = useState("delivery");
   const [saveAddress, setSaveAddress] = useState(true);
-  const [acceptTerms, setAcceptTerms] = useState(true);
+  // Terms are accepted explicitly, every time; the server re-checks both the
+  // acceptance and the terms version.
+  const [acceptTerms, setAcceptTerms] = useState(false);
   const [status, setStatus] = useState({ loading: false, error: "", success: "" });
-  // One id per genuine checkout attempt (spec: idempotency). A failed
-  // request reuses it on retry; only a placed order rotates it, so a new
-  // intentional checkout always gets a fresh id.
-  const checkoutSubmissionIdRef = useRef(newCheckoutSubmissionId());
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const [placedOrder, setPlacedOrder] = useState<{ id: string } | null>(null);
+  const [quote, setQuote] = useState<any>(null);
+  // Synchronous guard: React state updates are async, so a fast double click
+  // or Enter + click could otherwise start two submissions before the button
+  // re-renders as disabled. The server's idempotency key is the real
+  // protection; this is the UX layer.
+  const submittingRef = useRef(false);
+  const attemptRef = useRef<CheckoutAttempt | null>(null);
 
   useEffect(() => {
     if (authLoading) return undefined;
     return subscribeToUserCart(user, setItems);
   }, [authLoading, user]);
+
+  const fingerprint = useMemo(() => cartFingerprint(items), [items]);
+  const userId = user?.uid || user?.id || "";
+
+  // A checkout that already succeeded for exactly this cart (refresh after
+  // success, a cart cleanup that failed, the back button) shows the
+  // confirmation instead of offering to place the same order again.
+  useEffect(() => {
+    if (!userId || !items.length) return;
+    const previous = readAttempt(sessionStore(), userId);
+    if (previous?.status === "placed" && previous.fingerprint === fingerprint && previous.orderId) {
+      setPlacedOrder({ id: previous.orderId });
+      clearCart(user).catch(() => undefined);
+    }
+  }, [userId, fingerprint, items.length, user]);
+
+  // Trusted prices from the server: the amount that will actually be charged.
+  useEffect(() => {
+    if (!userId || !items.length) {
+      setQuote(null);
+      return undefined;
+    }
+    const controller = new AbortController();
+    fetch("/api/checkout/quote", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ items: buildCheckoutItems(items) }),
+      signal: controller.signal,
+    })
+      .then((response) => response.json().catch(() => ({})))
+      .then((data) => {
+        if (controller.signal.aborted) return;
+        setQuote(data?.ok ? data.quote : { ok: false, error: data?.error || "We could not confirm current prices.", lines: [] });
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) setQuote({ ok: false, error: "We could not confirm current prices.", lines: [] });
+      });
+    return () => controller.abort();
+  }, [userId, fingerprint, items]);
 
   useEffect(() => {
     if (!user) return;
@@ -62,7 +123,13 @@ export default function CheckoutClient({ initialUser = undefined }: any) {
     });
   }, [user]);
 
-  const totals = getCartTotals(items);
+  const cartTotals = getCartTotals(items);
+  const totals = quote?.ok
+    ? { subtotal: quote.subtotal, deliveryCharge: quote.deliveryCharge, total: quote.total, currency: quote.currency }
+    : cartTotals;
+  const quoteLines = new Map<string, any>((quote?.lines || []).map((line: any) => [String(line.cartItemId || ""), line]));
+  const pricesChanged = Boolean(quote?.ok && Math.abs(Number(quote.subtotal) - Number(cartTotals.subtotal)) >= 0.01);
+  const quoteBlocked = Boolean(quote && !quote.ok);
 
   const updateCustomer = (key, value) => {
     setCustomer((current) => ({ ...current, [key]: value }));
@@ -70,6 +137,7 @@ export default function CheckoutClient({ initialUser = undefined }: any) {
 
   const handleSubmit = async (event) => {
     event.preventDefault();
+    if (submittingRef.current || placedOrder) return;
 
     if (!items.length) {
       setStatus({ loading: false, error: "Your cart is empty.", success: "" });
@@ -87,55 +155,107 @@ export default function CheckoutClient({ initialUser = undefined }: any) {
       return;
     }
 
+    const customerName = `${customer.firstName} ${customer.lastName}`.trim();
+    const localErrors: Record<string, string> = {};
+    if (customerName.length < 2) localErrors.firstName = "Enter your full name.";
+    if (!normalizeBangladeshPhone(customer.customerPhone)) localErrors.customerPhone = "Enter a valid Bangladesh mobile number, e.g. 01XXXXXXXXX.";
+    if (deliveryMethod === "delivery" && customer.addressLine1.trim().length < 5) localErrors.addressLine1 = "Enter a complete delivery address.";
+    if (deliveryMethod === "delivery" && customer.city.trim().length < 2) localErrors.city = "Enter your city.";
+    if (deliveryMethod === "delivery" && customer.postalCode.trim() && !/^\d{4}$/.test(customer.postalCode.trim())) localErrors.postalCode = "Enter a 4-digit postcode.";
+    if (Object.keys(localErrors).length) {
+      setFieldErrors(localErrors);
+      setStatus({ loading: false, error: Object.values(localErrors)[0], success: "" });
+      return;
+    }
+
+    // One idempotency key per cart: reused by every retry of this cart,
+    // rotated only when the cart itself changes.
+    const { attempt, alreadyPlaced } = attemptForCart(attemptRef.current || readAttempt(sessionStore(), userId), fingerprint);
+    if (alreadyPlaced && attempt.orderId) {
+      setPlacedOrder({ id: attempt.orderId });
+      return;
+    }
+    attemptRef.current = attempt;
+    writeAttempt(sessionStore(), userId, attempt);
+
+    submittingRef.current = true;
+    setFieldErrors({});
     setStatus({ loading: true, error: "", success: "" });
 
-    const customerName = `${customer.firstName} ${customer.lastName}`.trim();
-    const methodLabel = deliveryMethod === "store" ? "Store pickup" : "Home delivery";
-    const message = [
-      `Delivery: ${methodLabel}`,
-      customer.deliveryNote ? `Note: ${customer.deliveryNote}` : "",
-    ]
-      .filter(Boolean)
-      .join(" · ");
-
+    let data: any = null;
+    let response: Response | null = null;
     try {
-      const response = await fetch("/api/order-requests", {
+      response = await fetch("/api/order-requests", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          checkoutSubmissionId: checkoutSubmissionIdRef.current,
+          checkoutSubmissionId: attempt.submissionId,
           customerName,
-          customerEmail: user.email,
           customerPhone: customer.customerPhone,
-          addressLine1: deliveryMethod === "delivery" ? customer.addressLine1 : "",
-          addressLine2: "",
-          city: deliveryMethod === "delivery" ? customer.city : "",
-          area: "",
-          postalCode: deliveryMethod === "delivery" ? customer.postalCode : "",
-          deliveryNote: customer.deliveryNote,
           deliveryMethod,
-          customerId: user?.uid || "",
-          items,
-          subtotal: totals.subtotal,
-          deliveryCharge: totals.deliveryCharge,
-          total: totals.total,
-          currency: totals.currency,
-          paymentStatus: "unpaid",
-          paymentMethod: "Cash on Delivery",
-          status: "pending",
-          message,
+          ...(deliveryMethod === "delivery"
+            ? { addressLine1: customer.addressLine1, city: customer.city, postalCode: customer.postalCode }
+            : {}),
+          deliveryNote: customer.deliveryNote,
+          acceptTerms: true,
+          termsVersion: CURRENT_TERMS_VERSION,
+          items: buildCheckoutItems(items),
         }),
       });
+      data = await response.json().catch(() => ({}));
+    } catch {
+      // The request may or may not have reached the server. The attempt (and
+      // its submission id) is kept, so pressing Place order again is a safe,
+      // idempotent retry that can never create a second order.
+      submittingRef.current = false;
+      setStatus({ loading: false, error: "Connection lost. Your order may already be placed — press Place order again to check safely.", success: "" });
+      return;
+    }
 
-      const data = await response.json().catch(() => ({}));
+    const alreadyPlacedId = response.status === 409 && data?.code === "SUBMISSION_REUSED" ? String(data?.orderId || "") : "";
+    if ((!response.ok || data?.ok === false) && !alreadyPlacedId) {
+      submittingRef.current = false;
+      const errors = data?.errors && typeof data.errors === "object" ? data.errors : {};
+      const mapped: Record<string, string> = Object.fromEntries(
+        Object.entries(errors).map(([key, value]) => [FIELD_ALIASES[key] || key, String(value)]),
+      );
+      setFieldErrors(mapped);
+      if (data?.code === "PRICE_CHANGED") setQuote(null);
+      setStatus({ loading: false, error: Object.values(mapped)[0] || data?.error || "Could not place the order.", success: "" });
+      return;
+    }
 
-      if (!response.ok || data.ok === false) {
-        const firstError = data?.errors ? Object.values(data.errors)[0] : data?.error;
-        throw new Error(firstError || "Could not place the order.");
+    /* The order is FINALIZED on the server from here on. Nothing below may
+       report failure or allow the same cart to be submitted again. */
+    const orderId = String(data?.order?.id || alreadyPlacedId || "");
+    const placedAttempt: CheckoutAttempt = { ...attempt, status: "placed", orderId };
+    attemptRef.current = placedAttempt;
+    writeAttempt(sessionStore(), userId, placedAttempt);
+    setPlacedOrder({ id: orderId });
+    setStatus({ loading: false, error: "", success: `Order request placed. Order ID: ${orderId || "created"}` });
+
+    try {
+      if (data?.order) {
+        saveLocalOrder({
+          id: orderId,
+          customerId: userId,
+          customerName: data.order.customerName,
+          customerEmail: data.order.customerEmail,
+          productTitle: data.order.productTitle,
+          items: data.order.items,
+          subtotal: data.order.subtotal,
+          deliveryCharge: data.order.deliveryCharge,
+          total: data.order.total,
+          currency: data.order.currency,
+          paymentStatus: data.order.paymentStatus,
+          paymentMethod: data.order.paymentMethod || ORDER_POLICY.paymentMethod,
+          deliveryMethod: data.order.deliveryMethod,
+          deliveryChargeConfirmed: Boolean(data.order.deliveryChargeConfirmed),
+          status: data.order.status,
+          createdAt: data.order.createdAt,
+          updatedAt: data.order.updatedAt,
+        });
       }
-
       if (deliveryMethod === "delivery" && saveAddress) {
         saveCustomerAddress({
           customerName,
@@ -147,40 +267,20 @@ export default function CheckoutClient({ initialUser = undefined }: any) {
           postalCode: customer.postalCode,
         });
       }
-
-      const savedOrder = {
-        id: data.order?.id,
-        customerId: user.uid,
-        customerName,
-        customerEmail: data.order?.customerEmail || user.email,
-        customerPhone: customer.customerPhone,
-        productTitle: data.order?.productTitle || items[0]?.title || "Order request",
-        items: data.order?.items || items,
-        subtotal: data.order?.subtotal ?? totals.subtotal,
-        deliveryCharge: data.order?.deliveryCharge ?? 0,
-        total: data.order?.total ?? totals.total,
-        currency: data.order?.currency || totals.currency,
-        paymentStatus: data.order?.paymentStatus || "unpaid",
-        paymentMethod: data.order?.paymentMethod || ORDER_POLICY.paymentMethod,
-        deliveryMethod: data.order?.deliveryMethod || deliveryMethod,
-        deliveryChargeConfirmed: Boolean(data.order?.deliveryChargeConfirmed),
-        status: data.order?.status || "pending",
-        createdAt: data.order?.createdAt || new Date().toISOString(),
-        updatedAt: data.order?.updatedAt || new Date().toISOString(),
-      };
-
-      saveLocalOrder(savedOrder);
-
-      // A new order id was created (or an idempotent retry returned the same
-      // one) — either way this checkout attempt is finished, so the next
-      // Place Order press must be a new attempt with its own id.
-      checkoutSubmissionIdRef.current = newCheckoutSubmissionId();
-
-      await clearCart(user);
-      setCustomer(initialCustomer);
-      setStatus({ loading: false, error: "", success: `Order request placed. Order ID: ${data.order?.id || "created"}` });
     } catch (error) {
-      setStatus({ loading: false, error: error.message || "Something went wrong.", success: "" });
+      console.warn("Could not save the order locally:", error);
+    }
+
+    // The server already removed the ordered cart lines; this also refreshes
+    // the local view. A failure is logged and retried on the next visit — it
+    // never changes the order's success.
+    setCustomer(initialCustomer);
+    try {
+      await clearCart(user);
+    } catch (error) {
+      console.warn("Cart cleanup after a placed order failed; it will be retried.", error);
+    } finally {
+      submittingRef.current = false;
     }
   };
 
@@ -230,9 +330,9 @@ export default function CheckoutClient({ initialUser = undefined }: any) {
             {/* 1. Contact Information */}
             <Section n="1" title="Contact Information">
               <div className="grid gap-x-5 gap-y-4 sm:grid-cols-2">
-                <Field label="First name" value={customer.firstName} onChange={(v) => updateCustomer("firstName", v)} required />
-                <Field label="Last name" value={customer.lastName} onChange={(v) => updateCustomer("lastName", v)} required />
-                <Field label="Phone" value={customer.customerPhone} onChange={(v) => updateCustomer("customerPhone", v)} placeholder="+880 1XXX-XXXXXX" required />
+                <Field label="First name" value={customer.firstName} onChange={(v) => updateCustomer("firstName", v)} error={fieldErrors.firstName} maxLength={60} autoComplete="given-name" required />
+                <Field label="Last name" value={customer.lastName} onChange={(v) => updateCustomer("lastName", v)} maxLength={60} autoComplete="family-name" required />
+                <Field label="Phone" type="tel" value={customer.customerPhone} onChange={(v) => updateCustomer("customerPhone", v)} placeholder="01XXXXXXXXX" error={fieldErrors.customerPhone} maxLength={20} autoComplete="tel" inputMode="tel" required />
                 <label className="block">
                   <span className="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.08em] text-[#303839]/45">Account email</span>
                   <span className="checkout-field flex h-[52px] w-full cursor-not-allowed items-center bg-[#E6E6E6]/50 px-4 text-sm font-medium text-[#303839]/70 sm:h-[54px]">
@@ -268,13 +368,14 @@ export default function CheckoutClient({ initialUser = undefined }: any) {
                 <>
                   <p className="mt-4 rounded-[14px] bg-[#E6E6E6]/60 px-4 py-3 text-xs leading-5 text-[#303839]/70">{ORDER_POLICY.deliveryCharge}</p>
                   <div className="mt-4 grid gap-x-4 gap-y-4 sm:grid-cols-3">
-                    <Field label="City" value={customer.city} onChange={(v) => updateCustomer("city", v)} required />
-                    <Field label="Address" value={customer.addressLine1} onChange={(v) => updateCustomer("addressLine1", v)} required />
-                    <Field label="Zip code" value={customer.postalCode} onChange={(v) => updateCustomer("postalCode", v)} />
+                    <Field label="City" value={customer.city} onChange={(v) => updateCustomer("city", v)} error={fieldErrors.city} maxLength={80} autoComplete="address-level2" required />
+                    <Field label="Address" value={customer.addressLine1} onChange={(v) => updateCustomer("addressLine1", v)} error={fieldErrors.addressLine1} maxLength={300} autoComplete="street-address" required />
+                    <Field label="Zip code" value={customer.postalCode} onChange={(v) => updateCustomer("postalCode", v)} error={fieldErrors.postalCode} maxLength={4} autoComplete="postal-code" inputMode="numeric" />
                   </div>
                   <label className="mt-4 block">
                     <span className="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.08em] text-[#303839]/45">Delivery note</span>
-                    <textarea value={customer.deliveryNote} onChange={(event) => updateCustomer("deliveryNote", event.target.value)} placeholder="Preferred time or special delivery instructions…" className="checkout-field min-h-24 w-full px-4 py-3.5 text-sm text-[#303839] outline-none placeholder:text-[#303839]/35" />
+                    <textarea value={customer.deliveryNote} maxLength={500} onChange={(event) => updateCustomer("deliveryNote", event.target.value)} placeholder="Preferred time or special delivery instructions…" className="checkout-field min-h-24 w-full px-4 py-3.5 text-sm text-[#303839] outline-none placeholder:text-[#303839]/35" />
+                    {fieldErrors.deliveryNote && <span className="mt-1.5 block text-[11px] leading-4 text-red-700">{fieldErrors.deliveryNote}</span>}
                   </label>
                   <label className="mt-4 flex cursor-pointer items-center gap-3 rounded-[14px] px-4 py-3 text-sm font-medium text-[#303839]/80">
                     <input type="checkbox" checked={saveAddress} onChange={(event) => setSaveAddress(event.target.checked)} className="checkout-checkbox h-5 w-5 shrink-0 accent-[#303839]" />
@@ -308,6 +409,13 @@ export default function CheckoutClient({ initialUser = undefined }: any) {
           {/* Order summary */}
           <aside className="lg:sticky lg:top-6">
             <div className="rounded-[22px] border border-white/80 bg-white/90 p-5 shadow-[0_34px_80px_-48px_rgba(48,56,57,0.58)] backdrop-blur sm:p-6">
+              {placedOrder && (
+                <div role="status" className="mb-5 rounded-[16px] border border-green-200 bg-green-50 px-4 py-4 text-[13px] leading-5 text-[#303839]">
+                  <p className="font-bold">Order placed</p>
+                  <p className="mt-1 text-[#303839]/70">Order ID: {placedOrder.id}. We&apos;ll confirm the details with you soon.</p>
+                  <Link href="/orders" className="mt-2 inline-block font-semibold underline underline-offset-2">View your orders</Link>
+                </div>
+              )}
               <div className="flex items-center justify-between">
                 <h2 className="text-lg font-bold text-[#303839]">Order</h2>
                 {itemCount > 0 && (
@@ -320,6 +428,7 @@ export default function CheckoutClient({ initialUser = undefined }: any) {
               <div className="mt-4 max-h-[300px] space-y-4 overflow-y-auto">
                 {items.map((item) => {
                   const options = item.selectedOptions || {};
+                  const trusted = quoteLines.get(String(item.id || ""));
                   const meta = [options.size ? `Size: ${options.size}` : "", options.color ? `Color: ${options.color}` : ""].filter(Boolean).join("   ");
                   return (
                     <div key={item.id} className="flex items-center gap-3">
@@ -328,9 +437,12 @@ export default function CheckoutClient({ initialUser = undefined }: any) {
                         <p className="line-clamp-2 text-[13px] font-bold leading-snug text-[#303839]">{item.title}</p>
                         {meta && <p className="mt-0.5 text-[11px] text-[#303839]/55">{meta}</p>}
                         <p className="mt-0.5 text-[11px] text-[#303839]/55">Qty {item.quantity || 1}</p>
+                        {trusted && !trusted.ok && <p className="mt-0.5 text-[11px] font-semibold text-red-700">{trusted.error}</p>}
                       </div>
                       <p className="shrink-0 text-sm font-bold text-[#303839]">
-                        {money(Number(item.price || 0) * Number(item.quantity || 1), item.currency)}
+                        {trusted?.ok
+                          ? money(trusted.lineTotal, trusted.currency)
+                          : money(Number(item.price || 0) * Number(item.quantity || 1), item.currency)}
                       </p>
                     </div>
                   );
@@ -356,14 +468,21 @@ export default function CheckoutClient({ initialUser = undefined }: any) {
                 <span className="text-2xl font-bold text-[#303839]">{money(totals.total)}</span>
               </div>
               {deliveryMethod === "delivery" && <p className="mt-2 text-[11px] leading-5 text-[#303839]/55">The confirmed delivery charge will be added to the amount due on delivery.</p>}
+              {pricesChanged && !placedOrder && (
+                <p className="mt-2 rounded-[12px] bg-[#E6E6E6]/60 px-3 py-2 text-[11px] leading-5 text-[#303839]/75">Prices have been updated to our current prices. The total above is what you will pay.</p>
+              )}
+              {quoteBlocked && !placedOrder && (
+                <p role="alert" className="mt-2 rounded-[12px] border border-red-200 bg-red-50 px-3 py-2 text-[11px] leading-5 text-red-800">{quote?.error || "Some items in your cart need attention before you can check out."}</p>
+              )}
 
               <button
                 type="submit"
-                disabled={status.loading || authLoading || !user || !items.length || !acceptTerms}
+                disabled={status.loading || authLoading || !user || !items.length || !acceptTerms || Boolean(placedOrder) || quoteBlocked}
+                aria-busy={status.loading}
                 className="checkout-primary-button mt-5 flex w-full items-center justify-center gap-2 px-6 py-4 text-sm font-bold text-white duration-200 disabled:cursor-not-allowed disabled:opacity-50 disabled:shadow-none"
               >
-                {status.loading ? "Placing order…" : !user ? "Sign in to place order" : "Place order"}
-                {!status.loading && user && (
+                {status.loading ? "Placing order…" : placedOrder ? "Order placed" : !user ? "Sign in to place order" : "Place order"}
+                {!status.loading && user && !placedOrder && (
                   <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M5 12h13" /><path d="m12 5 7 7-7 7" /></svg>
                 )}
               </button>
@@ -373,10 +492,12 @@ export default function CheckoutClient({ initialUser = undefined }: any) {
                   type="checkbox"
                   checked={acceptTerms}
                   onChange={(event) => setAcceptTerms(event.target.checked)}
+                  required
+                  aria-describedby="checkout-terms-label"
                   className="mt-0.5 h-4 w-4 shrink-0 accent-[#303839]"
                 />
-                <span>
-                  By confirming the order, I accept the{" "}
+                <span id="checkout-terms-label">
+                  I have read and accept the{" "}
                   <Link href="/terms" className="font-semibold text-[#303839] underline underline-offset-2">terms of the user agreement</Link>.
                 </span>
               </label>
@@ -487,7 +608,7 @@ function ChoiceTile({ selected, onClick, icon, label }: any) {
   );
 }
 
-function Field({ label, value, onChange, type = "text", required = false, placeholder = "", className = "" }: any) {
+function Field({ label, value, onChange, type = "text", required = false, placeholder = "", className = "", error = "", maxLength = undefined, autoComplete = undefined, inputMode = undefined }: any) {
   return (
     <label className={`block ${className}`}>
       <span className="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.08em] text-[#303839]/45">
@@ -499,8 +620,13 @@ function Field({ label, value, onChange, type = "text", required = false, placeh
         onChange={(event) => onChange(event.target.value)}
         required={required}
         placeholder={placeholder}
+        maxLength={maxLength}
+        autoComplete={autoComplete}
+        inputMode={inputMode}
+        aria-invalid={error ? true : undefined}
         className="checkout-field h-[52px] w-full px-4 text-sm font-medium text-[#303839] outline-none placeholder:text-[#303839]/35 sm:h-[54px]"
       />
+      {error && <span className="mt-1.5 block text-[11px] leading-4 text-red-700">{error}</span>}
     </label>
   );
 }

@@ -1,28 +1,36 @@
-import { createClient } from "@/lib/supabase/server";
-import {
-  customizationFromRow,
-  customizationInsertRow,
-  customizationUpdateRow,
-} from "@/lib/customizer/customizations";
+import { createClient, createServiceRoleClient } from "@/lib/supabase/server";
+import { customizationFromRow, customizationInsertRow } from "@/lib/customizer/customizations";
 import { validateCustomizationSave } from "@/lib/customizer/save-validation";
+import { prepareCustomerWrite } from "@/lib/customizer/customization-write";
 import { resolvePrivateAssetsForDelivery } from "@/lib/customizer/server/private-assets";
+import { getCustomizerTemplateByProductId } from "@/lib/customizer/store";
+import { getTemplateVersion } from "@/lib/customizer/versions";
 import { writeCustomizerAudit } from "@/lib/customizer/audit";
+import { getProductRecordsForCheckout } from "@/lib/products";
 import { rateLimit } from "@/lib/security/rate-limit";
+import { rejectCrossSiteRequest } from "@/lib/security/same-origin";
+import { bodyErrorResponse, readJsonBody } from "@/lib/http/read-body";
+import { logEvent, requestIdFrom } from "@/lib/observability/logger";
 
 // Generous enough for the real autosave cadence (900ms debounce, spec
 // lib/customizer/save-queue.ts) plus retries, but still bounds a runaway or
 // scripted client from hammering the save endpoint.
 const SAVE_RATE_LIMIT = { name: "customizations-save", limit: 300, windowMs: 5 * 60 * 1000 };
+/** A large multi-page design with many customer layers stays well below this. */
+const MAX_CUSTOMIZATION_BODY_BYTES = 2 * 1024 * 1024;
+const PRIVATE_HEADERS = { "Cache-Control": "private, no-store, max-age=0" };
 
-// GET /api/customizations — list customizations visible to the caller.
-// RLS restricts this to the caller's own rows (or all rows for admins).
+export const dynamic = "force-dynamic";
+
+// GET /api/customizations — the caller's own customizations (RLS + explicit
+// owner filter).
 export async function GET(request: Request) {
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
 
-  if (!user) return Response.json({ ok: false, error: "Sign in required." }, { status: 401 });
+  if (!user) return Response.json({ ok: false, error: "Sign in required." }, { status: 401, headers: PRIVATE_HEADERS });
 
   const url = new URL(request.url);
   const status = url.searchParams.get("status");
@@ -39,96 +47,99 @@ export async function GET(request: Request) {
   query = query.limit(limit);
 
   const { data, error } = await query;
-  if (error) return Response.json({ ok: false, error: error.message }, { status: 500 });
+  if (error) {
+    logEvent("error", "customizations.list_failed", { requestId: requestIdFrom(request), userId: user.id, error });
+    return Response.json({ ok: false, error: "Could not load your designs." }, { status: 500, headers: PRIVATE_HEADERS });
+  }
 
   const customizations = await Promise.all(
     (data || []).map((row) => resolvePrivateAssetsForDelivery(customizationFromRow(row), { userId: user.id }, "editor", supabase)),
   );
-  return Response.json({ ok: true, customizations });
+  return Response.json({ ok: true, customizations }, { headers: PRIVATE_HEADERS });
 }
 
-// POST /api/customizations — create (or save a draft of) a customization.
+// POST /api/customizations — CREATE a new customization. Updating an existing
+// design is PATCH /api/customizations/[id]; POST never updates.
 export async function POST(request: Request) {
-  const limited = rateLimit(request, SAVE_RATE_LIMIT);
-  if (limited) return limited;
+  const requestId = requestIdFrom(request);
+  const crossSite = rejectCrossSiteRequest(request);
+  if (crossSite) return crossSite;
 
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
-
   if (!user) return Response.json({ ok: false, error: "Sign in required." }, { status: 401 });
 
-  const rawBody = await request.json().catch(() => ({}));
-  const requestedId = String(rawBody.customizationId || rawBody.id || "").trim();
+  const limited = rateLimit(request, { ...SAVE_RATE_LIMIT, identity: user.id });
+  if (limited) return limited;
 
-  // Server-side permission validation against the trusted template (spec §21).
-  // Unauthorized changes are rejected; permitted changes are sanitized.
-  const validation = await validateCustomizationSave(user.id, rawBody);
-  if (validation.ok === false) {
-    await writeCustomizerAudit(supabase, {
-      actorId: user.id,
-      action: "customization.save_rejected",
-      productId: rawBody.productId,
-      editorState: rawBody.editorState || rawBody.renderData?.editorState,
-      details: { violationCodes: validation.violations.map((item) => item.code) },
-    });
+  let rawBody: Record<string, any>;
+  try {
+    rawBody = (await readJsonBody(request, MAX_CUSTOMIZATION_BODY_BYTES)) as Record<string, any>;
+  } catch (error) {
+    return bodyErrorResponse(error) || Response.json({ ok: false, error: "The request body is invalid." }, { status: 400 });
+  }
+
+  const requestedId = String(rawBody?.customizationId || rawBody?.id || "").trim();
+  if (requestedId && !requestedId.startsWith("local_")) {
     return Response.json(
-      { ok: false, error: validation.error, violations: validation.violations },
-      { status: validation.status },
+      { ok: false, error: "Use PATCH /api/customizations/{id} to update an existing design." },
+      { status: 400 },
     );
   }
-  const body = validation.body;
 
-  if (requestedId && !requestedId.startsWith("local_")) {
-    const { data: existing, error: existingError } = await supabase
-      .from("product_customizations")
-      .select("id,status")
-      .eq("id", requestedId)
-      .eq("user_id", user.id)
-      .maybeSingle();
-    if (existingError) return Response.json({ ok: false, error: existingError.message }, { status: 500 });
-    if (!existing) return Response.json({ ok: false, error: "Customization not found." }, { status: 404 });
-    if (existing.status === "ordered") {
-      return Response.json({ ok: false, error: "Placed-order designs are locked. Duplicate the design to make changes." }, { status: 409 });
-    }
-    const { data, error } = await supabase
-      .from("product_customizations")
-      .update(customizationUpdateRow(body))
-      .eq("id", requestedId)
-      .eq("user_id", user.id)
-      .neq("status", "ordered")
-      .select("*")
-      .maybeSingle();
-    if (error) return Response.json({ ok: false, error: error.message }, { status: 500 });
-    if (data) {
-      await writeCustomizerAudit(supabase, {
-        actorId: user.id,
-        action: "customization.updated",
-        customizationId: data.id,
-        productId: data.product_id,
-        editorState: rawBody.editorState || rawBody.renderData?.editorState,
-        details: { schemaVersion: 4 },
-      });
-      const customization = await resolvePrivateAssetsForDelivery(customizationFromRow(data), { userId: user.id }, "editor", supabase);
-      return Response.json({ ok: true, customization });
-    }
+  const prepared = prepareCustomerWrite(rawBody, null);
+  if (prepared.ok === false) return Response.json({ ok: false, error: prepared.error }, { status: prepared.status });
+  const body = prepared.body;
+
+  // The product must be one a customer can personalize right now, and the
+  // template/version must be ITS published template.
+  const productId = String(body.productId || "");
+  const product = (await getProductRecordsForCheckout([productId])).get(productId)?.product;
+  if (!product || product.status !== "active" || product.visibility === "hidden") {
+    return Response.json({ ok: false, error: "This product cannot be personalized right now." }, { status: 404 });
+  }
+  const productTemplate = await getCustomizerTemplateByProductId(productId);
+  const version = productTemplate ? await getTemplateVersion(String(productTemplate.id), Number(body.templateVersion) || 0) : null;
+  if (!productTemplate || String(productTemplate.id) !== String(body.templateId) || !version || version.productId !== productId) {
+    return Response.json({ ok: false, error: "This design template is no longer available. Please reload the page." }, { status: 409 });
   }
 
-  const row = customizationInsertRow(user.id, body);
+  const service = createServiceRoleClient();
+  if (body.cartItemId) {
+    const { data: cartLine } = await service.from("cart_items").select("id").eq("id", String(body.cartItemId)).eq("user_id", user.id).maybeSingle();
+    if (!cartLine) return Response.json({ ok: false, error: "Cart item not found." }, { status: 404 });
+  }
 
-  const { data, error } = await supabase.from("product_customizations").insert(row).select("*").single();
-  if (error) return Response.json({ ok: false, error: error.message }, { status: 500 });
+  const validation = await validateCustomizationSave(user.id, body);
+  if (validation.ok === false) {
+    await writeCustomizerAudit(service, {
+      actorId: user.id,
+      action: "customization.save_rejected",
+      productId,
+      editorState: body.editorState || body.renderData?.editorState,
+      details: { violationCodes: validation.violations.map((item) => item.code) },
+    });
+    return Response.json({ ok: false, error: validation.error, violations: validation.violations }, { status: validation.status });
+  }
 
-  await writeCustomizerAudit(supabase, {
+  const row = customizationInsertRow(user.id, { ...validation.body, status: validation.body.status || "draft" });
+  const { data, error } = await service.from("product_customizations").insert(row).select("*").single();
+  if (error) {
+    logEvent("error", "customizations.create_failed", { requestId, userId: user.id, productId, error });
+    return Response.json({ ok: false, error: "Your design could not be saved. Please try again." }, { status: 500 });
+  }
+
+  await writeCustomizerAudit(service, {
     actorId: user.id,
     action: "customization.created",
     customizationId: data.id,
     productId: data.product_id,
-    editorState: rawBody.editorState || rawBody.renderData?.editorState,
+    editorState: body.editorState || body.renderData?.editorState,
     details: { schemaVersion: 4 },
   });
 
   const customization = await resolvePrivateAssetsForDelivery(customizationFromRow(data), { userId: user.id }, "editor", supabase);
-  return Response.json({ ok: true, customization });
+  return Response.json({ ok: true, customization }, { headers: PRIVATE_HEADERS });
 }

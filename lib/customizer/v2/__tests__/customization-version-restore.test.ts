@@ -25,7 +25,11 @@ describe("customization template-version restore", () => {
   });
 
   it("passes the persisted editor state when validating a draft migration", () => {
-    expect(patchRoute).toContain("template_version, render_data");
+    // The whole stored row (including template_version and render_data) is
+    // loaded with a strict owner filter, and its editor state is what the
+    // validator compares persisted overrides against.
+    expect(patchRoute).toContain('.from("product_customizations").select("*").eq("id", id).eq("user_id", userId)');
+    expect(patchRoute).toContain("templateVersion: Number(existingRow.template_version) || 0");
     expect(patchRoute).toContain("editorState: (existingRow.render_data as any)?.editorState || null");
   });
 

@@ -1,117 +1,167 @@
 import sharp from "sharp";
 import type { Metadata } from "sharp";
 import { createHash } from "crypto";
-import { createClient } from "@/lib/supabase/server";
-import { rateLimitDistributed, rejectLargeRequest } from "@/lib/security/rate-limit";
+import { createClient, createServiceRoleClient } from "@/lib/supabase/server";
+import { rateLimitDistributed } from "@/lib/security/rate-limit";
+import { rejectCrossSiteRequest } from "@/lib/security/same-origin";
+import { bodyErrorResponse, readFormDataBody } from "@/lib/http/read-body";
 import { sniffImageType, safeFileName } from "@/lib/customizer/v2/uploads";
 import { resolvePrivateAssetUrl } from "@/lib/customizer/server/private-assets";
+import { logEvent, requestIdFrom } from "@/lib/observability/logger";
 
 const MAX_SIZE = 15 * 1024 * 1024;
-const MAX_DIMENSION = 12000; // hard pixel-bomb guard
+const MAX_DIMENSION = 12000; // per side
+const MAX_PIXELS = 60_000_000; // decompression-bomb guard (~60 MP)
 const EDITOR_MAX_PX = 1600;
 const THUMB_PX = 384;
+const BUCKET = "customer-uploads";
 
-// POST /api/customizer/upload — authenticated photo upload for image fields
-// and the customer asset library (spec §15).
-// - File type verified by magic bytes, never the browser MIME type.
-// - Metadata (EXIF/GPS) is stripped from derived versions.
-// - Generates an optimized editor version + thumbnail alongside the original.
-// - Records the upload in customer_asset_library for reuse across products.
+const EXTENSION: Record<string, string> = { "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp", "application/pdf": "pdf" };
+
+function isPdf(buffer: Buffer): boolean {
+  return buffer.length > 8 && buffer.subarray(0, 5).toString("ascii") === "%PDF-";
+}
+
+// POST /api/customizer/upload — THE customer upload path (customizer photos,
+// the customer asset library and the product page's file fields).
+//
+//  * Type decided by magic bytes, never the file name, extension or
+//    Content-Type. Images must also fully decode.
+//  * Size, per-side dimension and total pixel count are capped.
+//  * The stored ORIGINAL is re-encoded: EXIF/GPS metadata is removed and any
+//    bytes appended after the image (polyglot payloads) are discarded.
+//  * File names are generated server side; the path is always inside the
+//    caller's own folder; the write uses the service role only after the
+//    session has been verified (customers can no longer write to the bucket
+//    directly).
 export async function POST(request: Request) {
-  const limited = await rateLimitDistributed(request, { name: "customizer-upload", limit: 40, windowMs: 10 * 60 * 1000 });
-  if (limited) return limited;
-
-  // Refuse an oversized body before it is buffered into memory by formData().
-  const tooLarge = rejectLargeRequest(request, MAX_SIZE + 1024 * 1024);
-  if (tooLarge) return tooLarge;
+  const requestId = requestIdFrom(request);
+  const crossSite = rejectCrossSiteRequest(request);
+  if (crossSite) return crossSite;
 
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
-
   if (!user) return Response.json({ ok: false, error: "Sign in required." }, { status: 401 });
 
-  const formData = await request.formData().catch(() => null);
-  const file = formData?.get("file") as File | null;
-  const folder = String(formData?.get("folder") || "customizer").replace(/[^a-z0-9/_-]/gi, "").slice(0, 120);
+  const limited = await rateLimitDistributed(request, { name: "customizer-upload", limit: 40, windowMs: 10 * 60 * 1000, identity: user.id });
+  if (limited) return limited;
 
-  if (!file) return Response.json({ ok: false, error: "No file provided." }, { status: 400 });
-  if (file.size > MAX_SIZE) return Response.json({ ok: false, error: "Image must be 15MB or smaller." }, { status: 400 });
+  let formData: FormData;
+  try {
+    formData = await readFormDataBody(request, MAX_SIZE + 256 * 1024);
+  } catch (error) {
+    return bodyErrorResponse(error) || Response.json({ ok: false, error: "The upload could not be read." }, { status: 400 });
+  }
+
+  const file = formData.get("file");
+  if (!(file instanceof File)) return Response.json({ ok: false, error: "No file provided." }, { status: 400 });
+  if (file.size > MAX_SIZE) return Response.json({ ok: false, error: "Files must be 15MB or smaller." }, { status: 400 });
+  const folder = String(formData.get("folder") || "customizer").replace(/[^a-z0-9/_-]/gi, "").replace(/\/{2,}/g, "/").replace(/^\/+|\/+$/g, "").slice(0, 120) || "customizer";
+  const allowDocuments = String(formData.get("purpose") || "") === "field-file";
 
   const buffer = Buffer.from(await file.arrayBuffer());
   const checksum = createHash("sha256").update(buffer).digest("hex");
+  const stamp = Date.now();
+  const displayName = String(file.name || "upload").slice(0, 200);
+  const service = createServiceRoleClient();
+
+  /* ------------------------------------------------------------ documents */
+  if (isPdf(buffer)) {
+    if (!allowDocuments) return Response.json({ ok: false, error: "Upload a JPG, PNG or WebP image." }, { status: 400 });
+    const path = `${user.id}/${folder}/${stamp}-${checksum.slice(0, 12)}/document.pdf`;
+    const { error: uploadError } = await service.storage.from(BUCKET).upload(path, buffer, { contentType: "application/pdf", upsert: false });
+    if (uploadError) {
+      logEvent("error", "upload.storage_failed", { requestId, userId: user.id, error: uploadError });
+      return Response.json({ ok: false, error: "The file could not be stored. Please try again." }, { status: 500 });
+    }
+    const { error: rowError } = await service.from("customer_uploads").insert({
+      user_id: user.id,
+      bucket: BUCKET,
+      path,
+      file_name: displayName,
+      mime_type: "application/pdf",
+      size_bytes: buffer.length,
+      metadata: { folder, context: "field-file", checksum },
+    });
+    if (rowError) {
+      await service.storage.from(BUCKET).remove([path]);
+      return Response.json({ ok: false, error: "The file could not be recorded. Please try again." }, { status: 500 });
+    }
+    return Response.json({ ok: true, file: { bucket: BUCKET, path, originalPath: path, name: displayName, type: "application/pdf", size: buffer.length, checksum } });
+  }
+
+  /* --------------------------------------------------------------- images */
   const sniffed = sniffImageType(buffer, false);
   if (sniffed.ok === false) return Response.json({ ok: false, error: sniffed.error }, { status: 400 });
 
-  // Decode guard: dimensions + decompression limits (spec §15, §33).
   let meta: Metadata;
   try {
-    meta = await sharp(buffer, { limitInputPixels: MAX_DIMENSION * MAX_DIMENSION }).metadata();
+    meta = await sharp(buffer, { limitInputPixels: MAX_PIXELS }).metadata();
   } catch {
     return Response.json({ ok: false, error: "This image could not be read. Try another file." }, { status: 400 });
   }
   const width = meta.width || 0;
   const height = meta.height || 0;
   if (!width || !height) return Response.json({ ok: false, error: "This image could not be read." }, { status: 400 });
-  if (width > MAX_DIMENSION || height > MAX_DIMENSION) {
-    return Response.json({ ok: false, error: `Images larger than ${MAX_DIMENSION}px are not supported.` }, { status: 400 });
+  if (width > MAX_DIMENSION || height > MAX_DIMENSION || width * height > MAX_PIXELS) {
+    return Response.json({ ok: false, error: `Images larger than ${MAX_DIMENSION}px or 60 megapixels are not supported.` }, { status: 400 });
   }
 
-  const stamp = Date.now();
-  const cleanName = safeFileName(file.name, "photo");
-  const basePath = `${user.id}/${folder}/${stamp}-${cleanName.replace(/\.[a-z0-9]+$/, "")}`;
-  const originalPath = `${basePath}/original-${cleanName}`;
-  const editorPath = `${basePath}/editor.webp`;
-  const thumbPath = `${basePath}/thumb.webp`;
-
-  // Derived versions: rotated per EXIF, metadata stripped, size-capped.
+  let originalBuffer: Buffer;
   let editorBuffer: Buffer;
   let thumbBuffer: Buffer;
   try {
-    editorBuffer = await sharp(buffer, { limitInputPixels: MAX_DIMENSION * MAX_DIMENSION })
-      .rotate()
-      .resize(EDITOR_MAX_PX, EDITOR_MAX_PX, { fit: "inside", withoutEnlargement: true })
-      .webp({ quality: 88 })
-      .toBuffer();
-    thumbBuffer = await sharp(buffer, { limitInputPixels: MAX_DIMENSION * MAX_DIMENSION })
-      .rotate()
-      .resize(THUMB_PX, THUMB_PX, { fit: "inside", withoutEnlargement: true })
-      .webp({ quality: 78 })
-      .toBuffer();
+    const decode = () => sharp(buffer, { limitInputPixels: MAX_PIXELS, failOn: "error" }).rotate();
+    // Full resolution, orientation applied, metadata removed (sharp drops
+    // EXIF/XMP/GPS unless asked to keep it). Near-lossless for print.
+    originalBuffer =
+      sniffed.mime === "image/png"
+        ? await decode().png({ compressionLevel: 9 }).toBuffer()
+        : sniffed.mime === "image/webp"
+          ? await decode().webp({ lossless: true }).toBuffer()
+          : await decode().jpeg({ quality: 95, chromaSubsampling: "4:4:4", mozjpeg: true }).toBuffer();
+    editorBuffer = await decode().resize(EDITOR_MAX_PX, EDITOR_MAX_PX, { fit: "inside", withoutEnlargement: true }).webp({ quality: 88 }).toBuffer();
+    thumbBuffer = await decode().resize(THUMB_PX, THUMB_PX, { fit: "inside", withoutEnlargement: true }).webp({ quality: 78 }).toBuffer();
   } catch {
     return Response.json({ ok: false, error: "This image could not be processed. Try another file." }, { status: 400 });
   }
 
-  const uploads: Array<{ path: string; data: Buffer | File; contentType: string }> = [
-    { path: originalPath, data: buffer, contentType: sniffed.mime },
+  const extension = EXTENSION[sniffed.mime];
+  const basePath = `${user.id}/${folder}/${stamp}-${safeFileName(displayName, "photo").replace(/\.[a-z0-9]+$/, "").slice(0, 40)}`;
+  const originalPath = `${basePath}/original.${extension}`;
+  const editorPath = `${basePath}/editor.webp`;
+  const thumbPath = `${basePath}/thumb.webp`;
+
+  const uploads = [
+    { path: originalPath, data: originalBuffer, contentType: sniffed.mime },
     { path: editorPath, data: editorBuffer, contentType: "image/webp" },
     { path: thumbPath, data: thumbBuffer, contentType: "image/webp" },
   ];
   const uploadedPaths: string[] = [];
   for (const item of uploads) {
-    const { error: uploadError } = await supabase.storage
-      .from("customer-uploads")
-      .upload(item.path, item.data, { contentType: item.contentType, upsert: false });
+    const { error: uploadError } = await service.storage.from(BUCKET).upload(item.path, item.data, { contentType: item.contentType, upsert: false });
     if (uploadError) {
-      if (uploadedPaths.length) await supabase.storage.from("customer-uploads").remove(uploadedPaths);
-      return Response.json({ ok: false, error: uploadError.message }, { status: 500 });
+      if (uploadedPaths.length) await service.storage.from(BUCKET).remove(uploadedPaths);
+      logEvent("error", "upload.storage_failed", { requestId, userId: user.id, error: uploadError });
+      return Response.json({ ok: false, error: "The image could not be stored. Please try again." }, { status: 500 });
     }
     uploadedPaths.push(item.path);
   }
 
-  // Library record (reused across products) + legacy audit row.
-  const { data: libraryRow, error: libraryError } = await supabase
+  // Library record (reused across products) + audit row.
+  const { data: libraryRow, error: libraryError } = await service
     .from("customer_asset_library")
     .insert({
       user_id: user.id,
-      bucket: "customer-uploads",
+      bucket: BUCKET,
       path: originalPath,
       editor_path: editorPath,
       thumbnail_path: thumbPath,
-      file_name: file.name.slice(0, 300),
+      file_name: displayName,
       mime_type: sniffed.mime,
-      size_bytes: file.size,
+      size_bytes: originalBuffer.length,
       width,
       height,
       checksum,
@@ -121,55 +171,57 @@ export async function POST(request: Request) {
     .select("id")
     .maybeSingle();
   if (libraryError || !libraryRow?.id) {
-    await supabase.storage.from("customer-uploads").remove(uploadedPaths);
+    await service.storage.from(BUCKET).remove(uploadedPaths);
+    logEvent("error", "upload.library_record_failed", { requestId, userId: user.id, error: libraryError });
     return Response.json({ ok: false, error: "The upload could not be committed to the secure asset library." }, { status: 500 });
   }
 
-  await supabase.from("customer_uploads").insert({
+  const { error: auditError } = await service.from("customer_uploads").insert({
     user_id: user.id,
-    bucket: "customer-uploads",
+    bucket: BUCKET,
     path: originalPath,
-    file_name: file.name,
+    file_name: displayName,
     mime_type: sniffed.mime,
-    size_bytes: file.size,
-    metadata: { folder, context: "customizer", assetId: libraryRow?.id || "" },
+    size_bytes: originalBuffer.length,
+    metadata: { folder, context: "customizer", assetId: libraryRow.id },
   });
+  if (auditError) logEvent("warn", "upload.audit_row_failed", { requestId, userId: user.id, error: auditError });
 
   const assetReference = {
     version: 1 as const,
     assetId: libraryRow.id,
     ownerId: user.id,
-    bucket: "customer-uploads",
+    bucket: BUCKET,
     storagePath: originalPath,
     editorStoragePath: editorPath,
     thumbnailStoragePath: thumbPath,
-    originalFileName: file.name,
+    originalFileName: displayName,
     mimeType: sniffed.mime,
-    fileSize: file.size,
+    fileSize: originalBuffer.length,
     width,
     height,
     checksum,
     createdAt: new Date(stamp).toISOString(),
   };
   const [signedEditor, signedThumb] = await Promise.all([
-    resolvePrivateAssetUrl({ reference: assetReference, actor: { userId: user.id }, variant: "editor", supabase }),
-    resolvePrivateAssetUrl({ reference: assetReference, actor: { userId: user.id }, variant: "thumbnail", supabase }),
+    resolvePrivateAssetUrl({ reference: assetReference, actor: { userId: user.id }, variant: "editor", supabase: service }),
+    resolvePrivateAssetUrl({ reference: assetReference, actor: { userId: user.id }, variant: "thumbnail", supabase: service }),
   ]);
 
   return Response.json({
     ok: true,
     file: {
-      assetId: libraryRow?.id || "",
+      assetId: libraryRow.id,
       ownerId: user.id,
-      bucket: "customer-uploads",
+      bucket: BUCKET,
       // The editor works with the optimized version; the original is kept for
       // production rendering.
       path: editorPath,
       originalPath,
       thumbnailPath: thumbPath,
-      name: file.name,
+      name: displayName,
       type: sniffed.mime,
-      size: file.size,
+      size: originalBuffer.length,
       width,
       height,
       checksum,

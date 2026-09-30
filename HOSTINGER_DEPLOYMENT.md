@@ -53,6 +53,7 @@ marked *secret* must never be given a `NEXT_PUBLIC_` prefix.
 | `RENDER_WORKER_SECRET` | optional | **secret** | Second accepted worker secret, e.g. while rotating `CRON_SECRET`. At least 32 characters. |
 | `UPSTASH_REDIS_REST_URL` | optional | **secret** | Set together with the token to make rate limits global across instances. Without both, the in-memory limiter is used and the site still starts. |
 | `UPSTASH_REDIS_REST_TOKEN` | optional | **secret** | See above. |
+| `TRUSTED_PROXY_HOPS` | optional | server | Number of reverse proxies in front of Node that append to `X-Forwarded-For` (default **1** = Hostinger's proxy). Rate limits use the address that many entries from the RIGHT; the client-supplied leftmost entry is never trusted. Set to 2 if a CDN is added in front. |
 | `OPENAI_API_KEY` | optional | **secret** | Ask Logy. Falls back to local answers when absent. |
 | `OPENAI_MODEL`, `LOGY_USE_OPENAI` | optional | server | Ask Logy tuning. |
 | `ICONIFY_API_BASE_URL` | optional | server | Defaults to the public Iconify API. No key. |
@@ -90,6 +91,7 @@ the database, and never drop tables. The migrations are written to be additive
 | 13 | **`20260917120000_restrict_site_settings_read.sql`** | **BLOCKER.** Without it the SMTP and payment secrets in `site_settings` are readable with the public key. |
 | 14 | **`20260918120000_designer_role_and_product_workflow.sql`** | **BLOCKER.** Product ownership and workflow columns. The designer workspace and admin product APIs read them. |
 | 15 | **`20260919120000_production_security_hardening.sql`** | **BLOCKER.** Stops a signed-in customer from making themselves `admin` by updating `profiles.role`, and removes direct customer `orders` inserts. |
+| 16 | **`20260930120000_checkout_integrity_hardening.sql`** | **BLOCKER — apply BEFORE deploying the matching app build.** The atomic `create_checkout_order` transaction (the new checkout calls it), durable order states, one-order-per-design, column guards on `product_customizations`, immutable order financials/snapshots, the customer-uploads storage IDOR fix, strict customer-id order visibility. See `docs/CHECKOUT_ARCHITECTURE.md`. |
 
 Run this query in the SQL editor. **Every row must be `true`:**
 
@@ -111,7 +113,15 @@ select * from (values
   ('designer_workflow',             exists (select 1 from information_schema.columns where table_schema='public' and table_name='products' and column_name='workflow_state')
                                     and to_regprocedure('public.is_designer()') is not null),
   ('profile role protected',        exists (select 1 from pg_trigger where tgname='protect_profile_role' and not tgisinternal)),
-  ('no direct order inserts',       not exists (select 1 from pg_policies where schemaname='public' and tablename='orders' and policyname='orders_customer_insert_own'))
+  ('no direct order inserts',       not exists (select 1 from pg_policies where schemaname='public' and tablename='orders' and policyname='orders_customer_insert_own')),
+  ('checkout transaction',          to_regprocedure('public.create_checkout_order(jsonb,jsonb,jsonb,jsonb)') is not null
+                                    and not has_function_privilege('authenticated', 'public.create_checkout_order(jsonb,jsonb,jsonb,jsonb)', 'execute')),
+  ('durable order state',           exists (select 1 from information_schema.columns where table_schema='public' and table_name='orders' and column_name='checkout_state')),
+  ('one order per design',          to_regclass('public.order_items_customization_once') is not null),
+  ('customization writes guarded',  exists (select 1 from pg_trigger where tgname='guard_customization_writes' and not tgisinternal)
+                                    and not has_table_privilege('authenticated', 'public.product_customizations', 'update')),
+  ('snapshots immutable',           exists (select 1 from pg_trigger where tgname='protect_order_design_snapshot' and not tgisinternal)),
+  ('upload storage IDOR closed',    not exists (select 1 from pg_policies where schemaname='storage' and tablename='objects' and policyname='customer_uploads_owner_insert_storage'))
 ) as checks(migration, applied);
 ```
 
@@ -244,8 +254,10 @@ Emails**.
 5. Login as an **admin** lands on `/admin/dashboard`.
 6. Google sign-in completes and returns to `https://husnalogy.com`, not localhost.
 7. Password reset email link opens `/reset-password` on the production domain.
-8. Open a personalizable product, upload a photo, edit text, save, add to cart and place a test order.
-9. The order appears in the admin dashboard with its design snapshot.
+8. Open a personalizable product, upload a photo, edit text, save, add to cart and place a test order. The terms checkbox starts unchecked; the order summary shows the server-quoted total.
+9. The order appears in the admin dashboard with its design snapshot. In SQL: its `checkout_state` is `finalized`, `payment_status` `unpaid`, `status` `pending`, and the design's `product_customizations.status` is `ordered`.
+9a. The ordered cart line is gone from the cart, and pressing Back/refresh on /checkout does not offer to place the order again.
+9b. Server logs contain one `"event":"checkout.order_created"` line for the order and no `checkout.database_failed` lines.
 10. Run the worker once by hand (curl command above). The response is 200 and the order's print PNG/PDF become available.
 11. The same curl without the header returns 401.
 12. Run the section 3 migration query. Every row is `true`.
@@ -254,8 +266,13 @@ Emails**.
 
 ## 9. Known limitations (not blockers)
 
-- **Rate limiting.** Without Upstash, limits are per process. Client IPs come
-  from `x-forwarded-for` as delivered by Hostinger's proxy.
-- **Original customer photos** are stored unmodified in the private
-  `customer-uploads` bucket for print fidelity. The editor and thumbnail
-  derivatives are EXIF-stripped. Only the owner and admins can read originals.
+- **Rate limiting.** Without Upstash, limits are per process (fine for one
+  `npm start` process). Client IPs come from `x-forwarded-for`, read
+  `TRUSTED_PROXY_HOPS` entries from the right. Checkout, uploads and
+  customization saves are additionally limited per account.
+- **Customer photos.** The stored original is re-encoded at full resolution
+  (JPEG q95 / lossless PNG and WebP): EXIF/GPS metadata and any trailing
+  (polyglot) bytes are removed. Editor and thumbnail derivatives are WebP.
+  Only the owner, admins and explicitly assigned designers can read them.
+- **Sign-in rate limiting** is performed by Supabase Auth (the browser talks to
+  it directly). Review Authentication → Rate Limits in the Supabase dashboard.
