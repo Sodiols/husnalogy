@@ -1,6 +1,7 @@
 import { requireAdmin } from "@/lib/auth/admin-server";
 import { canCreateProduct, canViewProduct, requireCapability, requireDesignerOrAdmin } from "@/lib/auth/roles";
 import { createProduct, getProducts, hydrateProductCustomizerAssets } from "@/lib/products";
+import { readJsonObject } from "@/lib/http/read-body";
 
 export async function GET() {
   // Designers reach this too, but they see only their OWN work: the list is
@@ -23,7 +24,9 @@ export async function POST(request) {
   const session = await requireCapability(canCreateProduct, "You cannot create products.");
   if (!session.ok) return session.response;
 
-  const body = await request.json();
+  const bodyRead22 = await readJsonObject(request, 5 * 1024 * 1024);
+  if (bodyRead22.response) return bodyRead22.response;
+  const body = bodyRead22.body;
   // The ACTOR decides ownership and workflow state, never the body.
   const result = await createProduct(body, { actor: session.actor });
 

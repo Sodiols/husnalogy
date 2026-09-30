@@ -1,15 +1,21 @@
 import { createClient, createServiceRoleClient } from "@/lib/supabase/server";
+import { rateLimit } from "@/lib/security/rate-limit";
+import { rejectCrossSiteRequest } from "@/lib/security/same-origin";
 
 // DELETE /api/customizer/library/[id] — remove an unused upload from the
 // caller's library. Refuses when the asset is still referenced by an active
 // cart item or an order snapshot (spec §15).
-export async function DELETE(_request: Request, { params }: any) {
+export async function DELETE(request: Request, { params }: any) {
+  const crossSite = rejectCrossSiteRequest(request);
+  if (crossSite) return crossSite;
   const { id } = await params;
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) return Response.json({ ok: false, error: "Sign in required." }, { status: 401 });
+  const limited = rateLimit(request, { name: "customizer-library-delete", limit: 60, windowMs: 10 * 60 * 1000, identity: user.id });
+  if (limited) return limited;
 
   const { data: asset, error } = await supabase
     .from("customer_asset_library")

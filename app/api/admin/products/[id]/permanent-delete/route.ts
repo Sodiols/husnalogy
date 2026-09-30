@@ -1,13 +1,15 @@
 import { requireAdmin } from "@/lib/auth/admin-server";
 import { permanentlyDeleteProduct, verifyPermanentDeleteCredentials } from "@/lib/products";
+import { readJsonObject } from "@/lib/http/read-body";
 
 export async function POST(request, { params }) {
   const admin = await requireAdmin();
   if (!admin.ok) return admin.response;
 
   const { id } = await params;
-  const body = await request.json().catch(() => ({}));
-
+  const bodyRead24 = await readJsonObject(request, 4 * 1024);
+  if (bodyRead24.response) return bodyRead24.response;
+  const body = bodyRead24.body;
   if (!process.env.DELETE_ADMIN_EMAIL || !process.env.DELETE_ADMIN_PASSWORD) {
     return Response.json(
       { ok: false, error: "Permanent delete environment values are missing." },

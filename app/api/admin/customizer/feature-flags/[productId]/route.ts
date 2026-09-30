@@ -3,6 +3,7 @@ import { createServiceRoleClient } from "@/lib/supabase/server";
 import { clearFeatureFlagCache } from "@/lib/customizer/v2/feature-flags.server";
 import { CUSTOMIZER_FEATURE_FLAGS } from "@/lib/customizer/v2/feature-flags";
 import { rejectLargeRequest } from "@/lib/security/rate-limit";
+import { readJsonObject } from "@/lib/http/read-body";
 
 const flagSet = new Set<string>(CUSTOMIZER_FEATURE_FLAGS);
 const scopeSet = new Set(["global", "product_type", "product"]);
@@ -29,7 +30,9 @@ export async function PUT(request: Request, { params }: any) {
   const admin = { ok: true, admin: session.actor } as const;
   const tooLarge = rejectLargeRequest(request, 64 * 1024);
   if (tooLarge) return tooLarge;
-  const body = await request.json().catch(() => ({}));
+  const bodyRead11 = await readJsonObject(request, 64 * 1024);
+  if (bodyRead11.response) return bodyRead11.response;
+  const body = bodyRead11.body;
   const entries = Array.isArray(body.entries) ? body.entries : [];
   if (!entries.length || entries.length > CUSTOMIZER_FEATURE_FLAGS.length * 3) return Response.json({ ok: false, error: "Valid feature flag entries are required." }, { status: 400 });
   const rows = entries.map((entry: any) => {

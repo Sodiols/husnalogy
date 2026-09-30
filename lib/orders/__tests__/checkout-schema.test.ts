@@ -179,11 +179,22 @@ describe("the checkout request schema", () => {
 
   it("rejects the same personalized design twice in one order", () => {
     const line = { productId: "product-1", quantity: 1, customizationId: CUSTOMIZATION };
-    expect(Object.keys(errorsOf(validRequest({ items: [line, line] })))).toContain("items.1.customizationId");
+    const items = [
+      { ...line, cartItemId: CART_ITEM },
+      { ...line, cartItemId: "1b1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d" },
+    ];
+    expect(Object.keys(errorsOf(validRequest({ items })))).toContain("items.1.customizationId");
+  });
+
+  it("requires a server-side cart line for every order line, used once", () => {
+    const withoutCart = { productId: "product-1", quantity: 1 };
+    expect(Object.keys(errorsOf(validRequest({ items: [withoutCart] })))).toContain("items.0.cartItemId");
+    const line = { productId: "product-1", quantity: 1, cartItemId: CART_ITEM };
+    expect(Object.keys(errorsOf(validRequest({ items: [line, { ...line }] })))).toContain("items.1.cartItemId");
   });
 
   it("rejects separate personalization data on a customizer line", () => {
-    const line = { productId: "product-1", quantity: 1, customizationId: CUSTOMIZATION, personalization: { bride_name: "X" } };
+    const line = { productId: "product-1", quantity: 1, customizationId: CUSTOMIZATION, cartItemId: CART_ITEM, personalization: { bride_name: "X" } };
     expect(Object.keys(errorsOf(validRequest({ items: [line] })))).toContain("items.0.personalization");
   });
 
@@ -194,8 +205,12 @@ describe("the checkout request schema", () => {
   });
 
   it("parses a price quote request with the same line rules", () => {
-    expect(parseQuoteRequest({ items: [{ productId: "product-1", quantity: 1 }] }).ok).toBe(true);
-    expect(parseQuoteRequest({ items: [{ productId: "product-1", quantity: 1, price: 0 }] }).ok).toBe(false);
-    expect(parseQuoteRequest({ items: [], total: 0 }).ok).toBe(false);
+    expect(parseQuoteRequest({ deliveryMethod: "delivery", items: [{ productId: "product-1", quantity: 1 }] }).ok).toBe(true);
+    expect(parseQuoteRequest({ deliveryMethod: "store", items: [{ productId: "product-1", quantity: 1 }] }).ok).toBe(true);
+    expect(parseQuoteRequest({ items: [{ productId: "product-1", quantity: 1 }] }).ok).toBe(false);
+    expect(parseQuoteRequest({ deliveryMethod: "courier", items: [{ productId: "product-1", quantity: 1 }] }).ok).toBe(false);
+    expect(parseQuoteRequest({ deliveryMethod: "delivery", deliveryCharge: 0, items: [{ productId: "product-1", quantity: 1 }] }).ok).toBe(false);
+    expect(parseQuoteRequest({ deliveryMethod: "delivery", items: [{ productId: "product-1", quantity: 1, price: 0 }] }).ok).toBe(false);
+    expect(parseQuoteRequest({ deliveryMethod: "delivery", items: [], total: 0 }).ok).toBe(false);
   });
 });

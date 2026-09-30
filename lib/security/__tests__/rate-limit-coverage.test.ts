@@ -19,6 +19,9 @@ const guarded = [
   "app/api/customizer/render/route.ts",
   "app/api/customizer/render/[jobId]/route.ts",
   "app/api/customizer/preflight/route.ts",
+  "app/api/checkout/quote/route.ts",
+  "app/api/customizer/library/route.ts",
+  "app/api/customizer/library/[id]/route.ts",
 ];
 
 // The highest-value / most expensive endpoints use the distributed limiter
@@ -83,5 +86,14 @@ describe("rate limiter fails safe", () => {
 
   it("always sets a TTL on the Redis counter so a key cannot leak forever", () => {
     expect(source).toContain('["EXPIRE", key, String(windowSeconds), "NX"]');
+  });
+});
+
+describe("admin and designer mutations are limited per account", () => {
+  const proxy = read("proxy.js");
+  it("refuses cross-site admin mutations and rate limits them per user in the proxy", () => {
+    expect(proxy).toContain('pathname.startsWith("/api/admin") && !SAFE_METHODS.has(request.method)');
+    expect(proxy).toContain("rejectCrossSiteRequest(request)");
+    expect(proxy).toMatch(/rateLimitDistributed\(request, \{ name: "admin-mutation", limit: \d+, windowMs: [^,]+, identity: user\.id \}\)/);
   });
 });

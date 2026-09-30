@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 import { normalizeRole, resolvePostLoginPath } from "@/lib/auth/redirects";
+import { rateLimitDistributed } from "@/lib/security/rate-limit";
+import { rejectCrossSiteRequest } from "@/lib/security/same-origin";
+
+const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 
 const PROTECTED_PREFIXES = [
   "/account",
@@ -28,7 +32,7 @@ const ADMIN_PREFIXES = [
 // proxy must not answer 401 before the route can validate that secret. Only the
 // short-circuit is skipped — the route still validates the secret with a
 // timing-safe compare and fails closed on a wrong or missing one.
-const WORKER_PATHS = new Set(["/api/admin/customizer/render/process"]);
+const WORKER_PATHS = new Set(["/api/admin/customizer/render/process", "/api/admin/production/health"]);
 
 /**
  * Paths under /api/admin that the DESIGN STUDIO legitimately uses.
@@ -176,6 +180,16 @@ export async function proxy(request) {
       }
 
       return notFoundPage(request);
+    }
+
+    // Every admin/designer mutation: refuse cross-site requests and bound the
+    // rate per ACCOUNT (a stolen or scripted session cannot hammer the
+    // catalogue, settings or order endpoints). Generous for real editing.
+    if (pathname.startsWith("/api/admin") && !SAFE_METHODS.has(request.method)) {
+      const crossSite = rejectCrossSiteRequest(request);
+      if (crossSite) return crossSite;
+      const limited = await rateLimitDistributed(request, { name: "admin-mutation", limit: 1500, windowMs: 10 * 60 * 1000, identity: user.id });
+      if (limited) return limited;
     }
 
     const { data: profile } = await supabase.from("profiles").select("role").eq("id", user.id).maybeSingle();

@@ -1,6 +1,8 @@
 import OpenAI from "openai";
 import { rateLimitDistributed, rejectLargeRequest } from "@/lib/security/rate-limit";
 import { BUSINESS_INFO, ORDER_POLICY } from "@/lib/launch-config";
+import { readJsonObject } from "@/lib/http/read-body";
+import { rejectCrossSiteRequest } from "@/lib/security/same-origin";
 
 export const runtime = "nodejs";
 
@@ -307,6 +309,8 @@ function cleanReply(value) {
 }
 
 export async function POST(request) {
+  const crossSite = rejectCrossSiteRequest(request);
+  if (crossSite) return crossSite;
   let message = "";
 
   try {
@@ -320,7 +324,9 @@ export async function POST(request) {
     });
     if (limited) return limited;
 
-    const body = await request.json();
+    const bodyRead30 = await readJsonObject(request, 24 * 1024);
+    if (bodyRead30.response) return bodyRead30.response;
+    const body = bodyRead30.body;
     message = cleanMessage(body?.message);
     const history = cleanHistory(body?.history);
 

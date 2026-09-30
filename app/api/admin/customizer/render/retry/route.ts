@@ -2,6 +2,7 @@ import { requireAdmin } from "@/lib/auth/admin-server";
 import { createServiceRoleClient } from "@/lib/supabase/server";
 import { enqueueRenderJob, processRenderJob } from "@/lib/customizer/render-jobs";
 import { RenderError } from "@/lib/customizer/v2/server/render";
+import { readJsonObject } from "@/lib/http/read-body";
 
 // POST /api/admin/customizer/render/retry — retry a failed render job, or
 // (re)queue production rendering for an order snapshot (spec §22, §23).
@@ -9,7 +10,9 @@ export async function POST(request: Request) {
   const admin = await requireAdmin();
   if (!admin.ok) return admin.response;
 
-  const body = await request.json().catch(() => ({}));
+  const bodyRead14 = await readJsonObject(request, 4 * 1024);
+  if (bodyRead14.response) return bodyRead14.response;
+  const body = bodyRead14.body;
   const jobId = String(body.jobId || "").trim();
   const snapshotId = String(body.snapshotId || "").trim();
 

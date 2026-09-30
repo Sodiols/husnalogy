@@ -23,14 +23,14 @@
 
 import { createHash } from "node:crypto";
 import { parseCheckoutRequest, type CheckoutItemInput, type CheckoutRequest } from "@/lib/orders/checkout-schema";
-import { COD_INITIAL_STATE, resolveDeliveryChargeMinor } from "@/lib/orders/checkout-policy";
+import { COD_INITIAL_STATE } from "@/lib/orders/checkout-policy";
 import {
   checkProductPurchasable,
   priceLine,
+  priceOrder,
   pricingBreakdown,
   resolveSelectedOptions,
   sameCanonicalOptions,
-  totalOrder,
   type CanonicalOptions,
   type TrustedLinePrice,
 } from "@/lib/orders/pricing-resolver";
@@ -43,8 +43,15 @@ export type CheckoutUser = { id: string; email: string };
 /** A server-loaded product plus the raw `updated_at` used as a price guard. */
 export type ProductRecord = { product: Record<string, any>; updatedAt: string };
 
-/** The row stored in `order_design_snapshots` (minus ids the RPC assigns). */
+/**
+ * The row stored in `order_design_snapshots` (minus ids the RPC assigns).
+ *
+ * `line_number` is REQUIRED: it is the trusted order line this design belongs
+ * to, and the transaction uses it to link the snapshot to exactly that order
+ * item (and refuses the whole order if it cannot).
+ */
 export type DesignSnapshotPayload = {
+  line_number: number;
   customization_id: string;
   product_id: string;
   product_title: string;
@@ -54,7 +61,7 @@ export type DesignSnapshotPayload = {
   pricing: Record<string, unknown>;
   template_id: string;
   template_version: number;
-  template_version_id: string | null;
+  template_version_id: string;
   snapshot: Record<string, unknown>;
   preflight: Record<string, unknown>;
   preview_files: Record<string, unknown>;
@@ -76,7 +83,12 @@ export type CreateOrderResult = { status: "created" | "replayed" | "conflict" | 
 
 /** Thrown by `createOrder` for a business-rule refusal inside the transaction. */
 export class CheckoutTransactionError extends Error {
-  constructor(public readonly checkoutCode: string, message = checkoutCode) {
+  constructor(
+    public readonly checkoutCode: string,
+    message = checkoutCode,
+    /** The RAISE ... DETAIL value (e.g. the order that consumed a cart line). */
+    public readonly detail = "",
+  ) {
     super(message);
     this.name = "CheckoutTransactionError";
   }
@@ -86,7 +98,7 @@ export class CheckoutTransactionError extends Error {
 export function transactionErrorFrom(error: { code?: string; message?: string; details?: string } | null): CheckoutTransactionError {
   const message = String(error?.message || "");
   const match = message.match(/CHECKOUT_[A-Z_]+/);
-  if (match) return new CheckoutTransactionError(match[0], message);
+  if (match) return new CheckoutTransactionError(match[0], message, String(error?.details || ""));
   if (error?.code === "23505") {
     const text = `${message} ${error?.details || ""}`;
     if (text.includes("order_items_customization_once")) return new CheckoutTransactionError("CHECKOUT_CUSTOMIZATION_LOCKED", message);
@@ -105,12 +117,18 @@ export interface CheckoutDeps {
     product: Record<string, any>;
     customerId: string;
     line: TrustedLinePrice;
+    /** The trusted order line number the snapshot must be linked to. */
+    lineNumber: number;
   }): Promise<CustomizationVerification>;
   findOrderBySubmission(customerId: string, submissionId: string): Promise<{ id: string; checkoutState: string; requestHash: string | null } | null>;
   createOrder(payload: { order: Record<string, unknown>; items: Record<string, unknown>[]; snapshots: DesignSnapshotPayload[]; guards: Record<string, unknown> }): Promise<CreateOrderResult>;
   loadOrder(orderId: string, customerId: string): Promise<Record<string, any> | null>;
-  afterOrderCreated(orderId: string, customizationIds: string[]): Promise<void>;
-  clearCartItems(customerId: string, cartItemIds: string[]): Promise<void>;
+  /**
+   * Fast path for the durable production/notification tasks the transaction
+   * just committed. Best effort: anything it does not finish, the scheduled
+   * worker picks up.
+   */
+  afterOrderCreated(orderId: string): Promise<void>;
 }
 
 export type CheckoutOutcome =
@@ -152,6 +170,9 @@ const TRANSACTION_ERRORS: Record<string, { status: 400 | 403 | 404 | 409; field:
   CHECKOUT_CUSTOMIZATION_MISMATCH: { status: 400, field: "customization", message: "A personalized design does not match the product in your cart." },
   CHECKOUT_CUSTOMIZATION_LOCKED: { status: 409, field: "customization", message: "A personalized design in your cart has already been ordered. Duplicate it to order again." },
   CHECKOUT_CUSTOMIZATION_CHANGED: { status: 409, field: "customization", message: "Your design changed while the order was being placed. Please review it and place the order again." },
+  CHECKOUT_CART_ITEM_NOT_FOUND: { status: 409, field: "cart", message: "Your cart changed in another tab or device. Please review your cart and try again." },
+  CHECKOUT_CART_CHANGED: { status: 409, field: "cart", message: "Your cart changed in another tab or device. Please review your cart and try again." },
+  CHECKOUT_CART_REQUIRED: { status: 400, field: "cart", message: "Please place your order from your cart." },
 };
 
 export async function placeCheckoutOrder(
@@ -291,7 +312,7 @@ export async function placeCheckoutOrder(
 
     let verification: CustomizationVerification;
     try {
-      verification = await deps.verifyCustomization({ row, product: record.product, customerId: user.id, line: entry.line });
+      verification = await deps.verifyCustomization({ row, product: record.product, customerId: user.id, line: entry.line, lineNumber: item.lineNumber });
     } catch (error) {
       logEvent("error", "checkout.snapshot_failed", { ...ctx, stage: "verify_customization", customizationId: item.customizationId, error });
       return fail(503, "SNAPSHOT_FAILED", { [field]: "We could not lock in your personalized design. Nothing was ordered — please try again." });
@@ -300,19 +321,24 @@ export async function placeCheckoutOrder(
       logEvent("warn", "checkout.validation_failed", { ...ctx, stage: "verify_customization", customizationId: item.customizationId, code: verification.code });
       return fail(422, verification.code, { [field]: verification.message });
     }
+    if (verification.snapshot.line_number !== item.lineNumber || verification.snapshot.customization_id !== String(row.id)) {
+      // Defence in depth: the transaction also refuses an unlinked snapshot.
+      logEvent("error", "checkout.snapshot_failed", { ...ctx, stage: "snapshot_linkage", customizationId: item.customizationId });
+      return fail(500, "SNAPSHOT_UNLINKED", { [field]: "We could not lock in your personalized design. Nothing was ordered — please try again." });
+    }
     verifiedDesigns.set(item.lineNumber, verification);
     snapshots.push({ ...verification.snapshot });
     customizationGuards.push({ id: String(row.id), product_id: record.product.id, updated_at: String(row.updated_at) });
   }
 
   /* 7. Totals. */
-  const deliveryMinor = resolveDeliveryChargeMinor(request.deliveryMethod);
-  const totals = totalOrder(lines.map(({ line }) => line), deliveryMinor);
+  // The same resolver the price quote uses (quote === checkout).
+  const totals = priceOrder(lines.map(({ line }) => line), request.deliveryMethod);
   if (totals.ok === false) {
     logEvent("warn", "checkout.pricing_rejected", { ...ctx, stage: "totals", code: totals.error.code });
     return fail(422, totals.error.code, { pricing: totals.error.message });
   }
-  const { currency, subtotalMinor, totalMinor } = totals.totals;
+  const { currency, subtotalMinor, deliveryMinor, totalMinor } = totals.totals;
 
   /* 8. Canonical order payload — every identity/money field from the server. */
   const orderId = deps.newOrderId();
@@ -376,6 +402,16 @@ export async function placeCheckoutOrder(
     };
   });
 
+  // Every order line consumes exactly its own server-side cart line; the
+  // transaction locks, verifies and removes them (cross-tab/device safety).
+  const cartGuards = lines.map(({ item, line }) => ({
+    id: item.cartItemId,
+    line_number: item.lineNumber,
+    product_id: item.productId,
+    quantity: line.quantity,
+    customization_id: item.customizationId || "",
+  }));
+
   const productGuards = [...products.entries()]
     .filter(([id]) => productIds.includes(id))
     .map(([id, entry]) => ({ id, updated_at: entry.updatedAt }));
@@ -387,9 +423,18 @@ export async function placeCheckoutOrder(
       order,
       items,
       snapshots,
-      guards: { products: productGuards, customizations: customizationGuards },
+      guards: { products: productGuards, customizations: customizationGuards, cart_items: cartGuards },
     });
   } catch (error) {
+    if (error instanceof CheckoutTransactionError && error.checkoutCode === "CHECKOUT_CART_ALREADY_ORDERED") {
+      // Another tab/device already turned these cart lines into an order. The
+      // order id is the customer's own (the claim is customer scoped).
+      logEvent("warn", "checkout.duplicate_prevented", { ...ctx, stage: "cart_consumed", orderId: error.detail });
+      return {
+        ...fail(409, "CART_ALREADY_ORDERED", { cart: "These items were already ordered. You can find the order in your order history." }),
+        orderId: error.detail || undefined,
+      } as CheckoutOutcome;
+    }
     if (error instanceof CheckoutTransactionError && TRANSACTION_ERRORS[error.checkoutCode]) {
       const known = TRANSACTION_ERRORS[error.checkoutCode];
       logEvent("warn", error.checkoutCode === "CHECKOUT_CUSTOMIZATION_LOCKED" ? "checkout.duplicate_prevented" : "checkout.validation_failed", {
@@ -431,22 +476,14 @@ export async function placeCheckoutOrder(
   });
 
   /* 10. Follow-ups that can never undo or duplicate the order. */
+  // The ordered cart lines were consumed INSIDE the transaction; production
+  // and notification tasks were committed with it. This only speeds them up.
   try {
-    await deps.afterOrderCreated(created.orderId, customizationGuards.map((guard) => guard.id));
+    await deps.afterOrderCreated(created.orderId);
   } catch (error) {
     logEvent("error", "checkout.post_order_task_failed", { ...ctx, orderId: created.orderId, stage: "after_order", error });
   }
-
-  const cartItemIds = request.items.map((item) => item.cartItemId).filter(Boolean) as string[];
-  let cartCleared = false;
-  if (cartItemIds.length) {
-    try {
-      await deps.clearCartItems(user.id, cartItemIds);
-      cartCleared = true;
-    } catch (error) {
-      logEvent("warn", "checkout.cart_cleanup_failed", { ...ctx, orderId: created.orderId, error });
-    }
-  }
+  const cartCleared = true;
 
   let view: Record<string, any> | null = null;
   try {

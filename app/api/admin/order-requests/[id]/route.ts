@@ -1,12 +1,15 @@
 import { requireAdmin } from "@/lib/auth/admin-server";
 import { deleteOrderRequest, updateOrderRequestDetails } from "@/lib/orders/index";
+import { readJsonObject } from "@/lib/http/read-body";
 
 export async function PUT(request, { params }) {
   const admin = await requireAdmin();
   if (!admin.ok) return admin.response;
 
   const { id } = await params;
-  const body = await request.json();
+  const bodyRead21 = await readJsonObject(request, 8 * 1024);
+  if (bodyRead21.response) return bodyRead21.response;
+  const body = bodyRead21.body;
   const result = await updateOrderRequestDetails(id, body);
 
   if (!result.ok) {

@@ -8,8 +8,8 @@
  */
 
 import type { CheckoutItemInput } from "@/lib/orders/checkout-schema";
-import { priceLine, totalOrder, type TrustedLinePrice } from "@/lib/orders/pricing-resolver";
-import { resolveDeliveryChargeMinor } from "@/lib/orders/checkout-policy";
+import { priceLine, priceOrder, type TrustedLinePrice } from "@/lib/orders/pricing-resolver";
+import type { DeliveryMethod } from "@/lib/orders/checkout-policy";
 import { fromMinorUnits } from "@/lib/money";
 
 export type QuoteLine = {
@@ -27,12 +27,17 @@ export type Quote = {
   lines: QuoteLine[];
   currency: string | null;
   subtotal: number | null;
+  deliveryMethod: DeliveryMethod;
   deliveryCharge: number;
   total: number | null;
   error?: string;
 };
 
-export function buildQuote(items: CheckoutItemInput[], products: Map<string, { product: Record<string, any> }>): Quote {
+export function buildQuote(
+  items: CheckoutItemInput[],
+  products: Map<string, { product: Record<string, any> }>,
+  deliveryMethod: DeliveryMethod,
+): Quote {
   const priced: TrustedLinePrice[] = [];
   const lines: QuoteLine[] = items.map((item) => {
     const result = priceLine(products.get(item.productId)?.product as Record<string, any>, item.selectedOptions, item.quantity);
@@ -48,19 +53,19 @@ export function buildQuote(items: CheckoutItemInput[], products: Map<string, { p
     };
   });
 
-  const deliveryMinor = resolveDeliveryChargeMinor("delivery");
   if (priced.length !== items.length) {
-    return { ok: false, lines, currency: null, subtotal: null, deliveryCharge: 0, total: null, error: "Some items in your cart need attention before you can check out." };
+    return { ok: false, lines, currency: null, subtotal: null, deliveryMethod, deliveryCharge: 0, total: null, error: "Some items in your cart need attention before you can check out." };
   }
-  const totals = totalOrder(priced, deliveryMinor);
+  const totals = priceOrder(priced, deliveryMethod);
   if (totals.ok === false) {
-    return { ok: false, lines, currency: null, subtotal: null, deliveryCharge: 0, total: null, error: totals.error.message };
+    return { ok: false, lines, currency: null, subtotal: null, deliveryMethod, deliveryCharge: 0, total: null, error: totals.error.message };
   }
   return {
     ok: true,
     lines,
     currency: totals.totals.currency,
     subtotal: fromMinorUnits(totals.totals.subtotalMinor),
+    deliveryMethod,
     deliveryCharge: fromMinorUnits(totals.totals.deliveryMinor),
     total: fromMinorUnits(totals.totals.totalMinor),
   };

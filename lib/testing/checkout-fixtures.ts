@@ -4,6 +4,7 @@
  * the SQL editor would, and then exercised through the PostgREST roles.
  */
 
+import { randomUUID } from "node:crypto";
 import type { TestDatabase } from "@/lib/testing/pglite-supabase";
 
 export const USERS = {
@@ -17,10 +18,13 @@ export const USERS = {
 export const IDS = {
   templateActive: "10000000-0000-4000-8000-000000000001",
   templateDraft: "10000000-0000-4000-8000-000000000002",
+  templateSecond: "10000000-0000-4000-8000-000000000003",
   versionActive: "20000000-0000-4000-8000-000000000001",
   versionDraft: "20000000-0000-4000-8000-000000000002",
+  versionSecond: "20000000-0000-4000-8000-000000000003",
   customizationA: "30000000-0000-4000-8000-00000000000a",
   customizationA2: "30000000-0000-4000-8000-0000000000a2",
+  customizationA3: "30000000-0000-4000-8000-0000000000a3",
   customizationB: "30000000-0000-4000-8000-00000000000b",
   customizationDraftProduct: "30000000-0000-4000-8000-0000000000d0",
   cartItemA: "40000000-0000-4000-8000-00000000000a",
@@ -51,6 +55,30 @@ export const BASIC_OPTIONS = {
   printing: "Standard",
 };
 
+/** A real (small) published template document, as the admin builder publishes. */
+export const VERSION_DOCUMENT = {
+  canvas: { widthPx: 1500, heightPx: 2100, widthIn: 5, heightIn: 7, dpi: 300, orientation: "portrait" },
+  pages: [{ id: "front", name: "Front", enabled: true, backgroundColor: "#ffffff" }],
+  fields: [{ id: "names", label: "Names", type: "text", required: false }],
+  layers: [
+    {
+      id: "names_layer",
+      name: "Names",
+      pageId: "front",
+      type: "text",
+      fieldId: "names",
+      customerEditable: true,
+      x: 750,
+      y: 300,
+      width: 900,
+      height: 120,
+      text: "",
+      textStyle: { fontFamily: "Cormorant Garamond", fontSize: 48 },
+    },
+  ],
+  settings: {},
+};
+
 export async function seedCheckoutFixtures(t: TestDatabase): Promise<void> {
   const { db } = t;
   for (const user of Object.values(USERS)) {
@@ -63,6 +91,7 @@ export async function seedCheckoutFixtures(t: TestDatabase): Promise<void> {
   await db.query(
     `insert into public.products (id, slug, title, status, visibility, price, sale_price, data) values
       ('product-active', 'pearl-invitation', 'Pearl Invitation', 'active', 'public', 120, 100, $1::jsonb),
+      ('product-second', 'linen-menu', 'Linen Menu Card', 'active', 'public', 80, null, $1::jsonb),
       ('product-draft', 'draft-card', 'Draft Card', 'draft', 'public', 50, null, $1::jsonb),
       ('product-hidden', 'hidden-card', 'Hidden Card', 'active', 'hidden', 50, null, $1::jsonb),
       ('product-soldout', 'soldout-card', 'Sold Out Card', 'active', 'public', 50, null, $1::jsonb)`,
@@ -72,21 +101,23 @@ export async function seedCheckoutFixtures(t: TestDatabase): Promise<void> {
 
   await db.query(
     `insert into public.product_customizer_templates (id, product_id, enabled) values
-      ($1, 'product-active', true), ($2, 'product-draft', true)`,
-    [IDS.templateActive, IDS.templateDraft],
+      ($1, 'product-active', true), ($2, 'product-draft', true), ($3, 'product-second', true)`,
+    [IDS.templateActive, IDS.templateDraft, IDS.templateSecond],
   );
+  const documentJson = JSON.stringify(VERSION_DOCUMENT);
   await db.query(
     `insert into public.customizer_template_versions (id, template_id, product_id, version, document) values
-      ($1, $2, 'product-active', 1, '{"pages":[{"id":"front"}]}'::jsonb),
-      ($3, $4, 'product-draft', 1, '{"pages":[{"id":"front"}]}'::jsonb)`,
-    [IDS.versionActive, IDS.templateActive, IDS.versionDraft, IDS.templateDraft],
+      ($1, $2, 'product-active', 1, $7::jsonb),
+      ($3, $4, 'product-draft', 1, $7::jsonb),
+      ($5, $6, 'product-second', 1, $7::jsonb)`,
+    [IDS.versionActive, IDS.templateActive, IDS.versionDraft, IDS.templateDraft, IDS.versionSecond, IDS.templateSecond, documentJson],
   );
 
   await db.query(
-    `insert into public.cart_items (id, user_id, product_id, product_slug, product_title, quantity, unit_price) values
-      ($1, $2, 'product-active', 'pearl-invitation', 'Pearl Invitation', 2, 0.01),
-      ($3, $2, 'product-active', 'pearl-invitation', 'Pearl Invitation', 1, 0.01)`,
-    [IDS.cartItemA, USERS.customerA.id, IDS.cartItemA2],
+    `insert into public.cart_items (id, user_id, product_id, product_slug, product_title, quantity, unit_price, metadata) values
+      ($1, $2, 'product-active', 'pearl-invitation', 'Pearl Invitation', 2, 0.01, $4::jsonb),
+      ($3, $2, 'product-active', 'pearl-invitation', 'Pearl Invitation', 1, 0.01, '{}'::jsonb)`,
+    [IDS.cartItemA, USERS.customerA.id, IDS.cartItemA2, JSON.stringify({ customizationId: IDS.customizationA })],
   );
 
   const options = JSON.stringify({ ...BASIC_OPTIONS, paper: "Premium +$100.00" });
@@ -96,14 +127,35 @@ export async function seedCheckoutFixtures(t: TestDatabase): Promise<void> {
       ($1, $2, 'product-active', $3, 1, 'in_cart', $4, $5::jsonb, '{"names":"A & B"}'::jsonb),
       ($6, $2, 'product-active', $3, 1, 'draft', null, $5::jsonb, '{}'::jsonb),
       ($7, $8, 'product-active', $3, 1, 'in_cart', null, $5::jsonb, '{}'::jsonb),
-      ($9, $2, 'product-draft', $10, 1, 'draft', null, $5::jsonb, '{}'::jsonb)`,
+      ($9, $2, 'product-draft', $10, 1, 'draft', null, $5::jsonb, '{}'::jsonb),
+      ($11, $2, 'product-second', $12, 1, 'draft', null, $5::jsonb, '{"names":"Menu"}'::jsonb)`,
     [
       IDS.customizationA, USERS.customerA.id, IDS.templateActive, IDS.cartItemA, options,
       IDS.customizationA2,
       IDS.customizationB, USERS.customerB.id,
       IDS.customizationDraftProduct, IDS.templateDraft,
+      IDS.customizationA3, IDS.templateSecond,
     ],
   );
+}
+
+/** A server-side cart line, as the storefront creates one. */
+export async function addCartLine(
+  t: TestDatabase,
+  options: { user?: { id: string }; productId?: string; quantity?: number; customizationId?: string | null } = {},
+): Promise<string> {
+  const id = randomUUID();
+  await t.db.query(
+    "insert into public.cart_items (id, user_id, product_id, product_title, quantity, unit_price, metadata) values ($1, $2, $3, 'Cart line', $4, 0.01, $5::jsonb)",
+    [
+      id,
+      (options.user || USERS.customerA).id,
+      options.productId || "product-active",
+      options.quantity ?? 1,
+      JSON.stringify(options.customizationId ? { customizationId: options.customizationId } : {}),
+    ],
+  );
+  return id;
 }
 
 export async function updatedAt(t: TestDatabase, table: string, id: string): Promise<string> {
@@ -113,7 +165,11 @@ export async function updatedAt(t: TestDatabase, table: string, id: string): Pro
 
 let orderSequence = 0;
 
-/** A consistent, server-shaped payload for create_checkout_order. */
+/**
+ * A consistent, server-shaped payload for create_checkout_order (one line).
+ * Used by the SQL-level tests; the pipeline tests build payloads with the real
+ * TypeScript pipeline instead.
+ */
 export async function orderPayload(
   t: TestDatabase,
   options: {
@@ -124,6 +180,7 @@ export async function orderPayload(
     productId?: string;
     unitPrice?: string;
     quantity?: number;
+    cartItemId?: string;
   } = {},
 ) {
   orderSequence += 1;
@@ -133,6 +190,7 @@ export async function orderPayload(
   const unitPrice = options.unitPrice || "200.00";
   const lineTotal = (Number(unitPrice) * quantity).toFixed(2);
   const customizationId = options.customizationId === undefined ? IDS.customizationA : options.customizationId;
+  const cartItemId = options.cartItemId || (await addCartLine(t, { user: customer, productId, quantity, customizationId }));
 
   const order = {
     id: `order-test-${orderSequence}`,
@@ -180,10 +238,12 @@ export async function orderPayload(
       metadata: {},
     },
   ];
+  const templateId = productId === "product-second" ? IDS.templateSecond : IDS.templateActive;
+  const versionId: string = productId === "product-second" ? IDS.versionSecond : IDS.versionActive;
   const snapshots = customizationId
     ? [
         {
-          line_number: 1,
+          line_number: 1 as number | null,
           customization_id: customizationId,
           product_id: productId,
           product_title: "Pearl Invitation",
@@ -191,9 +251,9 @@ export async function orderPayload(
           quantity,
           selected_options: { ...BASIC_OPTIONS, paper: "Premium" },
           pricing: { unitPrice: Number(unitPrice) },
-          template_id: IDS.templateActive,
+          template_id: templateId,
           template_version: 1,
-          template_version_id: IDS.versionActive,
+          template_version_id: versionId,
           snapshot: { document: { pages: [] } },
           preflight: { ok: true, blocking: false, issues: [] },
           preview_files: {},
@@ -206,8 +266,9 @@ export async function orderPayload(
     customizations: customizationId
       ? [{ id: customizationId, product_id: productId, updated_at: await updatedAt(t, "product_customizations", customizationId) }]
       : [],
+    cart_items: [{ id: cartItemId, line_number: 1, product_id: productId, quantity, customization_id: customizationId || "" }],
   };
-  return { order, items, snapshots, guards };
+  return { order, items, snapshots, guards, cartItemId };
 }
 
 export async function callCheckoutRpc(t: TestDatabase, payload: { order: unknown; items: unknown; snapshots: unknown; guards: unknown }) {

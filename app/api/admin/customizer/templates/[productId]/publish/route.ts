@@ -1,6 +1,7 @@
 import { requireAdmin } from "@/lib/auth/admin-server";
 import { publishTemplateVersion } from "@/lib/customizer/versions";
 import type { CustomizerUpdateType } from "@/lib/customizer/public-version";
+import { readJsonObject } from "@/lib/http/read-body";
 
 // POST /api/admin/customizer/templates/[productId]/publish
 // Publishes the current draft template as a new immutable version (spec §19).
@@ -9,7 +10,9 @@ export async function POST(request: Request, { params }: any) {
   if (!admin.ok) return admin.response;
 
   const { productId } = await params;
-  const body = await request.json().catch(() => ({}));
+  const bodyRead15 = await readJsonObject(request, 16 * 1024);
+  if (bodyRead15.response) return bodyRead15.response;
+  const body = bodyRead15.body;
   const notes = typeof body?.notes === "string" ? body.notes.slice(0, 2000) : "";
   const updateType: CustomizerUpdateType = body?.updateType === "major" ? "major" : "minor";
 

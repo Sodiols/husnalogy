@@ -2,6 +2,7 @@ import { z } from "zod";
 import { requireAdmin } from "@/lib/auth/admin-server";
 import { createServiceRoleClient } from "@/lib/supabase/server";
 import { folderFromRow } from "@/lib/customizer/assets";
+import { readJsonObject } from "@/lib/http/read-body";
 
 const createSchema = z.object({
   name: z.string().trim().min(1).max(120),
@@ -20,7 +21,9 @@ export async function GET() {
 export async function POST(request: Request) {
   const admin = await requireAdmin();
   if (!admin.ok) return admin.response;
-  const parsed = createSchema.safeParse(await request.json().catch(() => null));
+  const bodyRead8 = await readJsonObject(request, 16 * 1024);
+  if (bodyRead8.response) return bodyRead8.response;
+  const parsed = createSchema.safeParse(bodyRead8.body);
   if (!parsed.success) return Response.json({ ok: false, error: "A valid folder name is required." }, { status: 400 });
 
   const supabase = createServiceRoleClient();

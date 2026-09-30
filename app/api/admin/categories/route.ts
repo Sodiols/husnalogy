@@ -1,5 +1,6 @@
 import { requireAdmin } from "@/lib/auth/admin-server";
 import { createCategory, getCategories } from "@/lib/categories";
+import { readJsonObject } from "@/lib/http/read-body";
 
 export async function GET() {
   const admin = await requireAdmin();
@@ -13,7 +14,9 @@ export async function POST(request) {
   const admin = await requireAdmin();
   if (!admin.ok) return admin.response;
 
-  const body = await request.json();
+  const bodyRead1 = await readJsonObject(request, 16 * 1024);
+  if (bodyRead1.response) return bodyRead1.response;
+  const body = bodyRead1.body;
   const result = await createCategory(body);
 
   if (!result.ok) {

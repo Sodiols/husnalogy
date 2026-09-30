@@ -9,6 +9,7 @@
 
 import { randomUUID } from "node:crypto";
 import { describeError } from "@/lib/core/server-errors";
+import { captureError } from "@/lib/observability/monitor";
 
 type Level = "info" | "warn" | "error";
 
@@ -30,10 +31,24 @@ function redact(value: unknown, depth = 0): unknown {
 }
 
 export function logEvent(level: Level, event: string, fields: Record<string, unknown> = {}): void {
-  const line = JSON.stringify({ ts: new Date().toISOString(), level, event, ...(redact(fields) as Record<string, unknown>) });
+  const safe = redact(fields) as Record<string, unknown>;
+  const line = JSON.stringify({ ts: new Date().toISOString(), level, event, ...safe });
   if (level === "error") console.error(line);
   else if (level === "warn") console.warn(line);
   else console.info(line);
+
+  // Every error-level event (checkout database failures, production task and
+  // render failures, worker failures, …) also goes to external monitoring
+  // when SENTRY_DSN is configured. Fire-and-forget; never throws.
+  if (level === "error") {
+    const original = fields.error;
+    const { error: _error, ...context } = safe;
+    void captureError(original instanceof Error ? original : new Error(event), {
+      event,
+      tags: { stage: typeof safe.stage === "string" ? safe.stage : undefined, requestId: typeof safe.requestId === "string" ? safe.requestId : undefined },
+      extra: context,
+    });
+  }
 }
 
 /** A request correlation id: the proxy's if it is well-formed, else a new one. */

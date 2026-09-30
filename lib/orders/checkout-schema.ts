@@ -38,7 +38,7 @@ const SUBMISSION_ID = new RegExp(
 /** Option choices are short scalars keyed by option group. */
 const optionValue = z.union([z.string().max(300), z.number(), z.boolean()]);
 
-const checkoutItemSchema = z
+const quoteItemSchema = z
   .object({
     productId: z.string().regex(PRODUCT_ID, "Invalid product."),
     quantity: z
@@ -64,6 +64,15 @@ const checkoutItemSchema = z
       .optional(),
   })
   .strict();
+
+/**
+ * An order line MUST name the server-side cart line it comes from: the
+ * checkout transaction locks and consumes that line, which is what stops two
+ * tabs, windows or devices from ordering the same cart twice.
+ */
+const checkoutItemSchema = quoteItemSchema.extend({
+  cartItemId: z.string({ error: "This item is not in your cart. Refresh your cart and try again." }).regex(UUID, "Invalid cart item."),
+});
 
 const checkoutRequestSchema = z
   .object({
@@ -91,6 +100,7 @@ export type CheckoutItemInput = {
   quantity: number;
   selectedOptions: Record<string, string | number | boolean>;
   customizationId: string | null;
+  /** Always set for an order; may be null only in a price quote. */
   cartItemId: string | null;
   personalization: Record<string, string | boolean>;
   uploads: Record<string, { path: string }>;
@@ -204,7 +214,12 @@ export function parseCheckoutRequest(body: unknown): CheckoutParseResult {
   }
 
   const seenCustomizations = new Set<string>();
+  const seenCartItems = new Set<string>();
   input.items.forEach((item, index) => {
+    if (seenCartItems.has(item.cartItemId)) {
+      errors[`items.${index}.cartItemId`] = "The same cart item appears twice in the order.";
+    }
+    seenCartItems.add(item.cartItemId);
     if (item.customizationId) {
       if (seenCustomizations.has(item.customizationId)) {
         errors[`items.${index}.customizationId`] = "The same personalized design appears twice in your cart.";
@@ -246,15 +261,20 @@ export function parseCheckoutRequest(body: unknown): CheckoutParseResult {
 
 const quoteRequestSchema = z
   .object({
+    // The delivery method changes the price; nothing about its price is
+    // accepted from the browser.
+    deliveryMethod: z.enum(DELIVERY_METHODS),
     items: z
-      .array(checkoutItemSchema)
+      .array(quoteItemSchema)
       .min(1, "Your cart is empty.")
       .max(CHECKOUT_LIMITS.maxItems, `A single order can contain at most ${CHECKOUT_LIMITS.maxItems} items.`),
   })
   .strict();
 
 /** The price-quote request: the same cart lines, nothing else. */
-export function parseQuoteRequest(body: unknown): { ok: true; items: CheckoutItemInput[] } | { ok: false; errors: Record<string, string> } {
+export function parseQuoteRequest(
+  body: unknown,
+): { ok: true; deliveryMethod: DeliveryMethod; items: CheckoutItemInput[] } | { ok: false; errors: Record<string, string> } {
   const parsed = quoteRequestSchema.safeParse(body);
   if (!parsed.success) {
     const errors: Record<string, string> = {};
@@ -266,6 +286,7 @@ export function parseQuoteRequest(body: unknown): { ok: true; items: CheckoutIte
   }
   return {
     ok: true,
+    deliveryMethod: parsed.data.deliveryMethod,
     items: parsed.data.items.map((item, index) => ({
       lineNumber: index + 1,
       productId: item.productId,

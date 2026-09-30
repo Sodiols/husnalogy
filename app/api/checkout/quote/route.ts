@@ -36,7 +36,7 @@ export async function POST(request: Request) {
 
   try {
     const products = await getProductRecordsForCheckout(parsed.items.map((item) => item.productId));
-    return Response.json({ ok: true, quote: buildQuote(parsed.items, products) }, { headers: HEADERS });
+    return Response.json({ ok: true, quote: buildQuote(parsed.items, products, parsed.deliveryMethod) }, { headers: HEADERS });
   } catch (error) {
     logEvent("error", "checkout.quote_failed", { requestId, userId: user.uid, error });
     return Response.json({ ok: false, error: "We could not confirm current prices. Please try again." }, { status: 503, headers: HEADERS });

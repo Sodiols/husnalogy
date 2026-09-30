@@ -3,6 +3,7 @@ import { requireProductEditor } from "@/lib/auth/roles";
 import { designerMayEdit } from "@/lib/products/workflow";
 import { workflowStateOf } from "@/lib/auth/roles";
 import { deleteProduct, updateProduct } from "@/lib/products";
+import { readJsonObject } from "@/lib/http/read-body";
 
 export async function PUT(request, { params }) {
   const { id } = await params;
@@ -20,7 +21,9 @@ export async function PUT(request, { params }) {
     );
   }
 
-  const body = await request.json();
+  const bodyRead23 = await readJsonObject(request, 5 * 1024 * 1024);
+  if (bodyRead23.response) return bodyRead23.response;
+  const body = bodyRead23.body;
   const result = await updateProduct(id, body, { actor: session.actor });
 
   if (!result.ok) {

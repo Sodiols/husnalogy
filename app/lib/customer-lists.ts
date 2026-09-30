@@ -489,11 +489,13 @@ export async function removeFromCart(user, cartItemId) {
   dispatchCommerceChange("cart");
 }
 
-export async function clearCart(user) {
+/**
+ * Re-read the cart from the server (after a checkout consumed its ordered
+ * lines inside the order transaction). Never deletes anything: lines added in
+ * another tab after the order was placed must survive.
+ */
+export function refreshCart(user) {
   const userId = requireUser(user);
-  const supabase = createClient();
-  const { error } = await supabase.from("cart_items").delete().eq("user_id", userId);
-  if (error) throw error;
   invalidateRemoteCache("cart", userId);
   dispatchCommerceChange("cart");
 }

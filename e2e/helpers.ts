@@ -64,3 +64,60 @@ export function checkoutBody(overrides: Record<string, unknown> = {}) {
     ...overrides,
   };
 }
+
+/* ------------------------------------------------------------------------ */
+/* Server-side cart lines                                                    */
+/* ------------------------------------------------------------------------ */
+
+// Public values (the same ones shipped to every browser). Required only for
+// the seeded suites that create cart lines through Supabase REST.
+export const supabaseUrl = (process.env.E2E_SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || "").replace(/\/+$/, "");
+export const supabaseAnonKey =
+  process.env.E2E_SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
+
+/** The signed-in user's access token, read from the Supabase SSR auth cookie. */
+export async function sessionAccessToken(page: Page): Promise<string> {
+  const cookies = (await page.context().cookies()).filter((cookie) => /^sb-.+-auth-token(\.\d+)?$/.test(cookie.name));
+  const joined = cookies
+    .sort((a, b) => Number(a.name.split(".").pop()) - Number(b.name.split(".").pop()))
+    .map((cookie) => decodeURIComponent(cookie.value))
+    .join("");
+  const raw = joined.startsWith("base64-") ? Buffer.from(joined.slice(7), "base64").toString("utf8") : joined;
+  try {
+    return String(JSON.parse(raw)?.access_token || "");
+  } catch {
+    return "";
+  }
+}
+
+/**
+ * Create a server-side cart line exactly as the storefront does (Supabase
+ * REST, customer session, RLS). Returns its id.
+ */
+export async function createCartLine(page: Page, line: { productId: string; quantity?: number; customizationId?: string }): Promise<string> {
+  const token = await sessionAccessToken(page);
+  if (!supabaseUrl || !supabaseAnonKey || !token) throw new Error("Set E2E_SUPABASE_URL and E2E_SUPABASE_ANON_KEY and sign in before creating cart lines.");
+  const payload = JSON.parse(Buffer.from(token.split(".")[1], "base64url").toString("utf8"));
+  const response = await fetch(`${supabaseUrl}/rest/v1/cart_items`, {
+    method: "POST",
+    headers: { apikey: supabaseAnonKey, Authorization: `Bearer ${token}`, "Content-Type": "application/json", Prefer: "return=representation" },
+    body: JSON.stringify({
+      user_id: payload.sub,
+      product_id: line.productId,
+      product_title: "E2E cart line",
+      quantity: line.quantity ?? 1,
+      unit_price: 0.01, // never trusted
+      metadata: line.customizationId ? { customizationId: line.customizationId } : {},
+    }),
+  });
+  const rows = await response.json();
+  if (!response.ok || !rows?.[0]?.id) throw new Error(`Could not create a cart line: ${response.status} ${JSON.stringify(rows).slice(0, 200)}`);
+  return String(rows[0].id);
+}
+
+/** A valid order body whose single line consumes a fresh server-side cart line. */
+export async function checkoutBodyWithCart(page: Page, overrides: Record<string, unknown> = {}, line: Record<string, unknown> = {}) {
+  const quantity = Number(line.quantity ?? 1);
+  const cartItemId = await createCartLine(page, { productId: seedManifest.productId, quantity, customizationId: line.customizationId as string | undefined });
+  return checkoutBody({ items: [{ productId: seedManifest.productId, quantity, selectedOptions: { ...SEEDED_OPTIONS }, cartItemId, ...line }], ...overrides });
+}

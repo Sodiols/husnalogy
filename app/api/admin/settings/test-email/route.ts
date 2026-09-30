@@ -1,6 +1,7 @@
 import { requireAdmin } from "@/lib/auth/admin-server";
 import { getSettings } from "@/lib/settings";
 import { isValidEmail } from "@/lib/validation";
+import { readJsonObject } from "@/lib/http/read-body";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -9,7 +10,9 @@ export async function POST(request) {
   const admin = await requireAdmin();
   if (!admin.ok) return admin.response;
 
-  const body = await request.json().catch(() => ({}));
+  const bodyRead29 = await readJsonObject(request, 4 * 1024);
+  if (bodyRead29.response) return bodyRead29.response;
+  const body = bodyRead29.body;
   const recipient = String(body.recipient || "").trim();
   const settings = await getSettings();
   const email = settings.email || {};

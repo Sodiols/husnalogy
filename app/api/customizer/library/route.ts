@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { assetRowToReference, resolvePrivateAssetUrl } from "@/lib/customizer/server/private-assets";
+import { rateLimit } from "@/lib/security/rate-limit";
 
 // GET /api/customizer/library — the caller's reusable upload library
 // (spec §15). Fresh signed URLs are generated on every request; expired links
@@ -10,6 +11,8 @@ export async function GET(request: Request) {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) return Response.json({ ok: false, error: "Sign in required." }, { status: 401 });
+  const limited = rateLimit(request, { name: "customizer-library", limit: 120, windowMs: 10 * 60 * 1000, identity: user.id });
+  if (limited) return limited;
 
   const url = new URL(request.url);
   const search = (url.searchParams.get("search") || "").trim().slice(0, 120);

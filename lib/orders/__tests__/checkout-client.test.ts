@@ -65,9 +65,24 @@ describe("the browser sends identifiers and choices only", () => {
       deliveryNote: "",
       acceptTerms: true,
       termsVersion: CURRENT_TERMS_VERSION,
-      items: buildCheckoutItems([cartLine(), cartLine({ id: "legacy-local-id", customizationId: DESIGN })]),
+      items: buildCheckoutItems([cartLine(), cartLine({ id: "1b1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d", customizationId: DESIGN })]),
     });
     expect(result.ok).toBe(true);
+  });
+
+  it("a line that is not a server-side cart line cannot be ordered", () => {
+    const [line] = buildCheckoutItems([cartLine({ id: "legacy-local-id" })]);
+    expect(line.cartItemId).toBeUndefined();
+    const result = parseCheckoutRequest({
+      checkoutSubmissionId: "3b241101-e2bb-4255-8caf-4136c566a962",
+      customerName: "Ayesha Rahman",
+      customerPhone: "01712345678",
+      deliveryMethod: "store",
+      acceptTerms: true,
+      termsVersion: CURRENT_TERMS_VERSION,
+      items: [line],
+    });
+    expect(result.ok).toBe(false);
   });
 
   it("rounds a legacy fractional quantity instead of sending it", () => {

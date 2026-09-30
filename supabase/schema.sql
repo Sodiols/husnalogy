@@ -891,7 +891,9 @@ grant all on public.product_customizer_templates to service_role;
 grant all on public.product_customizations to service_role;
 grant select on public.product_customizer_templates to anon;
 grant select, insert, update, delete on public.product_customizer_templates to authenticated;
-grant select, insert, update, delete on public.product_customizations to authenticated;
+-- Customers only READ their designs directly; every write goes through
+-- /api/customizations (see migrations/20260930120000_checkout_integrity_hardening.sql).
+grant select on public.product_customizations to authenticated;
 
 -- ============================================================================
 -- Homepage hero collection ("The Wedding Suite" section)

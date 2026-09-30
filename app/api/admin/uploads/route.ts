@@ -1,6 +1,7 @@
 import { requireDesignerOrAdmin } from "@/lib/auth/roles";
 import path from "node:path";
 import { canUseSupabaseStorage, uploadToSupabaseStorage } from "@/lib/storage/supabase-storage";
+import { readFormData } from "@/lib/http/read-body";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -106,13 +107,12 @@ function isValidUpload(file, folder, bytes) {
   return IMAGE_EXTENSIONS.has(ext) && typeOk && fileSize > 0 && fileSize <= MAX_IMAGE_SIZE && hasValidImageSignature(ext, bytes);
 }
 
-async function parseUploadForm(request) {
-  try {
-    return await request.formData();
-  } catch {
-    return null;
-  }
-}
+/**
+ * One request may carry several images or one video. 150 MB bounds the
+ * memory a single request can use (one 120 MB video, or ten maximum-size
+ * images); larger selections are uploaded in more than one request.
+ */
+const MAX_REQUEST_BYTES = 150 * 1024 * 1024;
 
 export async function POST(request) {
   // Designers upload their own product media; the storage path is derived server side.
@@ -120,7 +120,11 @@ export async function POST(request) {
   if (!session.ok) return session.response;
   const admin = { ok: true, admin: session.actor } as const;
 
-  const formData = await parseUploadForm(request);
+  const upload = await readFormData(request, MAX_REQUEST_BYTES);
+  if (upload.response?.status === 413) {
+    return Response.json({ ok: false, error: "This upload is too large. Upload fewer files at once (150 MB per upload)." }, { status: 413 });
+  }
+  const formData = upload.form;
 
   if (!formData) {
     return Response.json(
@@ -136,7 +140,7 @@ export async function POST(request) {
   const folder = normalizeFolder(formData.get("folder") || formData.get("type"));
   const files = formData
     .getAll("files")
-    .filter((file) => file && typeof file === "object" && typeof file.arrayBuffer === "function");
+    .filter((file): file is File => file instanceof File);
 
   if (!folder) {
     return Response.json(

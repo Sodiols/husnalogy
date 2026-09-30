@@ -87,3 +87,51 @@ export function bodyErrorResponse(error: unknown): Response | null {
   }
   return null;
 }
+
+export type JsonObjectResult = { body: Record<string, unknown>; response: Response | null };
+
+/**
+ * Read a JSON OBJECT body of at most `maxBytes` for an ordinary API route.
+ *
+ *   const { body, response } = await readJsonObject(request, 16 * 1024);
+ *   if (response) return response;
+ *
+ * Oversized → 413 (even without Content-Length). Malformed JSON or a
+ * non-object value → 400. An empty body is `{}`. The Content-Type is not
+ * required here (some internal callers omit it); routes that must refuse
+ * cross-site "simple" requests call `rejectCrossSiteRequest` as well.
+ */
+export async function readJsonObject(request: Request, maxBytes: number): Promise<JsonObjectResult> {
+  let bytes: Uint8Array<ArrayBuffer>;
+  try {
+    bytes = await readBodyBytes(request, maxBytes);
+  } catch (error) {
+    const response = bodyErrorResponse(error);
+    if (response) return { body: {}, response };
+    throw error;
+  }
+  if (!bytes.byteLength) return { body: {}, response: null };
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes));
+  } catch {
+    return { body: {}, response: Response.json({ ok: false, error: "The request body is invalid." }, { status: 400 }) };
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    return { body: {}, response: Response.json({ ok: false, error: "The request body must be a JSON object." }, { status: 400 }) };
+  }
+  return { body: parsed as Record<string, unknown>, response: null };
+}
+
+export type FormDataResult = { form: FormData | null; response: Response | null };
+
+/** Read a multipart body of at most `maxBytes` (413 when larger, 400 when malformed). */
+export async function readFormData(request: Request, maxBytes: number): Promise<FormDataResult> {
+  try {
+    return { form: await readFormDataBody(request, maxBytes), response: null };
+  } catch (error) {
+    const response = bodyErrorResponse(error);
+    if (response && response.status === 413) return { form: null, response };
+    return { form: null, response: Response.json({ ok: false, error: "The upload could not be read." }, { status: 400 }) };
+  }
+}

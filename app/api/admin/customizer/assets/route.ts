@@ -13,6 +13,7 @@ import {
   VARIANT_GENERATION_VERSION,
   type AssetVariants,
 } from "@/lib/customizer/server/asset-variants";
+import { readFormData } from "@/lib/http/read-body";
 
 /** Variant metadata recorded alongside the row for diagnostics and repair. */
 function variantMetadata(variants: AssetVariants, previous: Record<string, any> = {}) {
@@ -165,7 +166,10 @@ export async function POST(request: Request) {
   if (!session.ok) return session.response;
   const admin = { ok: true, admin: session.actor } as const;
 
-  const formData = await request.formData().catch(() => null);
+  // Bounded while streaming: an oversized upload is refused before it is buffered.
+  const upload = await readFormData(request, MAX_SIZE + 512 * 1024);
+  if (upload.response) return upload.response;
+  const formData = upload.form;
   const file = formData?.get("file") as File | null;
   if (!file) return Response.json({ ok: false, error: "No file provided." }, { status: 400 });
   if (file.size > MAX_SIZE) return Response.json({ ok: false, error: "Assets must be 25MB or smaller." }, { status: 400 });

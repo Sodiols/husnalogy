@@ -1,12 +1,15 @@
 import { requireAdmin } from "@/lib/auth/admin-server";
 import { deleteCategory, updateCategory } from "@/lib/categories";
+import { readJsonObject } from "@/lib/http/read-body";
 
 export async function PUT(request, { params }) {
   const admin = await requireAdmin();
   if (!admin.ok) return admin.response;
 
   const { id } = await params;
-  const body = await request.json();
+  const bodyRead2 = await readJsonObject(request, 16 * 1024);
+  if (bodyRead2.response) return bodyRead2.response;
+  const body = bodyRead2.body;
   const result = await updateCategory(id, body);
 
   if (!result.ok) {

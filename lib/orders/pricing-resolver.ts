@@ -22,7 +22,7 @@
 
 import { BUILT_IN_FORMAT_OPTIONS, parseProductOptionList, stripSurchargeFromLabel, type ParsedProductOption } from "@/lib/products/options";
 import { normalizeCurrency, type SupportedCurrency } from "@/lib/currency";
-import { CHECKOUT_ACCEPTED_CURRENCIES, CHECKOUT_LIMITS } from "@/lib/orders/checkout-policy";
+import { CHECKOUT_ACCEPTED_CURRENCIES, CHECKOUT_LIMITS, resolveDeliveryChargeMinor, type DeliveryMethod } from "@/lib/orders/checkout-policy";
 import { fromMinorUnits, multiplyMinor, toMinorUnits } from "@/lib/money";
 
 export type OptionGroupSpec = {
@@ -298,6 +298,15 @@ export function totalOrder(lines: TrustedLinePrice[], deliveryMinor: number): { 
     return { ok: false, error: { code: "TOTAL_OUT_OF_RANGE", message: "This order is too large to place online. Please contact us." } };
   }
   return { ok: true, totals: { currency: lines[0].currency, subtotalMinor, deliveryMinor, totalMinor } };
+}
+
+/**
+ * THE order price: trusted lines plus the delivery charge for the chosen
+ * delivery method, from server configuration. The checkout quote and the
+ * order API both call this, so a quote can never disagree with the charge.
+ */
+export function priceOrder(lines: TrustedLinePrice[], deliveryMethod: DeliveryMethod) {
+  return totalOrder(lines, resolveDeliveryChargeMinor(deliveryMethod));
 }
 
 /** A JSON-friendly pricing breakdown for order items and snapshots. */

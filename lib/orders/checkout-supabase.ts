@@ -10,7 +10,7 @@
 import { createId } from "@/lib/core/id";
 import { createServiceRoleClient } from "@/lib/supabase/server";
 import { getProductRecordsForCheckout } from "@/lib/products";
-import { queueOrderProduction } from "@/lib/customizer/order-snapshots";
+import { runOrderFollowUps } from "@/lib/outbox/supabase-tasks";
 import { isAllowedCustomerAssetPath } from "@/lib/customizer/v2/asset-references";
 import { verifyCustomizationForCheckout } from "@/lib/orders/checkout-customizations";
 import { CheckoutTransactionError, transactionErrorFrom, type CheckoutDeps } from "@/lib/orders/checkout";
@@ -111,11 +111,6 @@ export function createSupabaseCheckoutDeps(): CheckoutDeps {
       return data ? toCustomerOrderView(orderFromRow(data)) : null;
     },
 
-    afterOrderCreated: (orderId, customizationIds) => queueOrderProduction(orderId, customizationIds),
-
-    async clearCartItems(customerId, cartItemIds) {
-      const { error } = await supabase.from("cart_items").delete().eq("user_id", customerId).in("id", cartItemIds);
-      if (error) throw error;
-    },
+    afterOrderCreated: (orderId) => runOrderFollowUps(orderId),
   };
 }

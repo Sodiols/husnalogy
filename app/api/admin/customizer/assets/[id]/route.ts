@@ -2,6 +2,7 @@ import { z } from "zod";
 import { requireAdmin } from "@/lib/auth/admin-server";
 import { createServiceRoleClient } from "@/lib/supabase/server";
 import { getAdminAssetUsage, signAdminAssetRow } from "@/lib/customizer/server/admin-assets";
+import { readJsonObject } from "@/lib/http/read-body";
 
 const patchSchema = z.object({
   title: z.string().trim().min(1).max(200).optional(),
@@ -37,7 +38,9 @@ export async function PATCH(request: Request, { params }: any) {
   if (!admin.ok) return admin.response;
 
   const { id } = await params;
-  const parsed = patchSchema.safeParse(await request.json().catch(() => null));
+  const bodyRead10 = await readJsonObject(request, 32 * 1024);
+  if (bodyRead10.response) return bodyRead10.response;
+  const parsed = patchSchema.safeParse(bodyRead10.body);
   if (!parsed.success) return Response.json({ ok: false, error: "Invalid asset update." }, { status: 400 });
   const body = parsed.data;
   const patch: Record<string, unknown> = {};

@@ -22,12 +22,16 @@ import {
   prepareAsset,
   storeAsset,
 } from "@/lib/customizer/server/asset-ingest";
+import { readJsonObject } from "@/lib/http/read-body";
+import { rejectCrossSiteRequest } from "@/lib/security/same-origin";
 
 export const runtime = "nodejs";
 
 const PROVIDER = "iconify";
 
 export async function POST(request: Request) {
+  const crossSite = rejectCrossSiteRequest(request);
+  if (crossSite) return crossSite;
   // Import is materially more expensive than search (outbound fetch + image
   // processing + storage writes), so it is limited far more tightly.
   const limited = await rateLimitDistributed(request, { name: "iconify-import", limit: 30, windowMs: 10 * 60 * 1000 });
@@ -37,7 +41,9 @@ export async function POST(request: Request) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return Response.json({ ok: false, error: "Sign in required." }, { status: 401 });
 
-  const body = await request.json().catch(() => ({}));
+  const bodyRead33 = await readJsonObject(request, 4 * 1024);
+  if (bodyRead33.response) return bodyRead33.response;
+  const body = bodyRead33.body;
   const identity = parseIconIdentity((body as any)?.icon);
   if (!identity) {
     return Response.json({ ok: false, error: "Invalid graphic reference." }, { status: 400 });

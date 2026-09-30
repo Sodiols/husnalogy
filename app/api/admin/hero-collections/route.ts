@@ -5,6 +5,7 @@ import {
   getHeroCollections,
   updateHeroCollection,
 } from "@/lib/hero-collections/store";
+import { readJsonObject } from "@/lib/http/read-body";
 
 export const dynamic = "force-dynamic";
 
@@ -20,7 +21,9 @@ export async function POST(request) {
   const admin = await requireAdmin();
   if (!admin.ok) return admin.response;
 
-  const body = await request.json().catch(() => ({}));
+  const bodyRead16 = await readJsonObject(request, 256 * 1024);
+  if (bodyRead16.response) return bodyRead16.response;
+  const body = bodyRead16.body;
   const result = await createHeroCollection(body);
 
   if (!result.ok) {
@@ -34,7 +37,9 @@ export async function PATCH(request) {
   const admin = await requireAdmin();
   if (!admin.ok) return admin.response;
 
-  const body = await request.json().catch(() => ({}));
+  const bodyRead17 = await readJsonObject(request, 256 * 1024);
+  if (bodyRead17.response) return bodyRead17.response;
+  const body = bodyRead17.body;
   const id = String(body.id || "").trim();
 
   if (!id) {
@@ -54,7 +59,9 @@ export async function DELETE(request) {
   const admin = await requireAdmin();
   if (!admin.ok) return admin.response;
 
-  const body = await request.json().catch(() => ({}));
+  const bodyRead18 = await readJsonObject(request, 256 * 1024);
+  if (bodyRead18.response) return bodyRead18.response;
+  const body = bodyRead18.body;
   const id = String(body.id || "").trim();
 
   if (!id) {

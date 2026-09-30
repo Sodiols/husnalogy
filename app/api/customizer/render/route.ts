@@ -3,11 +3,15 @@ import { rateLimitDistributed, rejectLargeRequest } from "@/lib/security/rate-li
 import { enqueueRenderJob, processRenderJob, getRenderOutputs } from "@/lib/customizer/render-jobs";
 import { RenderError } from "@/lib/customizer/v2/server/render";
 import type { RenderJobType } from "@/lib/customizer/v2/types";
+import { readJsonObject } from "@/lib/http/read-body";
+import { rejectCrossSiteRequest } from "@/lib/security/same-origin";
 
 // POST /api/customizer/render — request a server-rendered preview of your own
 // customization (spec §23). Preview/thumbnail jobs process inline; print jobs
 // are queued for the protected worker.
 export async function POST(request: Request) {
+  const crossSite = rejectCrossSiteRequest(request);
+  if (crossSite) return crossSite;
   const tooLarge = rejectLargeRequest(request, 32 * 1024);
   if (tooLarge) return tooLarge;
   const limited = await rateLimitDistributed(request, { name: "customizer-render", limit: 20, windowMs: 10 * 60 * 1000 });
@@ -19,7 +23,9 @@ export async function POST(request: Request) {
   } = await supabase.auth.getUser();
   if (!user) return Response.json({ ok: false, error: "Sign in required." }, { status: 401 });
 
-  const body = await request.json().catch(() => ({}));
+  const bodyRead35 = await readJsonObject(request, 32 * 1024);
+  if (bodyRead35.response) return bodyRead35.response;
+  const body = bodyRead35.body;
   const customizationId = String(body.customizationId || "").trim();
   const requestedJobType = String(body.jobType || "preview");
   const jobType = (["preview", "thumbnail", "cart_thumbnail", "mockup", "print_png", "print_pdf"].includes(requestedJobType) ? requestedJobType : "preview") as RenderJobType;

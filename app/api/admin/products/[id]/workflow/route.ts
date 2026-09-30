@@ -2,6 +2,7 @@ import { createServiceRoleClient } from "@/lib/supabase/server";
 import { getCurrentActor, canReviewProducts } from "@/lib/auth/roles";
 import { resolveWorkflowTransition, type WorkflowAction } from "@/lib/products/workflow";
 import { logServerFailure } from "@/lib/core/server-errors";
+import { readJsonObject } from "@/lib/http/read-body";
 
 /**
  * POST /api/admin/products/[id]/workflow  { action, note? }
@@ -35,7 +36,9 @@ export async function POST(request: Request, { params }: any) {
   if (!actor) return Response.json({ ok: false, error: "Unauthorized" }, { status: 401 });
 
   const { id } = await params;
-  const body = await request.json().catch(() => ({}));
+  const bodyRead26 = await readJsonObject(request, 16 * 1024);
+  if (bodyRead26.response) return bodyRead26.response;
+  const body = bodyRead26.body;
   const action = String(body?.action || "") as WorkflowAction;
   if (!ACTIONS.has(action)) {
     return Response.json({ ok: false, error: "Unknown workflow action." }, { status: 400 });
@@ -52,7 +55,7 @@ export async function POST(request: Request, { params }: any) {
   // not exist, so this cannot be used to enumerate the catalogue.
   if (!product) return Response.json({ ok: false, error: "Forbidden" }, { status: 403 });
 
-  const decision = resolveWorkflowTransition(action, actor, product, { note: body?.note });
+  const decision = resolveWorkflowTransition(action, actor, product, { note: typeof body.note === "string" ? body.note : undefined });
   if (!decision.ok) {
     return Response.json({ ok: false, error: decision.error }, { status: decision.status });
   }
@@ -101,7 +104,9 @@ export async function PUT(request: Request, { params }: any) {
   if (!canReviewProducts(actor)) return Response.json({ ok: false, error: "Forbidden" }, { status: 403 });
 
   const { id } = await params;
-  const body = await request.json().catch(() => ({}));
+  const bodyRead27 = await readJsonObject(request, 16 * 1024);
+  if (bodyRead27.response) return bodyRead27.response;
+  const body = bodyRead27.body;
   const designerId = body?.designerId ? String(body.designerId) : null;
 
   const supabase = createServiceRoleClient();

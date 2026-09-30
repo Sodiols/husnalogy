@@ -1,6 +1,8 @@
 import { requireProductEditor } from "@/lib/auth/roles";
 import { loadNormalizedMockupTemplate, saveNormalizedMockupTemplate } from "@/lib/customizer/mockup-store";
 import { rejectLargeRequest } from "@/lib/security/rate-limit";
+import { readJsonObject } from "@/lib/http/read-body";
+import { isMockupTemplateShape } from "@/lib/customizer/mockup-store";
 
 export async function GET(_request: Request, { params }: any) {
   const { productId } = await params;
@@ -27,8 +29,10 @@ export async function PUT(request: Request, { params }: any) {
   const admin = { ok: true, admin: session.actor } as const;
   const tooLarge = rejectLargeRequest(request, 512 * 1024);
   if (tooLarge) return tooLarge;
-  const body = await request.json().catch(() => null);
-  if (!body?.mockup) return Response.json({ ok: false, error: "Mockup configuration is required." }, { status: 400 });
+  const bodyRead13 = await readJsonObject(request, 512 * 1024);
+  if (bodyRead13.response) return bodyRead13.response;
+  const body = bodyRead13.body;
+  if (!isMockupTemplateShape(body.mockup)) return Response.json({ ok: false, error: "Mockup configuration is required." }, { status: 400 });
   try {
     const mockup = await saveNormalizedMockupTemplate(String(productId), body.mockup, false);
     console.info(`[customizer] Mockup draft saved: product=${productId} by=${admin.admin?.id || "unknown"}`);

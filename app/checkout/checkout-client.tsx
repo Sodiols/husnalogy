@@ -5,7 +5,7 @@ import { formatCurrency } from "@/lib/currency";
 import { useEffect, useMemo, useRef, useState } from "react";
 import useAuth from "../lib/useAuth";
 import {
-  clearCart,
+  refreshCart,
   getCartTotals,
   saveCustomerAddress,
   openCustomerLogin,
@@ -35,9 +35,11 @@ const initialCustomer = {
   deliveryNote: "",
 };
 
-function sessionStore(): Storage | null {
+// Shared by every tab of this browser (UX coordination only; the server's
+// transactional cart consumption is what prevents duplicate orders).
+function attemptStore(): Storage | null {
   try {
-    return typeof window !== "undefined" ? window.sessionStorage : null;
+    return typeof window !== "undefined" ? window.localStorage : null;
   } catch {
     return null;
   }
@@ -78,12 +80,18 @@ export default function CheckoutClient({ initialUser = undefined }: any) {
   // success, a cart cleanup that failed, the back button) shows the
   // confirmation instead of offering to place the same order again.
   useEffect(() => {
-    if (!userId || !items.length) return;
-    const previous = readAttempt(sessionStore(), userId);
-    if (previous?.status === "placed" && previous.fingerprint === fingerprint && previous.orderId) {
-      setPlacedOrder({ id: previous.orderId });
-      clearCart(user).catch(() => undefined);
-    }
+    if (!userId || !items.length) return undefined;
+    const check = () => {
+      const previous = readAttempt(attemptStore(), userId);
+      if (previous?.status === "placed" && previous.fingerprint === fingerprint && previous.orderId) {
+        setPlacedOrder({ id: previous.orderId });
+        refreshCart(user);
+      }
+    };
+    check();
+    // Another tab of this browser placed the order: reflect it here too.
+    window.addEventListener("storage", check);
+    return () => window.removeEventListener("storage", check);
   }, [userId, fingerprint, items.length, user]);
 
   // Trusted prices from the server: the amount that will actually be charged.
@@ -96,7 +104,7 @@ export default function CheckoutClient({ initialUser = undefined }: any) {
     fetch("/api/checkout/quote", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ items: buildCheckoutItems(items) }),
+      body: JSON.stringify({ deliveryMethod, items: buildCheckoutItems(items) }),
       signal: controller.signal,
     })
       .then((response) => response.json().catch(() => ({})))
@@ -108,7 +116,7 @@ export default function CheckoutClient({ initialUser = undefined }: any) {
         if (!controller.signal.aborted) setQuote({ ok: false, error: "We could not confirm current prices.", lines: [] });
       });
     return () => controller.abort();
-  }, [userId, fingerprint, items]);
+  }, [userId, fingerprint, items, deliveryMethod]);
 
   useEffect(() => {
     if (!user) return;
@@ -170,13 +178,13 @@ export default function CheckoutClient({ initialUser = undefined }: any) {
 
     // One idempotency key per cart: reused by every retry of this cart,
     // rotated only when the cart itself changes.
-    const { attempt, alreadyPlaced } = attemptForCart(attemptRef.current || readAttempt(sessionStore(), userId), fingerprint);
+    const { attempt, alreadyPlaced } = attemptForCart(attemptRef.current || readAttempt(attemptStore(), userId), fingerprint);
     if (alreadyPlaced && attempt.orderId) {
       setPlacedOrder({ id: attempt.orderId });
       return;
     }
     attemptRef.current = attempt;
-    writeAttempt(sessionStore(), userId, attempt);
+    writeAttempt(attemptStore(), userId, attempt);
 
     submittingRef.current = true;
     setFieldErrors({});
@@ -212,7 +220,11 @@ export default function CheckoutClient({ initialUser = undefined }: any) {
       return;
     }
 
-    const alreadyPlacedId = response.status === 409 && data?.code === "SUBMISSION_REUSED" ? String(data?.orderId || "") : "";
+    // Already placed — by this submission with other details, or by another
+    // tab/device that consumed the same cart lines. Either way it is the
+    // customer's own finalized order: show it instead of failing.
+    const alreadyPlacedId =
+      response.status === 409 && (data?.code === "SUBMISSION_REUSED" || data?.code === "CART_ALREADY_ORDERED") ? String(data?.orderId || "") : "";
     if ((!response.ok || data?.ok === false) && !alreadyPlacedId) {
       submittingRef.current = false;
       const errors = data?.errors && typeof data.errors === "object" ? data.errors : {};
@@ -230,7 +242,7 @@ export default function CheckoutClient({ initialUser = undefined }: any) {
     const orderId = String(data?.order?.id || alreadyPlacedId || "");
     const placedAttempt: CheckoutAttempt = { ...attempt, status: "placed", orderId };
     attemptRef.current = placedAttempt;
-    writeAttempt(sessionStore(), userId, placedAttempt);
+    writeAttempt(attemptStore(), userId, placedAttempt);
     setPlacedOrder({ id: orderId });
     setStatus({ loading: false, error: "", success: `Order request placed. Order ID: ${orderId || "created"}` });
 
@@ -271,14 +283,14 @@ export default function CheckoutClient({ initialUser = undefined }: any) {
       console.warn("Could not save the order locally:", error);
     }
 
-    // The server already removed the ordered cart lines; this also refreshes
-    // the local view. A failure is logged and retried on the next visit — it
-    // never changes the order's success.
+    // The server consumed exactly the ordered cart lines inside the order
+    // transaction. Only refresh the view — deleting the whole cart here would
+    // also remove lines added in another tab after this order was placed.
     setCustomer(initialCustomer);
     try {
-      await clearCart(user);
+      refreshCart(user);
     } catch (error) {
-      console.warn("Cart cleanup after a placed order failed; it will be retried.", error);
+      console.warn("Cart refresh after a placed order failed; it will refresh on the next visit.", error);
     } finally {
       submittingRef.current = false;
     }

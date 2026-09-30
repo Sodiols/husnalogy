@@ -7,11 +7,11 @@
  *    totals from the cart are deliberately dropped — the server derives them.
  *
  * 2. The checkout ATTEMPT. One submission id per cart contents, persisted in
- *    sessionStorage, so a refresh, a retry after a lost response, a double
- *    click or a second tab all reuse the same idempotency key. The id rotates
- *    only when the cart itself changes. Once an order is confirmed the attempt
- *    is marked placed, and an unchanged cart (e.g. one whose cleanup failed)
- *    can never be submitted again as a second order.
+ *    localStorage (shared by every tab of this browser), so a refresh, a
+ *    retry after a lost response or a double click reuse the same idempotency
+ *    key, and a second tab sees an order the first tab placed. This is UX
+ *    only: the server consumes cart lines inside the order transaction, which
+ *    is what stops two tabs, windows or devices from ordering one cart twice.
  */
 
 import { OPTION_GROUPS } from "@/lib/orders/pricing-resolver";
@@ -70,12 +70,29 @@ export function buildCheckoutItems(items: Array<Record<string, any>>): CheckoutI
   });
 }
 
-/** A stable description of what is being bought (ids, options, quantities). */
+/** Canonical JSON: object keys sorted at every depth; arrays keep their order. */
+export function canonicalJson(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
+  if (value && typeof value === "object") {
+    return `{${Object.keys(value as Record<string, unknown>)
+      .filter((key) => (value as Record<string, unknown>)[key] !== undefined)
+      .sort()
+      .map((key) => `${JSON.stringify(key)}:${canonicalJson((value as Record<string, unknown>)[key])}`)
+      .join(",")}}`;
+  }
+  return JSON.stringify(value ?? null);
+}
+
+/**
+ * THE cart fingerprint: everything that changes what would be ordered —
+ * cart line, product, quantity, design, option choices, personalization text
+ * and uploaded files — exactly as it would be sent to the order API
+ * (`buildCheckoutItems`), canonicalized. Display-only state (titles, prices,
+ * images, timestamps) is not part of it. Line order is irrelevant, so lines
+ * are sorted; key order never matters.
+ */
 export function cartFingerprint(items: Array<Record<string, any>>): string {
-  const lines = buildCheckoutItems(items).map((line) =>
-    JSON.stringify([line.cartItemId || "", line.productId, line.quantity, line.customizationId || "", Object.entries(line.selectedOptions).sort()]),
-  );
-  return lines.sort().join("|");
+  return buildCheckoutItems(items).map(canonicalJson).sort().join("|");
 }
 
 export type CheckoutAttempt = {

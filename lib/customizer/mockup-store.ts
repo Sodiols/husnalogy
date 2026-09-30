@@ -10,6 +10,20 @@ function number(value: unknown, fallback = 0): number {
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
+/** Structural check for a mockup posted by the studio, before deep validation. */
+export function isMockupTemplateShape(value: unknown): value is MockupTemplate {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const candidate = value as Record<string, unknown>;
+  return (
+    typeof candidate.name === "string" &&
+    typeof candidate.productType === "string" &&
+    (candidate.id === undefined || typeof candidate.id === "string") &&
+    typeof candidate.width === "number" &&
+    typeof candidate.height === "number" &&
+    Array.isArray(candidate.views)
+  );
+}
+
 export function validateMockupTemplate(template: MockupTemplate): string[] {
   const errors: string[] = [];
   if (!template.name?.trim()) errors.push("Mockup name is required.");

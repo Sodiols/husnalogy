@@ -4,6 +4,8 @@ import { rateLimit, rejectLargeRequest } from "@/lib/security/rate-limit";
 import { getSettings } from "@/lib/settings";
 import { cleanString } from "@/lib/validation";
 import { getSupabaseUserFromRequest } from "@/lib/auth/supabase-user";
+import { readJsonObject } from "@/lib/http/read-body";
+import { rejectCrossSiteRequest } from "@/lib/security/same-origin";
 
 // A customer can only review a product once their order for it has been delivered.
 // "completed" is kept as a synonym for legacy orders that used it as the delivered/done state.
@@ -109,6 +111,8 @@ export async function GET(request, { params }) {
 }
 
 export async function POST(request, { params }) {
+  const crossSite = rejectCrossSiteRequest(request);
+  if (crossSite) return crossSite;
   try {
     const largeRequest = rejectLargeRequest(request, 12 * 1024);
     if (largeRequest) return largeRequest;
@@ -121,7 +125,9 @@ export async function POST(request, { params }) {
     if (limited) return limited;
 
     const { slug } = await params;
-    const body = await request.json();
+    const bodyRead37 = await readJsonObject(request, 12 * 1024);
+    if (bodyRead37.response) return bodyRead37.response;
+    const body = bodyRead37.body;
     const product = await getProductBySlug(slug, true);
 
     if (!product) {
@@ -158,7 +164,7 @@ export async function POST(request, { params }) {
       return Response.json({ ok: false, errors }, { status: 400 });
     }
 
-    const matchingOrder = await findEligibleReviewOrder(product, user, body.orderId);
+    const matchingOrder = await findEligibleReviewOrder(product, user, typeof body.orderId === "string" ? body.orderId : "");
 
     if (!matchingOrder) {
       return Response.json(

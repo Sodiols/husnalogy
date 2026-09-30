@@ -527,9 +527,13 @@ describe("the documented deployment verification query", () => {
     try {
       const rows = (await t.db.query<{ migration: string; applied: boolean }>(sql)).rows;
       const mine = rows.filter((row) =>
-        ["checkout transaction", "durable order state", "one order per design", "customization writes guarded", "snapshots immutable", "upload storage IDOR closed", "profile role protected", "no direct order inserts"].includes(row.migration),
+        [
+          "checkout transaction", "durable order state", "one order per design", "customization writes guarded", "snapshots immutable",
+          "upload storage IDOR closed", "profile role protected", "no direct order inserts", "cart consumption", "snapshot linkage required",
+          "production outbox", "notification outbox", "worker health", "one snapshot guard", "outbox not customer callable",
+        ].includes(row.migration),
       );
-      expect(mine).toHaveLength(8);
+      expect(mine).toHaveLength(15);
       expect(mine.filter((row) => !row.applied)).toEqual([]);
     } finally {
       await t.close();

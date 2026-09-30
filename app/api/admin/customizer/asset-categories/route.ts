@@ -1,6 +1,7 @@
 import { requireDesignerOrAdmin } from "@/lib/auth/roles";
 import { createServiceRoleClient } from "@/lib/supabase/server";
 import { categoryFromRow } from "@/lib/customizer/assets";
+import { readJsonObject } from "@/lib/http/read-body";
 
 function slugify(value: string): string {
   return value
@@ -34,7 +35,9 @@ export async function POST(request: Request) {
   if (!session.ok) return session.response;
   const admin = { ok: true, admin: session.actor } as const;
 
-  const body = await request.json().catch(() => ({}));
+  const bodyRead7 = await readJsonObject(request, 16 * 1024);
+  if (bodyRead7.response) return bodyRead7.response;
+  const body = bodyRead7.body;
   const name = String(body.name || "").trim().slice(0, 120);
   if (!name) return Response.json({ ok: false, error: "Category name is required." }, { status: 400 });
 

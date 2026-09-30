@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { adminCredentials, checkoutBody, customerCredentials, login, requireSeededAcceptance, seedManifest } from "./helpers";
+import { adminCredentials, checkoutBodyWithCart, customerCredentials, login, requireSeededAcceptance, seedManifest } from "./helpers";
 
 // Full purchase journey (spec: order integrity, checkout idempotency, trusted
 // pricing, immutable snapshot, render queue, cross-account isolation). This
@@ -110,6 +110,17 @@ test.describe.serial("checkout places one trusted, immutable, render-queued orde
     // A snapshot must never sit silently in "pending" — the enqueue path
     // moves it to queued, or explicitly to failed when queueing broke.
     expect(["queued", "processing", "completed", "failed"]).toContain(orderSnapshots[0].renderStatus);
+
+    // Order integrity: the snapshot is linked to its order item, and the
+    // transaction committed exactly one production task per snapshot and one
+    // of each notification (no duplicates).
+    expect(orderSnapshots[0].orderItemId, "snapshot must link to its order item").toBeTruthy();
+    expect(order.items.map((item: any) => item.id)).toContain(orderSnapshots[0].orderItemId);
+    const tasks = snapshotPayload.productionTasks || [];
+    expect(tasks).toHaveLength(orderSnapshots.length);
+    expect(tasks[0].snapshot_id).toBe(orderSnapshots[0].id);
+    expect(tasks[0].order_item_id).toBe(orderSnapshots[0].orderItemId);
+    expect((snapshotPayload.notificationTasks || []).map((task: any) => task.kind).sort()).toEqual(["order_confirmation_customer", "order_notification_admin"]);
   });
 
   test("the render worker produces PNG and PDF for THIS order and Admin can read them", async ({ page }) => {
@@ -167,7 +178,7 @@ test.describe.serial("checkout places one trusted, immutable, render-queued orde
 
 test("a repeated checkout submission id never creates a second order", async ({ page }) => {
   await login(page, customerCredentials.email, customerCredentials.password);
-  const body = checkoutBody({ customerName: "Idempotency Test" });
+  const body = await checkoutBodyWithCart(page, { customerName: "Idempotency Test" });
 
   const first = await page.request.post("/api/order-requests", { data: body });
   expect(first.ok()).toBe(true);
@@ -194,9 +205,14 @@ test("a repeated checkout submission id never creates a second order", async ({ 
   const matching = (ownPayload.orders || []).filter((order: any) => order.id === firstPayload.order.id);
   expect(matching, "the retries must not have created extra orders").toHaveLength(1);
 
-  // A genuinely new checkout (new submission id) must be free to create a
-  // brand new order.
-  const fresh = await page.request.post("/api/order-requests", { data: { ...body, checkoutSubmissionId: `e2e-idempotency-${Date.now()}-fresh` } });
+  // The SAME cart with a NEW submission id (a second tab or device) must not
+  // create a second order: the cart line was consumed by the first.
+  const sameCart = await page.request.post("/api/order-requests", { data: { ...body, checkoutSubmissionId: `e2e-idempotency-${Date.now()}-tab2` } });
+  expect(sameCart.status()).toBe(409);
+  expect((await sameCart.json()).orderId).toBe(firstPayload.order.id);
+
+  // A genuinely new checkout (a NEW cart for the same product) is a new order.
+  const fresh = await page.request.post("/api/order-requests", { data: await checkoutBodyWithCart(page, { customerName: "Idempotency Test" }) });
   const freshPayload = await fresh.json();
   expect(freshPayload.ok).toBe(true);
   expect(freshPayload.order.id).not.toBe(firstPayload.order.id);
@@ -204,26 +220,28 @@ test("a repeated checkout submission id never creates a second order", async ({ 
 
 test("an idempotency token is not an authorization token: Customer B cannot reuse Customer A's submission id", async ({ browser }) => {
   const submissionId = `e2e-shared-token-${Date.now()}`;
-  const orderBody = (name: string) => checkoutBody({ checkoutSubmissionId: submissionId, customerName: name, customerPhone: "+8801711000004" });
 
   // Customer A places a real order using submission id X.
   const contextA = await browser.newContext();
   const pageA = await contextA.newPage();
   await login(pageA, customerCredentials.email, customerCredentials.password);
-  const createdA = await pageA.request.post("/api/order-requests", { data: orderBody("Customer A") });
+  const bodyA = await checkoutBodyWithCart(pageA, { checkoutSubmissionId: submissionId, customerName: "Customer A", customerPhone: "+8801711000004" });
+  const createdA = await pageA.request.post("/api/order-requests", { data: bodyA });
   expect(createdA.ok()).toBe(true);
   const orderA = (await createdA.json()).order;
   expect(orderA.id).toBeTruthy();
 
   // Customer A repeating X is idempotent — same order, no duplicate.
-  const replayA = await pageA.request.post("/api/order-requests", { data: orderBody("Customer A") });
+  const replayA = await pageA.request.post("/api/order-requests", { data: bodyA });
   expect((await replayA.json()).order.id).toBe(orderA.id);
 
   // Customer B now deliberately submits the SAME submission id X.
   const contextB = await browser.newContext();
   const pageB = await contextB.newPage();
   await login(pageB, customerBEmail, customerBPassword);
-  const attempt = await pageB.request.post("/api/order-requests", { data: orderBody("Customer B") });
+  const attempt = await pageB.request.post("/api/order-requests", {
+    data: await checkoutBodyWithCart(pageB, { checkoutSubmissionId: submissionId, customerName: "Customer B", customerPhone: "+8801711000004" }),
+  });
   const attemptPayload = await attempt.json().catch(() => ({}));
 
   // Whatever the outcome, Customer B must NEVER receive Customer A's order.
@@ -243,7 +261,7 @@ test("an idempotency token is not an authorization token: Customer B cannot reus
 
   // Customer B can still check out normally with their own fresh token.
   const ownToken = await pageB.request.post("/api/order-requests", {
-    data: { ...orderBody("Customer B"), checkoutSubmissionId: `e2e-own-token-${Date.now()}` },
+    data: await checkoutBodyWithCart(pageB, { checkoutSubmissionId: `e2e-own-token-${Date.now()}`, customerName: "Customer B" }),
   });
   const ownPayload = await ownToken.json();
   expect(ownPayload.ok).toBe(true);

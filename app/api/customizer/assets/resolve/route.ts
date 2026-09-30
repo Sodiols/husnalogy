@@ -2,8 +2,12 @@ import { createClient } from "@/lib/supabase/server";
 import { rateLimit, rejectLargeRequest } from "@/lib/security/rate-limit";
 import { resolvePrivateAssetUrl } from "@/lib/customizer/server/private-assets";
 import { RenderError } from "@/lib/customizer/v2/server/render";
+import { readJsonObject } from "@/lib/http/read-body";
+import { rejectCrossSiteRequest } from "@/lib/security/same-origin";
 
 export async function POST(request: Request) {
+  const crossSite = rejectCrossSiteRequest(request);
+  if (crossSite) return crossSite;
   const tooLarge = rejectLargeRequest(request, 64 * 1024);
   if (tooLarge) return tooLarge;
   const limited = rateLimit(request, { name: "customizer-asset-resolve", limit: 80, windowMs: 10 * 60 * 1000 });
@@ -13,9 +17,11 @@ export async function POST(request: Request) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return Response.json({ ok: false, error: "Sign in required." }, { status: 401 });
 
-  const body = await request.json().catch(() => ({}));
+  const bodyRead32 = await readJsonObject(request, 64 * 1024);
+  if (bodyRead32.response) return bodyRead32.response;
+  const body = bodyRead32.body;
   const references = Array.isArray(body.references) ? body.references.slice(0, 50) : body.reference ? [body.reference] : [];
-  const variant = ["original", "editor", "thumbnail"].includes(body.variant) ? body.variant : "editor";
+  const variant = (["original", "editor", "thumbnail"] as const).find((candidate) => candidate === body.variant) ?? "editor";
   if (!references.length) return Response.json({ ok: false, error: "Provide at least one asset reference." }, { status: 400 });
 
   try {

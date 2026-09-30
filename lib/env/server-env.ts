@@ -25,6 +25,8 @@ const SERVER_SECRET_NAMES = [
   "UPSTASH_REDIS_REST_TOKEN",
   "OPENAI_API_KEY",
   "DELETE_ADMIN_PASSWORD",
+  "RESEND_API_KEY",
+  "SENTRY_DSN",
 ];
 
 const LOCAL_HOSTNAMES = new Set(["0.0.0.0", "localhost", "127.0.0.1", "::1", "[::1]"]);
@@ -114,10 +116,35 @@ export function validateProductionEnv(env: Env = process.env): EnvReport {
   if (Boolean(upstashUrl) !== Boolean(upstashToken)) {
     warn("UPSTASH_REDIS_REST_URL", "and UPSTASH_REDIS_REST_TOKEN must be set together; using the in-memory limiter.");
   } else if (!upstashUrl) {
-    warn(
-      "UPSTASH_REDIS_REST_URL",
-      "is not set: rate limits are enforced per Node process only. That is adequate for a single `npm start` process on Hostinger; configure Upstash before running more than one instance.",
-    );
+    if (value(env, "REQUIRE_DISTRIBUTED_RATE_LIMIT") === "1") {
+      error("UPSTASH_REDIS_REST_URL", "and UPSTASH_REDIS_REST_TOKEN are required because REQUIRE_DISTRIBUTED_RATE_LIMIT=1 (more than one app instance).");
+    } else {
+      warn(
+        "UPSTASH_REDIS_REST_URL",
+        "is not set: rate limits are enforced per Node process only. That is exact for the single `npm start` process Hostinger runs; set REQUIRE_DISTRIBUTED_RATE_LIMIT=1 and configure Upstash before running more than one instance.",
+      );
+    }
+  }
+
+  // ------------------------------------------------------------------ Email
+  const resendKey = value(env, "RESEND_API_KEY");
+  const emailFrom = value(env, "EMAIL_FROM");
+  if (Boolean(resendKey) !== Boolean(emailFrom)) {
+    error("RESEND_API_KEY", "and EMAIL_FROM must be set together (EMAIL_FROM e.g. `Husnalogy <orders@husnalogy.com>`).");
+  } else if (!resendKey) {
+    warn("RESEND_API_KEY", "is not set: order confirmation and new-order emails are queued durably but NOT sent until email is configured.");
+  }
+  const notifyTo = value(env, "ORDER_NOTIFICATION_EMAIL");
+  if (notifyTo && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(notifyTo)) {
+    error("ORDER_NOTIFICATION_EMAIL", "must be a valid email address.");
+  }
+
+  // ------------------------------------------------------------- Monitoring
+  const sentryDsn = value(env, "SENTRY_DSN");
+  if (!sentryDsn) {
+    warn("SENTRY_DSN", "is not set: server errors are logged to stdout only; no one is alerted when checkout or production fails.");
+  } else if (!/^https:\/\/[^@\s]+@[^/\s]+\/\S+$/.test(sentryDsn)) {
+    error("SENTRY_DSN", "must be a Sentry DSN such as https://<key>@<host>/<project>.");
   }
   const hops = value(env, "TRUSTED_PROXY_HOPS");
   if (hops && !/^[0-5]$/.test(hops)) {

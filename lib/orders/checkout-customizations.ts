@@ -33,8 +33,9 @@ export async function verifyCustomizationForCheckout(input: {
   product: Record<string, any>;
   customerId: string;
   line: TrustedLinePrice;
+  lineNumber: number;
 }): Promise<CustomizationVerification> {
-  const { row, product, customerId, line } = input;
+  const { row, product, customerId, line, lineNumber } = input;
   const customization = customizationFromRow(row);
 
   const templateId = String(row.template_id || "");
@@ -80,6 +81,7 @@ export async function verifyCustomizationForCheckout(input: {
   }
 
   const snapshot = await buildOrderDesignSnapshot({
+    lineNumber,
     row,
     product,
     template,

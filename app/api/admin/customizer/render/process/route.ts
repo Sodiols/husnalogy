@@ -1,61 +1,33 @@
 import { requireAdmin } from "@/lib/auth/admin-server";
-import { getRenderWorkerSecrets } from "@/lib/env/server-env";
-import {
-  RENDER_WORKER_DEFAULT_BATCH,
-  RENDER_WORKER_MAX_BATCH,
-  runRenderWorker,
-} from "@/lib/customizer/render-jobs";
-import { timingSafeEqual } from "node:crypto";
+import { RENDER_WORKER_DEFAULT_BATCH, RENDER_WORKER_MAX_BATCH, runRenderWorker } from "@/lib/customizer/render-jobs";
+import { runOutboxPass } from "@/lib/outbox/supabase-tasks";
+import { createServiceRoleClient } from "@/lib/supabase/server";
+import { hasWorkerSecret } from "@/lib/security/worker-auth";
+import { bodyErrorResponse, readJsonBody } from "@/lib/http/read-body";
+import { logEvent } from "@/lib/observability/logger";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
 /**
- * Render worker — platform independent.
+ * Production worker — platform independent (Hostinger cron every 5 minutes;
+ * see HOSTINGER_DEPLOYMENT.md §5), or manually by a signed-in admin.
  *
- * Invoked by a Hostinger cron job (or any scheduler that can send an HTTP
- * request), or manually by a signed-in admin. See HOSTINGER_DEPLOYMENT.md for the exact cron command.
+ * Each run:
+ *   1. records a heartbeat (worker_runs) — visible in production_health();
+ *   2. recovers finalized snapshots that never got production work;
+ *   3. drains due production tasks (outbox → render jobs) and notification
+ *      tasks (outbox → email);
+ *   4. processes render jobs.
  *
- * Authentication:
- *   - `Authorization: Bearer <CRON_SECRET or RENDER_WORKER_SECRET>`, or
- *   - `x-render-secret: <CRON_SECRET or RENDER_WORKER_SECRET>`, or
- *   - POST only: a signed-in admin session.
- * The secret is compared in constant time and never accepted from the query
- * string (URLs end up in access logs). Anonymous requests get 401.
+ * Authentication: `Authorization: Bearer <CRON_SECRET|RENDER_WORKER_SECRET>`
+ * or `x-render-secret`, compared in constant time and never read from the URL;
+ * POST additionally accepts an admin session. Anonymous requests get 401.
  *
  * Responses: 200 run finished · 401 not authorized · 409 a run is already in
  * progress in this server process · 500 the run failed.
  */
-
-function safeSecretMatch(provided: string, secret: string) {
-  if (!provided || !secret) return false;
-  const left = Buffer.from(provided);
-  const right = Buffer.from(secret);
-  return left.length === right.length && timingSafeEqual(left, right);
-}
-
-function bearerToken(request: Request) {
-  const authorization = request.headers.get("authorization") || "";
-  return authorization.startsWith("Bearer ") ? authorization.slice(7).trim() : "";
-}
-
-function hasWorkerSecret(request: Request): boolean {
-  const provided = [bearerToken(request), (request.headers.get("x-render-secret") || "").trim()].filter(Boolean);
-  const secrets = getRenderWorkerSecrets();
-  if (!secrets.length) {
-    console.error("[render-worker] Neither CRON_SECRET nor RENDER_WORKER_SECRET is configured; secret-authenticated runs are disabled.");
-    return false;
-  }
-  // Every comparison runs, so timing does not reveal which secret matched.
-  let matched = false;
-  for (const candidate of provided) {
-    for (const secret of secrets) {
-      if (safeSecretMatch(candidate, secret)) matched = true;
-    }
-  }
-  return matched;
-}
 
 function parseLimit(raw: unknown): number {
   const value = Math.floor(Number(raw));
@@ -64,41 +36,64 @@ function parseLimit(raw: unknown): number {
 }
 
 // One run at a time per server process. Runs in OTHER processes are already
-// safe — every job is claimed atomically under a database lease — this only
-// stops a slow run and the next cron tick from stacking up on one instance.
+// safe — every job and task is claimed atomically under a database lease.
 let activeRun: Promise<unknown> | null = null;
+
+async function heartbeat(phase: "start" | "finish", status?: string, result: Record<string, unknown> = {}) {
+  try {
+    const supabase = createServiceRoleClient();
+    const { error } = await supabase.rpc("record_worker_run", { p_worker: "render", p_phase: phase, p_status: status ?? null, p_result: result });
+    if (error) throw error;
+  } catch (error) {
+    logEvent("error", "worker.heartbeat_failed", { phase, error });
+  }
+}
 
 async function runWorker(limit: number) {
   if (activeRun) {
-    return Response.json(
-      { ok: false, error: "A render worker run is already in progress.", busy: true },
-      { status: 409 },
-    );
+    return Response.json({ ok: false, error: "A render worker run is already in progress.", busy: true }, { status: 409 });
   }
 
-  const run = runRenderWorker({ limit });
+  const run = (async () => {
+    await heartbeat("start");
+    const outbox = await runOutboxPass({ limit: 25, timeBudgetMs: 60_000 });
+    const render = await runRenderWorker({ limit, timeBudgetMs: 180_000 });
+    return { outbox, render };
+  })();
   activeRun = run;
   try {
-    const result = await run;
+    const { outbox, render } = await run;
+    const summary = {
+      recoveredSnapshots: outbox.recovered,
+      productionTasks: { completed: outbox.production.completed, failed: outbox.production.failed.length },
+      notifications: { sent: outbox.notifications.completed, deferred: outbox.notifications.deferred, failed: outbox.notifications.failed.length },
+      renderJobs: { processed: render.jobs.length, failed: render.failures.length, remaining: render.remaining },
+    };
+    await heartbeat("finish", "ok", summary);
+    if (outbox.production.failed.length || render.failures.length) {
+      logEvent("error", "worker.run_had_failures", summary);
+    }
     return Response.json({
       ok: true,
-      processed: result.jobs.map((job) => ({ id: job.id, jobType: job.jobType, status: job.status, errorCode: job.errorCode })),
-      failures: result.failures,
-      recovered: result.recovered,
-      remaining: result.remaining,
-      stoppedReason: result.stoppedReason,
-      durationMs: result.durationMs,
+      processed: render.jobs.map((job) => ({ id: job.id, jobType: job.jobType, status: job.status, errorCode: job.errorCode })),
+      failures: render.failures,
+      recovered: render.recovered,
+      remaining: render.remaining,
+      stoppedReason: render.stoppedReason,
+      durationMs: render.durationMs,
+      outbox: summary,
     });
   } catch (error) {
-    console.error("Render worker failed:", error);
+    await heartbeat("finish", "error", { error: error instanceof Error ? error.message : String(error) });
+    logEvent("error", "worker.run_failed", { error });
     return Response.json({ ok: false, error: "Render processing failed." }, { status: 500 });
   } finally {
     activeRun = null;
   }
 }
 
-// Scheduled entry (Hostinger cron). Secret only: no admin-session
-// fallback on GET, so a stray browser request can never start production work.
+// Scheduled entry (Hostinger cron). Secret only: no admin-session fallback on
+// GET, so a stray browser request can never start production work.
 export async function GET(request: Request) {
   if (!hasWorkerSecret(request)) {
     return Response.json({ ok: false, error: "Unauthorized." }, { status: 401 });
@@ -114,6 +109,16 @@ export async function POST(request: Request) {
     if (!admin.ok) return admin.response;
   }
 
-  const body = await request.json().catch(() => ({}));
-  return runWorker(parseLimit(body?.limit));
+  let body: unknown = {};
+  if (request.headers.get("content-length") !== "0" && request.body) {
+    try {
+      body = await readJsonBody(request, 1024);
+    } catch (error) {
+      const response = bodyErrorResponse(error);
+      if (response && response.status === 413) return response;
+      body = {};
+    }
+  }
+  const limit = body && typeof body === "object" ? (body as { limit?: unknown }).limit : undefined;
+  return runWorker(parseLimit(limit));
 }

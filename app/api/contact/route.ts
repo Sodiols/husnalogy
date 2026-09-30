@@ -1,7 +1,11 @@
 import { createContactMessage } from "@/lib/messages";
 import { rateLimitDistributed, rejectLargeRequest } from "@/lib/security/rate-limit";
+import { readJsonObject } from "@/lib/http/read-body";
+import { rejectCrossSiteRequest } from "@/lib/security/same-origin";
 
 export async function POST(request) {
+  const crossSite = rejectCrossSiteRequest(request);
+  if (crossSite) return crossSite;
   try {
     const largeRequest = rejectLargeRequest(request, 24 * 1024);
     if (largeRequest) return largeRequest;
@@ -13,7 +17,9 @@ export async function POST(request) {
     });
     if (limited) return limited;
 
-    const body = await request.json();
+    const bodyRead31 = await readJsonObject(request, 24 * 1024);
+    if (bodyRead31.response) return bodyRead31.response;
+    const body = bodyRead31.body;
     const result = await createContactMessage(body);
 
     if (!result.ok) {

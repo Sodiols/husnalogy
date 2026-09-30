@@ -1,5 +1,6 @@
 import { requireAdmin } from "@/lib/auth/admin-server";
 import { createNewsletterCampaignDraft, getNewsletterCampaigns } from "@/lib/newsletter";
+import { readJsonObject } from "@/lib/http/read-body";
 
 export async function GET() {
   const admin = await requireAdmin();
@@ -13,7 +14,9 @@ export async function POST(request: Request) {
   const admin = await requireAdmin();
   if (!admin.ok) return admin.response;
 
-  const body = await request.json().catch(() => ({}));
+  const bodyRead19 = await readJsonObject(request, 256 * 1024);
+  if (bodyRead19.response) return bodyRead19.response;
+  const body = bodyRead19.body;
   const result = await createNewsletterCampaignDraft(body);
 
   if (!result.ok) {

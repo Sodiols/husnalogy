@@ -2,6 +2,7 @@ import { z } from "zod";
 import { requireAdmin } from "@/lib/auth/admin-server";
 import { createServiceRoleClient } from "@/lib/supabase/server";
 import { folderFromRow } from "@/lib/customizer/assets";
+import { readJsonObject } from "@/lib/http/read-body";
 
 const patchSchema = z.object({
   name: z.string().trim().min(1).max(120).optional(),
@@ -12,7 +13,9 @@ export async function PATCH(request: Request, { params }: any) {
   const admin = await requireAdmin();
   if (!admin.ok) return admin.response;
   const { id } = await params;
-  const parsed = patchSchema.safeParse(await request.json().catch(() => null));
+  const bodyRead9 = await readJsonObject(request, 16 * 1024);
+  if (bodyRead9.response) return bodyRead9.response;
+  const parsed = patchSchema.safeParse(bodyRead9.body);
   if (!parsed.success || !Object.keys(parsed.data).length) return Response.json({ ok: false, error: "Invalid folder update." }, { status: 400 });
   if (parsed.data.parentId === id) return Response.json({ ok: false, error: "A folder cannot contain itself." }, { status: 400 });
 

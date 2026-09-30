@@ -53,8 +53,11 @@ describe("launch ownership and render immutability", () => {
   });
 
   it("keeps the scheduled worker authenticated and platform independent", () => {
-    expect(worker).toContain("safeSecretMatch(candidate, secret)");
-    expect(worker).toContain("getRenderWorkerSecrets()");
+    // The constant-time secret check is shared by the worker and the health endpoint.
+    const workerAuth = read("lib/security/worker-auth.ts");
+    expect(worker).toContain("hasWorkerSecret(request)");
+    expect(workerAuth).toContain("safeSecretMatch(candidate, secret)");
+    expect(workerAuth).toContain("getRenderWorkerSecrets()");
     expect(worker).toContain("status: 401");
     // Overlap guard and bounded batches: repeated cron ticks cannot stack up.
     expect(worker).toContain("status: 409");
