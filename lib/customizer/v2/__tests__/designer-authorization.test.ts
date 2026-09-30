@@ -213,6 +213,7 @@ describe("every admin API route is guarded", () => {
       if (exempt.has(path.relative(process.cwd(), file).split(path.sep).join("/"))) return false;
       const source = readFileSync(file, "utf8");
       const namedGuard =
+        source.includes("withAdminMutation") ||
         source.includes("requireAdmin") ||
         source.includes("requireCapability") ||
         source.includes("requireProductEditor") ||

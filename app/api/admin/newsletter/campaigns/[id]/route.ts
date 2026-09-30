@@ -1,8 +1,9 @@
+import { withAdminMutation } from "@/lib/security/admin-mutation";
 import { requireAdmin } from "@/lib/auth/admin-server";
 import { updateNewsletterCampaign } from "@/lib/newsletter";
 import { readJsonObject } from "@/lib/http/read-body";
 
-export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
+export const PATCH = withAdminMutation(async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const admin = await requireAdmin();
   if (!admin.ok) return admin.response;
 
@@ -13,4 +14,4 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   const result = await updateNewsletterCampaign(id, body);
 
   return Response.json(result);
-}
+}, { maxBytes: 1024 * 1024 });

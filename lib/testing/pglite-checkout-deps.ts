@@ -20,6 +20,9 @@ import { makeNotificationRunner } from "@/lib/notifications/notification-runner"
 import type { EmailTransport } from "@/lib/notifications/email-provider";
 import { fakeRenderRunner, notificationStore, productionStore } from "@/lib/testing/pglite-outbox";
 import type { TestDatabase } from "@/lib/testing/pglite-supabase";
+import { personalizationFreezer } from "@/lib/orders/personalization-production";
+import { createProductionTestClient } from "@/lib/testing/pglite-production-client";
+import sharp from "sharp";
 
 let sequence = 0;
 
@@ -58,8 +61,13 @@ export type PgliteDepsOptions = {
 
 export function createPgliteCheckoutDeps(t: TestDatabase, options: PgliteDepsOptions = {}): CheckoutDeps {
   const service = <T>(work: (db: TestDatabase["db"]) => Promise<T>) => t.asService(work);
+  const storage = createProductionTestClient(t);
+  const download = storage.client.storage.from.bind(storage.client.storage);
+  const fixtureImage = sharp({ create: { width: 1, height: 1, channels: 4, background: "#ff0000" } }).png().toBuffer();
+  storage.client.storage.from = (bucket: string) => bucket === "customer-uploads" ? { download: async () => ({ data: new Blob([new Uint8Array(await fixtureImage)]), error: null }) } : download(bucket);
 
   return {
+    freezePersonalization: personalizationFreezer(storage.client),
     newOrderId: () => `order-pipeline-${Date.now()}-${(sequence += 1)}`,
 
     async loadProducts(ids) {

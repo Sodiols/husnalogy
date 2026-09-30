@@ -1,3 +1,4 @@
+import { withAdminMutation } from "@/lib/security/admin-mutation";
 import { requireAdmin } from "@/lib/auth/admin-server";
 import { publishTemplateVersion } from "@/lib/customizer/versions";
 import type { CustomizerUpdateType } from "@/lib/customizer/public-version";
@@ -5,7 +6,7 @@ import { readJsonObject } from "@/lib/http/read-body";
 
 // POST /api/admin/customizer/templates/[productId]/publish
 // Publishes the current draft template as a new immutable version (spec §19).
-export async function POST(request: Request, { params }: any) {
+export const POST = withAdminMutation(async function POST(request: Request, { params }: any) {
   const admin = await requireAdmin();
   if (!admin.ok) return admin.response;
 
@@ -41,4 +42,4 @@ export async function POST(request: Request, { params }: any) {
     console.error("Template publish failed:", error);
     return Response.json({ ok: false, error: "Publishing failed. Please try again." }, { status: 500 });
   }
-}
+}, { maxBytes: 1024 * 1024 });

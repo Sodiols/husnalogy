@@ -7,6 +7,9 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createTestDatabase, type TestDatabase } from "@/lib/testing/pglite-supabase";
 import { IDS, USERS, addCartLine, callCheckoutRpc, count, orderPayload, seedCheckoutFixtures } from "@/lib/testing/checkout-fixtures";
+import { makeNotificationRunner } from "@/lib/notifications/notification-runner";
+import { orderFromRow } from "@/lib/orders/order-view";
+import type { EmailMessage } from "@/lib/notifications/order-email";
 
 const A = USERS.customerA;
 const B = USERS.customerB;
@@ -315,6 +318,51 @@ describe("production and notification outbox", () => {
     expect(health.worker.run_count).toBe(1);
     expect(health.productionTasks).toHaveProperty("pending");
     expect(health.notificationTasks).toHaveProperty("failed");
+  });
+
+  it("records provider success durably before a lost task acknowledgement, without sending twice", async () => {
+    const created = await callCheckoutRpc(t, await orderPayload(t, { customizationId: null }));
+    const task = (await t.asService(db => db.query<any>("select * from public.claim_notification_tasks(1,120,$1)", [created.order_id]))).rows[0];
+    let sends = 0;
+    const run = makeNotificationRunner({
+      transport: { send: async () => { sends++; return { id: "provider-confirmed-1" }; } }, adminRecipient: "orders@husnalogy.test",
+      loadOrder: async () => orderFromRow((await t.db.query<any>("select * from public.orders where id=$1", [created.order_id])).rows[0]),
+      prepareDelivery: async (work, message) => (await t.asService(db => db.query<any>("select public.prepare_notification_delivery($1,$2,$3) as p", [work.id, work.lock_token, JSON.stringify(message)]))).rows[0].p,
+      recordDelivery: async (work, id) => {
+        expect((await t.asService(db => db.query<any>("select public.record_notification_delivery($1,$2,$3) as ok", [work.id, work.lock_token, id]))).rows[0].ok).toBe(true);
+        throw new Error("Acknowledgement lost after database commit");
+      },
+    });
+    await expect(run(task)).rejects.toThrow(/Acknowledgement lost/);
+    const stored = (await t.db.query<any>("select * from public.notification_tasks where id=$1", [task.id])).rows[0];
+    expect(stored).toMatchObject({ status: "sent", provider_message_id: "provider-confirmed-1" });
+    expect(await run(stored)).toEqual({ kind: "done", reference: "provider-confirmed-1" });
+    expect(sends).toBe(1);
+  });
+
+  it("freezes email payload across an uncertain send and refuses a blind retry beyond the provider window", async () => {
+    const created = await callCheckoutRpc(t, await orderPayload(t, { customizationId: null }));
+    const claim = async () => (await t.asService(db => db.query<any>("select * from public.claim_notification_tasks(5,120,$1)", [created.order_id]))).rows[0];
+    const task = await claim();
+    const first: EmailMessage = { to: "orders@husnalogy.test", subject: "Approved order", text: "Frozen", html: "<p>Frozen</p>", delivery: { from: "original@husnalogy.test", replyTo: "" } };
+    const prepare = async (token: string, message: EmailMessage) => (await t.asService(db => db.query<any>("select public.prepare_notification_delivery($1,$2,$3) as p", [task.id, token, JSON.stringify(message)]))).rows[0].p;
+    expect((await prepare(task.lock_token, first)).message).toEqual(first);
+    await t.asService(db => db.query("select public.finish_notification_task($1,$2,'provider response lost')", [task.id, task.lock_token]));
+    await t.db.query("update public.notification_tasks set next_attempt_at=now() where id=$1", [task.id]);
+    const retry = await claim();
+    expect((await prepare(retry.lock_token, { ...first, text: "Changed live email", delivery: { from: "changed@husnalogy.test", replyTo: "" } })).message).toEqual(first);
+    await t.db.query("update public.notification_tasks set first_delivery_attempt_at=now()-interval '25 hours' where id=$1", [task.id]);
+    let sends = 0;
+    const run = makeNotificationRunner({ transport: { send: async () => { sends++; return { id: "unsafe" }; } }, adminRecipient: "orders@husnalogy.test",
+      loadOrder: async () => orderFromRow((await t.db.query<any>("select * from public.orders where id=$1", [created.order_id])).rows[0]),
+      prepareDelivery: async (work, message) => prepare(work.lock_token, message),
+    });
+    await expect(run(retry)).rejects.toThrow(/DELIVERY_UNCERTAIN/); expect(sends).toBe(0);
+    await t.db.query("update public.notification_tasks set status='failed',last_error='DELIVERY_UNCERTAIN: verify provider',lock_token=null,locked_until=null where id=$1", [task.id]);
+    await expect(t.asService(db => db.query("select public.retry_production_work('notification',$1,$2,'Blind retry is unsafe')", [task.id, USERS.admin.id]))).rejects.toThrow(/VERIFY_PROVIDER_DELIVERY/);
+    await t.asService(db => db.query("select public.resolve_notification_delivery($1,$2,false,null,'Provider activity checked: email was not accepted')", [task.id, USERS.admin.id]));
+    expect((await t.db.query<any>("select status,first_delivery_attempt_at,delivery_payload,delivery_generation from public.notification_tasks where id=$1", [task.id])).rows[0]).toMatchObject({ status: "pending", first_delivery_attempt_at: null, delivery_payload: null, delivery_generation: 1 });
+    expect(await count(t, "select 1 from public.production_recovery_audit where target_id=$1", [task.id])).toBe(1);
   });
 
   it("customers cannot see or drive the outbox", async () => {

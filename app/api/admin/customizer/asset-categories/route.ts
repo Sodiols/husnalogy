@@ -1,3 +1,4 @@
+import { withAdminMutation } from "@/lib/security/admin-mutation";
 import { requireDesignerOrAdmin } from "@/lib/auth/roles";
 import { createServiceRoleClient } from "@/lib/supabase/server";
 import { categoryFromRow } from "@/lib/customizer/assets";
@@ -29,7 +30,7 @@ export async function GET() {
 }
 
 // POST /api/admin/customizer/asset-categories — create a category.
-export async function POST(request: Request) {
+export const POST = withAdminMutation(async function POST(request: Request) {
   // Library taxonomy is shared studio content.
   const session = await requireDesignerOrAdmin();
   if (!session.ok) return session.response;
@@ -58,4 +59,4 @@ export async function POST(request: Request) {
     return Response.json({ ok: false, error: message }, { status: 400 });
   }
   return Response.json({ ok: true, category: categoryFromRow(data) }, { status: 201 });
-}
+}, { maxBytes: 1024 * 1024, studio: true });

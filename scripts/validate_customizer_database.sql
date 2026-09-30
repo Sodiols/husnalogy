@@ -30,7 +30,9 @@ declare
     'order_design_snapshots',
     'customizer_feature_flags',
     'customizer_audit_logs',
-    'customizer_asset_folders'
+    'customizer_asset_folders',
+    'order_production_assets', 'production_tasks', 'notification_tasks',
+    'production_recovery_audit', 'manual_production_completions', 'worker_runs'
   ];
   required_columns text[] := array[
     'product_customizer_templates.settings',
@@ -56,7 +58,12 @@ declare
     'customizer_assets.folder_id',
     'customizer_assets.admin_available',
     'customizer_assets.status',
-    'customizer_assets.usage_count'
+    'customizer_assets.usage_count',
+    'order_design_snapshots.snapshot_schema_version', 'order_design_snapshots.production_mode',
+    'customizer_render_jobs.snapshot_id', 'customizer_render_jobs.order_item_id',
+    'customizer_render_outputs.snapshot_id', 'customizer_render_outputs.order_item_id',
+    'notification_tasks.delivery_payload', 'notification_tasks.first_delivery_attempt_at', 'notification_tasks.delivery_generation',
+    'worker_runs.last_success_at', 'worker_runs.last_failure_at'
   ];
   required_indexes text[] := array[
     'idx_customizer_templates_product_id',
@@ -72,7 +79,7 @@ declare
     'idx_customizer_audit_logs_customization_created',
     'idx_customizer_assets_checksum',
     'idx_customizer_assets_folder',
-    'idx_customizer_assets_type_status'
+    'idx_customizer_assets_type_status', 'snapshot_render_job_identity', 'snapshot_output_identity', 'order_production_assets_order'
   ];
   required_policies text[] := array[
     'public.product_customizer_templates.customizer_templates_public_read_active',
@@ -221,6 +228,21 @@ begin
     on object_row.bucket_id = asset.bucket and object_row.name = referenced.path
   where asset.status in ('ready', 'archived') and object_row.id is null;
   if missing_count > 0 then raise exception '% administrator asset variants reference missing Storage objects', missing_count; end if;
+  if not exists(select 1 from storage.buckets where id='order-production' and public=false) then raise exception 'Private order-production bucket required'; end if;
+  if not exists(select 1 from pg_trigger where tgname='guard_pinned_production_storage' and not tgisinternal) then raise exception 'Production storage protection missing'; end if;
+  if has_table_privilege('authenticated','public.order_production_assets','insert') or has_table_privilege('authenticated','public.customizer_render_jobs','insert') then raise exception 'Production mutation privileges are public'; end if;
+  foreach item in array array[
+    'public.enqueue_snapshot_render_job(uuid,text,text)', 'public.commit_snapshot_render_result(uuid,uuid,jsonb)',
+    'public.retry_production_work(text,uuid,uuid,text)', 'public.reconcile_production(integer)',
+    'public.prepare_notification_delivery(uuid,uuid,jsonb)', 'public.record_notification_delivery(uuid,uuid,text)',
+    'public.production_storage_cleanup_candidates(integer)'
+  ] loop
+    if to_regprocedure(item) is null then raise exception 'Missing production RPC: %',item; end if;
+    if has_function_privilege('authenticated',item,'execute') or has_function_privilege('anon',item,'execute') then raise exception 'Public production RPC: %',item; end if;
+  end loop;
+  select count(*) into missing_count from public.order_production_assets a where not exists(select 1 from storage.objects o where o.bucket_id=a.bucket and o.name=a.path);
+  if missing_count>0 then raise exception '% production originals missing in Storage',missing_count; end if;
+  if exists(select 1 from public.order_design_snapshots s join public.orders o on o.id=s.order_id where o.checkout_state='finalized' and s.snapshot_schema_version<>1 and o.status not in ('delivered','cancelled')) then raise exception 'Accepted legacy designs require reviewed remediation before launch'; end if;
 end $$;
 
 select 'customizer_database_validation_passed' as result,

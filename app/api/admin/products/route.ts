@@ -1,3 +1,4 @@
+import { withAdminMutation } from "@/lib/security/admin-mutation";
 import { requireAdmin } from "@/lib/auth/admin-server";
 import { canCreateProduct, canViewProduct, requireCapability, requireDesignerOrAdmin } from "@/lib/auth/roles";
 import { createProduct, getProducts, hydrateProductCustomizerAssets } from "@/lib/products";
@@ -20,7 +21,7 @@ export async function GET() {
   return Response.json({ ok: true, products: await hydrateProductCustomizerAssets(products) });
 }
 
-export async function POST(request) {
+export const POST = withAdminMutation(async function POST(request) {
   const session = await requireCapability(canCreateProduct, "You cannot create products.");
   if (!session.ok) return session.response;
 
@@ -35,4 +36,4 @@ export async function POST(request) {
   }
 
   return Response.json({ ok: true, product: result.product }, { status: 201 });
-}
+}, { maxBytes: 5 * 1024 * 1024, studio: true });

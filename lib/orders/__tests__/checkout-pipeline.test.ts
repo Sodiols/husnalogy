@@ -233,7 +233,7 @@ describe("checkout pipeline against the real transaction", () => {
     expect(outcome.ok).toBe(true);
     if (outcome.ok) {
       expect(outcome.order.items[0].customizationValues).toEqual({ bride_name: "Ayesha" });
-      expect(outcome.order.items[0].uploadedFiles.photo_upload).toMatchObject({ name: "mine.jpg", mimeType: "image/jpeg", size: 1234 });
+      expect(outcome.order.items[0].uploadedFiles.photo_upload).toMatchObject({ name: "mine.jpg", bucket: "order-production", mimeType: "image/png", checksum: expect.stringMatching(/^[a-f0-9]{64}$/), size: expect.any(Number), path: expect.stringContaining(`orders/${outcome.order.id}/assets/`) });
     }
   });
 

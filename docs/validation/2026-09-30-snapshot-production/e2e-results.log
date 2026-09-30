@@ -1,0 +1,92 @@
+
+> husnalogy-nextjs@1.0.0 test:e2e
+> playwright test
+
+[WebServer] (node:26024) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:24752) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:24400) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:7200) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] [supabase] PGRST303 (JWT issued at future) from /rest/v1/site_settings; retrying once.
+[WebServer] Could not resolve server-side site settings: Object: JWT issued at future | code=PGRST303
+Error: Seeded Customizer V2 acceptance cannot run. Missing E2E_ADMIN_PRODUCT_URL, admin email, admin password, Customer A customization, Customer B email, Customer B password, Customer A email, Customer A password. Run npm run seed:customizer:test against the dedicated local/staging project.
+
+   at helpers.ts:16
+
+  14 |   const missing = fields.filter(([, value]) => !value).map(([name]) => name);
+  15 |   if (missing.length) {
+> 16 |     throw new Error(`Seeded Customizer V2 acceptance cannot run. Missing ${missing.join(", ")}. Run npm run seed:customizer:test against the dedicated local/staging project.`);
+     |           ^
+  17 |   }
+  18 | }
+  19 |
+    at requireSeededAcceptance (D:\HUSNALOGY\Main\e2e\helpers.ts:16:11)
+    at Object.<anonymous> (D:\HUSNALOGY\Main\e2e\admin-security-render.spec.ts:8:24)
+Error: Seeded Customizer V2 acceptance cannot run. Missing E2E_CUSTOMIZER_URL, customer email, customer password, Customer A customization, Customer B email, Customer B password, admin email, admin password. Run npm run seed:customizer:test against the dedicated local/staging project.
+
+   at helpers.ts:16
+
+  14 |   const missing = fields.filter(([, value]) => !value).map(([name]) => name);
+  15 |   if (missing.length) {
+> 16 |     throw new Error(`Seeded Customizer V2 acceptance cannot run. Missing ${missing.join(", ")}. Run npm run seed:customizer:test against the dedicated local/staging project.`);
+     |           ^
+  17 |   }
+  18 | }
+  19 |
+    at requireSeededAcceptance (D:\HUSNALOGY\Main\e2e\helpers.ts:16:11)
+    at Object.<anonymous> (D:\HUSNALOGY\Main\e2e\checkout-order-integrity.spec.ts:13:24)
+Error: Seeded Customizer V2 acceptance cannot run. Missing E2E_CUSTOMIZER_URL, customer email, customer password. Run npm run seed:customizer:test against the dedicated local/staging project.
+
+   at helpers.ts:16
+
+  14 |   const missing = fields.filter(([, value]) => !value).map(([name]) => name);
+  15 |   if (missing.length) {
+> 16 |     throw new Error(`Seeded Customizer V2 acceptance cannot run. Missing ${missing.join(", ")}. Run npm run seed:customizer:test against the dedicated local/staging project.`);
+     |           ^
+  17 |   }
+  18 | }
+  19 |
+    at requireSeededAcceptance (D:\HUSNALOGY\Main\e2e\helpers.ts:16:11)
+    at Object.<anonymous> (D:\HUSNALOGY\Main\e2e\customer-customizer.spec.ts:6:24)
+Error: Seeded Customizer V2 acceptance cannot run. Missing E2E_CUSTOMIZER_URL, customer email, customer password, E2E_ADMIN_PRODUCT_URL, admin email, admin password. Run npm run seed:customizer:test against the dedicated local/staging project.
+
+   at helpers.ts:16
+
+  14 |   const missing = fields.filter(([, value]) => !value).map(([name]) => name);
+  15 |   if (missing.length) {
+> 16 |     throw new Error(`Seeded Customizer V2 acceptance cannot run. Missing ${missing.join(", ")}. Run npm run seed:customizer:test against the dedicated local/staging project.`);
+     |           ^
+  17 |   }
+  18 | }
+  19 |
+    at requireSeededAcceptance (D:\HUSNALOGY\Main\e2e\helpers.ts:16:11)
+    at Object.<anonymous> (D:\HUSNALOGY\Main\e2e\google-fonts.spec.ts:11:24)
+Error: Seeded Customizer V2 acceptance cannot run. Missing E2E_CUSTOMIZER_URL, customer email, customer password, E2E_ADMIN_PRODUCT_URL, admin email, admin password. Run npm run seed:customizer:test against the dedicated local/staging project.
+
+   at helpers.ts:16
+
+  14 |   const missing = fields.filter(([, value]) => !value).map(([name]) => name);
+  15 |   if (missing.length) {
+> 16 |     throw new Error(`Seeded Customizer V2 acceptance cannot run. Missing ${missing.join(", ")}. Run npm run seed:customizer:test against the dedicated local/staging project.`);
+     |           ^
+  17 |   }
+  18 | }
+  19 |
+    at requireSeededAcceptance (D:\HUSNALOGY\Main\e2e\helpers.ts:16:11)
+    at Object.<anonymous> (D:\HUSNALOGY\Main\e2e\iconify-elements.spec.ts:12:24)
+Error: Seeded Customizer V2 acceptance cannot run. Missing E2E_CUSTOMIZER_URL, customer email, customer password. Run npm run seed:customizer:test against the dedicated local/staging project.
+
+   at helpers.ts:16
+
+  14 |   const missing = fields.filter(([, value]) => !value).map(([name]) => name);
+  15 |   if (missing.length) {
+> 16 |     throw new Error(`Seeded Customizer V2 acceptance cannot run. Missing ${missing.join(", ")}. Run npm run seed:customizer:test against the dedicated local/staging project.`);
+     |           ^
+  17 |   }
+  18 | }
+  19 |
+    at requireSeededAcceptance (D:\HUSNALOGY\Main\e2e\helpers.ts:16:11)
+    at Object.<anonymous> (D:\HUSNALOGY\Main\e2e\unified-elements.spec.ts:14:24)

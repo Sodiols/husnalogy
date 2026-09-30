@@ -1,3 +1,4 @@
+import { withAdminMutation } from "@/lib/security/admin-mutation";
 import { createServiceRoleClient } from "@/lib/supabase/server";
 import { getCurrentActor, canReviewProducts } from "@/lib/auth/roles";
 import { resolveWorkflowTransition, type WorkflowAction } from "@/lib/products/workflow";
@@ -31,7 +32,7 @@ const ACTIONS = new Set<WorkflowAction>([
   "archive",
 ]);
 
-export async function POST(request: Request, { params }: any) {
+export const POST = withAdminMutation(async function POST(request: Request, { params }: any) {
   const actor = await getCurrentActor();
   if (!actor) return Response.json({ ok: false, error: "Unauthorized" }, { status: 401 });
 
@@ -90,7 +91,7 @@ export async function POST(request: Request, { params }: any) {
   );
 
   return Response.json({ ok: true, workflowState: decision.nextState });
-}
+}, { maxBytes: 1024 * 1024, studio: true });
 
 /**
  * PUT /api/admin/products/[id]/workflow  { designerId }
@@ -98,7 +99,7 @@ export async function POST(request: Request, { params }: any) {
  * Assign or reassign a product to a designer. Admin only: a designer must never
  * be able to hand themselves work (spec §22).
  */
-export async function PUT(request: Request, { params }: any) {
+export const PUT = withAdminMutation(async function PUT(request: Request, { params }: any) {
   const actor = await getCurrentActor();
   if (!actor) return Response.json({ ok: false, error: "Unauthorized" }, { status: 401 });
   if (!canReviewProducts(actor)) return Response.json({ ok: false, error: "Forbidden" }, { status: 403 });
@@ -135,4 +136,4 @@ export async function PUT(request: Request, { params }: any) {
 
   console.info(`[workflow] assign: product=${id} designer=${designerId || "none"} by=${actor.id}`);
   return Response.json({ ok: true, assignedDesignerId: designerId });
-}
+}, { maxBytes: 1024 * 1024, studio: true });

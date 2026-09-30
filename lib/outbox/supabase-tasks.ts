@@ -11,6 +11,8 @@ import { adminNotificationRecipient, getEmailTransport } from "@/lib/notificatio
 import { orderFromRow } from "@/lib/orders/order-view";
 import { getSettings } from "@/lib/settings";
 import { logEvent } from "@/lib/observability/logger";
+import { verifyProductionOutputs } from "@/lib/customizer/server/production-output-verification";
+import { cleanupProductionStorage } from "@/lib/customizer/server/production-storage-cleanup";
 
 type Supabase = ReturnType<typeof createServiceRoleClient>;
 
@@ -66,6 +68,15 @@ async function notificationRunner(supabase: Supabase) {
   return makeNotificationRunner({
     transport: getEmailTransport(),
     adminRecipient: adminNotificationRecipient(storeEmail),
+    async prepareDelivery(task, message) {
+      const { data, error } = await supabase.rpc("prepare_notification_delivery", { p_id: task.id, p_lock_token: task.lock_token, p_message: message });
+      if (error || !data) throw error || new Error("notification-lease-lost");
+      return { message: data.message, firstAttemptAt: data.firstAttemptAt };
+    },
+    async recordDelivery(task, providerId) {
+      const { data, error } = await supabase.rpc("record_notification_delivery", { p_id: task.id, p_lock_token: task.lock_token, p_provider_id: providerId });
+      if (error || !data) throw error || new Error("notification-lease-lost");
+    },
     async loadOrder(orderId) {
       const { data, error } = await supabase.from("orders").select("*,order_items(*)").eq("id", orderId).maybeSingle();
       if (error) throw error;
@@ -85,11 +96,13 @@ export async function runOrderFollowUps(orderId: string): Promise<void> {
   await processTasks("notification", notificationTaskStore(supabase), await notificationRunner(supabase), { orderId, limit: 5, timeBudgetMs: 15_000 });
 }
 
-export type OutboxPassResult = { recovered: number; production: ProcessResult; notifications: ProcessResult };
+export type OutboxPassResult = { recovered: number; production: ProcessResult; notifications: ProcessResult; outputVerification: { checked: number; invalid: number }; storageCleanup: { removed: number } };
 
 /** Scheduled worker pass: recover unscheduled snapshots, then drain due tasks. */
 export async function runOutboxPass(options: { limit?: number; timeBudgetMs?: number } = {}): Promise<OutboxPassResult> {
   const supabase = createServiceRoleClient();
+  const outputVerification = await verifyProductionOutputs(supabase);
+  const storageCleanup = await cleanupProductionStorage(supabase);
   const { data: recovered, error: recoveryError } = await supabase.rpc("enqueue_missing_production_tasks", { p_older_than_seconds: 600 });
   if (recoveryError) throw recoveryError;
   const production = await processTasks(
@@ -102,5 +115,5 @@ export async function runOutboxPass(options: { limit?: number; timeBudgetMs?: nu
     limit: options.limit ?? 25,
     timeBudgetMs: 30_000,
   });
-  return { recovered: Number(recovered) || 0, production, notifications };
+  return { recovered: Number(recovered) || 0, production, notifications, outputVerification, storageCleanup };
 }

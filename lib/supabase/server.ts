@@ -74,7 +74,14 @@ export async function createClient() {
   });
 }
 
-export function createServiceRoleClient() {
+/** A hung storage/database request must not hold a production lease forever. */
+export async function boundedServiceFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+  const inherited = init?.signal || (input instanceof Request ? input.signal : null);
+  const timeout = AbortSignal.timeout(60_000);
+  return clockSkewRetryFetch(input, { ...init, signal: inherited ? AbortSignal.any([inherited, timeout]) : timeout });
+}
+
+export function createServiceRoleClient(options: { signal?: AbortSignal } = {}) {
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
   if (!serviceRoleKey) {
@@ -82,7 +89,10 @@ export function createServiceRoleClient() {
   }
 
   return createSupabaseClient(getSupabaseUrl(), serviceRoleKey, {
-    global: { fetch: clockSkewRetryFetch },
+    global: { fetch: (input, init) => {
+      const inherited = init?.signal || (input instanceof Request ? input.signal : null);
+      return boundedServiceFetch(input, { ...init, signal: options.signal ? AbortSignal.any([options.signal, ...(inherited ? [inherited] : [])]) : inherited });
+    } },
     auth: {
       persistSession: false,
       autoRefreshToken: false,

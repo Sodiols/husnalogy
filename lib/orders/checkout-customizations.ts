@@ -27,8 +27,10 @@ import { createServerMeasure } from "@/lib/customizer/v2/server/server-fonts";
 import { buildOrderDesignSnapshot } from "@/lib/customizer/order-snapshots";
 import { pricingBreakdown, type TrustedLinePrice } from "@/lib/orders/pricing-resolver";
 import type { CustomizationVerification } from "@/lib/orders/checkout";
+import { resolveFlagsIntoTemplate } from "@/lib/customizer/v2/feature-flags.server";
 
 export async function verifyCustomizationForCheckout(input: {
+  orderId: string;
   row: Record<string, any>;
   product: Record<string, any>;
   customerId: string;
@@ -53,10 +55,11 @@ export async function verifyCustomizationForCheckout(input: {
   if (!version || version.productId !== product.id || version.templateId !== templateId) {
     return { ok: false, code: "CUSTOMIZATION_TEMPLATE_VERSION_INVALID", message: "This design's template version is no longer available. Please start a new design." };
   }
-  const template = templateFromVersionSnapshot(version);
-  if (!template) {
+  const versionTemplate = templateFromVersionSnapshot(version);
+  if (!versionTemplate) {
     return { ok: false, code: "CUSTOMIZATION_TEMPLATE_VERSION_INVALID", message: "This design's template version is no longer available. Please start a new design." };
   }
+  const template = await resolveFlagsIntoTemplate(versionTemplate, { productId: product.id, productType: versionTemplate.settings?.productType, actorId: customerId });
 
   const editorState = customization.renderData?.editorState || null;
   const validation = await validateCustomizationSave(
@@ -81,6 +84,7 @@ export async function verifyCustomizationForCheckout(input: {
   }
 
   const snapshot = await buildOrderDesignSnapshot({
+    orderId: input.orderId,
     lineNumber,
     row,
     product,

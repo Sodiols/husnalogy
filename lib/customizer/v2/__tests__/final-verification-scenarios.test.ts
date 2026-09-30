@@ -146,9 +146,12 @@ describe("Scenario 8 - republishing a template must never change an already-plac
     expect(versions).toContain("its exact published version snapshot when one exists");
   });
 
-  it("order snapshot creation resolves the template through the trusted-version path, not the live draft", () => {
+  it("checkout resolves the published version and historical dispatch reads only its immutable snapshot", () => {
     const snapshots = read("lib/customizer/order-snapshots.ts");
-    expect(snapshots).toContain("getTrustedTemplateForCustomization(customization)");
+    expect(read("lib/orders/checkout-customizations.ts")).toContain("templateFromVersionSnapshot(version)");
+    expect(snapshots).toContain("readProductionSnapshot(snapshot)");
+    expect(snapshots).toContain("enqueueRenderJobFromSnapshot");
+    expect(snapshots).not.toContain('.from("product_customizations")');
     // Must not import the live draft loader used by the admin builder.
     expect(snapshots).not.toContain("getCustomizerTemplateByProductId");
   });

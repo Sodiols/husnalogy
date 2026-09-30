@@ -100,6 +100,7 @@ the database, and never drop tables. The migrations are written to be additive
 | 15 | **`20260919120000_production_security_hardening.sql`** | **BLOCKER.** Stops a signed-in customer from making themselves `admin` by updating `profiles.role`, and removes direct customer `orders` inserts. |
 | 17 | **`20261001120000_checkout_cart_claims_and_outbox.sql`** | **BLOCKER — apply BEFORE deploying the matching app build, after #16.** Cart lines consumed inside the checkout transaction (no duplicate orders across tabs/devices), mandatory snapshot↔order item linkage, durable `production_tasks` / `notification_tasks` (outbox), worker heartbeat + `production_health()`, identity immutability of finalized history. |
 | 16 | **`20260930120000_checkout_integrity_hardening.sql`** | **BLOCKER — apply BEFORE deploying the matching app build.** The atomic `create_checkout_order` transaction (the new checkout calls it), durable order states, one-order-per-design, column guards on `product_customizations`, immutable order financials/snapshots, the customer-uploads storage IDOR fix, strict customer-id order visibility. See `docs/CHECKOUT_ARCHITECTURE.md`. |
+| 18 | **`20261002120000_snapshot_owned_production.sql`** | **BLOCKER — requires a coordinated checkout/worker pause and matching application deployment.** Versioned, order-owned rendering; pinned private originals/fonts/licenses; audited recovery; explicit manual mode; output verification and reconciliation. Read `docs/SNAPSHOT_PRODUCTION.md` before applying. |
 
 Run this query in the SQL editor. **Every row must be `true`:**
 
@@ -168,6 +169,18 @@ Also check:
   The role trigger allows this there and refuses it through the public API.
 
 ### If a migration fails or must be backed out
+
+**Snapshot production (#18) changes the compatibility boundary.** Pause new
+personalized checkout and worker invocations, back up the database and private
+storage, apply #18 once through migration tracking, deploy this matching build,
+verify the chain and resume. The previous application cannot create a valid v1
+production contract and must not be used as a checkout/worker rollback after
+#18. Fix forward or restore a coordinated database/storage/application backup.
+The older compatibility notes below apply only to #16 and #17. The new migration
+is transactional and safe to replay in full after an existing-object error. It
+recreates its named constraints/triggers/policies, replaces functions and keeps
+existing fulfillment data. The original queue-health function is renamed only
+on the first application. Run the complete file, including `begin` and `commit`.
 
 - Each migration is one transaction in the SQL editor: a failure leaves the
   database exactly as it was. Read the error, fix the cause (usually a missing

@@ -1,3 +1,4 @@
+import { withAdminMutation } from "@/lib/security/admin-mutation";
 import { requireAdmin } from "@/lib/auth/admin-server";
 import { RENDER_WORKER_DEFAULT_BATCH, RENDER_WORKER_MAX_BATCH, runRenderWorker } from "@/lib/customizer/render-jobs";
 import { runOutboxPass } from "@/lib/outbox/supabase-tasks";
@@ -55,9 +56,10 @@ async function runWorker(limit: number) {
   }
 
   const run = (async () => {
+    const started = Date.now();
     await heartbeat("start");
     const outbox = await runOutboxPass({ limit: 25, timeBudgetMs: 60_000 });
-    const render = await runRenderWorker({ limit, timeBudgetMs: 180_000 });
+    const render = await runRenderWorker({ limit, timeBudgetMs: Math.max(1000, 240_000 - (Date.now() - started)) });
     return { outbox, render };
   })();
   activeRun = run;
@@ -65,16 +67,19 @@ async function runWorker(limit: number) {
     const { outbox, render } = await run;
     const summary = {
       recoveredSnapshots: outbox.recovered,
+      outputVerification: outbox.outputVerification,
+      storageCleanup: outbox.storageCleanup,
       productionTasks: { completed: outbox.production.completed, failed: outbox.production.failed.length },
       notifications: { sent: outbox.notifications.completed, deferred: outbox.notifications.deferred, failed: outbox.notifications.failed.length },
       renderJobs: { processed: render.jobs.length, failed: render.failures.length, remaining: render.remaining },
     };
-    await heartbeat("finish", "ok", summary);
+    const failed = outbox.production.failed.length || outbox.notifications.failed.length || render.failures.length || render.jobs.some((job) => ["failed", "retrying", "cancelled"].includes(job.status));
+    await heartbeat("finish", failed ? "error" : "ok", summary);
     if (outbox.production.failed.length || render.failures.length) {
       logEvent("error", "worker.run_had_failures", summary);
     }
     return Response.json({
-      ok: true,
+      ok: !failed,
       processed: render.jobs.map((job) => ({ id: job.id, jobType: job.jobType, status: job.status, errorCode: job.errorCode })),
       failures: render.failures,
       recovered: render.recovered,
@@ -103,7 +108,7 @@ export async function GET(request: Request) {
 
 // Manual or scheduled entry. Accepts the worker secret, or an admin session
 // for the dashboard's "process now" action.
-export async function POST(request: Request) {
+export const POST = withAdminMutation(async function POST(request: Request) {
   if (!hasWorkerSecret(request)) {
     const admin = await requireAdmin();
     if (!admin.ok) return admin.response;
@@ -121,4 +126,4 @@ export async function POST(request: Request) {
   }
   const limit = body && typeof body === "object" ? (body as { limit?: unknown }).limit : undefined;
   return runWorker(parseLimit(limit));
-}
+}, { maxBytes: 1024 * 1024, worker: true });

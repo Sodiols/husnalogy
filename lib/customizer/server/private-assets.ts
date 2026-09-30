@@ -165,8 +165,10 @@ export async function resolvePrivateAssetsForDelivery<T>(
       supabase,
       undefined,
       actor.administrator || actor.productionWorker ? "studio" : "customer",
+      actor.productionWorker === true && variant === "original",
     );
   } catch (error) {
+    if (actor.productionWorker) throw error;
     // A hydration failure must not take down a read path; the layer simply
     // keeps whatever it already had.
     console.error("[customizer] Could not hydrate library asset URLs:", error instanceof Error ? error.message : error);

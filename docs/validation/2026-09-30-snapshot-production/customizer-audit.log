@@ -1,0 +1,5 @@
+
+> husnalogy-nextjs@1.0.0 audit:customizer
+> node scripts/audit-customizer-files.mjs
+
+Audited 286 customizer-related files; 0 require manual review; 0 import cycles found.

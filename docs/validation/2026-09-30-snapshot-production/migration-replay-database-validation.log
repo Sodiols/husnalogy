@@ -1,0 +1,2 @@
+Customizer database static validation passed (18 tables).
+Live database validation skipped: set CUSTOMIZER_DATABASE_URL (preferred) or HUSNALOGY_DATABASE_URL to a local/staging PostgreSQL connection string.

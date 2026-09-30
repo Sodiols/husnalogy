@@ -1,3 +1,4 @@
+import { withAdminMutation } from "@/lib/security/admin-mutation";
 import { requireDesignerOrAdmin } from "@/lib/auth/roles";
 import { createHash, randomUUID } from "node:crypto";
 import { z } from "zod";
@@ -160,7 +161,7 @@ export async function GET(request: Request) {
 // POST /api/admin/customizer/assets — validate, optimize, persist, and record
 // an administrator upload. Original bytes are never overwritten; sanitized SVG
 // is the protected source because unsafe SVG input is rejected before storage.
-export async function POST(request: Request) {
+export const POST = withAdminMutation(async function POST(request: Request) {
   // The element library is shared studio content, not business administration.
   const session = await requireDesignerOrAdmin();
   if (!session.ok) return session.response;
@@ -353,4 +354,4 @@ export async function POST(request: Request) {
 
   const asset = await signAdminAssetRow(supabase, data);
   return Response.json({ ok: true, duplicate: false, asset }, { status: 201 });
-}
+}, { maxBytes: 35 * 1024 * 1024, studio: true });

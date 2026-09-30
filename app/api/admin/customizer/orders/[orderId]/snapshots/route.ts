@@ -1,6 +1,7 @@
 import { requireAdmin } from "@/lib/auth/admin-server";
 import { getOrderDesignSnapshots } from "@/lib/customizer/order-snapshots";
 import { createServiceRoleClient } from "@/lib/supabase/server";
+import { signProductionOutputLinks } from "@/lib/customizer/server/production-output-links";
 
 // GET /api/admin/customizer/orders/[orderId]/snapshots
 // Admin order design viewer data (spec §22): every snapshot for an order,
@@ -22,17 +23,15 @@ export async function GET(request: Request, { params }: any) {
     // Refresh signed URLs for private render outputs (spec §11: never depend
     // on an expired signed URL — regenerate on request).
     const supabase = createServiceRoleClient();
+    const { data: readyOutputs, error: outputError } = await supabase.from("customizer_render_outputs").select("bucket,path,checksum").eq("order_id", orderId).eq("status", "ready");
+    if (outputError) throw outputError;
     const withUrls = await Promise.all(
       snapshots.map(async (snapshot: any) => {
-        const printFiles: Record<string, any> = { ...(snapshot.printFiles || {}) };
-        for (const [key, file] of Object.entries(printFiles)) {
-          if (file && typeof file === "object" && (file as any).bucket && (file as any).path) {
-            const { data } = await supabase.storage
-              .from((file as any).bucket)
-              .createSignedUrl((file as any).path, 60 * 60);
-            printFiles[key] = { ...(file as object), signedUrl: data?.signedUrl || "" };
-          }
-        }
+        const printFiles = await signProductionOutputLinks(snapshot.printFiles || {}, readyOutputs || [], async (bucket, path) => {
+          const { data, error } = await supabase.storage.from(bucket).createSignedUrl(path, 300);
+          if (error || !data) throw error || new Error("Production output signing unavailable");
+          return data.signedUrl;
+        });
         return { ...snapshot, printFiles };
       }),
     );
@@ -54,7 +53,7 @@ export async function GET(request: Request, { params }: any) {
     if (productionError) throw productionError;
     if (notificationError) throw notificationError;
 
-    return Response.json({ ok: true, snapshots: withUrls, productionTasks: productionTasks || [], notificationTasks: notificationTasks || [] });
+    return Response.json({ ok: true, snapshots: withUrls, productionTasks: productionTasks || [], notificationTasks: notificationTasks || [] }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
     console.error("Load order design snapshots failed:", error);
     return Response.json({ ok: false, error: "Could not load order design data." }, { status: 500 });

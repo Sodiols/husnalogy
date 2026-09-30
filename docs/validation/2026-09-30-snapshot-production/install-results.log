@@ -1,0 +1,12 @@
+npm warn EBADENGINE Unsupported engine {
+npm warn EBADENGINE   package: 'husnalogy-nextjs@1.0.0',
+npm warn EBADENGINE   required: { node: '22.x' },
+npm warn EBADENGINE   current: { node: 'v24.16.0', npm: '11.13.0' }
+npm warn EBADENGINE }
+
+added 443 packages, and audited 444 packages in 1m
+
+161 packages are looking for funding
+  run `npm fund` for details
+
+found 0 vulnerabilities

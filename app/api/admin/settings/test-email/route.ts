@@ -1,3 +1,4 @@
+import { withAdminMutation } from "@/lib/security/admin-mutation";
 import { requireAdmin } from "@/lib/auth/admin-server";
 import { getSettings } from "@/lib/settings";
 import { isValidEmail } from "@/lib/validation";
@@ -6,7 +7,7 @@ import { readJsonObject } from "@/lib/http/read-body";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-export async function POST(request) {
+export const POST = withAdminMutation(async function POST(request) {
   const admin = await requireAdmin();
   if (!admin.ok) return admin.response;
 
@@ -39,4 +40,4 @@ export async function POST(request) {
     },
     { status: 501 }
   );
-}
+}, { maxBytes: 1024 * 1024 });

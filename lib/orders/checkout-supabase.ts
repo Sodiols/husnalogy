@@ -16,6 +16,7 @@ import { verifyCustomizationForCheckout } from "@/lib/orders/checkout-customizat
 import { CheckoutTransactionError, transactionErrorFrom, type CheckoutDeps } from "@/lib/orders/checkout";
 import { orderFromRow, toCustomerOrderView } from "@/lib/orders/order-view";
 import type { VerifiedUpload } from "@/lib/orders/personalization";
+import { personalizationFreezer } from "@/lib/orders/personalization-production";
 
 const CUSTOMER_UPLOAD_BUCKET = "customer-uploads";
 
@@ -23,6 +24,7 @@ export function createSupabaseCheckoutDeps(): CheckoutDeps {
   const supabase = createServiceRoleClient();
 
   return {
+    freezePersonalization: personalizationFreezer(supabase),
     newOrderId: () => createId("order"),
 
     loadProducts: (ids) => getProductRecordsForCheckout(ids),

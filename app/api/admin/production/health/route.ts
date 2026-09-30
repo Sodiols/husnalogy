@@ -45,6 +45,10 @@ export async function GET(request: Request) {
     if (Number(health.productionTasks?.failed) > 0) problems.push(`${health.productionTasks.failed} production task(s) failed permanently.`);
     if (Number(health.renderJobs?.failed) > 0) problems.push(`${health.renderJobs.failed} render job(s) failed.`);
     if (Number(health.unscheduledSnapshots) > 0) problems.push(`${health.unscheduledSnapshots} ordered design(s) have no production work scheduled.`);
+    for (const key of ["missingSnapshots", "legacySnapshots", "missingTasks", "missingJobs", "missingOutputs", "stuckJobs", "staleSnapshots"]) {
+      if (Number(health.chain?.[key]) > 0) problems.push(`${health.chain[key]} fulfillment chain issue(s): ${key}.`);
+    }
+    if (Number(health.notificationTasks?.failed) > 0) problems.push(`${health.notificationTasks.failed} notification task(s) require recovery.`);
     if (oldestNotification !== null && oldestNotification > 60) problems.push(`An order email has been waiting ${oldestNotification} minutes (is email configured?).`);
 
     return Response.json(

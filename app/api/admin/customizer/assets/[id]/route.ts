@@ -1,3 +1,4 @@
+import { withAdminMutation } from "@/lib/security/admin-mutation";
 import { z } from "zod";
 import { requireAdmin } from "@/lib/auth/admin-server";
 import { createServiceRoleClient } from "@/lib/supabase/server";
@@ -33,7 +34,7 @@ export async function GET(_request: Request, { params }: any) {
 
 // PATCH /api/admin/customizer/assets/[id] — rename, organize, tag, expose,
 // archive, or restore a permanent administrator asset.
-export async function PATCH(request: Request, { params }: any) {
+export const PATCH = withAdminMutation(async function PATCH(request: Request, { params }: any) {
   const admin = await requireAdmin();
   if (!admin.ok) return admin.response;
 
@@ -74,12 +75,12 @@ export async function PATCH(request: Request, { params }: any) {
   if (error) return Response.json({ ok: false, error: "Could not update the asset." }, { status: 500 });
   if (!data) return Response.json({ ok: false, error: "Asset not found." }, { status: 404 });
   return Response.json({ ok: true, asset: await signAdminAssetRow(supabase, data) });
-}
+}, { maxBytes: 1024 * 1024 });
 
 // DELETE /api/admin/customizer/assets/[id] — permanent deletion is permitted
 // only for archived, unreferenced assets. Existing templates/orders keep using
 // archived assets because their private paths remain signable.
-export async function DELETE(_request: Request, { params }: any) {
+export const DELETE = withAdminMutation(async function DELETE(_request: Request, { params }: any) {
   const admin = await requireAdmin();
   if (!admin.ok) return admin.response;
 
@@ -131,4 +132,4 @@ export async function DELETE(_request: Request, { params }: any) {
 
   console.info(`[customizer] Asset deleted: ${id} by=${admin.admin?.id || "unknown"}`);
   return Response.json({ ok: true });
-}
+}, { maxBytes: 1024 * 1024 });

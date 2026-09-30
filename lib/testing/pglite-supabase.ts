@@ -44,7 +44,7 @@ create table if not exists storage.buckets (
   id text primary key, name text, public boolean, file_size_limit bigint, allowed_mime_types text[]
 );
 create table if not exists storage.objects (
-  id uuid primary key default gen_random_uuid(), bucket_id text, name text, owner uuid
+  id uuid primary key default gen_random_uuid(), bucket_id text, name text, owner uuid, created_at timestamptz not null default now()
 );
 alter table storage.objects enable row level security;
 grant usage on schema auth, storage to anon, authenticated, service_role;
@@ -86,11 +86,12 @@ async function withRole<T>(db: PGlite, role: string, claims: Record<string, unkn
   }
 }
 
-export async function createTestDatabase(root = process.cwd()): Promise<TestDatabase> {
+export async function createTestDatabase(root = process.cwd(), stopBeforeMigration?: string): Promise<TestDatabase> {
   const db = await PGlite.create({ extensions: { pgcrypto } });
   await db.exec(SUPABASE_SCAFFOLD);
   await db.exec(readFileSync(join(root, "supabase/schema.sql"), "utf8"));
   for (const file of migrationFiles(root)) {
+    if (stopBeforeMigration && file.endsWith(stopBeforeMigration)) break;
     await db.exec(readFileSync(file, "utf8"));
   }
   return {

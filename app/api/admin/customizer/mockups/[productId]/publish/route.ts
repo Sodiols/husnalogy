@@ -1,7 +1,8 @@
+import { withAdminMutation } from "@/lib/security/admin-mutation";
 import { requireAdmin } from "@/lib/auth/admin-server";
 import { loadNormalizedMockupTemplate, saveNormalizedMockupTemplate } from "@/lib/customizer/mockup-store";
 
-export async function POST(_request: Request, { params }: any) {
+export const POST = withAdminMutation(async function POST(_request: Request, { params }: any) {
   const admin = await requireAdmin();
   if (!admin.ok) return admin.response;
   const { productId } = await params;
@@ -14,4 +15,4 @@ export async function POST(_request: Request, { params }: any) {
   } catch (error: any) {
     return Response.json({ ok: false, error: String(error?.message || "Could not publish the mockup.").slice(0, 300) }, { status: 422 });
   }
-}
+}, { maxBytes: 1024 * 1024 });

@@ -5,6 +5,13 @@ identity, production or order state is decided on the server from database
 rows, and every durability or duplication guarantee is enforced inside one
 Postgres transaction.
 
+The current manufacturing contract is documented in
+[SNAPSHOT_PRODUCTION.md](SNAPSHOT_PRODUCTION.md). Checkout freezes versioned
+production input and pins original images, exact font files and license notices
+into private order storage before the atomic finalization RPC. Dispatch, rendering
+and recovery load that immutable snapshot; live customization/catalogue/template
+lookups belong only to checkout validation and unfinalized draft previews.
+
 ## 1. Flow: customer presses "Place order"
 
 1. **Browser** (`app/checkout/checkout-client.tsx`) — terms start unchecked; a

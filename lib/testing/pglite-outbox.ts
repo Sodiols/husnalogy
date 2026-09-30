@@ -55,11 +55,11 @@ export function fakeRenderRunner(t: TestDatabase, fail?: () => boolean) {
   return async (task: ProductionTaskRow): Promise<TaskOutcome> => {
     if (fail?.()) throw new Error("render service unavailable");
     await t.asService(async (db) => {
+      const snapshot = (await db.query<any>("select production_mode from public.order_design_snapshots where id=$1", [task.snapshot_id])).rows[0];
+      if (snapshot?.production_mode === "manual") return;
       await db.query(
-        `insert into public.customizer_render_jobs (customization_id, order_id, job_type, status, input_hash)
-         select $1::uuid, $2::text, 'print_png', 'queued', $3::text
-          where not exists (select 1 from public.customizer_render_jobs where order_id = $2::text and customization_id = $1::uuid and job_type = 'print_png')`,
-        [task.customization_id, task.order_id, `hash-${task.customization_id}`],
+        `select public.enqueue_snapshot_render_job($1::uuid, 'print_png', $2::text)`,
+        [task.snapshot_id, `hash-${task.snapshot_id}`],
       );
       await db.query("update public.order_design_snapshots set render_status = 'queued' where id = $1 and render_status in ('pending', 'failed')", [task.snapshot_id]);
     });

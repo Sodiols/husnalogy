@@ -17,7 +17,9 @@
 
 import { createHash } from "crypto";
 import { readFileSync, existsSync } from "fs";
-import { join, normalize } from "path";
+import { join, normalize, sep } from "path";
+import type * as opentype from "opentype.js";
+import type { GoogleFontFamily } from "../google-fonts";
 import { Resvg } from "@resvg/resvg-js";
 import { PDFDocument } from "pdf-lib";
 import { buildPageSvg, collectPageImageUrls } from "../svg";
@@ -32,6 +34,7 @@ import {
   preloadFontsForStyles,
 } from "./server-fonts";
 import { resolveFontsForStyles } from "./google-font-files";
+import { readBodyBytes } from "@/lib/http/read-body";
 
 export class RenderError extends Error {
   code: string;
@@ -58,13 +61,16 @@ function isTrustedRemote(url: URL): boolean {
 }
 
 async function fetchAsDataUri(source: string): Promise<string> {
-  if (source.startsWith("data:")) return source;
+  if (source.startsWith("data:")) {
+    if (source.length > MAX_IMAGE_BYTES * 1.4) throw new RenderError("asset-too-large", "Inline image exceeds its size limit.");
+    return source;
+  }
 
   // Site-relative public asset (e.g. /images/... placeholders).
   if (source.startsWith("/") && !source.startsWith("//")) {
     const absolute = normalize(join(process.cwd(), "public", source.replace(/^\/+/, "")));
     const publicRoot = normalize(join(process.cwd(), "public"));
-    if (!absolute.startsWith(publicRoot)) {
+    if (!absolute.startsWith(publicRoot + sep)) {
       throw new RenderError("ASSET_ACCESS_DENIED", `Refused local asset path: ${source}`);
     }
     if (!existsSync(absolute)) throw new RenderError("ASSET_NOT_FOUND", `Local asset not found: ${source}`);
@@ -102,7 +108,7 @@ async function fetchAsDataUri(source: string): Promise<string> {
   if (!/^image\//i.test(contentType)) {
     throw new RenderError("IMAGE_DECODE_FAILED", `Asset is not an image: ${url.pathname}`);
   }
-  const buffer = Buffer.from(await response.arrayBuffer());
+  const buffer = Buffer.from(await readBodyBytes(response, MAX_IMAGE_BYTES));
   if (buffer.byteLength > MAX_IMAGE_BYTES) {
     throw new RenderError("asset-too-large", `Asset exceeds size limit: ${url.pathname}`);
   }
@@ -137,6 +143,8 @@ export type RenderCustomizationOptions = {
   includeBleed?: boolean;
   pageIds?: string[];
   transparentBackground?: boolean;
+  imageData?: Record<string, string>;
+  frozenFonts?: { catalog: GoogleFontFamily[]; parsed: Map<string, opentype.Font>; filePaths: string[] };
 };
 
 // Render every requested page of a customization to PNG.
@@ -148,7 +156,7 @@ export async function renderCustomizationPages(options: RenderCustomizationOptio
   // substitution — the job stays retryable and diagnosable.
   let catalog;
   try {
-    catalog = await getFontCatalog();
+    catalog = options.frozenFonts?.catalog ?? await getFontCatalog();
   } catch (error) {
     throw new RenderError(
       "FONT_FILE_MISSING",
@@ -170,7 +178,7 @@ export async function renderCustomizationPages(options: RenderCustomizationOptio
 
   // Download + parse exactly the variants this document needs, then measure
   // with those real metrics so the server matches the browser.
-  const { parsed, missingFamilies } = await preloadFontsForStyles(catalog, textStyles);
+  const { parsed, missingFamilies } = options.frozenFonts ? { parsed: options.frozenFonts.parsed, missingFamilies: [] } : await preloadFontsForStyles(catalog, textStyles);
   if (missingFamilies.length) {
     throw new RenderError(
       "FONT_FILE_MISSING",
@@ -180,7 +188,7 @@ export async function renderCustomizationPages(options: RenderCustomizationOptio
 
   const measure = createServerMeasureFromCatalog(catalog, parsed);
 
-  const { filePaths: fontFiles } = await resolveFontsForStyles(catalog, textStyles);
+  const fontFiles = options.frozenFonts?.filePaths ?? (await resolveFontsForStyles(catalog, textStyles)).filePaths;
   // A design with text MUST have resolved font files; a design with none
   // (images, shapes, grids only) legitimately needs no fonts at all.
   if (textStyles.length && !fontFiles.length) {
@@ -214,7 +222,8 @@ export async function renderCustomizationPages(options: RenderCustomizationOptio
     const urls = collectPageImageUrls(template, values, editorState, page.id);
     const hrefMap: Record<string, string> = {};
     for (const url of urls) {
-      hrefMap[url] = await fetchAsDataUri(url);
+      if (options.imageData && !options.imageData[url]) throw new RenderError("ASSET_REFERENCE_INVALID", "Required manufacturing image is not pinned.");
+      hrefMap[url] = options.imageData ? options.imageData[url] : await fetchAsDataUri(url);
     }
 
     try {
@@ -276,6 +285,8 @@ export async function buildPrintPdf(
 ): Promise<{ pdf: Buffer; checksum: string }> {
   try {
     const pdfDoc = await PDFDocument.create();
+    pdfDoc.setCreationDate(new Date(0));
+    pdfDoc.setModificationDate(new Date(0));
     pdfDoc.setProducer("Husnalogy Customizer V2");
     pdfDoc.setCreator("Husnalogy Render Service");
 

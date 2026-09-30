@@ -89,6 +89,12 @@ describe("email transport", () => {
 
 describe("notification runner", () => {
   const task = { id: "t1", lock_token: "l", attempt_count: 1, order_id: "order-123", kind: "order_confirmation_customer" as const, recipient: "ayesha@example.com" };
+  it("uses a new stable provider key only after audited non-delivery creates a recovery generation", async () => {
+    const keys: string[] = [];
+    const run = makeNotificationRunner({ transport: { send: async (_message, key) => { keys.push(key); return { id: "reviewed-delivery" }; } }, adminRecipient: "", loadOrder: async () => order });
+    await run({ ...task, delivery_generation: 1 }); await run({ ...task, delivery_generation: 1 });
+    expect(keys).toEqual(["husnalogy-notification-t1-review-1", "husnalogy-notification-t1-review-1"]);
+  });
 
   it("defers (keeps) the task when no provider is configured", async () => {
     const run = makeNotificationRunner({ transport: null, adminRecipient: "", loadOrder: async () => order });

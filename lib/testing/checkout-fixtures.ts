@@ -6,6 +6,7 @@
 
 import { randomUUID } from "node:crypto";
 import type { TestDatabase } from "@/lib/testing/pglite-supabase";
+import { makeProductionInput, productionIntegrityHash } from "@/lib/customizer/production-input";
 
 export const USERS = {
   customerA: { id: "00000000-0000-4000-8000-00000000000a", email: "customer.a@example.com" },
@@ -76,7 +77,7 @@ export const VERSION_DOCUMENT = {
       textStyle: { fontFamily: "Cormorant Garamond", fontSize: 48 },
     },
   ],
-  settings: {},
+  settings: { featureFlags: { customizer_v2_server_rendering: true } },
 };
 
 export async function seedCheckoutFixtures(t: TestDatabase): Promise<void> {
@@ -254,7 +255,11 @@ export async function orderPayload(
           template_id: templateId,
           template_version: 1,
           template_version_id: versionId,
-          snapshot: { document: { pages: [] } },
+          snapshot: {
+            snapshotSchemaVersion: 1,
+            document: { pages: [] },
+            production: makeProductionInput({ canvasWidthPx: 120, canvasHeightPx: 160, cardWidthIn: 5, cardHeightIn: 7, dpi: 300, pages: [{ id: "front", enabled: true }], layers: [], featureFlags: { customizer_v2_server_rendering: true } }, {}, null),
+          },
           preflight: { ok: true, blocking: false, issues: [] },
           preview_files: {},
           integrity_hash: "hash",
@@ -268,6 +273,7 @@ export async function orderPayload(
       : [],
     cart_items: [{ id: cartItemId, line_number: 1, product_id: productId, quantity, customization_id: customizationId || "" }],
   };
+  for (const snapshot of snapshots) snapshot.integrity_hash = productionIntegrityHash(snapshot.snapshot);
   return { order, items, snapshots, guards, cartItemId };
 }
 

@@ -1,3 +1,4 @@
+import { withAdminMutation } from "@/lib/security/admin-mutation";
 import { requireAdmin } from "@/lib/auth/admin-server";
 import {
   createHeroCollection,
@@ -17,7 +18,7 @@ export async function GET() {
   return Response.json({ ok: true, collections });
 }
 
-export async function POST(request) {
+export const POST = withAdminMutation(async function POST(request) {
   const admin = await requireAdmin();
   if (!admin.ok) return admin.response;
 
@@ -31,9 +32,9 @@ export async function POST(request) {
   }
 
   return Response.json({ ok: true, collection: result.collection }, { status: 201 });
-}
+}, { maxBytes: 1024 * 1024 });
 
-export async function PATCH(request) {
+export const PATCH = withAdminMutation(async function PATCH(request) {
   const admin = await requireAdmin();
   if (!admin.ok) return admin.response;
 
@@ -53,9 +54,9 @@ export async function PATCH(request) {
   }
 
   return Response.json({ ok: true, collection: result.collection });
-}
+}, { maxBytes: 1024 * 1024 });
 
-export async function DELETE(request) {
+export const DELETE = withAdminMutation(async function DELETE(request) {
   const admin = await requireAdmin();
   if (!admin.ok) return admin.response;
 
@@ -75,4 +76,4 @@ export async function DELETE(request) {
   }
 
   return Response.json({ ok: true });
-}
+}, { maxBytes: 1024 * 1024 });

@@ -1,3 +1,4 @@
+import { withAdminMutation } from "@/lib/security/admin-mutation";
 import { z } from "zod";
 import { requireAdmin } from "@/lib/auth/admin-server";
 import { createServiceRoleClient } from "@/lib/supabase/server";
@@ -9,7 +10,7 @@ const patchSchema = z.object({
   parentId: z.string().uuid().nullable().optional(),
 }).strict();
 
-export async function PATCH(request: Request, { params }: any) {
+export const PATCH = withAdminMutation(async function PATCH(request: Request, { params }: any) {
   const admin = await requireAdmin();
   if (!admin.ok) return admin.response;
   const { id } = await params;
@@ -27,9 +28,9 @@ export async function PATCH(request: Request, { params }: any) {
   if (error) return Response.json({ ok: false, error: "Could not update the folder." }, { status: 500 });
   if (!data) return Response.json({ ok: false, error: "Folder not found." }, { status: 404 });
   return Response.json({ ok: true, folder: folderFromRow(data) });
-}
+}, { maxBytes: 1024 * 1024 });
 
-export async function DELETE(_request: Request, { params }: any) {
+export const DELETE = withAdminMutation(async function DELETE(_request: Request, { params }: any) {
   const admin = await requireAdmin();
   if (!admin.ok) return admin.response;
   const { id } = await params;
@@ -44,4 +45,4 @@ export async function DELETE(_request: Request, { params }: any) {
   const { error } = await supabase.from("customizer_asset_folders").delete().eq("id", id);
   if (error) return Response.json({ ok: false, error: "Could not delete the folder." }, { status: 500 });
   return Response.json({ ok: true });
-}
+}, { maxBytes: 1024 * 1024 });

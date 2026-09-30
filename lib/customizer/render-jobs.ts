@@ -26,6 +26,8 @@ import { resolvePrivateAssetsForDelivery } from "@/lib/customizer/server/private
 import type { RenderJobType } from "@/lib/customizer/v2/types";
 import { loadNormalizedMockupTemplate } from "@/lib/customizer/mockup-store";
 import { resolveFlagsIntoTemplate } from "@/lib/customizer/v2/feature-flags.server";
+import { readProductionSnapshot, productionIntegrityHash } from "@/lib/customizer/production-input";
+import { openProductionInput, productionStorage } from "@/lib/customizer/server/production-assets";
 
 export const RENDER_MAX_ATTEMPTS = 3;
 const RENDER_BUCKET = "customizer-renders";
@@ -157,6 +159,8 @@ export async function enqueueRenderJob(options: {
   force?: boolean;
 }): Promise<{ job: RenderJobRow; reused: boolean }> {
   const supabase = createServiceRoleClient();
+  // Historical print work has one entry point, keyed by immutable snapshot.
+  if (options.orderId) throw new RenderError("INVALID_DOCUMENT", "Order rendering requires a snapshot identity.");
 
   const { data: row, error } = await supabase
     .from("product_customizations")
@@ -166,6 +170,7 @@ export async function enqueueRenderJob(options: {
   if (error) throw error;
   if (!row) throw new RenderError("customization-not-found", "Customization not found.");
   const customization = customizationFromRow(row);
+  if (row.order_id || row.status === "ordered") throw new RenderError("INVALID_DOCUMENT", "Finalized designs must render from their order snapshot.");
   const trusted = await getTrustedTemplateForCustomization(customization);
   if (!trusted) throw new RenderError("template-not-found", "No template available for this customization.");
   const normalizedMockup = options.jobType === "mockup"
@@ -230,6 +235,16 @@ export async function enqueueRenderJob(options: {
   return { job: jobFromRow(created), reused: false };
 }
 
+export async function enqueueRenderJobFromSnapshot(snapshot: any, jobType: "print_png" | "print_pdf", supabase = createServiceRoleClient()): Promise<{ job: RenderJobRow; reused: boolean }> {
+  const input = readProductionSnapshot(snapshot);
+  if (input.mode !== "automatic" || !input.requiredJobTypes.includes(jobType)) throw new RenderError("FEATURE_DISABLED", "This output is not required by the purchased design.");
+  const { data, error } = await supabase.rpc("enqueue_snapshot_render_job", { p_snapshot_id: snapshot.id, p_job_type: jobType, p_input_hash: productionIntegrityHash({ snapshot: snapshot.integrity_hash, jobType, renderer: input.rendererVersion }) });
+  if (error) throw error;
+  const row = Array.isArray(data) ? data[0] : data;
+  if (!row) throw new Error("snapshot-render-enqueue-failed");
+  return { job: jobFromRow(row), reused: Number(row.attempt_count) > 0 || row.status !== "queued" };
+}
+
 async function uploadOutput(
   supabase: ReturnType<typeof createServiceRoleClient>,
   path: string,
@@ -261,8 +276,10 @@ async function verifyStoredOutput(
 }
 
 // Process one job to completion (or failure). Returns the final job row.
-export async function processRenderJob(jobId: string): Promise<RenderJobRow> {
-  const supabase = createServiceRoleClient();
+export const RENDER_JOB_MAX_DURATION_MS = 120_000;
+export async function processRenderJob(jobId: string, suppliedClient?: ReturnType<typeof createServiceRoleClient>): Promise<RenderJobRow> {
+  const deadline = AbortSignal.timeout(RENDER_JOB_MAX_DURATION_MS);
+  const supabase = suppliedClient || createServiceRoleClient({ signal: deadline });
 
   // Claim the job: queued → processing. A concurrent worker loses the race.
   const workerId = `${hostname()}:${process.pid}:${randomUUID()}`;
@@ -273,7 +290,7 @@ export async function processRenderJob(jobId: string): Promise<RenderJobRow> {
   });
   if (claimError) throw claimError;
   const claimed = Array.isArray(claimResult) ? claimResult[0] : claimResult;
-  if (!claimed) {
+  if (!claimed?.id) {
     const { data: current } = await supabase.from("customizer_render_jobs").select("*").eq("id", jobId).maybeSingle();
     if (!current) throw new RenderError("job-not-found", "Render job not found.");
     return jobFromRow(current);
@@ -282,6 +299,7 @@ export async function processRenderJob(jobId: string): Promise<RenderJobRow> {
   let leaseLost = false;
   let cancelRequested = false;
   const heartbeat = async () => {
+    if (deadline.aborted) { leaseLost = true; clearInterval(heartbeatTimer); return; }
     const now = new Date();
     const { data } = await supabase.from("customizer_render_jobs")
       .update({ heartbeat_at: now.toISOString(), lock_expires_at: new Date(now.getTime() + 180_000).toISOString() })
@@ -295,6 +313,7 @@ export async function processRenderJob(jobId: string): Promise<RenderJobRow> {
   };
   const heartbeatTimer = setInterval(() => { heartbeat().catch(() => { leaseLost = true; }); }, 25_000);
   const assertActiveLease = async () => {
+    if (deadline.aborted) throw new RenderError("WORKER_LEASE_EXPIRED", "Render execution deadline elapsed; recover this lease safely.");
     if (leaseLost) throw new RenderError("WORKER_LEASE_EXPIRED", "This worker no longer owns the render job lease.");
     if (cancelRequested) throw new RenderError("RENDER_CANCELLED", "The render job was cancelled.");
     const { data } = await supabase.from("customizer_render_jobs").select("status,cancel_requested_at,lock_token").eq("id", jobId).maybeSingle();
@@ -320,14 +339,41 @@ export async function processRenderJob(jobId: string): Promise<RenderJobRow> {
   };
 
   const uploadedPaths: string[] = [];
+  let snapshot: any = null;
   try {
+    let frozen: Awaited<ReturnType<typeof openProductionInput>> | undefined;
+    let template: any;
+    let customization: any;
+    const jobType = claimed.job_type as RenderJobType;
+    let normalizedMockup: any = null;
+    let values: any;
+    let editorState: any;
+    if (claimed.order_id || claimed.snapshot_id) {
+      if (!claimed.snapshot_id) throw new RenderError("INVALID_DOCUMENT", "LEGACY_ORDER_JOB: snapshot linkage requires remediation.");
+      const { data, error } = await supabase.from("order_design_snapshots").select("*").eq("id", claimed.snapshot_id).maybeSingle();
+      if (error) throw error;
+      snapshot = data;
+      if (!snapshot || snapshot.order_id !== claimed.order_id || snapshot.order_item_id !== claimed.order_item_id) throw new RenderError("INVALID_DOCUMENT", "Snapshot job identity mismatch.");
+      const input = readProductionSnapshot(snapshot);
+      if (input.mode !== "automatic" || !input.requiredJobTypes.includes(jobType as any)) throw new RenderError("INVALID_DOCUMENT", "Output does not belong to this snapshot.");
+      if (claimed.input_hash !== productionIntegrityHash({ snapshot: snapshot.integrity_hash, jobType, renderer: input.rendererVersion })) throw new RenderError("INVALID_DOCUMENT", "Snapshot job checksum mismatch.");
+      frozen = await openProductionInput(input, productionStorage(supabase));
+      template = input.template;
+      values = input.values;
+      editorState = input.editorState;
+      customization = { id: null, templateVersion: snapshot.template_version };
+      const { data: active, error: stateError } = await supabase.rpc("mark_snapshot_render_processing", { p_job_id: jobId, p_lock_token: claimed.lock_token });
+      if (stateError) throw stateError;
+      if (!active) throw new RenderError("WORKER_LEASE_EXPIRED", "Snapshot processing no longer owns the lease.");
+    } else {
     const { data: row } = await supabase
       .from("product_customizations")
       .select("*")
       .eq("id", claimed.customization_id)
       .maybeSingle();
     if (!row) throw new RenderError("customization-not-found", "Customization no longer exists.");
-    let customization = customizationFromRow(row);
+    if (row.order_id || row.status === "ordered") throw new RenderError("INVALID_DOCUMENT", "Legacy live rendering of finalized customization is prohibited.");
+    customization = customizationFromRow(row);
     const inputSnapshot = claimed.input_snapshot && typeof claimed.input_snapshot === "object"
       ? claimed.input_snapshot as Record<string, any>
       : {};
@@ -342,10 +388,9 @@ export async function processRenderJob(jobId: string): Promise<RenderJobRow> {
 
     const trusted = await getTrustedTemplateForCustomization(customization);
     if (!trusted) throw new RenderError("template-not-found", "No template available for this customization.");
-    let template = trusted.template;
+    template = trusted.template;
 
-    const jobType = claimed.job_type as RenderJobType;
-    const normalizedMockup = jobType === "mockup" ? await effectiveMockupTemplate(customization.productId, template, supabase) : null;
+    normalizedMockup = jobType === "mockup" ? await effectiveMockupTemplate(customization.productId, template, supabase) : null;
     if (normalizedMockup) template = { ...template, mockupTemplates: [normalizedMockup] };
     template = await resolveFlagsIntoTemplate(template, {
       productId: customization.productId,
@@ -356,12 +401,13 @@ export async function processRenderJob(jobId: string): Promise<RenderJobRow> {
     if (disabledFeature) {
       throw new RenderError("FEATURE_DISABLED", `${disabledFeature} is disabled for this product.`);
     }
-    const isPrint = jobType === "print_png" || jobType === "print_pdf";
-    const assetVariant = isPrint ? "original" : "editor";
-    const [values, editorState] = await Promise.all([
+    const assetVariant = jobType === "print_png" || jobType === "print_pdf" ? "original" : "editor";
+    [values, editorState] = await Promise.all([
       resolvePrivateAssetsForDelivery(customization.values || {}, { productionWorker: true }, assetVariant, supabase),
       resolvePrivateAssetsForDelivery(customization.renderData?.editorState || null, { productionWorker: true }, assetVariant, supabase),
     ]);
+    }
+    const isPrint = jobType === "print_png" || jobType === "print_pdf";
 
     const pages: PageRenderResult[] = await renderCustomizationPages({
       template,
@@ -371,11 +417,13 @@ export async function processRenderJob(jobId: string): Promise<RenderJobRow> {
       previewWidth: jobType === "thumbnail" || jobType === "cart_thumbnail" ? 480 : 1000,
       watermark: isPrint || jobType === "admin_preview" ? "" : "HUSNALOGY PREVIEW",
       includeBleed: isPrint,
+      ...frozen,
     });
     await assertActiveLease();
 
     const outputs: Array<Record<string, unknown>> = [];
-    const basePath = `renders/${customization.id}/${jobId}`;
+    // Attempt files are isolated; a stale lease may never overwrite a winner.
+    const basePath = snapshot ? `orders/${snapshot.order_id}/snapshots/${snapshot.id}/${jobId}/${claimed.lock_token}` : `renders/${customization.id}/${jobId}/${claimed.lock_token}`;
 
     if (jobType === "mockup") {
       const config = normalizedMockup || await effectiveMockupTemplate(customization.productId, template, supabase);
@@ -506,6 +554,17 @@ export async function processRenderJob(jobId: string): Promise<RenderJobRow> {
       });
     }
 
+    if (snapshot) {
+      if (!outputs.length) throw new RenderError("INVALID_DOCUMENT", "Snapshot produced no output.");
+      await assertActiveLease();
+      const { data, error } = await supabase.rpc("commit_snapshot_render_result", { p_job_id: jobId, p_lock_token: claimed.lock_token, p_outputs: outputs });
+      if (error) throw error;
+      clearInterval(heartbeatTimer);
+      const completed = Array.isArray(data) ? data[0] : data;
+      if (!completed) throw new RenderError("WORKER_LEASE_EXPIRED", "The output commit no longer owns the lease.");
+      return jobFromRow(completed);
+    }
+
     if (outputs.length) {
       await assertActiveLease();
       const { error: outputError } = await supabase.from("customizer_render_outputs").insert(outputs);
@@ -538,19 +597,6 @@ export async function processRenderJob(jobId: string): Promise<RenderJobRow> {
       if (printFilesError) {
         console.error(`[customizer] PRINT_FILES_SYNC_FAILED job=${jobId} customization=${customization.id}: outputs exist in storage but the customization was not updated.`, printFilesError);
       }
-      if (claimed.order_id) {
-        const { error: snapshotSyncError } = await supabase
-          .from("order_design_snapshots")
-          .update({ print_files: printFiles, render_status: "completed" })
-          .eq("order_id", claimed.order_id)
-          .eq("customization_id", customization.id);
-        if (snapshotSyncError) {
-          // Fail the job rather than report success: a "completed" job whose
-          // order snapshot still reads queued/pending would hide a broken
-          // order from Admin. Failing it keeps the retry path in charge.
-          throw new RenderError("output-record-failed", `Could not attach production files to order ${claimed.order_id}: ${snapshotSyncError.message}`);
-        }
-      }
     }
 
     return await finish({
@@ -561,9 +607,18 @@ export async function processRenderJob(jobId: string): Promise<RenderJobRow> {
       next_attempt_at: null,
     });
   } catch (error: any) {
+    clearInterval(heartbeatTimer);
+    // A commit can succeed while its response is lost. Never delete that output.
+    if (claimed.snapshot_id) {
+      const { data: current, error: currentError } = await supabase.from("customizer_render_jobs").select("*").eq("id", jobId).maybeSingle();
+      if (currentError) throw currentError; // Preserve uncertain output until ownership is known.
+      if (current?.status === "completed" || current?.lock_token !== claimed.lock_token) return jobFromRow(current || claimed);
+    }
     const code = getRenderErrorCode(error);
     const attempts = (Number(claimed.attempt_count) || 0) + 1;
-    const { error: outputCleanupError } = await supabase.from("customizer_render_outputs").delete().eq("job_id", jobId);
+    const { data: cleanupOwner } = await supabase.from("customizer_render_jobs").select("lock_token,status").eq("id", jobId).maybeSingle();
+    if (cleanupOwner?.lock_token !== claimed.lock_token || cleanupOwner?.status !== "processing") return jobFromRow(claimed);
+    const { error: outputCleanupError } = claimed.snapshot_id ? { error: null } : await supabase.from("customizer_render_outputs").delete().eq("job_id", jobId);
     if (outputCleanupError) {
       console.error(`[customizer] Could not clean up render output rows for failed job ${jobId}; they may be orphaned.`, outputCleanupError);
     }
@@ -576,15 +631,13 @@ export async function processRenderJob(jobId: string): Promise<RenderJobRow> {
     console.error(`[customizer] Render job ${jobId} failed (attempt ${attempts}):`, error);
     const cancelled = code === "RENDER_CANCELLED";
     const nextStatus = cancelled ? "cancelled" : renderRetryStatus(attempts);
-    if (claimed.order_id) {
-      const { error: snapshotStatusError } = await supabase
-        .from("order_design_snapshots")
-        .update({ render_status: cancelled ? "failed" : nextStatus === "failed" ? "failed" : "queued" })
-        .eq("order_id", claimed.order_id)
-        .eq("customization_id", claimed.customization_id);
-      if (snapshotStatusError) {
-        console.error(`[customizer] RENDER_STATUS_SYNC_FAILED order=${claimed.order_id} job=${jobId}: the job failed but the snapshot status was not updated.`, snapshotStatusError);
-      }
+    if (claimed.snapshot_id) {
+      const { data, error: failureError } = await supabase.rpc("fail_snapshot_render_job", {
+        p_job_id: jobId, p_lock_token: claimed.lock_token, p_code: code,
+        p_message: String(error?.message || error).slice(0, 1000), p_cancelled: cancelled,
+      });
+      if (failureError) throw failureError;
+      return jobFromRow(data || claimed);
     }
     return await finish({
       status: nextStatus,
@@ -668,7 +721,7 @@ export async function runRenderWorker(options: { limit?: number; timeBudgetMs?: 
         stoppedReason = "batch-limit";
         break outer;
       }
-      if (Date.now() - startedAt >= budgetMs) {
+      if (Date.now() - startedAt + RENDER_JOB_MAX_DURATION_MS > budgetMs) {
         stoppedReason = "time-budget";
         break outer;
       }

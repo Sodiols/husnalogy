@@ -1,3 +1,4 @@
+import { withAdminMutation } from "@/lib/security/admin-mutation";
 import { requireProductEditor } from "@/lib/auth/roles";
 import { createServiceRoleClient } from "@/lib/supabase/server";
 import { clearFeatureFlagCache } from "@/lib/customizer/v2/feature-flags.server";
@@ -21,7 +22,7 @@ export async function GET(_request: Request, { params }: any) {
   return Response.json({ ok: true, flags: data || [] });
 }
 
-export async function PUT(request: Request, { params }: any) {
+export const PUT = withAdminMutation(async function PUT(request: Request, { params }: any) {
   const { productId } = await params;
   // Ownership is re-read from the database: a designer cannot reach another
   // designer's design by guessing a product id.
@@ -63,4 +64,4 @@ export async function PUT(request: Request, { params }: any) {
   clearFeatureFlagCache();
   console.info(`[customizer] Feature flags updated: product=${productId} by=${admin.admin?.id || "unknown"}`);
   return Response.json({ ok: true, flags: data || [] });
-}
+}, { maxBytes: 1024 * 1024, studio: true });

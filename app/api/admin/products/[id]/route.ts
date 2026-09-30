@@ -1,3 +1,4 @@
+import { withAdminMutation } from "@/lib/security/admin-mutation";
 import { requireAdmin } from "@/lib/auth/admin-server";
 import { requireProductEditor } from "@/lib/auth/roles";
 import { designerMayEdit } from "@/lib/products/workflow";
@@ -5,7 +6,7 @@ import { workflowStateOf } from "@/lib/auth/roles";
 import { deleteProduct, updateProduct } from "@/lib/products";
 import { readJsonObject } from "@/lib/http/read-body";
 
-export async function PUT(request, { params }) {
+export const PUT = withAdminMutation(async function PUT(request, { params }) {
   const { id } = await params;
   // Ownership is re-read from the database here; the id in the URL is a
   // request, not a permission.
@@ -31,10 +32,10 @@ export async function PUT(request, { params }) {
   }
 
   return Response.json({ ok: true, product: result.product });
-}
+}, { maxBytes: 5 * 1024 * 1024, studio: true });
 
 // Archiving stays an administrator's decision (spec §4).
-export async function DELETE(_request, { params }) {
+export const DELETE = withAdminMutation(async function DELETE(_request, { params }) {
   const admin = await requireAdmin();
   if (!admin.ok) return admin.response;
 
@@ -46,4 +47,4 @@ export async function DELETE(_request, { params }) {
   }
 
   return Response.json({ ok: true });
-}
+}, { maxBytes: 1024 * 1024 });

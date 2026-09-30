@@ -1,8 +1,9 @@
+import { withAdminMutation } from "@/lib/security/admin-mutation";
 import { requireAdmin } from "@/lib/auth/admin-server";
 import { permanentlyDeleteProduct, verifyPermanentDeleteCredentials } from "@/lib/products";
 import { readJsonObject } from "@/lib/http/read-body";
 
-export async function POST(request, { params }) {
+export const POST = withAdminMutation(async function POST(request, { params }) {
   const admin = await requireAdmin();
   if (!admin.ok) return admin.response;
 
@@ -31,4 +32,4 @@ export async function POST(request, { params }) {
   }
 
   return Response.json({ ok: true });
-}
+}, { maxBytes: 1024 * 1024 });

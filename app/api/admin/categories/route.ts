@@ -1,3 +1,4 @@
+import { withAdminMutation } from "@/lib/security/admin-mutation";
 import { requireAdmin } from "@/lib/auth/admin-server";
 import { createCategory, getCategories } from "@/lib/categories";
 import { readJsonObject } from "@/lib/http/read-body";
@@ -10,7 +11,7 @@ export async function GET() {
   return Response.json({ ok: true, categories });
 }
 
-export async function POST(request) {
+export const POST = withAdminMutation(async function POST(request) {
   const admin = await requireAdmin();
   if (!admin.ok) return admin.response;
 
@@ -24,4 +25,4 @@ export async function POST(request) {
   }
 
   return Response.json({ ok: true, category: result.category }, { status: 201 });
-}
+}, { maxBytes: 1024 * 1024 });

@@ -55,6 +55,7 @@ export async function preloadFontsForStyles(
     if (parsedCache.has(key)) {
       const cached = parsedCache.get(key);
       if (cached) parsed.set(key, cached);
+      else if (!missingFamilies.includes(dependency.family)) missingFamilies.push(dependency.family);
       continue;
     }
     try {
@@ -62,6 +63,7 @@ export async function preloadFontsForStyles(
       const font = parseBuffer(bytes);
       parsedCache.set(key, font);
       if (font) parsed.set(key, font);
+      else if (!missingFamilies.includes(dependency.family)) missingFamilies.push(dependency.family);
     } catch (error) {
       // Download failure is reported through missingFamilies so the caller
       // fails the render rather than substituting (spec §18).
@@ -69,7 +71,7 @@ export async function preloadFontsForStyles(
         `[fonts] Could not load ${dependency.family} ${dependency.weight} ${dependency.style}:`,
         error instanceof Error ? error.message : error,
       );
-      parsedCache.set(key, null);
+      // A transient download failure is retryable; do not poison the cache.
       if (!missingFamilies.includes(dependency.family)) missingFamilies.push(dependency.family);
     }
   }

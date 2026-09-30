@@ -1,3 +1,4 @@
+import { withAdminMutation } from "@/lib/security/admin-mutation";
 import { requireDesignerOrAdmin } from "@/lib/auth/roles";
 import path from "node:path";
 import { canUseSupabaseStorage, uploadToSupabaseStorage } from "@/lib/storage/supabase-storage";
@@ -114,7 +115,7 @@ function isValidUpload(file, folder, bytes) {
  */
 const MAX_REQUEST_BYTES = 150 * 1024 * 1024;
 
-export async function POST(request) {
+export const POST = withAdminMutation(async function POST(request) {
   // Designers upload their own product media; the storage path is derived server side.
   const session = await requireDesignerOrAdmin();
   if (!session.ok) return session.response;
@@ -215,4 +216,4 @@ export async function POST(request) {
       { status: 500 }
     );
   }
-}
+}, { maxBytes: 35 * 1024 * 1024, studio: true });

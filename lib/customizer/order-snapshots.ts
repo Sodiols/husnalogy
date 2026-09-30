@@ -6,25 +6,24 @@
 // preflight results, and an integrity hash. Editing the product or template
 // afterwards never changes the snapshot (a database trigger enforces that).
 //
-//   buildOrderDesignSnapshot — BEFORE the checkout transaction (reads only).
+//   buildOrderDesignSnapshot — BEFORE the checkout transaction (pins bytes).
 //                              create_checkout_order writes it, linked to its
 //                              order item by `line_number`, together with a
 //                              durable production task (outbox).
 //   runProductionTask        — executed by the production task processor
-//                              (lib/outbox/production-tasks.ts) for each task,
+//                              (lib/outbox/supabase-tasks.ts) for each task,
 //                              right after checkout and again by the scheduled
 //                              worker until it succeeds. Idempotent: render
 //                              jobs dedupe on their input hash.
 
 import { createServiceRoleClient } from "@/lib/supabase/server";
 import { customizationFromRow } from "@/lib/customizer/customizations";
-import { isCustomizerFeatureEnabled } from "@/lib/customizer/v2/feature-flags";
 import { stripEphemeralAssetUrls } from "@/lib/customizer/v2/asset-references";
 import { resolvePrivateAssetsForDelivery } from "@/lib/customizer/server/private-assets";
-import { resolveFlagsIntoTemplate } from "@/lib/customizer/v2/feature-flags.server";
-import { getTrustedTemplateForCustomization } from "@/lib/customizer/versions";
 import { composeOrderDesignSnapshot, computeIntegrityHash, type SnapshotInput } from "@/lib/customizer/snapshot-compose";
 import type { DesignSnapshotPayload } from "@/lib/orders/checkout";
+import { makeProductionInput, readProductionSnapshot } from "@/lib/customizer/production-input";
+import { pinProductionInput, productionStorage } from "@/lib/customizer/server/production-assets";
 
 export { computeIntegrityHash };
 
@@ -38,11 +37,17 @@ export async function buildOrderDesignSnapshot(input: SnapshotInput): Promise<De
   const customization = customizationFromRow(input.row);
   const editorState = stripEphemeralAssetUrls(customization.renderData?.editorState || null, customization.userId);
   const values = stripEphemeralAssetUrls(customization.values || {}, customization.userId);
-  const [renderValues, renderEditorState] = await Promise.all([
+  if (!input.orderId) throw new Error("Production snapshot requires its reserved order identity.");
+  const [renderValues, renderEditorState, renderTemplate] = await Promise.all([
     resolvePrivateAssetsForDelivery(values, { productionWorker: true }, "original", supabase),
     resolvePrivateAssetsForDelivery(editorState, { productionWorker: true }, "original", supabase),
+    resolvePrivateAssetsForDelivery(input.template, { productionWorker: true }, "original", supabase),
   ]);
-  return composeOrderDesignSnapshot(input, { renderValues, renderEditorState });
+  const payload = composeOrderDesignSnapshot(input, { renderValues, renderEditorState });
+  payload.snapshot.production = await pinProductionInput(input.orderId, makeProductionInput(renderTemplate, renderValues, renderEditorState), productionStorage(supabase));
+  payload.integrity_hash = computeIntegrityHash(payload.snapshot);
+  readProductionSnapshot({ ...payload, order_id: input.orderId, snapshot_schema_version: 1, production_mode: (payload.snapshot.production as any).mode });
+  return payload;
 }
 
 export type ProductionTaskRow = {
@@ -63,51 +68,25 @@ export type ProductionTaskRow = {
  * the same input instead of creating a duplicate, and the snapshot status
  * update is conditional.
  */
-export async function runProductionTask(task: ProductionTaskRow): Promise<{ jobs: string[] }> {
-  const supabase = createServiceRoleClient();
+export async function runProductionTask(task: ProductionTaskRow, supabase = createServiceRoleClient()): Promise<{ jobs: string[] }> {
   const { data: snapshot, error: snapshotError } = await supabase
     .from("order_design_snapshots")
-    .select("id, order_id, customization_id, render_status, preflight")
+    .select("*")
     .eq("id", task.snapshot_id)
     .maybeSingle();
   if (snapshotError) throw snapshotError;
-  if (!snapshot || !snapshot.customization_id) throw new Error("snapshot-not-found");
+  if (!snapshot || snapshot.order_id !== task.order_id || snapshot.order_item_id !== task.order_item_id) throw new Error("snapshot-task-linkage-invalid");
+  const input = readProductionSnapshot(snapshot);
 
-  const preflight: any = snapshot.preflight || {};
-  // Audit row for the order's preflight (diagnostic; re-inserted on retry is harmless).
-  await supabase.from("customizer_preflight_results").insert({
-    customization_id: snapshot.customization_id,
-    order_id: snapshot.order_id,
-    context: "order",
-    ok: Boolean(preflight.ok),
-    blocking: Boolean(preflight.blocking),
-    issues: Array.isArray(preflight.issues) ? preflight.issues : [],
-  });
-
-  const { data: row, error: rowError } = await supabase.from("product_customizations").select("*").eq("id", snapshot.customization_id).maybeSingle();
-  if (rowError) throw rowError;
-  if (!row) throw new Error("customization-not-found");
-  const customization = customizationFromRow(row);
-  const trusted = await getTrustedTemplateForCustomization(customization);
-  if (!trusted) throw new Error("template-version-unavailable");
-  const authoritativeTemplate = await resolveFlagsIntoTemplate(trusted.template, {
-    productId: customization.productId,
-    productType: trusted.template?.settings?.productType,
-    actorId: customization.userId,
-  });
-  if (!isCustomizerFeatureEnabled(authoritativeTemplate, "customizer_v2_server_rendering")) {
-    // Nothing to render automatically for this product; production is manual.
+  if (input.mode === "manual") {
+    const { error } = await supabase.from("order_design_snapshots").update({ render_status: "manual_required" }).eq("id", snapshot.id).in("render_status", ["pending", "failed"]);
+    if (error) throw error;
     return { jobs: [] };
   }
 
-  const { enqueueRenderJob } = await import("@/lib/customizer/render-jobs");
+  const { enqueueRenderJobFromSnapshot } = await import("@/lib/customizer/render-jobs");
   const jobs: string[] = [];
-  const png = await enqueueRenderJob({ customizationId: snapshot.customization_id, orderId: snapshot.order_id, jobType: "print_png", priority: 10 });
-  jobs.push(png.job.id);
-  if (isCustomizerFeatureEnabled(authoritativeTemplate, "customizer_v2_print_pdf")) {
-    const pdf = await enqueueRenderJob({ customizationId: snapshot.customization_id, orderId: snapshot.order_id, jobType: "print_pdf", priority: 10 });
-    jobs.push(pdf.job.id);
-  }
+  for (const jobType of input.requiredJobTypes) jobs.push((await enqueueRenderJobFromSnapshot(snapshot, jobType, supabase)).job.id);
   const { error: queuedError } = await supabase
     .from("order_design_snapshots")
     .update({ render_status: "queued" })
@@ -121,7 +100,7 @@ export async function getOrderDesignSnapshots(orderId: string, includeDocument =
   const supabase = createServiceRoleClient();
   const columns = includeDocument
     ? "*"
-    : "id, order_id, order_item_id, customization_id, product_id, product_title, quantity, selected_options, pricing, template_version, render_status, preflight, preview_files, print_files, integrity_hash, created_at";
+    : "id, order_id, order_item_id, customization_id, product_id, product_title, quantity, selected_options, pricing, template_version, snapshot_schema_version, production_mode, render_status, preflight, preview_files, print_files, integrity_hash, created_at";
   const { data, error } = await supabase
     .from("order_design_snapshots")
     .select(columns)
@@ -140,6 +119,8 @@ export async function getOrderDesignSnapshots(orderId: string, includeDocument =
     pricing: row.pricing || {},
     templateVersion: Number(row.template_version) || 1,
     renderStatus: row.render_status || "pending",
+    snapshotSchemaVersion: row.snapshot_schema_version,
+    productionMode: row.production_mode,
     preflight: row.preflight || {},
     previewFiles: row.preview_files || {},
     printFiles: row.print_files || {},

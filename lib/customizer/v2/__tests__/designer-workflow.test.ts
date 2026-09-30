@@ -256,7 +256,7 @@ describe("the routes a designer must never reach still demand an admin", () => {
 
   it("keeps DELETE (archive) on the product route admin-only", () => {
     const source = read("app/api/admin/products/[id]/route.ts");
-    const deleteBody = source.slice(source.indexOf("export async function DELETE"));
+    const deleteBody = source.slice(source.indexOf("export const DELETE"));
     expect(deleteBody).toContain("requireAdmin");
   });
 });

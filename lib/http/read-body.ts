@@ -22,7 +22,7 @@ export class InvalidJsonError extends Error {
   }
 }
 
-export async function readBodyBytes(request: Request, maxBytes: number): Promise<Uint8Array<ArrayBuffer>> {
+export async function readBodyBytes(request: Pick<Request, "headers" | "body">, maxBytes: number): Promise<Uint8Array<ArrayBuffer>> {
   const declared = request.headers.get("content-length");
   if (declared !== null) {
     const length = Number(declared);

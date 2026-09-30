@@ -1,7 +1,8 @@
+import { withAdminMutation } from "@/lib/security/admin-mutation";
 import { requireAdmin } from "@/lib/auth/admin-server";
 import { restoreProduct } from "@/lib/products";
 
-export async function POST(_request, { params }) {
+export const POST = withAdminMutation(async function POST(_request, { params }) {
   const admin = await requireAdmin();
   if (!admin.ok) return admin.response;
 
@@ -13,4 +14,4 @@ export async function POST(_request, { params }) {
   }
 
   return Response.json({ ok: true, product: result.product });
-}
+}, { maxBytes: 1024 * 1024 });

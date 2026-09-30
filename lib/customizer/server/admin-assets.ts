@@ -86,13 +86,14 @@ export async function hydrateAdminAssetUrls<T>(
   supabase: any,
   ttlSeconds = ADMIN_ASSET_URL_TTL_SECONDS,
   audience: AdminAssetAudience = "studio",
+  productionOriginal = false,
 ): Promise<T> {
   const ids = new Set<string>();
   const collect = (current: any) => {
     if (Array.isArray(current)) return current.forEach(collect);
     if (!current || typeof current !== "object") return;
     const assetId = adminAssetIdentity(current)?.id || "";
-    if (/^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(assetId)) ids.add(assetId);
+    if (permanentAdminReference(current) && /^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(assetId)) ids.add(assetId);
     Object.values(current).forEach(collect);
   };
   collect(value);
@@ -103,7 +104,9 @@ export async function hydrateAdminAssetUrls<T>(
     .select("*")
     .in("id", [...ids])
     .in("status", ["ready", "archived"]);
-  if (error || !data?.length) return value;
+  if (error) { if (productionOriginal) throw error; return value; }
+  if (!data?.length) { if (productionOriginal) throw new Error("Production library asset unavailable."); return value; }
+  if (productionOriginal && data.length !== ids.size) throw new Error("Production library asset unavailable.");
 
   const signed = await signAdminAssetRows(supabase, data, ttlSeconds, audience);
   const byId = new Map(signed.map((asset: any) => [String(asset.id), asset]));
@@ -112,6 +115,8 @@ export async function hydrateAdminAssetUrls<T>(
     if (!current || typeof current !== "object") return current;
     const identity = adminAssetIdentity(current);
     const asset: any = identity ? byId.get(identity.id) : null;
+    const displayUrl = productionOriginal ? asset?.originalUrl : asset?.editorUrl;
+    if (asset && !displayUrl) throw new Error("Production library original unavailable.");
     const displayKey = identity?.key === "baseImageAssetId"
       ? "baseImageUrl"
       : identity?.key === "imageAssetId"
@@ -129,14 +134,14 @@ export async function hydrateAdminAssetUrls<T>(
           ...(audience === "studio" ? { path: asset.originalPath, originalPath: asset.originalPath } : {}),
           editorPath: asset.editorPath,
           thumbnailPath: asset.thumbnailPath,
-          src: asset.editorUrl,
-          url: asset.editorUrl,
+          src: displayUrl,
+          url: displayUrl,
           // Carried so the canvas can retry at full quality if the editor
           // variant turns out to be unusable, without touching the thumbnail.
           originalUrl: asset.originalUrl,
           thumbnailUrl: asset.thumbnailUrl,
           expiresAt: asset.expiresAt,
-          [displayKey]: asset.editorUrl,
+          [displayKey]: displayUrl,
           ...(identity?.key === "backgroundAssetId" ? { thumbnail: asset.thumbnailUrl } : {}),
         }
       : current;

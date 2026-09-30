@@ -1,3 +1,4 @@
+import { withAdminMutation } from "@/lib/security/admin-mutation";
 import { requireAdmin } from "@/lib/auth/admin-server";
 import { getSettings, toAdminSettings, updateSettings } from "@/lib/settings";
 import { readJsonObject } from "@/lib/http/read-body";
@@ -13,7 +14,7 @@ export async function GET() {
   return Response.json({ ok: true, settings: toAdminSettings(settings), admin: admin.admin });
 }
 
-export async function PUT(request) {
+export const PUT = withAdminMutation(async function PUT(request) {
   const admin = await requireAdmin();
   if (!admin.ok) return admin.response;
 
@@ -30,4 +31,4 @@ export async function PUT(request) {
   }
 
   return Response.json({ ok: true, settings: toAdminSettings(result.settings) });
-}
+}, { maxBytes: 1024 * 1024 });

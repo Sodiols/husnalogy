@@ -1,66 +1,3 @@
--- Checkout integrity hardening (production readiness remediation, 2026-09-30).
---
--- What this migration fixes, and why each piece lives in the DATABASE rather
--- than only in application code:
---
---   1. ATOMIC ORDER CREATION. Checkout used to insert `orders`, then
---      `order_items`, then `order_design_snapshots`, then lock the
---      customizations as four separate REST calls, with compensating deletes
---      on failure. A failed compensating delete left a partial order standing,
---      and a retry could return it as a "successful" order. All of those
---      writes now happen inside ONE Postgres transaction
---      (`create_checkout_order`), so they either all commit or none do.
---
---   2. IDEMPOTENCY UNDER CONCURRENCY. The per-customer unique index on
---      (customer_id, checkout_submission_id) is kept, and the RPC additionally
---      takes a transaction-scoped advisory lock on that key, so two parallel
---      requests with the same submission id serialize: exactly one creates the
---      order and the other replays it. A replay with a DIFFERENT payload is
---      reported as a conflict instead of silently returning the first order.
---
---   3. DURABLE ORDER STATE. `orders.checkout_state` ('creating', 'finalized',
---      'failed', 'cancelled'). Only 'finalized' orders are ever visible to a
---      customer or returned as an idempotent success.
---
---   4. ONE ORDER PER CUSTOMIZATION. `order_items.customization_id` with a
---      partial unique index — the database, not only the application, refuses
---      to sell the same personalized design twice.
---
---   5. COLUMN-LEVEL AUTHORIZATION. RLS decides WHICH ROWS a customer may touch,
---      not WHICH COLUMNS. Customers could previously PATCH
---      `product_customizations` directly through PostgREST and change
---      `status`, `order_id`, `print_files`, `template_version`, … and bypass
---      the server's template validation entirely. Customer writes to that
---      table now go exclusively through the API (service role, after
---      authentication, ownership and template validation).
---
---   6. IMMUTABLE PRODUCTION HISTORY. Finalized order financials, order item
---      pricing and order design snapshots can no longer be rewritten after the
---      fact (published template versions already could not be).
---
---   7. STORAGE IDOR. The customer-uploads storage read policy granted access
---      whenever ANY `customer_uploads` row with that path named the caller as
---      `assigned_designer_id` — and customers could insert such rows
---      themselves, for any path. Assignment is now server-controlled and the
---      designer branch requires the designer role and an owner-matching path.
---
--- DEPLOYMENT ORDER: apply this migration BEFORE deploying the application
--- build that calls `create_checkout_order`. The previous application build
--- keeps working against this schema except for direct customer writes to
--- `product_customizations` from the old `/api/customizations` routes (which
--- used the customer's session); deploy the new build immediately after.
---
--- DATA SAFETY: forward-only and non-destructive. No table, column or row is
--- dropped. Legacy rows are never rewritten except for the documented,
--- evidence-based backfills below (currency / delivery method copied from the
--- order's own metadata). New CHECK constraints are added NOT VALID and only
--- validated when existing data already satisfies them, so legacy rows can
--- never make this migration fail. Safe to re-run.
-
-/* ======================================================================== */
-/* 1. orders: durable checkout state, trusted money/currency, terms audit    */
-/* ======================================================================== */
-
 alter table public.orders
   add column if not exists checkout_state text not null default 'finalized',
   add column if not exists currency text not null default 'BDT',
@@ -438,13 +375,30 @@ before update on public.product_customizations
 for each row execute function public.protect_ordered_customization_design();
 
 /* ======================================================================== */
-/* 7. Published template versions                                           */
+/* 7. Published template versions are immutable                             */
 /* ======================================================================== */
 
--- Already immutable: prevent_customizer_version_mutation
--- (20260726120000_customizer_public_versioning.sql) rejects every UPDATE.
--- Checkout additionally requires a customization's version to belong to the
--- ordered product, and the order snapshot keeps a full copy of the document.
+create or replace function public.protect_template_version()
+returns trigger
+language plpgsql
+set search_path = public
+as $$
+begin
+  if current_user in ('postgres', 'supabase_admin') and coalesce(auth.role(), '') = '' then
+    return new;
+  end if;
+  if (to_jsonb(new) - array['notes']) is distinct from (to_jsonb(old) - array['notes']) then
+    raise exception 'Published customizer template versions are immutable; publish a new version instead.'
+      using errcode = '42501';
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists protect_template_version on public.customizer_template_versions;
+create trigger protect_template_version
+before update on public.customizer_template_versions
+for each row execute function public.protect_template_version();
 
 /* ======================================================================== */
 /* 8. Customer uploads: server-controlled assignment, owner-prefixed paths   */

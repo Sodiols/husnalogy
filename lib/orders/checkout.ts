@@ -108,11 +108,13 @@ export function transactionErrorFrom(error: { code?: string; message?: string; d
 }
 
 export interface CheckoutDeps {
+  freezePersonalization?(input: { orderId: string; product: Record<string, any>; line: TrustedLinePrice; values: Record<string, unknown>; files: Record<string, unknown>; lineNumber: number }): Promise<Record<string, unknown>>;
   newOrderId(): string;
   loadProducts(ids: string[]): Promise<Map<string, ProductRecord>>;
   loadCustomizations(ids: string[]): Promise<Map<string, Record<string, any>>>;
   loadVerifiedUploads(userId: string, paths: string[]): Promise<Map<string, VerifiedUpload>>;
   verifyCustomization(input: {
+    orderId: string;
     row: Record<string, any>;
     product: Record<string, any>;
     customerId: string;
@@ -269,6 +271,7 @@ export async function placeCheckoutOrder(
     }
   }
 
+  const orderId = deps.newOrderId();
   const snapshots: DesignSnapshotPayload[] = [];
   const customizationGuards: Array<{ id: string; product_id: string; updated_at: string }> = [];
   const verifiedDesigns = new Map<number, Extract<CustomizationVerification, { ok: true }>>();
@@ -312,7 +315,7 @@ export async function placeCheckoutOrder(
 
     let verification: CustomizationVerification;
     try {
-      verification = await deps.verifyCustomization({ row, product: record.product, customerId: user.id, line: entry.line, lineNumber: item.lineNumber });
+      verification = await deps.verifyCustomization({ orderId, row, product: record.product, customerId: user.id, line: entry.line, lineNumber: item.lineNumber });
     } catch (error) {
       logEvent("error", "checkout.snapshot_failed", { ...ctx, stage: "verify_customization", customizationId: item.customizationId, error });
       return fail(503, "SNAPSHOT_FAILED", { [field]: "We could not lock in your personalized design. Nothing was ordered — please try again." });
@@ -341,7 +344,6 @@ export async function placeCheckoutOrder(
   const { currency, subtotalMinor, deliveryMinor, totalMinor } = totals.totals;
 
   /* 8. Canonical order payload — every identity/money field from the server. */
-  const orderId = deps.newOrderId();
   const first = lines[0].record.product;
   const methodLabel = request.deliveryMethod === "store" ? "Store pickup" : "Home delivery";
   const order = {
@@ -401,6 +403,24 @@ export async function placeCheckoutOrder(
         : {},
     };
   });
+
+  // Products with form-based personalization still need durable manufacturing
+  // instructions and uploads, even when they have no graphical customizer.
+  if (deps.freezePersonalization) {
+    try {
+      for (let index = 0; index < lines.length; index++) {
+        const { item, record, line } = lines[index];
+        const personalized = personalizedLines.get(item.lineNumber);
+        if (item.customizationId || !personalized || (!Object.keys(personalized.values).length && !Object.keys(personalized.files).length)) continue;
+        const contract = await deps.freezePersonalization({ orderId, product: record.product, line, values: personalized.values, files: personalized.files, lineNumber: item.lineNumber });
+        items[index].metadata = { ...items[index].metadata, productionSnapshot: contract } as any;
+        items[index].uploaded_files = (contract.production as any).instructions.files;
+      }
+    } catch (error) {
+      logEvent("error", "checkout.snapshot_failed", { ...ctx, stage: "manual_personalization", error });
+      return fail(503, "SNAPSHOT_FAILED", { uploads: "We could not preserve your production files. Nothing was ordered — please try again." });
+    }
+  }
 
   // Every order line consumes exactly its own server-side cart line; the
   // transaction locks, verifies and removes them (cross-tab/device safety).

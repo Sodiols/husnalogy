@@ -1,80 +1,18 @@
-import { requireAdmin } from "@/lib/auth/admin-server";
+import { withAdminMutation } from "@/lib/security/admin-mutation";
+import { getCurrentAdmin } from "@/lib/auth/admin-server";
 import { createServiceRoleClient } from "@/lib/supabase/server";
-import { enqueueRenderJob, processRenderJob } from "@/lib/customizer/render-jobs";
-import { RenderError } from "@/lib/customizer/v2/server/render";
 import { readJsonObject } from "@/lib/http/read-body";
 
-// POST /api/admin/customizer/render/retry — retry a failed render job, or
-// (re)queue production rendering for an order snapshot (spec §22, §23).
-export async function POST(request: Request) {
-  const admin = await requireAdmin();
-  if (!admin.ok) return admin.response;
-
-  const bodyRead14 = await readJsonObject(request, 4 * 1024);
-  if (bodyRead14.response) return bodyRead14.response;
-  const body = bodyRead14.body;
-  const jobId = String(body.jobId || "").trim();
-  const snapshotId = String(body.snapshotId || "").trim();
-
-  try {
-    if (jobId) {
-      // Audit logging for render retries (spec §33).
-      console.info(`[customizer] Render retry: job=${jobId} by=${admin.admin?.id}`);
-      const supabase = createServiceRoleClient();
-      const { error: resetError } = await supabase.from("customizer_render_jobs").update({
-        status: "retrying",
-        attempt_count: 0,
-        next_attempt_at: null,
-        cancel_requested_at: null,
-        completed_at: null,
-        error_code: null,
-        error_message: null,
-        locked_by: null,
-        lock_token: null,
-        lock_expires_at: null,
-      }).eq("id", jobId).in("status", ["failed", "cancelled", "retrying"]);
-      if (resetError) throw resetError;
-      const job = await processRenderJob(jobId);
-      return Response.json({ ok: true, job: { id: job.id, status: job.status, errorCode: job.errorCode } });
-    }
-
-    if (snapshotId) {
-      const supabase = createServiceRoleClient();
-      const { data: snapshot, error } = await supabase
-        .from("order_design_snapshots")
-        .select("id, order_id, customization_id")
-        .eq("id", snapshotId)
-        .maybeSingle();
-      if (error) throw error;
-      if (!snapshot?.customization_id) {
-        return Response.json({ ok: false, error: "Snapshot has no customization to render." }, { status: 400 });
-      }
-      console.info(`[customizer] Snapshot render: snapshot=${snapshotId} by=${admin.admin?.id}`);
-      const results = [];
-      for (const jobType of ["print_png", "print_pdf"] as const) {
-        try {
-          const { job } = await enqueueRenderJob({
-            customizationId: snapshot.customization_id,
-            orderId: snapshot.order_id,
-            jobType,
-            priority: 10,
-          });
-          const finished = job.status === "completed" ? job : await processRenderJob(job.id);
-          results.push({ id: finished.id, jobType, status: finished.status, errorCode: finished.errorCode });
-        } catch (error) {
-          if (error instanceof RenderError && error.code === "FEATURE_DISABLED") {
-            results.push({ id: null, jobType, status: "disabled", errorCode: error.code });
-            continue;
-          }
-          throw error;
-        }
-      }
-      return Response.json({ ok: true, jobs: results });
-    }
-
-    return Response.json({ ok: false, error: "Provide jobId or snapshotId." }, { status: 400 });
-  } catch (error) {
-    console.error("Render retry failed:", error);
-    return Response.json({ ok: false, error: "Render retry failed." }, { status: 500 });
-  }
-}
+/** Retry one logical snapshot job/dispatch. The scheduled worker executes it. */
+export const POST = withAdminMutation(async function POST(request: Request) {
+  const { body, response } = await readJsonObject(request, 4096);
+  if (response) return response;
+  const kind = body.jobId ? "render" : "snapshot";
+  const id = String(body.jobId || body.snapshotId || "");
+  if (!/^[a-f0-9-]{36}$/i.test(id)) return Response.json({ ok: false, error: "Provide jobId or snapshotId." }, { status: 400 });
+  const admin = await getCurrentAdmin();
+  if (!admin) return Response.json({ ok: false, error: "Unauthorized." }, { status: 401 });
+  const { data, error } = await createServiceRoleClient().rpc("retry_production_work", { p_kind: kind, p_id: id, p_actor_id: admin.id, p_reason: String(body.reason || "Admin requested render recovery").slice(0, 500) });
+  if (error) return Response.json({ ok: false, error: "Retry refused. Verify the production state and remediation requirements.", code: error.code }, { status: error.code === "42501" ? 403 : 409 });
+  return Response.json(data);
+}, { maxBytes: 4096 });

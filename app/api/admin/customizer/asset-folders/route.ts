@@ -1,3 +1,4 @@
+import { withAdminMutation } from "@/lib/security/admin-mutation";
 import { z } from "zod";
 import { requireAdmin } from "@/lib/auth/admin-server";
 import { createServiceRoleClient } from "@/lib/supabase/server";
@@ -18,7 +19,7 @@ export async function GET() {
   return Response.json({ ok: true, folders: (data || []).map(folderFromRow) });
 }
 
-export async function POST(request: Request) {
+export const POST = withAdminMutation(async function POST(request: Request) {
   const admin = await requireAdmin();
   if (!admin.ok) return admin.response;
   const bodyRead8 = await readJsonObject(request, 16 * 1024);
@@ -39,4 +40,4 @@ export async function POST(request: Request) {
     .single();
   if (error) return Response.json({ ok: false, error: "Could not create the folder." }, { status: 500 });
   return Response.json({ ok: true, folder: folderFromRow(data) }, { status: 201 });
-}
+}, { maxBytes: 1024 * 1024 });

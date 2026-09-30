@@ -13,6 +13,7 @@ import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
+import { readBodyBytes } from "@/lib/http/read-body";
 import {
   collectFontDependencies,
   type FontDependency,
@@ -89,7 +90,7 @@ async function downloadToCache(dependency: FontDependency, absolutePath: string)
     );
   }
 
-  const bytes = Buffer.from(await response.arrayBuffer());
+  const bytes = Buffer.from(await readBodyBytes(response, MAX_FONT_BYTES));
   if (!bytes.byteLength) {
     throw new FontFetchError(`Downloaded an empty font file for ${dependency.family}.`);
   }

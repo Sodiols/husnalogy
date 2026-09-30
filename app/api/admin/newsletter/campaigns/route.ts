@@ -1,3 +1,4 @@
+import { withAdminMutation } from "@/lib/security/admin-mutation";
 import { requireAdmin } from "@/lib/auth/admin-server";
 import { createNewsletterCampaignDraft, getNewsletterCampaigns } from "@/lib/newsletter";
 import { readJsonObject } from "@/lib/http/read-body";
@@ -10,7 +11,7 @@ export async function GET() {
   return Response.json({ ok: true, campaigns });
 }
 
-export async function POST(request: Request) {
+export const POST = withAdminMutation(async function POST(request: Request) {
   const admin = await requireAdmin();
   if (!admin.ok) return admin.response;
 
@@ -24,4 +25,4 @@ export async function POST(request: Request) {
   }
 
   return Response.json(result, { status: 201 });
-}
+}, { maxBytes: 1024 * 1024 });

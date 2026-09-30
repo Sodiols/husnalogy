@@ -1,9 +1,10 @@
+import { withAdminMutation } from "@/lib/security/admin-mutation";
 import { requireProductEditor } from "@/lib/auth/roles";
 import { importLegacyMockupsForProduct } from "@/lib/customizer/mockup-store";
 import { rejectLargeRequest } from "@/lib/security/rate-limit";
 import { readJsonObject } from "@/lib/http/read-body";
 
-export async function POST(request: Request, { params }: any) {
+export const POST = withAdminMutation(async function POST(request: Request, { params }: any) {
   const { productId } = await params;
   // Ownership is re-read from the database: a designer cannot reach another
   // designer's design by guessing a product id.
@@ -22,4 +23,4 @@ export async function POST(request: Request, { params }: any) {
   } catch (error: any) {
     return Response.json({ ok: false, error: String(error?.message || "Could not import legacy mockups.").slice(0, 300) }, { status: 422 });
   }
-}
+}, { maxBytes: 1024 * 1024, studio: true });

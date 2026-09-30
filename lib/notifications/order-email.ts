@@ -8,7 +8,7 @@ import { formatCurrency } from "@/lib/currency";
 import { BUSINESS_INFO, ORDER_POLICY } from "@/lib/launch-config";
 import type { OrderView } from "@/lib/orders/order-view";
 
-export type EmailMessage = { to: string; subject: string; html: string; text: string };
+export type EmailMessage = { to: string; subject: string; html: string; text: string; delivery?: { from: string; replyTo: string } };
 
 const ESCAPES: Record<string, string> = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
 

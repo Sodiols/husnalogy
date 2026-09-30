@@ -7,18 +7,19 @@
  * mandatory `line_number` that links the snapshot to its order item.
  */
 
-import { createHash } from "crypto";
 import { customizationFromRow } from "@/lib/customizer/customizations";
 import { templateToDocument, resolveCustomerDocument } from "@/lib/customizer/v2/document";
 import { runPreflight } from "@/lib/customizer/v2/preflight";
 import { collectCustomerAssetReferences, stripEphemeralAssetUrls } from "@/lib/customizer/v2/asset-references";
 import type { DesignSnapshotPayload } from "@/lib/orders/checkout";
+import { makeProductionInput, productionIntegrityHash, SNAPSHOT_SCHEMA_VERSION } from "@/lib/customizer/production-input";
 
 export function computeIntegrityHash(payload: unknown): string {
-  return createHash("sha256").update(JSON.stringify(payload)).digest("hex");
+  return productionIntegrityHash(payload);
 }
 
 export type SnapshotInput = {
+  orderId?: string;
   /** The trusted order line this design is bought on. Required. */
   lineNumber: number;
   row: Record<string, any>;
@@ -63,6 +64,8 @@ export function composeOrderDesignSnapshot(
   const assetReferences = collectCustomerAssetReferences({ values, editorState, uploadedFiles, document: resolved }, customization.userId);
 
   const snapshot = {
+    snapshotSchemaVersion: SNAPSHOT_SCHEMA_VERSION,
+    production: makeProductionInput(template, values, editorState),
     orderLineNumber: input.lineNumber,
     productId: product.id,
     productTitle: String(product.title || ""),

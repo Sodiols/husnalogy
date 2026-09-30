@@ -15,6 +15,7 @@
 import type { EmailMessage } from "@/lib/notifications/order-email";
 
 export type EmailTransport = {
+  prepare?(message: EmailMessage): EmailMessage;
   send(message: EmailMessage, idempotencyKey: string): Promise<{ id: string }>;
 };
 
@@ -32,6 +33,7 @@ export function getEmailTransport(env: Record<string, string | undefined> = proc
   const replyTo = String(env.EMAIL_REPLY_TO || "").trim();
 
   return {
+    prepare(message) { return { ...message, delivery: { from, replyTo } }; },
     async send(message, idempotencyKey) {
       let response: Response;
       try {
@@ -43,12 +45,12 @@ export function getEmailTransport(env: Record<string, string | undefined> = proc
             "Idempotency-Key": idempotencyKey,
           },
           body: JSON.stringify({
-            from,
+            from: message.delivery?.from || from,
             to: [message.to],
             subject: message.subject,
             html: message.html,
             text: message.text,
-            ...(replyTo ? { reply_to: replyTo } : {}),
+            ...((message.delivery?.replyTo ?? replyTo) ? { reply_to: message.delivery?.replyTo ?? replyTo } : {}),
           }),
           signal: AbortSignal.timeout(10_000),
         });
@@ -61,7 +63,8 @@ export function getEmailTransport(env: Record<string, string | undefined> = proc
         // (bounded) so a fixed configuration eventually delivers.
         throw new EmailSendError(`Email provider responded ${response.status}: ${String(payload?.message || "").slice(0, 200)}`, response.status === 429 || response.status >= 500);
       }
-      return { id: String(payload?.id || "") };
+      if (!payload?.id) throw new EmailSendError("Email provider accepted the request without a delivery reference.", true);
+      return { id: String(payload.id) };
     },
   };
 }

@@ -147,6 +147,10 @@ export async function proxy(request) {
     data: { user },
   } = await supabase.auth.getUser();
 
+  // Clearing an expired/downgraded session needs no admin capability. The
+  // exact logout route still applies its shared origin/method/body guard.
+  if (pathname === "/api/admin/logout") return response;
+
   if ((pathname === "/login" || pathname === "/signup") && user) {
     const { data: profile } = await supabase.from("profiles").select("role").eq("id", user.id).maybeSingle();
     // Same resolver as every sign-in path. A signed-in customer with no

@@ -1,8 +1,9 @@
+import { withAdminMutation } from "@/lib/security/admin-mutation";
 import { requireAdmin } from "@/lib/auth/admin-server";
 import { deleteContactMessage, updateContactMessageStatus } from "@/lib/messages";
 import { readJsonObject } from "@/lib/http/read-body";
 
-export async function PUT(request, { params }) {
+export const PUT = withAdminMutation(async function PUT(request, { params }) {
   const admin = await requireAdmin();
   if (!admin.ok) return admin.response;
 
@@ -17,9 +18,9 @@ export async function PUT(request, { params }) {
   }
 
   return Response.json({ ok: true, message: result.message });
-}
+}, { maxBytes: 1024 * 1024 });
 
-export async function DELETE(_request, { params }) {
+export const DELETE = withAdminMutation(async function DELETE(_request, { params }) {
   const admin = await requireAdmin();
   if (!admin.ok) return admin.response;
 
@@ -31,4 +32,4 @@ export async function DELETE(_request, { params }) {
   }
 
   return Response.json({ ok: true });
-}
+}, { maxBytes: 1024 * 1024 });

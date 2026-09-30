@@ -1,3 +1,4 @@
+import { withAdminMutation } from "@/lib/security/admin-mutation";
 import { requireProductEditor } from "@/lib/auth/roles";
 import { loadNormalizedMockupTemplate, saveNormalizedMockupTemplate } from "@/lib/customizer/mockup-store";
 import { rejectLargeRequest } from "@/lib/security/rate-limit";
@@ -20,7 +21,7 @@ export async function GET(_request: Request, { params }: any) {
   }
 }
 
-export async function PUT(request: Request, { params }: any) {
+export const PUT = withAdminMutation(async function PUT(request: Request, { params }: any) {
   const { productId } = await params;
   // Ownership is re-read from the database: a designer cannot reach another
   // designer's design by guessing a product id.
@@ -41,4 +42,4 @@ export async function PUT(request: Request, { params }: any) {
     const message = String(error?.message || "Could not save the mockup configuration.");
     return Response.json({ ok: false, error: message.slice(0, 300) }, { status: /required|invalid|perspective|corner/i.test(message) ? 422 : 500 });
   }
-}
+}, { maxBytes: 1024 * 1024, studio: true });
