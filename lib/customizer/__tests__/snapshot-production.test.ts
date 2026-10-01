@@ -116,6 +116,23 @@ describe("immutable manufacturing: real checkout SQL, dispatch, renderer and out
       expect(storage.calls).not.toContain("product_customizations");
     });
   }
+  it("REGRESSION: customization deleted + template altered + product archived + temporary upload removed, all at once → identical production", async () => {
+    const { row, customization, productId, template, sourcePath } = await place({ pdf: true });
+    const opened = await openProductionInput(readProductionSnapshot(row), productionStorage(storage.client));
+    const expected = await renderCustomizationPages({ template: row.snapshot.production.template, values: {}, editorState: null, mode: "print", includeBleed: true, ...opened });
+    await t.asService(db => db.query("delete from public.product_customizations where id=$1", [customization]));
+    await t.asService(db => db.query("update public.product_customizer_templates set layers='[]',version=2 where id=$1", [template]));
+    await t.asService(db => db.query("update public.products set status='deleted' where id=$1", [productId]));
+    storage.blobs.delete(`customer-uploads/${sourcePath}`);
+    await t.db.query("delete from storage.objects where bucket_id='customer-uploads' and name=$1", [sourcePath]);
+    const callsBefore = storage.calls.length;
+    const outputs = await render(row);
+    expect(outputs.map((output: any) => output.format).sort()).toEqual(["pdf", "png"]);
+    expect(outputs.find((output: any) => output.format === "png").checksum).toBe(expected[0].checksum);
+    // The finalized render never looked at live catalogue or design tables.
+    const touched = storage.calls.slice(callsBefore);
+    for (const table of ["product_customizations", "products", "product_customizer_templates", "customizer_template_versions"]) expect(touched).not.toContain(table);
+  });
   it("G: deletion of the actual customer account cascade preserves pending production", async () => {
     const { row } = await place();
     await t.db.query("delete from auth.users where id=$1", [USERS.customerA.id]);

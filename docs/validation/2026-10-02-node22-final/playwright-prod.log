@@ -1,0 +1,84 @@
+[WebServer] [env] UPSTASH_REDIS_REST_URL is not set: rate limits are enforced per Node process only. That is exact for the single `npm start` process Hostinger runs; set REQUIRE_DISTRIBUTED_RATE_LIMIT=1 and configure Upstash before running more than one instance.
+[WebServer] [env] RESEND_API_KEY is not set: order confirmation and new-order emails are queued durably but NOT sent until email is configured.
+[WebServer] [env] SENTRY_DSN is not set: server errors are logged to stdout only; no one is alerted when checkout or production fails.
+[WebServer] [env] ENABLE_CUSTOMIZER_E2E_FIXTURE is enabled; the /__e2e test fixture pages are publicly reachable. Never set it on the live site.
+
+Running 50 tests using 1 worker
+
+  ok  1 [chromium] › e2e\customizer-responsive.spec.ts:97:9 › customer customizer responsive shell › fits and centres the page at 320x568 (7.7s)
+  ok  2 [chromium] › e2e\customizer-responsive.spec.ts:97:9 › customer customizer responsive shell › fits and centres the page at 360x800 (4.0s)
+  ok  3 [chromium] › e2e\customizer-responsive.spec.ts:97:9 › customer customizer responsive shell › fits and centres the page at 375x812 (4.1s)
+  ok  4 [chromium] › e2e\customizer-responsive.spec.ts:97:9 › customer customizer responsive shell › fits and centres the page at 390x844 (4.1s)
+  ok  5 [chromium] › e2e\customizer-responsive.spec.ts:97:9 › customer customizer responsive shell › fits and centres the page at 414x896 (4.1s)
+  ok  6 [chromium] › e2e\customizer-responsive.spec.ts:97:9 › customer customizer responsive shell › fits and centres the page at 768x1024 (4.4s)
+  ok  7 [chromium] › e2e\customizer-responsive.spec.ts:97:9 › customer customizer responsive shell › fits and centres the page at 1024x768 (landscape) (4.0s)
+  ok  8 [chromium] › e2e\customizer-responsive.spec.ts:97:9 › customer customizer responsive shell › fits and centres the page at 1366x768 (4.2s)
+  ok  9 [chromium] › e2e\customizer-responsive.spec.ts:97:9 › customer customizer responsive shell › fits and centres the page at 1440x900 (4.0s)
+  ok 10 [chromium] › e2e\customizer-responsive.spec.ts:97:9 › customer customizer responsive shell › fits and centres the page at 1920x1080 (4.1s)
+  ok 11 [chromium] › e2e\customizer-text-drag.spec.ts:213:9 › text drags translate exactly › auto-width, left/top aligned: a plain drag moves the type by the gesture delta (6.7s)
+  ok 12 [chromium] › e2e\customizer-text-drag.spec.ts:220:9 › text drags translate exactly › auto-width, left/top aligned: enlarge, then drag (7.9s)
+  ok 13 [chromium] › e2e\customizer-text-drag.spec.ts:226:9 › text drags translate exactly › auto-width, left/top aligned: shrink, then drag (9.6s)
+  ok 14 [chromium] › e2e\customizer-text-drag.spec.ts:213:9 › text drags translate exactly › auto-height multiline: a plain drag moves the type by the gesture delta (6.5s)
+  ok 15 [chromium] › e2e\customizer-text-drag.spec.ts:220:9 › text drags translate exactly › auto-height multiline: enlarge, then drag (8.1s)
+  ok 16 [chromium] › e2e\customizer-text-drag.spec.ts:226:9 › text drags translate exactly › auto-height multiline: shrink, then drag (9.5s)
+  ok 17 [chromium] › e2e\customizer-text-drag.spec.ts:213:9 › text drags translate exactly › fixed size: a plain drag moves the type by the gesture delta (6.5s)
+  ok 18 [chromium] › e2e\customizer-text-drag.spec.ts:220:9 › text drags translate exactly › fixed size: enlarge, then drag (8.0s)
+  ok 19 [chromium] › e2e\customizer-text-drag.spec.ts:226:9 › text drags translate exactly › fixed size: shrink, then drag (8.7s)
+  ok 20 [chromium] › e2e\customizer-text-drag.spec.ts:238:7 › text drags translate exactly › repeated enlarge/drag/shrink/drag cycles never accumulate drift (16.3s)
+  ok 21 [chromium] › e2e\customizer-text-drag.spec.ts:247:7 › text drags translate exactly › undo and redo around a resize leave the next drag exact (10.3s)
+  ok 22 [chromium] › e2e\customizer-text-drag.spec.ts:258:7 › text drags translate exactly › a rotated text layer still translates along the document axes (8.3s)
+  ok 23 [chromium] › e2e\customizer-text-drag.spec.ts:279:9 › text drags translate exactly › stays exact at 50% zoom (7.3s)
+  ok 24 [chromium] › e2e\customizer-text-drag.spec.ts:279:9 › text drags translate exactly › stays exact at 100% zoom (7.5s)
+  ok 25 [chromium] › e2e\customizer-text-drag.spec.ts:279:9 › text drags translate exactly › stays exact at 150% zoom (7.4s)
+  ok 26 [chromium] › e2e\customizer-text-drag.spec.ts:279:9 › text drags translate exactly › stays exact at 200% zoom (7.7s)
+  ok 27 [chromium] › e2e\customizer-text-drag.spec.ts:298:7 › text drags translate exactly › a multi-selection of text and a shape keeps their spacing exactly (8.3s)
+  ok 28 [chromium] › e2e\image-optimizer.spec.ts:8:5 › public catalogue images are optimized; private, signed and foreign sources are refused (2.1s)
+[WebServer] ⨯ Error: The destination stream closed early.
+[WebServer]     at ignore-listed frames {
+[WebServer]   digest: '3912632615'
+[WebServer] }
+[WebServer] ⨯ Error: The destination stream closed early.
+[WebServer]     at ignore-listed frames {
+[WebServer]   digest: '3912632615'
+[WebServer] }
+  ok 29 [chromium] › e2e\product-option-persistence.spec.ts:27:7 › product option persistence (Paper Style) › changing ONLY Paper Style, leaving and returning restores it (3.3s)
+  ok 30 [chromium] › e2e\product-option-persistence.spec.ts:39:7 › product option persistence (Paper Style) › Paper Style then another option: both are restored (4.3s)
+  ok 31 [chromium] › e2e\product-option-persistence.spec.ts:50:7 › product option persistence (Paper Style) › rapid Paper Style changes restore the FINAL choice after a browser reload (3.7s)
+  ok 32 [chromium] › e2e\product-option-persistence.spec.ts:58:7 › product option persistence (Paper Style) › an OLD saved object without Paper Style falls back safely and keeps the other options (2.7s)
+  ok 33 [chromium] › e2e\production-security-smoke.spec.ts:3:5 › anonymous clients cannot read production assets or invoke privileged recovery/worker (533ms)
+  ok 34 [chromium] › e2e\production-security-smoke.spec.ts:13:5 › expired-session logout works through proxy and cross-site logout is refused (71ms)
+  ok 35 [chromium] › e2e\public-build-smoke.spec.ts:3:5 › local-font login shell is responsive and makes no Google Font request (3.0s)
+[WebServer] ⨯ Error: The destination stream closed early.
+[WebServer]     at ignore-listed frames {
+[WebServer]   digest: '3912632615'
+[WebServer] }
+[WebServer] ⨯ Error: The destination stream closed early.
+[WebServer]     at ignore-listed frames {
+[WebServer]   digest: '3912632615'
+[WebServer] }
+  ok 36 [chromium] › e2e\webkit-critical.spec.ts:51:5 › homepage renders and does not overflow horizontally (2.0s)
+  ok 37 [chromium] › e2e\webkit-critical.spec.ts:63:5 › product listing and a product page render (4.5s)
+  ok 38 [chromium] › e2e\webkit-critical.spec.ts:74:5 › cart and checkout routes respond on WebKit (2.8s)
+  ok 39 [chromium] › e2e\webkit-critical.spec.ts:90:5 › customizer mounts, fits the page, and zooms on WebKit (5.7s)
+  ok 40 [chromium] › e2e\webkit-critical.spec.ts:144:5 › customizer text field accepts input on WebKit (5.0s)
+  ok 41 [webkit] › e2e\webkit-critical.spec.ts:51:5 › homepage renders and does not overflow horizontally (3.6s)
+[WebServer] ⨯ Error: The destination stream closed early.
+[WebServer]     at ignore-listed frames {
+[WebServer]   digest: '3912632615'
+[WebServer] }
+  ok 42 [webkit] › e2e\webkit-critical.spec.ts:63:5 › product listing and a product page render (5.9s)
+  ok 43 [webkit] › e2e\webkit-critical.spec.ts:74:5 › cart and checkout routes respond on WebKit (4.3s)
+  ok 44 [webkit] › e2e\webkit-critical.spec.ts:90:5 › customizer mounts, fits the page, and zooms on WebKit (8.9s)
+  ok 45 [webkit] › e2e\webkit-critical.spec.ts:144:5 › customizer text field accepts input on WebKit (7.9s)
+  ok 46 [mobile-safari] › e2e\webkit-critical.spec.ts:51:5 › homepage renders and does not overflow horizontally (3.1s)
+[WebServer] ⨯ Error: The destination stream closed early.
+[WebServer]     at ignore-listed frames {
+[WebServer]   digest: '3912632615'
+[WebServer] }
+  ok 47 [mobile-safari] › e2e\webkit-critical.spec.ts:63:5 › product listing and a product page render (5.4s)
+  ok 48 [mobile-safari] › e2e\webkit-critical.spec.ts:74:5 › cart and checkout routes respond on WebKit (3.6s)
+  ok 49 [mobile-safari] › e2e\webkit-critical.spec.ts:90:5 › customizer mounts, fits the page, and zooms on WebKit (8.4s)
+  ok 50 [mobile-safari] › e2e\webkit-critical.spec.ts:144:5 › customizer text field accepts input on WebKit (8.3s)
+
+  50 passed (5.0m)
+exit=0

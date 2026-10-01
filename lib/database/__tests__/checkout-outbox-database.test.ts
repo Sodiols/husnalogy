@@ -170,7 +170,8 @@ describe("snapshot ↔ order item linkage is mandatory and exact", () => {
     };
     await expectDbError(callCheckoutRpc(t, combined), /CHECKOUT_SNAPSHOT_MISMATCH/);
 
-    const correct = { ...combined, snapshots: [{ ...a.snapshots[0], line_number: 1 }, { ...b.snapshots[0], line_number: 2 }] };
+    // Every attempt reserves a fresh order id; a released one can never commit.
+    const correct = { ...combined, order: { ...combined.order, id: `${combined.order.id}-retry` }, snapshots: [{ ...a.snapshots[0], line_number: 1 }, { ...b.snapshots[0], line_number: 2 }] };
     const created = await callCheckoutRpc(t, correct);
     const links = (
       await t.db.query<any>(
@@ -417,7 +418,9 @@ describe("a failure at ANY write stage rolls back the whole checkout", () => {
     expect((await t.db.query<any>("select status, order_id from public.product_customizations where id = $1", [design])).rows[0]).toEqual({ status: "draft", order_id: null });
 
     // And the retry after the fault is gone succeeds exactly once.
-    expect((await callCheckoutRpc(t, payload)).status).toBe("created");
-    expect((await callCheckoutRpc(t, payload)).status).toBe("replayed");
+    // (A new attempt reserves a new order id; the failed one stays released.)
+    const retry = { ...payload, order: { ...payload.order, id: `${payload.order.id}-retry` } };
+    expect((await callCheckoutRpc(t, retry)).status).toBe("created");
+    expect((await callCheckoutRpc(t, retry)).status).toBe("replayed");
   });
 });

@@ -1,6 +1,7 @@
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
+import { logEvent } from "@/lib/observability/logger";
 
 function normalizeSupabaseUrl(value) {
   return String(value || "").replace(/\/rest\/v1\/?$/i, "").replace(/\/+$/g, "");
@@ -26,16 +27,35 @@ function getPublishableKey() {
 
 const CLOCK_SKEW_RETRY_DELAY_MS = 1200;
 
+/** Claims of a JWT bearer token (never the token itself). */
+function bearerClaims(init?: RequestInit, input?: RequestInfo | URL): { iat?: number; exp?: number } | null {
+  const headers = new Headers(init?.headers || (input instanceof Request ? input.headers : undefined));
+  const token = (headers.get("authorization") || "").replace(/^Bearer\s+/i, "");
+  const parts = token.split(".");
+  if (parts.length !== 3) return null; // sb_publishable_/sb_secret_ keys are not JWTs
+  try {
+    const claims = JSON.parse(Buffer.from(parts[1], "base64url").toString("utf8"));
+    return { iat: Number(claims.iat) || undefined, exp: Number(claims.exp) || undefined };
+  } catch {
+    return null;
+  }
+}
+
 /**
  * `fetch` that retries a PostgREST request ONCE when it is rejected with
- * PGRST303 "JWT issued at future".
+ * PGRST303 "JWT issued at future", and REPORTS the measured clock difference.
  *
- * The token in question is minted per request by Supabase's own gateway (the
- * `sb_secret_`/`sb_publishable_` API keys), not by this app, so a brief clock
- * difference between the gateway and PostgREST occasionally dates it a moment
- * ahead. PostgREST rejects the request during authentication, before any SQL
- * runs, so replaying it is safe for every method. Only /rest/v1 is retried:
- * its bodies are JSON strings and can be re-sent, unlike storage uploads.
+ * PGRST303 means the token's `iat` is ahead of PostgREST's clock. With
+ * `sb_secret_`/`sb_publishable_` keys the token is minted per request by
+ * Supabase's gateway, not by this app; with a user session it is minted by
+ * Supabase Auth. PostgREST rejects the request during authentication, before
+ * any SQL runs, so ONE replay is safe for every method. Only /rest/v1 is
+ * retried: its bodies are JSON strings and can be re-sent, unlike uploads.
+ *
+ * The retry is not the fix: each occurrence is logged at error level (and
+ * reaches monitoring) with the server clock, the token's iat/exp and the
+ * gateway's Date header, so the actual skew can be measured and the clock
+ * synchronized (HOSTINGER_DEPLOYMENT.md, "Clock synchronization").
  */
 export async function clockSkewRetryFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
   const response = await fetch(input, init);
@@ -47,7 +67,20 @@ export async function clockSkewRetryFetch(input: RequestInfo | URL, init?: Reque
   const body = await response.clone().json().catch(() => null);
   if (body?.code !== "PGRST303") return response;
 
-  console.warn(`[supabase] PGRST303 (JWT issued at future) from ${new URL(url).pathname}; retrying once.`);
+  const serverNowMs = Date.now();
+  const claims = bearerClaims(init, input);
+  const gatewayDateMs = Date.parse(response.headers.get("date") || "");
+  logEvent("error", "supabase.jwt_issued_in_future", {
+    stage: "clock_skew",
+    path: new URL(url).pathname,
+    serverNow: new Date(serverNowMs).toISOString(),
+    credentialKind: claims ? "jwt" : "api-key",
+    iat: claims?.iat ? new Date(claims.iat * 1000).toISOString() : undefined,
+    exp: claims?.exp ? new Date(claims.exp * 1000).toISOString() : undefined,
+    iatAheadOfServerMs: claims?.iat ? claims.iat * 1000 - serverNowMs : undefined,
+    // One-second resolution; negative means this server is ahead of Supabase.
+    gatewayMinusServerMs: Number.isFinite(gatewayDateMs) ? gatewayDateMs - serverNowMs : undefined,
+  });
   await new Promise((resolve) => setTimeout(resolve, CLOCK_SKEW_RETRY_DELAY_MS));
   return fetch(input, init);
 }

@@ -5,8 +5,19 @@
  */
 
 import { randomUUID } from "node:crypto";
-import type { TestDatabase } from "@/lib/testing/pglite-supabase";
 import { makeProductionInput, productionIntegrityHash } from "@/lib/customizer/production-input";
+
+/**
+ * Any Postgres the fixtures can drive: the PGlite TestDatabase or a real
+ * multi-connection server (lib/testing/postgres-server.ts).
+ */
+export interface SqlConnection {
+  query<T = any>(sql: string, params?: unknown[]): Promise<{ rows: T[] }>;
+}
+export interface SqlDatabase {
+  db: SqlConnection;
+  asService<T>(work: (db: SqlConnection) => Promise<T>): Promise<T>;
+}
 
 export const USERS = {
   customerA: { id: "00000000-0000-4000-8000-00000000000a", email: "customer.a@example.com" },
@@ -80,7 +91,7 @@ export const VERSION_DOCUMENT = {
   settings: { featureFlags: { customizer_v2_server_rendering: true } },
 };
 
-export async function seedCheckoutFixtures(t: TestDatabase): Promise<void> {
+export async function seedCheckoutFixtures(t: SqlDatabase): Promise<void> {
   const { db } = t;
   for (const user of Object.values(USERS)) {
     await db.query("insert into auth.users (id, email, email_confirmed_at) values ($1, $2, now())", [user.id, user.email]);
@@ -142,7 +153,7 @@ export async function seedCheckoutFixtures(t: TestDatabase): Promise<void> {
 
 /** A server-side cart line, as the storefront creates one. */
 export async function addCartLine(
-  t: TestDatabase,
+  t: SqlDatabase,
   options: { user?: { id: string }; productId?: string; quantity?: number; customizationId?: string | null } = {},
 ): Promise<string> {
   const id = randomUUID();
@@ -159,7 +170,7 @@ export async function addCartLine(
   return id;
 }
 
-export async function updatedAt(t: TestDatabase, table: string, id: string): Promise<string> {
+export async function updatedAt(t: SqlDatabase, table: string, id: string): Promise<string> {
   const result = await t.db.query<{ at: string }>(`select updated_at::text as at from public.${table} where id = $1`, [id]);
   return result.rows[0]?.at;
 }
@@ -172,7 +183,7 @@ let orderSequence = 0;
  * TypeScript pipeline instead.
  */
 export async function orderPayload(
-  t: TestDatabase,
+  t: SqlDatabase,
   options: {
     customer?: { id: string; email: string };
     submissionId?: string;
@@ -239,7 +250,7 @@ export async function orderPayload(
       metadata: {},
     },
   ];
-  const templateId = productId === "product-second" ? IDS.templateSecond : IDS.templateActive;
+  const templateId: string = productId === "product-second" ? IDS.templateSecond : IDS.templateActive;
   const versionId: string = productId === "product-second" ? IDS.versionSecond : IDS.versionActive;
   const snapshots = customizationId
     ? [
@@ -277,17 +288,55 @@ export async function orderPayload(
   return { order, items, snapshots, guards, cartItemId };
 }
 
-export async function callCheckoutRpc(t: TestDatabase, payload: { order: unknown; items: unknown; snapshots: unknown; guards: unknown }) {
-  return t.asService(async (db) => {
-    const result = await db.query<{ r: { status: string; order_id: string } }>(
-      "select public.create_checkout_order($1::jsonb, $2::jsonb, $3::jsonb, $4::jsonb) as r",
-      [JSON.stringify(payload.order), JSON.stringify(payload.items), JSON.stringify(payload.snapshots), JSON.stringify(payload.guards)],
-    );
-    return result.rows[0].r;
-  });
+type OrderIdentity = { id: string; customer_id: string; checkout_submission_id: string };
+
+/**
+ * Take the checkout preparation lease for an order payload, exactly as the
+ * application does before any expensive work. Returns null when this order id
+ * already has a lease (a test replaying the same payload).
+ */
+export async function acquirePreparation(t: SqlDatabase, order: OrderIdentity, leaseSeconds = 300): Promise<{ id: string; leaseToken: string } | null> {
+  // Databases migrated only up to an older version have no leases yet.
+  const table = await t.db.query<{ exists: boolean }>("select to_regclass('public.checkout_preparations') is not null as exists");
+  if (!table.rows[0]?.exists) return null;
+  const existing = await t.db.query("select 1 from public.checkout_preparations where order_id = $1", [order.id]);
+  if (existing.rows.length) return null;
+  const result = await t.asService((db) =>
+    db.query<{ r: { status: string; id?: string; leaseToken?: string } }>(
+      "select public.acquire_checkout_preparation($1::uuid, $2, $3, $4, $5) as r",
+      [order.customer_id, order.checkout_submission_id, "0".repeat(64), order.id, leaseSeconds],
+    ),
+  );
+  const attempt = result.rows[0].r;
+  if (attempt.status !== "acquired" || !attempt.id || !attempt.leaseToken) throw new Error(`CHECKOUT_PREPARATION_BUSY: ${JSON.stringify(attempt)}`);
+  return { id: attempt.id, leaseToken: attempt.leaseToken };
 }
 
-export async function count(t: TestDatabase, sql: string, params: unknown[] = []): Promise<number> {
+export async function releasePreparation(t: SqlDatabase, lease: { id: string; leaseToken: string }, code = "TEST_FAILED") {
+  const result = await t.asService((db) => db.query<{ s: string | null }>("select public.release_checkout_preparation($1::uuid, $2::uuid, $3) as s", [lease.id, lease.leaseToken, code]));
+  return result.rows[0]?.s ?? null;
+}
+
+/** The checkout transaction, called like the application: under a lease. */
+export async function callCheckoutRpc(t: SqlDatabase, payload: { order: unknown; items: unknown; snapshots: unknown; guards: unknown }) {
+  const lease = await acquirePreparation(t, payload.order as OrderIdentity);
+  try {
+    const r = await t.asService(async (db) => {
+      const result = await db.query<{ r: { status: string; order_id: string } }>(
+        "select public.create_checkout_order($1::jsonb, $2::jsonb, $3::jsonb, $4::jsonb) as r",
+        [JSON.stringify(payload.order), JSON.stringify(payload.items), JSON.stringify(payload.snapshots), JSON.stringify(payload.guards)],
+      );
+      return result.rows[0].r;
+    });
+    if (lease && r.status !== "created") await releasePreparation(t, lease, `NOT_CREATED_${r.status}`);
+    return r;
+  } catch (error) {
+    if (lease) await releasePreparation(t, lease).catch(() => undefined);
+    throw error;
+  }
+}
+
+export async function count(t: SqlDatabase, sql: string, params: unknown[] = []): Promise<number> {
   const result = await t.db.query<{ n: number }>(`select count(*)::int as n from (${sql}) q`, params);
   return result.rows[0].n;
 }

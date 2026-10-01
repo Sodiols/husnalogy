@@ -1,0 +1,2773 @@
+{
+  "config": {
+    "argv": [
+      "C:\\Users\\DUBAIL~1\\AppData\\Local\\Temp\\claude\\D--HUSNALOGY-Main\\36b6935a-008b-4fa3-a44a-74fb9b38b7c0\\scratchpad\\node-v22.23.3-win-x64\\node.exe",
+      "D:\\HUSNALOGY\\Main\\node_modules\\@playwright\\test\\cli.js",
+      "test",
+      "e2e/admin-canvas-interaction.spec.ts",
+      "e2e/customizer-gesture-cancellation.spec.ts",
+      "e2e/customizer-interaction-contract.spec.ts",
+      "e2e/customizer-performance.spec.ts",
+      "e2e/customizer-resize.spec.ts",
+      "e2e/customizer-text-editing.spec.ts",
+      "--project=chromium",
+      "--workers=1",
+      "--reporter=list,json"
+    ],
+    "configFile": "D:\\HUSNALOGY\\Main\\playwright.config.ts",
+    "rootDir": "D:/HUSNALOGY/Main/e2e",
+    "failOnFlakyTests": false,
+    "forbidOnly": false,
+    "fullyParallel": false,
+    "globalSetup": null,
+    "globalTeardown": null,
+    "globalTimeout": 0,
+    "grep": {},
+    "grepInvert": null,
+    "maxFailures": 0,
+    "metadata": {
+      "actualWorkers": 1
+    },
+    "preserveOutput": "always",
+    "projects": [
+      {
+        "outputDir": "D:/HUSNALOGY/Main/test-results",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "actualWorkers": 1
+        },
+        "id": "chromium",
+        "name": "chromium",
+        "testDir": "D:/HUSNALOGY/Main/e2e",
+        "testIgnore": [],
+        "testMatch": [
+          "**/*.@(spec|test).?(c|m)[jt]s?(x)"
+        ],
+        "timeout": 90000
+      },
+      {
+        "outputDir": "D:/HUSNALOGY/Main/test-results",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "actualWorkers": 1
+        },
+        "id": "webkit",
+        "name": "webkit",
+        "testDir": "D:/HUSNALOGY/Main/e2e",
+        "testIgnore": [],
+        "testMatch": [
+          "/webkit-critical\\.spec\\.ts/"
+        ],
+        "timeout": 90000
+      },
+      {
+        "outputDir": "D:/HUSNALOGY/Main/test-results",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "actualWorkers": 1
+        },
+        "id": "mobile-safari",
+        "name": "mobile-safari",
+        "testDir": "D:/HUSNALOGY/Main/e2e",
+        "testIgnore": [],
+        "testMatch": [
+          "/webkit-critical\\.spec\\.ts/"
+        ],
+        "timeout": 90000
+      }
+    ],
+    "quiet": false,
+    "reporter": [
+      [
+        "list"
+      ],
+      [
+        "json"
+      ]
+    ],
+    "reportSlowTests": {
+      "max": 5,
+      "threshold": 300000
+    },
+    "shard": null,
+    "tags": [],
+    "updateSnapshots": "missing",
+    "updateSourceMethod": "patch",
+    "version": "1.61.1",
+    "workers": 1,
+    "webServer": {
+      "command": "node --max-http-header-size=65536 node_modules/next/dist/bin/next dev -H 127.0.0.1 -p 3300",
+      "url": "http://127.0.0.1:3300",
+      "reuseExistingServer": false,
+      "timeout": 300000
+    }
+  },
+  "suites": [
+    {
+      "title": "admin-canvas-interaction.spec.ts",
+      "file": "admin-canvas-interaction.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "admin canvas interaction contract",
+          "file": "admin-canvas-interaction.spec.ts",
+          "line": 110,
+          "column": 6,
+          "specs": [
+            {
+              "title": "admin selection attaches the transformer to the clicked object",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 90000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 6344,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-10-01T18:46:31.397Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "02e411776896aa900049-d3104828c4b1ace396e0",
+              "file": "admin-canvas-interaction.spec.ts",
+              "line": 122,
+              "column": 7
+            },
+            {
+              "title": "admin drag is transient and commits once",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 90000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 5960,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-10-01T18:46:38.032Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "02e411776896aa900049-3869328fc1bab7bba8d1",
+              "file": "admin-canvas-interaction.spec.ts",
+              "line": 127,
+              "column": 7
+            },
+            {
+              "title": "admin resize re-renders only the resized layer and commits once",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 90000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 5522,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-10-01T18:46:44.026Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "02e411776896aa900049-2d55b0660267445ee1b5",
+              "file": "admin-canvas-interaction.spec.ts",
+              "line": 142,
+              "column": 7
+            },
+            {
+              "title": "admin rotation renders nothing until release and commits once",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 90000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 5701,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-10-01T18:46:49.581Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "02e411776896aa900049-5273fb2cfdc96c2ce5bc",
+              "file": "admin-canvas-interaction.spec.ts",
+              "line": 158,
+              "column": 7
+            },
+            {
+              "title": "an admin multi-object drag is one atomic commit",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 90000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 6221,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-10-01T18:46:55.309Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "02e411776896aa900049-585a24d4fdb091ef6eb3",
+              "file": "admin-canvas-interaction.spec.ts",
+              "line": 181,
+              "column": 7
+            },
+            {
+              "title": "admin zoom: the same screen drag moves the document half as far at 2x",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 90000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 7843,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-10-01T18:47:01.557Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "02e411776896aa900049-69e633772b889f5f3051",
+              "file": "admin-canvas-interaction.spec.ts",
+              "line": 200,
+              "column": 7
+            },
+            {
+              "title": "an admin-locked layer cannot be dragged",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 90000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 4605,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-10-01T18:47:09.428Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "02e411776896aa900049-af12d2833477d83f6b25",
+              "file": "admin-canvas-interaction.spec.ts",
+              "line": 218,
+              "column": 7
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "customizer-gesture-cancellation.spec.ts",
+      "file": "customizer-gesture-cancellation.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "gesture cancellation",
+          "file": "customizer-gesture-cancellation.spec.ts",
+          "line": 261,
+          "column": 6,
+          "specs": [
+            {
+              "title": "Escape abandons a live drag and leaves the editor usable",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 90000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 9809,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-10-01T18:47:14.086Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "1b32f1eaaba79759f65f-f1404899230f1c1e2fd5",
+              "file": "customizer-gesture-cancellation.spec.ts",
+              "line": 266,
+              "column": 7
+            },
+            {
+              "title": "pointercancel abandons a live drag",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 90000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 8122,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-10-01T18:47:23.920Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "1b32f1eaaba79759f65f-f1362d6947f77f932932",
+              "file": "customizer-gesture-cancellation.spec.ts",
+              "line": 277,
+              "column": 7
+            },
+            {
+              "title": "losing the window abandons a live drag",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 90000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 7988,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-10-01T18:47:32.072Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "1b32f1eaaba79759f65f-4d07aff462a9c835e696",
+              "file": "customizer-gesture-cancellation.spec.ts",
+              "line": 297,
+              "column": 7
+            },
+            {
+              "title": "hiding the tab abandons a live drag",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 90000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 8054,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-10-01T18:47:40.088Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "1b32f1eaaba79759f65f-9eded2d73a4266ea15da",
+              "file": "customizer-gesture-cancellation.spec.ts",
+              "line": 308,
+              "column": 7
+            },
+            {
+              "title": "Escape abandons a live RESIZE without resizing the object",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 90000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 7907,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-10-01T18:47:48.171Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "1b32f1eaaba79759f65f-a18ec00ea6cb3bc93578",
+              "file": "customizer-gesture-cancellation.spec.ts",
+              "line": 328,
+              "column": 7
+            },
+            {
+              "title": "Escape abandons a live ROTATION without rotating the object",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 90000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 8365,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-10-01T18:47:56.104Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "1b32f1eaaba79759f65f-05fd8a3ddc319c376de4",
+              "file": "customizer-gesture-cancellation.spec.ts",
+              "line": 353,
+              "column": 7
+            },
+            {
+              "title": "Escape with no gesture running still reaches the editor and clears the selection",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 90000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 5181,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-10-01T18:48:04.500Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "1b32f1eaaba79759f65f-aa4f4b9e0e703014343b",
+              "file": "customizer-gesture-cancellation.spec.ts",
+              "line": 390,
+              "column": 7
+            },
+            {
+              "title": "a cancelled gesture is never autosaved",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 90000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 9883,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-10-01T18:48:09.710Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "1b32f1eaaba79759f65f-2cd6e18dc3a498eb392b",
+              "file": "customizer-gesture-cancellation.spec.ts",
+              "line": 406,
+              "column": 7
+            },
+            {
+              "title": "two cancellations in a row do not break the third, real gesture",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 90000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 9323,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-10-01T18:48:19.620Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "1b32f1eaaba79759f65f-38c2deecefec10fe9444",
+              "file": "customizer-gesture-cancellation.spec.ts",
+              "line": 425,
+              "column": 7
+            }
+          ]
+        },
+        {
+          "title": "transform handle reachability",
+          "file": "customizer-gesture-cancellation.spec.ts",
+          "line": 459,
+          "column": 6,
+          "specs": [
+            {
+              "title": "an object near the top edge can still be rotated",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 90000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 6315,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-10-01T18:48:28.969Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "1b32f1eaaba79759f65f-e8b7554e4dfca1363a55",
+              "file": "customizer-gesture-cancellation.spec.ts",
+              "line": 464,
+              "column": 7
+            },
+            {
+              "title": "the page still lines up exactly with the artwork underneath it",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 90000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 4154,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-10-01T18:48:35.313Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "1b32f1eaaba79759f65f-c08de271451116f9a8f7",
+              "file": "customizer-gesture-cancellation.spec.ts",
+              "line": 520,
+              "column": 7
+            },
+            {
+              "title": "a click in the gutter outside the page clears the selection",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 90000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 6235,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-10-01T18:48:39.499Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "1b32f1eaaba79759f65f-ecd5ea05b379f094030f",
+              "file": "customizer-gesture-cancellation.spec.ts",
+              "line": 543,
+              "column": 7
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "customizer-interaction-contract.spec.ts",
+      "file": "customizer-interaction-contract.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "customizer interaction contract",
+          "file": "customizer-interaction-contract.spec.ts",
+          "line": 242,
+          "column": 6,
+          "specs": [
+            {
+              "title": "the fixture mounts the real editor with no seeded database",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 90000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 4722,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-10-01T18:48:45.800Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "f2cbed1b30d44618717d-027c667e3cc91d62912f",
+              "file": "customizer-interaction-contract.spec.ts",
+              "line": 249,
+              "column": 7
+            },
+            {
+              "title": "a 20-step drag writes nothing and renders nothing until release, then commits once",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 90000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 6933,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-10-01T18:48:50.555Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "f2cbed1b30d44618717d-09aeb534f32e015caf1a",
+              "file": "customizer-interaction-contract.spec.ts",
+              "line": 275,
+              "column": 7
+            },
+            {
+              "title": "drag undo and redo restore exact document geometry",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 90000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 7804,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-10-01T18:48:57.522Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "f2cbed1b30d44618717d-ba55a4834799ba454bdf",
+              "file": "customizer-interaction-contract.spec.ts",
+              "line": 298,
+              "column": 7
+            },
+            {
+              "title": "a 20-step resize re-renders only the resized layer and commits once",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 90000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 7098,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-10-01T18:49:05.360Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "f2cbed1b30d44618717d-928be26bad59f4627494",
+              "file": "customizer-interaction-contract.spec.ts",
+              "line": 319,
+              "column": 7
+            },
+            {
+              "title": "resize undo and redo restore exact size",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 90000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 7505,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-10-01T18:49:12.492Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "f2cbed1b30d44618717d-9b4d363e0610420d279c",
+              "file": "customizer-interaction-contract.spec.ts",
+              "line": 346,
+              "column": 7
+            },
+            {
+              "title": "a 20-step rotation renders nothing until release, then commits once",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 90000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 7442,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-10-01T18:49:20.023Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "f2cbed1b30d44618717d-135c02ba1e49e1f30f1a",
+              "file": "customizer-interaction-contract.spec.ts",
+              "line": 387,
+              "column": 7
+            },
+            {
+              "title": "rotation undo and redo",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 90000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 7424,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-10-01T18:49:27.494Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "f2cbed1b30d44618717d-5999df403a115b4caffd",
+              "file": "customizer-interaction-contract.spec.ts",
+              "line": 409,
+              "column": 7
+            },
+            {
+              "title": "a multi-object drag is ONE atomic transaction however many objects move",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 90000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 8842,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-10-01T18:49:34.946Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "f2cbed1b30d44618717d-dcf3e4df2f4d71cdf313",
+              "file": "customizer-interaction-contract.spec.ts",
+              "line": 425,
+              "column": 7
+            },
+            {
+              "title": "moving a group moves every member rigidly as one transaction",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 90000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 7817,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-10-01T18:49:43.817Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "f2cbed1b30d44618717d-e054d03e92c9e7b2df91",
+              "file": "customizer-interaction-contract.spec.ts",
+              "line": 476,
+              "column": 7
+            },
+            {
+              "title": "a locked layer cannot be dragged and writes nothing",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 90000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 5323,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-10-01T18:49:51.665Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "f2cbed1b30d44618717d-b3ab454f83e61a2b0479",
+              "file": "customizer-interaction-contract.spec.ts",
+              "line": 524,
+              "column": 7
+            },
+            {
+              "title": "a hidden layer neither renders nor intercepts selection",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 90000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 4585,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-10-01T18:49:57.014Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "f2cbed1b30d44618717d-cbba4ef359ac64391dd3",
+              "file": "customizer-interaction-contract.spec.ts",
+              "line": 541,
+              "column": 7
+            },
+            {
+              "title": "front and back pages carry their own layers",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 90000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 4595,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-10-01T18:50:01.627Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "f2cbed1b30d44618717d-4839ee549e1e6a9940af",
+              "file": "customizer-interaction-contract.spec.ts",
+              "line": 551,
+              "column": 7
+            },
+            {
+              "title": "entering crop mode creates no history and writes nothing",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 90000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 4901,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-10-01T18:50:06.253Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "f2cbed1b30d44618717d-2303428486fbe67b137e",
+              "file": "customizer-interaction-contract.spec.ts",
+              "line": 561,
+              "column": 7
+            },
+            {
+              "title": "a 20-step crop pan writes nothing until release, then commits once",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 90000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 7245,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-10-01T18:50:11.182Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "f2cbed1b30d44618717d-d5eda3f2039b676e0874",
+              "file": "customizer-interaction-contract.spec.ts",
+              "line": 568,
+              "column": 7
+            },
+            {
+              "title": "a wheel-zoom burst is ONE grouped crop commit",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 90000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 6697,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-10-01T18:50:18.457Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "f2cbed1b30d44618717d-7a85c1d117fd2bb67142",
+              "file": "customizer-interaction-contract.spec.ts",
+              "line": 590,
+              "column": 7
+            },
+            {
+              "title": "crop Done commits a still-pending gesture exactly once",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 90000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 6831,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-10-01T18:50:25.184Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "f2cbed1b30d44618717d-a4ad687582440a444f30",
+              "file": "customizer-interaction-contract.spec.ts",
+              "line": 606,
+              "column": 7
+            },
+            {
+              "title": "crop Done with no change writes nothing",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 90000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 6128,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-10-01T18:50:32.050Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "f2cbed1b30d44618717d-1bcc06d89806bb82b326",
+              "file": "customizer-interaction-contract.spec.ts",
+              "line": 621,
+              "column": 7
+            },
+            {
+              "title": "crop pan undo and redo restore the exact crop",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 90000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 8121,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-10-01T18:50:38.209Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "f2cbed1b30d44618717d-143aae4766e0a1e608ed",
+              "file": "customizer-interaction-contract.spec.ts",
+              "line": 630,
+              "column": 7
+            },
+            {
+              "title": "crop zoom undo and redo restore the exact zoom",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 90000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 7701,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-10-01T18:50:46.362Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "f2cbed1b30d44618717d-c401fca8bda362edabcb",
+              "file": "customizer-interaction-contract.spec.ts",
+              "line": 646,
+              "column": 7
+            },
+            {
+              "title": "Cancel after several committed crop gestures rolls back document AND history",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 90000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 12892,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-10-01T18:50:54.093Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "f2cbed1b30d44618717d-b45c9118de327500d560",
+              "file": "customizer-interaction-contract.spec.ts",
+              "line": 664,
+              "column": 7
+            },
+            {
+              "title": "Cancel during the wheel settle delay never commits afterwards",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 90000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 7015,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-10-01T18:51:07.017Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "f2cbed1b30d44618717d-be3161c58e7e0df8cdd6",
+              "file": "customizer-interaction-contract.spec.ts",
+              "line": 702,
+              "column": 7
+            },
+            {
+              "title": "pinch crop stays transient, commits once on lift, and Cancel rolls it back",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 90000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 7759,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-10-01T18:51:14.062Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "f2cbed1b30d44618717d-a8c1b45555c1bfa23a06",
+              "file": "customizer-interaction-contract.spec.ts",
+              "line": 717,
+              "column": 7
+            },
+            {
+              "title": "changing page during crop finalizes it once and no old-page timer fires",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 90000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 7263,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-10-01T18:51:21.851Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "f2cbed1b30d44618717d-9e9885e2233c8267f175",
+              "file": "customizer-interaction-contract.spec.ts",
+              "line": 753,
+              "column": 7
+            },
+            {
+              "title": "selecting another object during crop is Done for the crop",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 90000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 7387,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-10-01T18:51:29.149Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "f2cbed1b30d44618717d-87cf29949d70ffb7923b",
+              "file": "customizer-interaction-contract.spec.ts",
+              "line": 770,
+              "column": 7
+            },
+            {
+              "title": "grid crop pan is transient until release, then commits once",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 90000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 7660,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-10-01T18:51:36.564Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "f2cbed1b30d44618717d-e054024fa8f9348990fd",
+              "file": "customizer-interaction-contract.spec.ts",
+              "line": 788,
+              "column": 7
+            },
+            {
+              "title": "grid crop Cancel after a commit restores the slot and its history",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 90000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 8183,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-10-01T18:51:44.255Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "f2cbed1b30d44618717d-d1533ef51b4fea886171",
+              "file": "customizer-interaction-contract.spec.ts",
+              "line": 808,
+              "column": 7
+            },
+            {
+              "title": "grid crop Cancel during the wheel settle delay never commits afterwards",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 90000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 7332,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-10-01T18:51:52.469Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "f2cbed1b30d44618717d-721e38b018c55d35be77",
+              "file": "customizer-interaction-contract.spec.ts",
+              "line": 828,
+              "column": 7
+            },
+            {
+              "title": "grid crop undo and redo",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 90000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 8272,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-10-01T18:51:59.832Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "f2cbed1b30d44618717d-1de77e1b60692b1f4f2d",
+              "file": "customizer-interaction-contract.spec.ts",
+              "line": 840,
+              "column": 7
+            },
+            {
+              "title": "editing text commits the new value without creating a second layer",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 90000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 5327,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-10-01T18:52:08.130Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "f2cbed1b30d44618717d-6b6f1061201eeae0c58c",
+              "file": "customizer-interaction-contract.spec.ts",
+              "line": 861,
+              "column": 7
+            },
+            {
+              "title": "selecting existing text layers never creates a new one",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 90000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 5455,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-10-01T18:52:13.488Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "f2cbed1b30d44618717d-c604c65eb9aa398f650b",
+              "file": "customizer-interaction-contract.spec.ts",
+              "line": 878,
+              "column": 7
+            }
+          ]
+        },
+        {
+          "title": "crop Cancel and autosave",
+          "file": "customizer-interaction-contract.spec.ts",
+          "line": 890,
+          "column": 6,
+          "specs": [
+            {
+              "title": "holding a gesture past the autosave debounce never saves transient geometry",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 90000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 11519,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-10-01T18:52:18.976Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "f2cbed1b30d44618717d-c0608cdad6fe21fe5128",
+              "file": "customizer-interaction-contract.spec.ts",
+              "line": 895,
+              "column": 7
+            },
+            {
+              "title": "Cancel after the modified crop already autosaved leaves the ORIGINAL crop saved",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 90000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 9550,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-10-01T18:52:30.525Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "f2cbed1b30d44618717d-37f08138230f402cb1a6",
+              "file": "customizer-interaction-contract.spec.ts",
+              "line": 911,
+              "column": 7
+            },
+            {
+              "title": "an in-flight save cannot mark the restored document saved after Cancel",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 90000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 8616,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-10-01T18:52:40.104Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "f2cbed1b30d44618717d-0fbbaa9cda6f74bd6aa4",
+              "file": "customizer-interaction-contract.spec.ts",
+              "line": 927,
+              "column": 7
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "customizer-performance.spec.ts",
+      "file": "customizer-performance.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "large-document performance",
+          "file": "customizer-performance.spec.ts",
+          "line": 69,
+          "column": 6,
+          "specs": [
+            {
+              "title": "20 layers: one commit per drag, no workspace re-render",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 90000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 7100,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-10-01T18:52:48.774Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "5376d759dfb6ce724e0c-8d29816e8a0335e646a2",
+              "file": "customizer-performance.spec.ts",
+              "line": 71,
+              "column": 9
+            },
+            {
+              "title": "50 layers: one commit per drag, no workspace re-render",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 90000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 7899,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-10-01T18:52:55.898Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "5376d759dfb6ce724e0c-7fcdeea575cde08e6574",
+              "file": "customizer-performance.spec.ts",
+              "line": 71,
+              "column": 9
+            },
+            {
+              "title": "100 layers: one commit per drag, no workspace re-render",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 90000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 8159,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-10-01T18:53:03.824Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "5376d759dfb6ce724e0c-8be9468797a5dac5e7c9",
+              "file": "customizer-performance.spec.ts",
+              "line": 71,
+              "column": 9
+            },
+            {
+              "title": "200 layers: one commit per drag, no workspace re-render",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 90000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 8992,
+                      "errors": [],
+                      "stdout": [
+                        {
+                          "text": "\nCustomizer large-document measurements:\n    34 layers | mount   2573ms | select   380ms | drag  1095ms (54.75ms/step) | commits 1 | workspace renders 0\n    64 layers | mount   2953ms | select   546ms | drag  1204ms (60.2ms/step) | commits 1 | workspace renders 0\n   114 layers | mount   3097ms | select   589ms | drag  1288ms (64.4ms/step) | commits 1 | workspace renders 0\n   214 layers | mount   3574ms | select   578ms | drag  1386ms (69.3ms/step) | commits 1 | workspace renders 0\n\n"
+                        }
+                      ],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-10-01T18:53:12.010Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "5376d759dfb6ce724e0c-12a6a8121cb30e15c2dc",
+              "file": "customizer-performance.spec.ts",
+              "line": 71,
+              "column": 9
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "customizer-resize.spec.ts",
+      "file": "customizer-resize.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "resize — the shipped Konva path",
+          "file": "customizer-resize.spec.ts",
+          "line": 157,
+          "column": 6,
+          "specs": [
+            {
+              "title": "a corner drag changes both dimensions and commits exactly once",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 90000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 6094,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-10-01T18:53:21.083Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "7af613b2e509af07eded-65df8abdf4f97ba6a266",
+              "file": "customizer-resize.spec.ts",
+              "line": 162,
+              "column": 7
+            },
+            {
+              "title": "an edge drag changes only its own axis",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 90000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 6059,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-10-01T18:53:27.208Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "7af613b2e509af07eded-36b054f881c8d1596c94",
+              "file": "customizer-resize.spec.ts",
+              "line": 175,
+              "column": 7
+            },
+            {
+              "title": "a corner drag anchors the opposite corner",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 90000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 6089,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-10-01T18:53:33.297Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "7af613b2e509af07eded-b33ae7d72f19ce77d1e6",
+              "file": "customizer-resize.spec.ts",
+              "line": 186,
+              "column": 7
+            },
+            {
+              "title": "Shift preserves the aspect ratio; a plain corner drag does not",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 90000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 7987,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-10-01T18:53:39.420Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "7af613b2e509af07eded-97dfdc4a7f9b33fc9666",
+              "file": "customizer-resize.spec.ts",
+              "line": 198,
+              "column": 7
+            },
+            {
+              "title": "an object cannot be collapsed below the minimum size",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 90000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 6231,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-10-01T18:53:47.443Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "7af613b2e509af07eded-266534903b48087c0f44",
+              "file": "customizer-resize.spec.ts",
+              "line": 221,
+              "column": 7
+            },
+            {
+              "title": "a rotated object resizes along its OWN axes",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 90000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 7724,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-10-01T18:53:53.707Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "7af613b2e509af07eded-cca58626c61fb1c34e3a",
+              "file": "customizer-resize.spec.ts",
+              "line": 240,
+              "column": 7
+            },
+            {
+              "title": "resizing a multi-selection scales every member as one transaction",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 90000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 6786,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-10-01T18:54:01.464Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "7af613b2e509af07eded-8323fb493cc3b77a7de4",
+              "file": "customizer-resize.spec.ts",
+              "line": 273,
+              "column": 7
+            },
+            {
+              "title": "a group resizes as one object and commits once",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 90000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 6377,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-10-01T18:54:08.281Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "7af613b2e509af07eded-11db514d395d56729613",
+              "file": "customizer-resize.spec.ts",
+              "line": 298,
+              "column": 7
+            },
+            {
+              "title": "a text box side drag changes the wrap width, not the type size",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 90000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 6414,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-10-01T18:54:14.690Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "7af613b2e509af07eded-6215596f61c8e626c2de",
+              "file": "customizer-resize.spec.ts",
+              "line": 320,
+              "column": 7
+            },
+            {
+              "title": "a text corner drag scales the TYPE rather than stretching the glyphs",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 90000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 6193,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-10-01T18:54:21.135Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "7af613b2e509af07eded-863baf71c359f8548757",
+              "file": "customizer-resize.spec.ts",
+              "line": 336,
+              "column": 7
+            },
+            {
+              "title": "stretching a photo frame re-crops it and never distorts the image",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 90000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 6216,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-10-01T18:54:27.360Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "7af613b2e509af07eded-05278053d62070766dcf",
+              "file": "customizer-resize.spec.ts",
+              "line": 348,
+              "column": 7
+            },
+            {
+              "title": "resize survives undo and redo exactly",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 90000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 7103,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-10-01T18:54:33.606Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "7af613b2e509af07eded-a8c894dfe42ae19746e0",
+              "file": "customizer-resize.spec.ts",
+              "line": 370,
+              "column": 7
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "customizer-text-editing.spec.ts",
+      "file": "customizer-text-editing.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "on-canvas text editing keyboard contract",
+          "file": "customizer-text-editing.spec.ts",
+          "line": 72,
+          "column": 6,
+          "specs": [
+            {
+              "title": "Ctrl+Enter finishes editing and commits, exactly like Done",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 90000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 4909,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-10-01T18:54:40.772Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "eb52ece4cfad7138e005-a4bfd9738b6756f747ae",
+              "file": "customizer-text-editing.spec.ts",
+              "line": 73,
+              "column": 7
+            },
+            {
+              "title": "an allowed text colour change applies to the selected text on the canvas",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 90000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 4972,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-10-01T18:54:45.710Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "eb52ece4cfad7138e005-41a1b4ebc9caac3e141b",
+              "file": "customizer-text-editing.spec.ts",
+              "line": 93,
+              "column": 7
+            },
+            {
+              "title": "Escape leaves editing without stranding the editor open",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 90000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 6906,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-10-01T18:54:50.707Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "eb52ece4cfad7138e005-6c09dda551241c86f16f",
+              "file": "customizer-text-editing.spec.ts",
+              "line": 123,
+              "column": 7
+            },
+            {
+              "title": "Enter inserts a real line break in a multiline editor and never closes it",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 90000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 5683,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-10-01T18:54:57.643Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "eb52ece4cfad7138e005-6c5a360a56291e039268",
+              "file": "customizer-text-editing.spec.ts",
+              "line": 151,
+              "column": 7
+            },
+            {
+              "title": "choosing a text preset inserts a text object in that style",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 90000,
+                  "annotations": [
+                    {
+                      "type": "fail",
+                      "description": "Known defect: text presets are unreachable — the preset click is lost when the auto-inserted empty text layer is discarded.",
+                      "location": {
+                        "file": "D:\\HUSNALOGY\\Main\\e2e\\customizer-text-editing.spec.ts",
+                        "line": 186,
+                        "column": 10
+                      }
+                    }
+                  ],
+                  "expectedStatus": "failed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "failed",
+                      "duration": 9438,
+                      "error": {
+                        "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m\n\nCall Log:\n- Timeout 5000ms exceeded while waiting on the predicate",
+                        "stack": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m\n\nCall Log:\n- Timeout 5000ms exceeded while waiting on the predicate\n    at D:\\HUSNALOGY\\Main\\e2e\\customizer-text-editing.spec.ts:195:86",
+                        "location": {
+                          "file": "D:\\HUSNALOGY\\Main\\e2e\\customizer-text-editing.spec.ts",
+                          "column": 86,
+                          "line": 195
+                        },
+                        "snippet": "\u001b[0m \u001b[90m 193 |\u001b[39m     \u001b[36mawait\u001b[39m root\u001b[33m.\u001b[39mgetByRole(\u001b[32m\"button\"\u001b[39m\u001b[33m,\u001b[39m { name\u001b[33m:\u001b[39m \u001b[32m\"Text\"\u001b[39m\u001b[33m,\u001b[39m exact\u001b[33m:\u001b[39m \u001b[36mtrue\u001b[39m })\u001b[33m.\u001b[39mclick()\u001b[33m;\u001b[39m\n \u001b[90m 194 |\u001b[39m     \u001b[36mawait\u001b[39m root\u001b[33m.\u001b[39mgetByRole(\u001b[32m\"button\"\u001b[39m\u001b[33m,\u001b[39m { name\u001b[33m:\u001b[39m \u001b[35m/Add Heading/\u001b[39m })\u001b[33m.\u001b[39mclick({ timeout\u001b[33m:\u001b[39m \u001b[35m5000\u001b[39m })\u001b[33m;\u001b[39m\n\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 195 |\u001b[39m     \u001b[36mawait\u001b[39m expect\u001b[33m.\u001b[39mpoll(\u001b[36masync\u001b[39m () \u001b[33m=>\u001b[39m (\u001b[36mawait\u001b[39m editorState(page))\u001b[33m.\u001b[39mopen\u001b[33m,\u001b[39m { timeout\u001b[33m:\u001b[39m \u001b[35m5000\u001b[39m })\u001b[33m.\u001b[39mtoBe(\u001b[36mtrue\u001b[39m)\u001b[33m;\u001b[39m\n \u001b[90m     |\u001b[39m                                                                                      \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\n \u001b[90m 196 |\u001b[39m   })\u001b[33m;\u001b[39m\n \u001b[90m 197 |\u001b[39m })\u001b[33m;\u001b[39m\n \u001b[90m 198 |\u001b[39m\u001b[0m"
+                      },
+                      "errors": [
+                        {
+                          "location": {
+                            "file": "D:\\HUSNALOGY\\Main\\e2e\\customizer-text-editing.spec.ts",
+                            "column": 86,
+                            "line": 195
+                          },
+                          "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32mtrue\u001b[39m\nReceived: \u001b[31mfalse\u001b[39m\n\nCall Log:\n- Timeout 5000ms exceeded while waiting on the predicate\n\n  193 |     await root.getByRole(\"button\", { name: \"Text\", exact: true }).click();\n  194 |     await root.getByRole(\"button\", { name: /Add Heading/ }).click({ timeout: 5000 });\n> 195 |     await expect.poll(async () => (await editorState(page)).open, { timeout: 5000 }).toBe(true);\n      |                                                                                      ^\n  196 |   });\n  197 | });\n  198 |\n    at D:\\HUSNALOGY\\Main\\e2e\\customizer-text-editing.spec.ts:195:86"
+                        }
+                      ],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-10-01T18:55:03.355Z",
+                      "annotations": [
+                        {
+                          "type": "fail",
+                          "description": "Known defect: text presets are unreachable — the preset click is lost when the auto-inserted empty text layer is discarded.",
+                          "location": {
+                            "file": "D:\\HUSNALOGY\\Main\\e2e\\customizer-text-editing.spec.ts",
+                            "line": 186,
+                            "column": 10
+                          }
+                        }
+                      ],
+                      "attachments": [
+                        {
+                          "name": "error-context",
+                          "contentType": "text/markdown",
+                          "path": "D:\\HUSNALOGY\\Main\\test-results\\customizer-text-editing-on-98d24-a-text-object-in-that-style-chromium\\error-context.md"
+                        }
+                      ],
+                      "errorLocation": {
+                        "file": "D:\\HUSNALOGY\\Main\\e2e\\customizer-text-editing.spec.ts",
+                        "column": 86,
+                        "line": 195
+                      }
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "eb52ece4cfad7138e005-ff029d8e0398d520d811",
+              "file": "customizer-text-editing.spec.ts",
+              "line": 185,
+              "column": 7
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "errors": [],
+  "stats": {
+    "startTime": "2026-10-01T18:46:01.025Z",
+    "duration": 553982.869,
+    "expected": 73,
+    "skipped": 0,
+    "unexpected": 0,
+    "flaky": 0
+  }
+}

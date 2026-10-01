@@ -13,7 +13,8 @@ import { getProductRecordsForCheckout } from "@/lib/products";
 import { runOrderFollowUps } from "@/lib/outbox/supabase-tasks";
 import { isAllowedCustomerAssetPath } from "@/lib/customizer/v2/asset-references";
 import { verifyCustomizationForCheckout } from "@/lib/orders/checkout-customizations";
-import { CheckoutTransactionError, transactionErrorFrom, type CheckoutDeps } from "@/lib/orders/checkout";
+import { CheckoutTransactionError, parsePreparationAttempt, transactionErrorFrom, type CheckoutDeps } from "@/lib/orders/checkout";
+import { ORDER_ASSET_BUCKET } from "@/lib/customizer/production-input";
 import { orderFromRow, toCustomerOrderView } from "@/lib/orders/order-view";
 import type { VerifiedUpload } from "@/lib/orders/personalization";
 import { personalizationFreezer } from "@/lib/orders/personalization-production";
@@ -74,6 +75,57 @@ export function createSupabaseCheckoutDeps(): CheckoutDeps {
     },
 
     verifyCustomization: (input) => verifyCustomizationForCheckout(input),
+
+    async checkCartLines(customerId, cartItemIds) {
+      const [lines, claims] = await Promise.all([
+        supabase.from("cart_items").select("id").eq("user_id", customerId).in("id", cartItemIds),
+        supabase.from("checkout_cart_claims").select("cart_item_id,order_id").eq("customer_id", customerId).in("cart_item_id", cartItemIds),
+      ]);
+      if (lines.error) throw lines.error;
+      if (claims.error) throw claims.error;
+      const present = new Set((lines.data || []).map((row: { id: string }) => String(row.id)));
+      const claimed = (claims.data || []) as Array<{ cart_item_id: string; order_id: string }>;
+      return {
+        consumedByOrderId: claimed.length ? String(claimed[0].order_id) : null,
+        missing: cartItemIds.some((id) => !present.has(id)),
+      };
+    },
+
+    async acquirePreparation({ customerId, submissionId, cartFingerprint, orderId, leaseSeconds }) {
+      const { data, error } = await supabase.rpc("acquire_checkout_preparation", {
+        p_customer_id: customerId,
+        p_submission_id: submissionId,
+        p_cart_fingerprint: cartFingerprint,
+        p_order_id: orderId,
+        p_lease_seconds: leaseSeconds,
+      });
+      if (error) throw error;
+      return parsePreparationAttempt(data);
+    },
+
+    async releasePreparation(lease, { orderId, code, usage }) {
+      const { data, error } = await supabase.rpc("release_checkout_preparation", {
+        p_id: lease.id,
+        p_lease_token: lease.leaseToken,
+        p_failure_code: code,
+        p_assets: usage.storedPaths.length,
+        p_bytes: usage.bytes,
+      });
+      if (error) throw error;
+      // Remove bytes only once the database confirms this attempt can never
+      // commit. Anything left (a failed delete) is the worker's to clean.
+      if (data !== "failed" && data !== "abandoned") return { removed: 0 };
+      const prefix = `orders/${orderId}/`;
+      const paths = usage.storedPaths.filter((path) => path.startsWith(prefix));
+      let removed = 0;
+      for (let index = 0; index < paths.length; index += 100) {
+        const batch = paths.slice(index, index + 100);
+        const { data: deleted, error: removeError } = await supabase.storage.from(ORDER_ASSET_BUCKET).remove(batch);
+        if (removeError) throw removeError;
+        removed += Array.isArray(deleted) ? deleted.length : 0;
+      }
+      return { removed };
+    },
 
     async findOrderBySubmission(customerId, submissionId) {
       const { data, error } = await supabase

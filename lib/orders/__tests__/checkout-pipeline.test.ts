@@ -387,8 +387,15 @@ describe("checkout pipeline against the real transaction", () => {
     expect(refused).toHaveLength(2);
     const orderId = created[0].ok ? created[0].order.id : "";
     for (const outcome of refused) {
-      expect(outcome.ok === false && outcome.code).toBe("CART_ALREADY_ORDERED");
-      expect(outcome.ok === false && outcome.orderId).toBe(orderId);
+      // Refused while the winner prepares (no work done), or after it
+      // committed (cart consumed) — never a second order.
+      expect(["CHECKOUT_IN_PROGRESS", "CART_ALREADY_ORDERED"]).toContain(outcome.ok === false && outcome.code);
+      if (outcome.ok === false && outcome.code === "CART_ALREADY_ORDERED") expect(outcome.orderId).toBe(orderId);
+    }
+    // The refused tabs press Place order again: they are shown the winner.
+    for (const retried of await Promise.all([place(tabB), place(deviceC)])) {
+      expect(retried.ok === false && retried.code).toBe("CART_ALREADY_ORDERED");
+      expect(retried.ok === false && retried.orderId).toBe(orderId);
     }
     const cartIds = shared.items.map((item) => item.cartItemId);
     expect(await count(t, "select 1 from public.checkout_cart_claims where cart_item_id = any($1::uuid[])", [cartIds])).toBe(2);

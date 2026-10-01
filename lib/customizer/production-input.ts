@@ -2,6 +2,7 @@
 import { createHash } from "node:crypto";
 import { isCustomizerFeatureEnabled } from "@/lib/customizer/v2/feature-flags";
 import type { GoogleFontFamily, FontDependency } from "@/lib/customizer/v2/google-fonts";
+import { assertRenderBounds, RENDER_SAFETY_LIMITS } from "@/lib/customizer/production-limits";
 
 export const SNAPSHOT_SCHEMA_VERSION = 1;
 export const PRODUCTION_RENDERER_VERSION = "husnalogy-snapshot-1";
@@ -57,11 +58,11 @@ export function readProductionSnapshot(row: any): ProductionInput {
   }
   if (!(input.mode === "manual" && input.instructions) && !template.pages?.some((page: any) => page.enabled !== false)) throw new Error("SNAPSHOT_PAGES_INVALID");
   if (input.mode === "automatic") {
-    const width = Number(template.canvasWidthPx) + Number(template.bleed?.left || 0) + Number(template.bleed?.right || 0);
-    const height = Number(template.canvasHeightPx) + Number(template.bleed?.top || 0) + Number(template.bleed?.bottom || 0);
+    // Safety ceiling, not the stricter limits for new templates: a snapshot
+    // accepted under it must stay renderable.
+    assertRenderBounds(template, RENDER_SAFETY_LIMITS);
     const pages = template.pages.filter((page: any) => page.enabled !== false);
-    if (!Number.isFinite(width * height) || width > 12000 || height > 12000 || width * height > 50_000_000 || width * height * pages.length > 200_000_000 || Number(template.dpi) > 1200) throw new Error("SNAPSHOT_RENDER_LIMIT_EXCEEDED: review production dimensions before checkout.");
-    if (pages.length > 32 || new Set(pages.map((page: any) => page.id)).size !== pages.length || pages.some((page: any) => !/^[a-zA-Z0-9_-]{1,100}$/.test(page.id))) throw new Error("SNAPSHOT_PAGES_INVALID");
+    if (new Set(pages.map((page: any) => page.id)).size !== pages.length || pages.some((page: any) => !/^[a-zA-Z0-9_-]{1,100}$/.test(page.id))) throw new Error("SNAPSHOT_PAGES_INVALID");
     if (Object.values(template.bleed || {}).some((value) => !Number.isFinite(Number(value)) || Number(value) < 0)) throw new Error("SNAPSHOT_DIMENSIONS_INVALID: bleed");
   }
   if (input.assets.length > 256 || input.fonts.length > 100) throw new Error("SNAPSHOT_ASSET_LIMIT_EXCEEDED");

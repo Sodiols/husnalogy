@@ -1,0 +1,84 @@
+[WebServer] [env] UPSTASH_REDIS_REST_URL is not set: rate limits are enforced per Node process only. That is exact for the single `npm start` process Hostinger runs; set REQUIRE_DISTRIBUTED_RATE_LIMIT=1 and configure Upstash before running more than one instance.
+[WebServer] [env] RESEND_API_KEY is not set: order confirmation and new-order emails are queued durably but NOT sent until email is configured.
+[WebServer] [env] SENTRY_DSN is not set: server errors are logged to stdout only; no one is alerted when checkout or production fails.
+[WebServer] [env] ENABLE_CUSTOMIZER_E2E_FIXTURE is enabled; the /__e2e test fixture pages are publicly reachable. Never set it on the live site.
+Error: Seeded Customizer V2 acceptance cannot run. Missing E2E_ADMIN_PRODUCT_URL, admin email, admin password, Customer A customization, Customer B email, Customer B password, Customer A email, Customer A password. Run npm run seed:customizer:test against the dedicated local/staging project.
+
+   at helpers.ts:16
+
+  14 |   const missing = fields.filter(([, value]) => !value).map(([name]) => name);
+  15 |   if (missing.length) {
+> 16 |     throw new Error(`Seeded Customizer V2 acceptance cannot run. Missing ${missing.join(", ")}. Run npm run seed:customizer:test against the dedicated local/staging project.`);
+     |           ^
+  17 |   }
+  18 | }
+  19 |
+    at requireSeededAcceptance (D:\HUSNALOGY\Main\e2e\helpers.ts:16:11)
+    at Object.<anonymous> (D:\HUSNALOGY\Main\e2e\admin-security-render.spec.ts:8:24)
+Error: Seeded Customizer V2 acceptance cannot run. Missing E2E_CUSTOMIZER_URL, customer email, customer password, Customer A customization, Customer B email, Customer B password, admin email, admin password. Run npm run seed:customizer:test against the dedicated local/staging project.
+
+   at helpers.ts:16
+
+  14 |   const missing = fields.filter(([, value]) => !value).map(([name]) => name);
+  15 |   if (missing.length) {
+> 16 |     throw new Error(`Seeded Customizer V2 acceptance cannot run. Missing ${missing.join(", ")}. Run npm run seed:customizer:test against the dedicated local/staging project.`);
+     |           ^
+  17 |   }
+  18 | }
+  19 |
+    at requireSeededAcceptance (D:\HUSNALOGY\Main\e2e\helpers.ts:16:11)
+    at Object.<anonymous> (D:\HUSNALOGY\Main\e2e\checkout-order-integrity.spec.ts:13:24)
+Error: Seeded Customizer V2 acceptance cannot run. Missing E2E_CUSTOMIZER_URL, customer email, customer password. Run npm run seed:customizer:test against the dedicated local/staging project.
+
+   at helpers.ts:16
+
+  14 |   const missing = fields.filter(([, value]) => !value).map(([name]) => name);
+  15 |   if (missing.length) {
+> 16 |     throw new Error(`Seeded Customizer V2 acceptance cannot run. Missing ${missing.join(", ")}. Run npm run seed:customizer:test against the dedicated local/staging project.`);
+     |           ^
+  17 |   }
+  18 | }
+  19 |
+    at requireSeededAcceptance (D:\HUSNALOGY\Main\e2e\helpers.ts:16:11)
+    at Object.<anonymous> (D:\HUSNALOGY\Main\e2e\customer-customizer.spec.ts:6:24)
+Error: Seeded Customizer V2 acceptance cannot run. Missing E2E_CUSTOMIZER_URL, customer email, customer password, E2E_ADMIN_PRODUCT_URL, admin email, admin password. Run npm run seed:customizer:test against the dedicated local/staging project.
+
+   at helpers.ts:16
+
+  14 |   const missing = fields.filter(([, value]) => !value).map(([name]) => name);
+  15 |   if (missing.length) {
+> 16 |     throw new Error(`Seeded Customizer V2 acceptance cannot run. Missing ${missing.join(", ")}. Run npm run seed:customizer:test against the dedicated local/staging project.`);
+     |           ^
+  17 |   }
+  18 | }
+  19 |
+    at requireSeededAcceptance (D:\HUSNALOGY\Main\e2e\helpers.ts:16:11)
+    at Object.<anonymous> (D:\HUSNALOGY\Main\e2e\google-fonts.spec.ts:11:24)
+Error: Seeded Customizer V2 acceptance cannot run. Missing E2E_CUSTOMIZER_URL, customer email, customer password, E2E_ADMIN_PRODUCT_URL, admin email, admin password. Run npm run seed:customizer:test against the dedicated local/staging project.
+
+   at helpers.ts:16
+
+  14 |   const missing = fields.filter(([, value]) => !value).map(([name]) => name);
+  15 |   if (missing.length) {
+> 16 |     throw new Error(`Seeded Customizer V2 acceptance cannot run. Missing ${missing.join(", ")}. Run npm run seed:customizer:test against the dedicated local/staging project.`);
+     |           ^
+  17 |   }
+  18 | }
+  19 |
+    at requireSeededAcceptance (D:\HUSNALOGY\Main\e2e\helpers.ts:16:11)
+    at Object.<anonymous> (D:\HUSNALOGY\Main\e2e\iconify-elements.spec.ts:12:24)
+Error: Seeded Customizer V2 acceptance cannot run. Missing E2E_CUSTOMIZER_URL, customer email, customer password. Run npm run seed:customizer:test against the dedicated local/staging project.
+
+   at helpers.ts:16
+
+  14 |   const missing = fields.filter(([, value]) => !value).map(([name]) => name);
+  15 |   if (missing.length) {
+> 16 |     throw new Error(`Seeded Customizer V2 acceptance cannot run. Missing ${missing.join(", ")}. Run npm run seed:customizer:test against the dedicated local/staging project.`);
+     |           ^
+  17 |   }
+  18 | }
+  19 |
+    at requireSeededAcceptance (D:\HUSNALOGY\Main\e2e\helpers.ts:16:11)
+    at Object.<anonymous> (D:\HUSNALOGY\Main\e2e\unified-elements.spec.ts:14:24)
+
+exit=1

@@ -21,7 +21,13 @@
     "test:e2e:public": "playwright test e2e/public-build-smoke.spec.ts",
     "seed:customizer:test": "node scripts/seed-customizer-test.mjs",
     "pretypecheck": "npm run repair:next-types",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "staging:migrate": "node scripts/staging/apply-migrations.mjs",
+    "staging:seed": "node scripts/staging/seed.mjs",
+    "test:staging": "node scripts/staging/test-staging.mjs",
+    "test:e2e:staging": "node scripts/staging/run-e2e.mjs",
+    "check:clock": "node scripts/check-clock.mjs",
+    "benchmark:render-limits": "node scripts/benchmark-render-limits.mjs"
   },
   "dependencies": {
     "@resvg/resvg-js": "^2.6.2",
@@ -29,7 +35,7 @@
     "@supabase/supabase-js": "^2.57.4",
     "@tailwindcss/postcss": "4.3.0",
     "konva": "^10.3.1",
-    "next": "16.3.7",
+    "next": "16.3.8",
     "openai": "6.42.0",
     "opentype.js": "^2.0.0",
     "pdf-lib": "^1.17.1",
@@ -45,10 +51,13 @@
     "@electric-sql/pglite": "^0.5.8",
     "@playwright/test": "^1.61.1",
     "@types/node": "25.9.3",
+    "@types/pg": "8.23.1",
     "@types/qrcode": "^1.5.6",
     "@types/react": "19.2.17",
+    "embedded-postgres": "17.10.0-beta.17",
     "eslint": "^9.39.5",
-    "eslint-config-next": "16.3.7",
+    "eslint-config-next": "16.3.8",
+    "pg": "8.23.1",
     "typescript": "6.0.3",
     "vitest": "^4.1.10"
   },

@@ -133,15 +133,23 @@ describe("checkout transaction: idempotency and duplicate prevention", () => {
     expect(result.status).toBe("conflict");
   });
 
-  it("serializes simultaneous submissions: exactly one order, the rest replay", async () => {
+  it("serializes simultaneous submissions: exactly one order; the rest replay or are refused while it is prepared", async () => {
     const payload = await orderPayload(t, { submissionId: "parallel-submission-01", requestHash: "p-hash", customizationId: null });
     const results = await Promise.all(
-      Array.from({ length: 5 }, (_, index) => callCheckoutRpc(t, { ...payload, order: { ...payload.order, id: `order-parallel-${index}` } })),
+      Array.from({ length: 5 }, (_, index) =>
+        callCheckoutRpc(t, { ...payload, order: { ...payload.order, id: `order-parallel-${index}` } }).catch((error: Error) => ({ status: "busy", order_id: "", error: error.message })),
+      ),
     );
     expect(results.filter((result) => result.status === "created")).toHaveLength(1);
-    expect(results.filter((result) => result.status === "replayed")).toHaveLength(4);
-    expect(new Set(results.map((result) => result.order_id)).size).toBe(1);
+    // A concurrent twin either waits out the first (replay) or is refused by
+    // the preparation lease before doing any work; it never creates an order.
+    expect(results.every((result) => ["created", "replayed", "busy"].includes(result.status))).toBe(true);
+    for (const result of results.filter((entry) => entry.status === "busy")) expect((result as { error: string }).error).toMatch(/CHECKOUT_PREPARATION_BUSY/);
+    expect(new Set(results.filter((result) => result.order_id).map((result) => result.order_id)).size).toBe(1);
     expect(await count(t, "select 1 from public.orders where checkout_submission_id = 'parallel-submission-01'")).toBe(1);
+    // After the first commits, every retry of the same submission replays it.
+    const retry = await callCheckoutRpc(t, { ...payload, order: { ...payload.order, id: "order-parallel-retry" } });
+    expect(retry).toEqual({ status: "replayed", order_id: results.find((result) => result.status === "created")!.order_id });
   });
 
   it("scopes the key per customer: B reusing A's submission id gets an independent order", async () => {

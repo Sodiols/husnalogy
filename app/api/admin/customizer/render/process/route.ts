@@ -1,7 +1,8 @@
 import { withAdminMutation } from "@/lib/security/admin-mutation";
 import { requireAdmin } from "@/lib/auth/admin-server";
-import { RENDER_WORKER_DEFAULT_BATCH, RENDER_WORKER_MAX_BATCH, runRenderWorker } from "@/lib/customizer/render-jobs";
-import { runOutboxPass } from "@/lib/outbox/supabase-tasks";
+import { RENDER_WORKER_DEFAULT_BATCH, RENDER_WORKER_MAX_BATCH } from "@/lib/customizer/render-jobs";
+import { productionWorkerSubsystems } from "@/lib/outbox/supabase-tasks";
+import { runWorkerPass, type WorkerPassReport } from "@/lib/worker/production-worker";
 import { createServiceRoleClient } from "@/lib/supabase/server";
 import { hasWorkerSecret } from "@/lib/security/worker-auth";
 import { bodyErrorResponse, readJsonBody } from "@/lib/http/read-body";
@@ -15,19 +16,21 @@ export const maxDuration = 300;
  * Production worker — platform independent (Hostinger cron every 5 minutes;
  * see HOSTINGER_DEPLOYMENT.md §5), or manually by a signed-in admin.
  *
- * Each run:
- *   1. records a heartbeat (worker_runs) — visible in production_health();
- *   2. recovers finalized snapshots that never got production work;
- *   3. drains due production tasks (outbox → render jobs) and notification
- *      tasks (outbox → email);
- *   4. processes render jobs.
+ * Each run records a heartbeat (worker_runs), then runs these subsystems in
+ * order, each ISOLATED from the others (lib/worker/production-worker.ts):
+ *   lease recovery → production tasks → render jobs → notifications →
+ *   reconciliation → output verification → storage cleanup.
+ * A failing subsystem (for example a storage outage during cleanup) is
+ * recorded in worker health and the rest still run. Per-subsystem health is
+ * stored in worker_subsystem_runs and served by production_health().
  *
  * Authentication: `Authorization: Bearer <CRON_SECRET|RENDER_WORKER_SECRET>`
  * or `x-render-secret`, compared in constant time and never read from the URL;
  * POST additionally accepts an admin session. Anonymous requests get 401.
  *
- * Responses: 200 run finished · 401 not authorized · 409 a run is already in
- * progress in this server process · 500 the run failed.
+ * Responses: 200 pass completed (status ok or degraded) · 401 not authorized ·
+ * 409 a run is already in progress in this server process · 503 a critical
+ * subsystem (production, render or notifications) failed · 500 unexpected.
  */
 
 function parseLimit(raw: unknown): number {
@@ -50,44 +53,50 @@ async function heartbeat(phase: "start" | "finish", status?: string, result: Rec
   }
 }
 
+async function recordSubsystems(report: WorkerPassReport) {
+  try {
+    const { error } = await createServiceRoleClient().rpc("record_worker_subsystems", {
+      p_worker: "render",
+      p_subsystems: report.subsystems.map((subsystem) => ({
+        name: subsystem.name,
+        status: subsystem.status,
+        startedAt: subsystem.startedAt,
+        durationMs: subsystem.durationMs,
+        error: subsystem.error ?? null,
+        result: subsystem.result,
+      })),
+    });
+    if (error) throw error;
+  } catch (error) {
+    logEvent("error", "worker.health_record_failed", { error });
+  }
+}
+
 async function runWorker(limit: number) {
   if (activeRun) {
     return Response.json({ ok: false, error: "A render worker run is already in progress.", busy: true }, { status: 409 });
   }
 
   const run = (async () => {
-    const started = Date.now();
     await heartbeat("start");
-    const outbox = await runOutboxPass({ limit: 25, timeBudgetMs: 60_000 });
-    const render = await runRenderWorker({ limit, timeBudgetMs: Math.max(1000, 240_000 - (Date.now() - started)) });
-    return { outbox, render };
+    // Never throws: each subsystem's failure is contained in its report.
+    return runWorkerPass(productionWorkerSubsystems({ renderLimit: limit }));
   })();
   activeRun = run;
   try {
-    const { outbox, render } = await run;
+    const report = await run;
     const summary = {
-      recoveredSnapshots: outbox.recovered,
-      outputVerification: outbox.outputVerification,
-      storageCleanup: outbox.storageCleanup,
-      productionTasks: { completed: outbox.production.completed, failed: outbox.production.failed.length },
-      notifications: { sent: outbox.notifications.completed, deferred: outbox.notifications.deferred, failed: outbox.notifications.failed.length },
-      renderJobs: { processed: render.jobs.length, failed: render.failures.length, remaining: render.remaining },
+      runId: report.runId,
+      status: report.status,
+      durationMs: report.durationMs,
+      subsystems: Object.fromEntries(report.subsystems.map((subsystem) => [subsystem.name, { status: subsystem.status, durationMs: subsystem.durationMs, ...(subsystem.error ? { error: subsystem.error } : {}), result: subsystem.result }])),
     };
-    const failed = outbox.production.failed.length || outbox.notifications.failed.length || render.failures.length || render.jobs.some((job) => ["failed", "retrying", "cancelled"].includes(job.status));
-    await heartbeat("finish", failed ? "error" : "ok", summary);
-    if (outbox.production.failed.length || render.failures.length) {
-      logEvent("error", "worker.run_had_failures", summary);
-    }
-    return Response.json({
-      ok: !failed,
-      processed: render.jobs.map((job) => ({ id: job.id, jobType: job.jobType, status: job.status, errorCode: job.errorCode })),
-      failures: render.failures,
-      recovered: render.recovered,
-      remaining: render.remaining,
-      stoppedReason: render.stoppedReason,
-      durationMs: render.durationMs,
-      outbox: summary,
-    });
+    await recordSubsystems(report);
+    await heartbeat("finish", report.status, summary);
+    if (report.status !== "ok") logEvent(report.status === "error" ? "error" : "warn", "worker.run_had_failures", { status: report.status, failed: report.subsystems.filter((subsystem) => subsystem.status !== "ok" && subsystem.status !== "skipped").map((subsystem) => subsystem.name) });
+    // 200 for ok and degraded (the pass completed; details per subsystem);
+    // 503 only when a business-critical subsystem could not run at all.
+    return Response.json({ ok: report.status === "ok", ...summary }, { status: report.status === "error" ? 503 : 200 });
   } catch (error) {
     await heartbeat("finish", "error", { error: error instanceof Error ? error.message : String(error) });
     logEvent("error", "worker.run_failed", { error });

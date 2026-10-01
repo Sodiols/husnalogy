@@ -1,0 +1,17 @@
+
+> husnalogy-nextjs@1.0.0 test
+> vitest run
+
+[33m(!) Your Vite config uses features that are unsupported by `configLoader: 'native'`, which is planned to become the default in a future major version of Vite:
+  - ESM syntax in a file loaded as CommonJS (vitest.config.ts:1:1). Use a `.mjs` extension or set `"type": "module"` in the closest package.json
+Set `VITE_CONFIG_NATIVE_IGNORE_WARNING=true` to suppress this warning.[39m
+
+ RUN  v4.1.11 D:/HUSNALOGY/Main
+
+
+ Test Files  121 passed | 1 skipped (122)
+      Tests  2168 passed | 13 skipped (2181)
+   Start at  00:35:00
+   Duration  82.38s (transform 31.75s, setup 0ms, import 164.40s, tests 426.68s, environment 46ms)
+
+exit=0

@@ -15,6 +15,25 @@ describe("forward migration preserves actual accepted history", () => {
     } finally { await t.close(); }
   }, 120_000);
 
+  it("the worker/preparation migration replays safely over live data and keeps leases, cleanup items and health", async () => {
+    const t = await createTestDatabase();
+    try {
+      await seedCheckoutFixtures(t);
+      const accepted = await callCheckoutRpc(t, await orderPayload(t, { customizationId: null }));
+      await t.db.query("insert into public.production_storage_cleanup_items(bucket,path,reason,attempt_count,status) values('order-production','orders/x/assets/y','orphan',3,'dead_letter')");
+      await t.db.query("select public.record_worker_subsystems('render','[{\"name\":\"storage_cleanup\",\"status\":\"degraded\",\"durationMs\":1,\"error\":\"e\",\"result\":{}}]')");
+      const capture = async () => Promise.all(["checkout_preparations", "production_storage_cleanup_items", "worker_subsystem_runs", "orders"].map(async (table) => (await t.db.query(`select * from public.${table} order by 1`)).rows));
+      const before = await capture();
+      const script = readFileSync(join(process.cwd(), "supabase/migrations", "20261003120000_worker_isolation_checkout_preparation.sql"), "utf8");
+      await t.db.exec(script);
+      await t.db.exec(script);
+      expect(await capture()).toEqual(before);
+      expect((await t.db.query<any>("select status from public.checkout_preparations where order_id=$1", [accepted.order_id])).rows[0].status).toBe("committed");
+      expect((await t.db.query("select 1 from pg_trigger where tgname='verify_consume_checkout_preparation' and not tgisinternal")).rows).toHaveLength(1);
+      expect((await t.db.query("select 1 from pg_trigger where tgname='consume_checkout_preparation'")).rows).toHaveLength(0);
+    } finally { await t.close(); }
+  }, 120_000);
+
   it("keeps old orders, customers, tasks and snapshots and explicitly marks incomplete legacy designs", async () => {
     const t = await createTestDatabase(process.cwd(), migration);
     try {

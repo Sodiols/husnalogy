@@ -10,7 +10,7 @@
  * runs the PRODUCTION outbox processor against the real task tables.
  */
 
-import { CheckoutTransactionError, transactionErrorFrom, type CheckoutDeps } from "@/lib/orders/checkout";
+import { CheckoutTransactionError, parsePreparationAttempt, transactionErrorFrom, type CheckoutDeps } from "@/lib/orders/checkout";
 import { pricingBreakdown } from "@/lib/orders/pricing-resolver";
 import { orderFromRow, toCustomerOrderView } from "@/lib/orders/order-view";
 import { composeOrderDesignSnapshot } from "@/lib/customizer/snapshot-compose";
@@ -57,6 +57,8 @@ export type PgliteDepsOptions = {
   transport?: EmailTransport | null;
   /** Makes the render enqueue fail (forced production-queue failure). */
   failRender?: () => boolean;
+  /** Observes every preparation lease request. */
+  onAcquire?: () => void;
 };
 
 export function createPgliteCheckoutDeps(t: TestDatabase, options: PgliteDepsOptions = {}): CheckoutDeps {
@@ -149,6 +151,35 @@ export function createPgliteCheckoutDeps(t: TestDatabase, options: PgliteDepsOpt
         templateId: String(row.template_id),
         templateVersion: Number(row.template_version),
       };
+    },
+
+    async checkCartLines(customerId, cartItemIds) {
+      const lines = await service((db) => db.query<{ id: string }>("select id from public.cart_items where user_id = $1 and id = any($2::uuid[])", [customerId, cartItemIds]));
+      const claims = await service((db) =>
+        db.query<{ order_id: string }>("select order_id from public.checkout_cart_claims where customer_id = $1 and cart_item_id = any($2::uuid[])", [customerId, cartItemIds]),
+      );
+      const present = new Set(lines.rows.map((row) => String(row.id)));
+      return { consumedByOrderId: claims.rows[0]?.order_id ?? null, missing: cartItemIds.some((id) => !present.has(id)) };
+    },
+
+    async acquirePreparation({ customerId, submissionId, cartFingerprint, orderId, leaseSeconds }) {
+      options.onAcquire?.();
+      const result = await service((db) =>
+        db.query<{ r: unknown }>("select public.acquire_checkout_preparation($1::uuid, $2, $3, $4, $5) as r", [customerId, submissionId, cartFingerprint, orderId, leaseSeconds]),
+      );
+      return parsePreparationAttempt(result.rows[0]?.r);
+    },
+
+    async releasePreparation(lease, { orderId, code, usage }) {
+      const result = await service((db) =>
+        db.query<{ s: string | null }>("select public.release_checkout_preparation($1::uuid, $2::uuid, $3, $4, $5) as s", [lease.id, lease.leaseToken, code, usage.storedPaths.length, usage.bytes]),
+      );
+      const status = result.rows[0]?.s;
+      if (status !== "failed" && status !== "abandoned") return { removed: 0 };
+      const paths = usage.storedPaths.filter((path) => path.startsWith(`orders/${orderId}/`));
+      const bucket = storage.client.storage.from("order-production");
+      await bucket.remove(paths);
+      return { removed: paths.length };
     },
 
     async findOrderBySubmission(customerId, submissionId) {

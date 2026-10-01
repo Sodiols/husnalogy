@@ -688,14 +688,26 @@ async function countDueRenderJobs(supabase: ReturnType<typeof createServiceRoleC
  * under a lease token, so two overlapping runs can never render the same job.
  * A job that fails to claim or throws is recorded and the run continues.
  */
-export async function runRenderWorker(options: { limit?: number; timeBudgetMs?: number } = {}): Promise<RenderWorkerRunResult> {
+export async function runRenderWorker(options: {
+  limit?: number;
+  timeBudgetMs?: number;
+  skipRecovery?: boolean;
+  /** Injected client (tests). Production jobs each get their own client bound to the job deadline. */
+  supabase?: ReturnType<typeof createServiceRoleClient>;
+} = {}): Promise<RenderWorkerRunResult> {
   const startedAt = Date.now();
   const limit = Math.max(1, Math.min(RENDER_WORKER_MAX_BATCH, Math.floor(Number(options.limit) || RENDER_WORKER_DEFAULT_BATCH)));
   const budgetMs = Math.max(1_000, Number(options.timeBudgetMs) || RENDER_WORKER_DEFAULT_BUDGET_MS);
-  const supabase = createServiceRoleClient();
+  const supabase = options.supabase || createServiceRoleClient();
 
-  const { data: recoveredCount, error: recoveryError } = await supabase.rpc("recover_abandoned_customizer_render_jobs");
-  if (recoveryError) throw recoveryError;
+  // The scheduled worker recovers leases in its own isolated step first, so a
+  // failing recovery never prevents rendering the jobs that ARE due.
+  let recoveredCount: unknown = 0;
+  if (!options.skipRecovery) {
+    const recovery = await supabase.rpc("recover_abandoned_customizer_render_jobs");
+    if (recovery.error) throw recovery.error;
+    recoveredCount = recovery.data;
+  }
 
   const jobs: RenderJobRow[] = [];
   const failures: Array<{ id: string; error: string }> = [];
@@ -727,7 +739,7 @@ export async function runRenderWorker(options: { limit?: number; timeBudgetMs?: 
       }
       attempted.add(id);
       try {
-        jobs.push(await processRenderJob(id));
+        jobs.push(await processRenderJob(id, options.supabase));
       } catch (error: any) {
         console.error(`[customizer] Render worker could not process job ${id}:`, error);
         failures.push({ id, error: getRenderErrorCode(error) });

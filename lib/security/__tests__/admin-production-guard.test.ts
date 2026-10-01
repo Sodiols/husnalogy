@@ -30,6 +30,17 @@ describe("admin production authorization and bounded mutations",()=>{
   expect((await guarded(request("{}","https://evil.test"))).status).toBe(403);
   expect((await guarded(new Request("https://husnalogy.test",{method:"GET"}))).status).toBe(405); expect(handler).not.toHaveBeenCalled();
  });
+ it("works with the runtime's request object, which is NOT an undici Request (no `new Request(request)` clone)",async()=>{
+  // Next.js route handlers receive a NextRequest that undici cannot clone
+  // ("Cannot read private member #state"); this stand-in is likewise foreign.
+  mocks.actor.mockResolvedValue({id:"admin",role:"admin"});
+  const handler=vi.fn(async(req:Request)=>Response.json({body:await req.json(),origin:req.headers.get("origin"),method:req.method,url:req.url}));
+  const real=request('{"status":"printing"}');
+  const foreign={url:real.url,method:real.method,headers:real.headers,body:real.body,signal:real.signal} as unknown as Request;
+  const response=await withAdminMutation(handler)(foreign);
+  expect(response.status).toBe(200);
+  expect(await response.json()).toEqual({body:{status:"printing"},origin:"https://husnalogy.test",method:"POST",url:"https://husnalogy.test/api/admin/production/retry"});
+ });
  it("bounds a body that omits Content-Length, and passes bounded valid bodies through",async()=>{
   mocks.actor.mockResolvedValue({id:"admin",role:"admin"}); const handler=vi.fn(async(req:Request)=>Response.json(await req.json())); const guarded=withAdminMutation(handler,{maxBytes:16});
   expect((await guarded(request('"'+"x".repeat(40)+'"'))).status).toBe(413); expect(handler).not.toHaveBeenCalled();

@@ -2,18 +2,23 @@ import type { CheckoutDeps } from "@/lib/orders/checkout";
 import { makeProductionInput, productionIntegrityHash, readProductionSnapshot } from "@/lib/customizer/production-input";
 import { pinProductionInput, productionStorage } from "@/lib/customizer/server/production-assets";
 import { loadTrustedImageBuffer } from "@/lib/customizer/v2/server/render";
+import { ProductionAssetBudget, ProductionLimitError } from "@/lib/customizer/production-limits";
 
 export function personalizationFreezer(supabase: any): NonNullable<CheckoutDeps["freezePersonalization"]> {
-  return async ({ orderId, product, line, values, files, lineNumber }) => {
+  return async ({ orderId, product, line, values, files, lineNumber, budget: shared }) => {
+    const budget = shared || new ProductionAssetBudget();
     const sources = new Map<string, Buffer>();
     const layers: any[] = [];
     const references = [...new Set([product.thumbnail, ...(Array.isArray(product.images) ? product.images.map((image: any) => typeof image === "string" ? image : image?.url || image?.src) : [])].filter((source): source is string => typeof source === "string" && !!source))];
     if (references.length > 20) throw new Error("Too many production reference images.");
+    budget.assertDesignCounts(references.length + Object.keys(files).length, 0);
     for (const [fieldId, value] of Object.entries(files)) {
       const file = value as any;
+      budget.assertTime();
       // The checkout resolver has already verified upload ownership and identity.
       const { data, error } = await supabase.storage.from(file.bucket).download(file.path);
-      if (error || !data || data.size > 30 * 1024 * 1024) throw new Error("Production upload unavailable.");
+      if (error || !data) throw new Error("Production upload unavailable.");
+      if (data.size > budget.limits.maxFileBytes) throw new ProductionLimitError("maxFileBytes", "A file in your design exceeds the 30 MB limit.");
       const source = `checkout-upload:${fieldId}`;
       sources.set(source, Buffer.from(await data.arrayBuffer()));
       layers.push({ id: fieldId, page: "instructions", type: "image", src: source, x: 0, y: 0, width: 1, height: 1 });
@@ -29,7 +34,7 @@ export function personalizationFreezer(supabase: any): NonNullable<CheckoutDeps[
       const bytes = sources.get(source); if (bytes) return bytes;
       if (references.includes(source)) return loadTrustedImageBuffer(source);
       throw new Error("Untrusted production upload source.");
-    } });
+    }, budget });
     const durableFiles = Object.fromEntries(Object.entries(files).map(([fieldId, file]: [string, any]) => {
       const key = String(pinned.template.layers.find((entry: any) => entry.id === fieldId)?.src || "").replace("order-asset:", "");
       const asset = pinned.assets.find((entry) => entry.key === key);
@@ -44,6 +49,7 @@ export function personalizationFreezer(supabase: any): NonNullable<CheckoutDeps[
     productSpecification.images = pinnedReferences;
     pinned.instructions = { productTitle: product.title, productSku: product.sku || product.slug || product.id, productSpecification, referenceImages: pinnedReferences, selectedOptions: line.options, quantity: line.quantity, fields: product.customizationFields || [], values, files: durableFiles };
     const snapshot = { snapshotSchemaVersion: 1, orderLineNumber: lineNumber, production: pinned };
+    budget.reserveSnapshot(Buffer.byteLength(JSON.stringify(snapshot)));
     readProductionSnapshot({snapshot,snapshot_schema_version:1,production_mode:"manual",order_id:orderId,integrity_hash:productionIntegrityHash(snapshot)});
     return { ...snapshot, integrityHash: productionIntegrityHash(snapshot) };
   };

@@ -24,6 +24,7 @@ import { composeOrderDesignSnapshot, computeIntegrityHash, type SnapshotInput } 
 import type { DesignSnapshotPayload } from "@/lib/orders/checkout";
 import { makeProductionInput, readProductionSnapshot } from "@/lib/customizer/production-input";
 import { pinProductionInput, productionStorage } from "@/lib/customizer/server/production-assets";
+import { ProductionAssetBudget } from "@/lib/customizer/production-limits";
 
 export { computeIntegrityHash };
 
@@ -32,7 +33,7 @@ export { computeIntegrityHash };
  * `product`, `template`, `pricing`, `selectedOptions` and `quantity` must all
  * be server-trusted values resolved by the checkout pipeline.
  */
-export async function buildOrderDesignSnapshot(input: SnapshotInput): Promise<DesignSnapshotPayload> {
+export async function buildOrderDesignSnapshot(input: SnapshotInput, budget: ProductionAssetBudget = new ProductionAssetBudget()): Promise<DesignSnapshotPayload> {
   const supabase = createServiceRoleClient();
   const customization = customizationFromRow(input.row);
   const editorState = stripEphemeralAssetUrls(customization.renderData?.editorState || null, customization.userId);
@@ -44,7 +45,8 @@ export async function buildOrderDesignSnapshot(input: SnapshotInput): Promise<De
     resolvePrivateAssetsForDelivery(input.template, { productionWorker: true }, "original", supabase),
   ]);
   const payload = composeOrderDesignSnapshot(input, { renderValues, renderEditorState });
-  payload.snapshot.production = await pinProductionInput(input.orderId, makeProductionInput(renderTemplate, renderValues, renderEditorState), productionStorage(supabase));
+  payload.snapshot.production = await pinProductionInput(input.orderId, makeProductionInput(renderTemplate, renderValues, renderEditorState), productionStorage(supabase), { budget });
+  budget.reserveSnapshot(Buffer.byteLength(JSON.stringify(payload.snapshot)));
   payload.integrity_hash = computeIntegrityHash(payload.snapshot);
   readProductionSnapshot({ ...payload, order_id: input.orderId, snapshot_schema_version: 1, production_mode: (payload.snapshot.production as any).mode });
   return payload;

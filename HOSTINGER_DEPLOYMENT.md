@@ -12,7 +12,7 @@ No secrets belong in this file, in git, or in any `NEXT_PUBLIC_` variable.
 
 | Setting | Value |
 |---|---|
-| Node.js version | **22.x (LTS)**. Pinned in `package.json` `engines` and `.nvmrc`. |
+| Node.js version | **22.x (LTS)**. Pinned in `package.json` `engines` and `.nvmrc`. In hPanel → Node.js app, select **22.x** (not 20 or 24): the final release validation (install, typecheck, lint, tests, build, Playwright, audit, sharp/resvg native binaries) ran on Node v22.23.3, and the host must run the same major. Check after deploy: the startup log line `▲ Next.js …` and `node -v` over SSH. |
 | Install command | `npm ci` |
 | Build command | `npm run build` (runs `next build --webpack`; see below) |
 | Start command | `npm start` (runs `next start`; it honours Hostinger's `PORT`) |
@@ -100,6 +100,7 @@ the database, and never drop tables. The migrations are written to be additive
 | 15 | **`20260919120000_production_security_hardening.sql`** | **BLOCKER.** Stops a signed-in customer from making themselves `admin` by updating `profiles.role`, and removes direct customer `orders` inserts. |
 | 17 | **`20261001120000_checkout_cart_claims_and_outbox.sql`** | **BLOCKER — apply BEFORE deploying the matching app build, after #16.** Cart lines consumed inside the checkout transaction (no duplicate orders across tabs/devices), mandatory snapshot↔order item linkage, durable `production_tasks` / `notification_tasks` (outbox), worker heartbeat + `production_health()`, identity immutability of finalized history. |
 | 16 | **`20260930120000_checkout_integrity_hardening.sql`** | **BLOCKER — apply BEFORE deploying the matching app build.** The atomic `create_checkout_order` transaction (the new checkout calls it), durable order states, one-order-per-design, column guards on `product_customizations`, immutable order financials/snapshots, the customer-uploads storage IDOR fix, strict customer-id order visibility. See `docs/CHECKOUT_ARCHITECTURE.md`. |
+| 19 | **`20261003120000_worker_isolation_checkout_preparation.sql`** | **BLOCKER — apply together with the matching application build, after #18.** Checkout preparation leases (one expensive preparation per customer; the order transaction must consume a lease — the PREVIOUS app build is refused with `CHECKOUT_PREPARATION_REQUIRED`), cleanup-item lifecycle with dead-lettering, per-subsystem worker health, serialized reconciliation, asset/snapshot size backstops, `server_clock()`, and a fix to `guard_fulfillment_history_delete()` (real PostgreSQL refused every order delete). Pause checkout, apply, deploy, resume. |
 | 18 | **`20261002120000_snapshot_owned_production.sql`** | **BLOCKER — requires a coordinated checkout/worker pause and matching application deployment.** Versioned, order-owned rendering; pinned private originals/fonts/licenses; audited recovery; explicit manual mode; output verification and reconciliation. Read `docs/SNAPSHOT_PRODUCTION.md` before applying. |
 
 Run this query in the SQL editor. **Every row must be `true`:**
@@ -107,7 +108,7 @@ Run this query in the SQL editor. **Every row must be `true`:**
 ```sql
 select * from (values
   ('customizer_v2',                 to_regclass('public.customizer_render_jobs') is not null),
-  ('customizer_v2_completion',      exists (select 1 from information_schema.columns where table_schema='public' and table_name='customizer_render_jobs' and column_name='render_engine_version')),
+  ('customizer_v2_completion',      exists (select 1 from information_schema.columns where table_schema='public' and table_name='customizer_render_outputs' and column_name='render_engine_version')),
   ('production_hardening (RPCs)',   to_regprocedure('public.claim_customizer_render_job(uuid,text,integer)') is not null
                                     and to_regprocedure('public.recover_abandoned_customizer_render_jobs()') is not null),
   ('customer_parity',               to_regclass('public.customizer_audit_logs') is not null),
@@ -143,7 +144,20 @@ select * from (values
   ('worker health',                 to_regprocedure('public.production_health()') is not null and to_regclass('public.worker_runs') is not null),
   ('one snapshot guard',            not exists (select 1 from pg_trigger where tgname='protect_order_design_snapshot_identity' and not tgisinternal)),
   ('outbox not customer callable',  not has_function_privilege('authenticated', 'public.claim_production_tasks(integer,integer,text)', 'execute')
-                                    and not has_table_privilege('authenticated', 'public.production_tasks', 'insert'))
+                                    and not has_table_privilege('authenticated', 'public.production_tasks', 'insert')),
+  ('checkout preparation leases',   to_regclass('public.checkout_preparations') is not null
+                                    and exists (select 1 from pg_trigger where tgname='verify_consume_checkout_preparation' and not tgisinternal)
+                                    and not has_function_privilege('authenticated', 'public.acquire_checkout_preparation(uuid,text,text,text,integer)', 'execute')),
+  ('cleanup lifecycle',             to_regclass('public.production_storage_cleanup_items') is not null
+                                    and to_regprocedure('public.claim_storage_cleanup_items(integer,integer,integer,integer)') is not null
+                                    and to_regprocedure('public.review_storage_cleanup_item(uuid,uuid,text,text)') is not null),
+  ('subsystem health',              to_regclass('public.worker_subsystem_runs') is not null
+                                    and to_regprocedure('public.record_worker_subsystems(text,jsonb)') is not null
+                                    and to_regprocedure('public.server_clock()') is not null),
+  ('serialized reconciliation',     position('husnalogy-reconcile-production' in pg_get_functiondef('public.reconcile_production(integer)'::regprocedure)) > 0),
+  ('history delete guard fixed',    position('to_jsonb(old)' in pg_get_functiondef('public.guard_fulfillment_history_delete()'::regprocedure)) > 0),
+  ('asset budget backstop',         exists (select 1 from pg_trigger where tgname='guard_order_production_asset_budget' and not tgisinternal)
+                                    and exists (select 1 from pg_constraint where conname='order_design_snapshots_serialized_size'))
 ) as checks(migration, applied);
 ```
 
@@ -167,6 +181,34 @@ Also check:
 - Create the first admin with the SQL editor, which runs as a database owner:
   `update public.profiles set role = 'admin' where email = '<owner email>';`
   The role trigger allows this there and refuses it through the public API.
+
+### Staging first (required before production)
+
+Apply and verify everything on a **dedicated, disposable staging project**
+before production — never against the live project:
+
+```bash
+npm run staging:migrate     # schema.sql → hero_collections.sql → timestamped files; one transaction per file
+npm run staging:seed        # e2e accounts (admin, Customer A, Customer B), products, designs
+npm run test:staging        # real PostgREST/Auth/Storage/RLS/RPC/concurrency checks
+npm run test:e2e:staging    # complete Playwright suite incl. real multi-tab checkout
+```
+
+All four read only `.env.staging` (template `.env.staging.example`), refuse
+known production project refs and the project in `.env.local`, and require
+`STAGING_CONFIRM_PROJECT_REF`. `staging:migrate` records each applied file with
+its SHA-256 in `husnalogy_ops.applied_migrations`, skips applied files, refuses
+an edited applied file, and stops at the first failing file — reporting its
+name — with nothing of that file applied. Details: `docs/E2E_STAGING.md`.
+
+### Migration file names (reviewed 2026-10-02)
+
+`20261001120000`, `20261002120000` and `20261003120000` carry dates up to two
+days after the files were written. They are **kept as they are**: their order
+is correct (each depends only on earlier files), and objects of
+`20261003120000` were found in a persistent project, so renaming could make a
+tracked history disagree with the files. New migrations must use a timestamp
+later than `20261003120000`.
 
 ### If a migration fails or must be backed out
 
@@ -258,23 +300,66 @@ curl -fsS --max-time 290 -H "Authorization: Bearer YOUR_CRON_SECRET" "https://hu
 Replace `YOUR_CRON_SECRET` with the same value set in the app's environment.
 The cron command lives only in hPanel, never in git.
 
-**Each run:** records a heartbeat → recovers any finalized snapshot that never
-got production work (older than 10 minutes) → drains due production tasks and
-notification tasks (with leases, retry and exponential backoff) → processes
-render jobs. Tasks are also attempted immediately after checkout; the cron is
-what guarantees completion after a crash, a failed render enqueue or a failed
-email.
+**Each run** records a heartbeat, then runs seven subsystems in this order,
+each ISOLATED from the others (`lib/worker/production-worker.ts`):
+
+1. **lease recovery** — expired render leases, abandoned checkout preparations, clock-offset measurement;
+2. **production tasks** — outbox → render jobs / manual hand-off *(critical)*;
+3. **render jobs** — print PNG/PDF *(critical)*;
+4. **notifications** — order emails *(critical)*;
+5. **reconciliation** — repairs missing chain links (serialized in the database);
+6. **output verification** — stored bytes still match their checksums;
+7. **storage cleanup** — removes abandoned copies one object at a time.
+
+A subsystem that throws is recorded as `failed` (logged, sent to Sentry, stored
+in `worker_subsystem_runs`) and the next one still runs: a storage outage or a
+poison cleanup object can never stop production or customer emails, and an
+email outage never stops production. The pass has a 270 s budget with time
+reserved for the later critical subsystems. Tasks are also attempted
+immediately after checkout; the cron guarantees completion after a crash, a
+failed render enqueue or a failed email.
+
+**Storage cleanup lifecycle.** Every candidate is tracked in
+`production_storage_cleanup_items` with its attempt count, last error and next
+attempt (backoff 5 min → 24 h). After 8 failed attempts it is dead-lettered
+(`manual_review_required`) and never retried automatically. Review with
+`GET /api/admin/production/storage-cleanup` (admin) and retry or dismiss with
+`POST {"id","action":"retry"|"dismiss","reason"}` — audited in
+`production_recovery_audit`. Bytes of a checkout that definitively failed are
+removed immediately by the request; a crashed checkout's bytes are removed
+once its preparation lease (4 min) expires. Committed order bytes are never
+candidates, and a storage trigger refuses their deletion anyway.
 
 ### Verify the cron actually runs (do not assume)
 
 `GET https://husnalogy.com/api/admin/production/health` with the same
 `Authorization: Bearer <CRON_SECRET>` header (or as a signed-in admin) returns:
 
-- `200 {"ok":true}` — the worker finished a run within 15 minutes and nothing is stuck;
-- `503 {"ok":false,"problems":[…]}` — e.g. "The production worker has never
-  completed a run (is the Hostinger cron configured?)", a task waiting more
-  than 30 minutes, permanently failed tasks/jobs, unscheduled ordered designs,
-  or emails waiting more than an hour.
+- `200 {"status":"healthy"}` — the worker finished a run within 15 minutes, every subsystem ran and nothing is stuck;
+- `200 {"status":"degraded","warnings":[…]}` — customer work is being done, but a
+  **maintenance** subsystem (lease recovery, reconciliation, output verification,
+  storage cleanup) failed, degraded or was skipped, cleanup objects are
+  dead-lettered, or expired checkout preparation leases await the worker. Look
+  at it soon; it does not page.
+- `503 {"status":"unhealthy","problems":[…]}` — customer work is NOT being done:
+  a **critical** subsystem (`production_tasks`, `render_jobs`, `notifications`)
+  is `failed`, `degraded` or **`skipped`** (e.g. the pass ran out of time), or
+  has never been recorded; the worker never ran or last finished > 15 minutes
+  ago; a task waited > 30 minutes; permanently failed tasks/jobs; fulfilment
+  chain gaps (missing snapshots/tasks/jobs/outputs, stuck jobs); outputs that
+  failed verification; emails waiting > 1 hour; or a server/database clock
+  offset above 2 s.
+
+Each entry of `subsystemIssues` names the subsystem, its classification, status
+and reason, the worker **run id**, when it happened, its last successful run,
+and — for critical subsystems — the pending queue size and oldest pending task.
+The policy lives in `lib/worker/health-policy.ts`.
+
+`production_health()` (in the JSON) also exposes per-subsystem
+`last_success_at` / `last_failure_at` / `last_duration_ms`, oldest pending
+production and notification tasks, failed/retrying render jobs, cleanup
+pending/failing/dead-lettered counts, unverified outputs and checkout
+preparation counts.
 
 Point an uptime monitor (e.g. UptimeRobot/Better Stack keyword or status
 check, every 5–15 minutes, with the Bearer header) at this URL so the team is
@@ -286,18 +371,44 @@ Behaviour:
 
 | Response | Meaning |
 |---|---|
-| `200` | Run finished. JSON has `processed`, `failures`, `recovered`, `remaining`, `stoppedReason`. |
+| `200` | Pass completed. JSON: `status` (`ok` or `degraded`), `durationMs`, and `subsystems.<name>.{status,durationMs,error,result}`. `degraded` = a maintenance subsystem failed or some items failed and will be retried — look at `subsystems`. |
 | `401` | Missing or wrong secret, or no secret configured on the server. |
 | `409` | A previous run is still working in this server process. Harmless; the next tick continues. |
-| `500` | The run itself failed. Check the app logs. |
+| `503` | A critical subsystem (production tasks, render or notifications) could not run at all (e.g. database unavailable). The other subsystems still ran. |
+| `500` | Unexpected failure of the pass itself. Check the app logs. |
 
-- Each run processes up to **20** jobs (`?limit=` up to 50) and stops claiming
-  new jobs after **4 minutes**, so a request is always bounded.
+- Each run processes up to **20** render jobs (`?limit=` up to 50) within a
+  270 s budget (the cron's curl gives up at 290 s), so a request is bounded.
 - A job is claimed atomically under a database lease. Overlapping or repeated
   runs, even across processes, never render the same job twice. Abandoned
   leases are recovered automatically. Failed jobs retry with backoff, up to 3
   attempts.
 - A `POST` from a signed-in admin session is also accepted, for manual runs.
+
+---
+
+### Clock synchronization (verify, do not assume)
+
+Leases (checkout preparation, production/notification tasks, render jobs),
+JWT validation (`PGRST303 JWT issued at future`), signed URLs, cron timing and
+audit timestamps all assume the clocks agree. Measure on the machine that runs
+`npm start` (Hostinger SSH), not on a laptop:
+
+```sh
+NEXT_PUBLIC_SUPABASE_URL=https://<ref>.supabase.co SUPABASE_SERVICE_ROLE_KEY=<key> node scripts/check-clock.mjs
+```
+
+It prints the offset against the database clock (ms precision), the Supabase
+gateway `Date` header and Cloudflare, and exits 1 above 2 s. Once deployed,
+`GET /api/admin/production/clock` (Bearer CRON_SECRET or admin session) reports
+the same from inside the app, plus — for an admin session — the access token's
+`iat`/`exp` against both clocks. Every worker pass records the offset in
+`subsystems.lease_recovery.last_result.clock`, and the health check alerts
+above 2 s. If the host is off: shared hosting clocks are managed by Hostinger —
+open a support ticket with the measured offset; on a VPS enable NTP
+(`timedatectl set-ntp true`, `chronyc tracking`). Keep the process in UTC
+(`TZ` unset or `UTC`). A `supabase.jwt_issued_in_future` error event means
+PGRST303 happened; it carries the measured skew (never the token).
 
 ---
 

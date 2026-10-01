@@ -1,0 +1,153 @@
+
+> husnalogy-nextjs@1.0.0 build
+> npm run validate:fonts && npm run repair:next-types && next build --webpack
+
+
+> husnalogy-nextjs@1.0.0 validate:fonts
+> node scripts/validate-customizer-fonts.mjs
+
+Customizer font architecture validated (Google Fonts).
+  website branding: 10 local font files wired to next/font/local
+  customizer fonts: served dynamically from the Google Fonts Developer API
+
+> husnalogy-nextjs@1.0.0 repair:next-types
+> node scripts/repair-next-types.mjs
+
+Next generated types verified (8 files).
+▲ Next.js 16.3.8 (webpack)
+- Environments: .env.local
+✓ Running next.config.mjs took 62ms
+
+  Creating an optimized production build ...
+✓ Compiled successfully in 34.4s
+  Running TypeScript ...
+  Finished TypeScript in 19.2s ...
+  Collecting page data using 11 workers ...
+  Generating static pages using 11 workers (0/55) ...
+  Generating static pages using 11 workers (13/55) 
+  Generating static pages using 11 workers (27/55) 
+  Generating static pages using 11 workers (41/55) 
+✓ Generating static pages using 11 workers (55/55) in 4.6s
+  Finalizing page optimization ...
+  Collecting build traces ...
+
+Route (app)                                               Revalidate  Expire
+┌ ƒ /
+├ ƒ /__e2e/admin-canvas
+├ ƒ /__e2e/customizer
+├ ƒ /_not-found
+├ ƒ /about
+├ ƒ /account
+├ ƒ /admin/dashboard
+├ ƒ /admin/login
+├ ƒ /admin/review
+├ ƒ /api/admin/categories
+├ ƒ /api/admin/categories/[id]
+├ ƒ /api/admin/collections
+├ ƒ /api/admin/contact-messages
+├ ƒ /api/admin/contact-messages/[id]
+├ ƒ /api/admin/customizer/asset-categories
+├ ƒ /api/admin/customizer/asset-folders
+├ ƒ /api/admin/customizer/asset-folders/[id]
+├ ƒ /api/admin/customizer/assets
+├ ƒ /api/admin/customizer/assets/[id]
+├ ƒ /api/admin/customizer/feature-flags/[productId]
+├ ƒ /api/admin/customizer/mockups/[productId]
+├ ƒ /api/admin/customizer/mockups/[productId]/import
+├ ƒ /api/admin/customizer/mockups/[productId]/publish
+├ ƒ /api/admin/customizer/orders/[orderId]/snapshots
+├ ƒ /api/admin/customizer/render/process
+├ ƒ /api/admin/customizer/render/retry
+├ ƒ /api/admin/customizer/templates/[productId]/publish
+├ ƒ /api/admin/customizer/templates/[productId]/versions
+├ ƒ /api/admin/designers
+├ ƒ /api/admin/hero-collections
+├ ƒ /api/admin/hero-collections/resolve
+├ ƒ /api/admin/logout
+├ ƒ /api/admin/newsletter
+├ ƒ /api/admin/newsletter/[id]
+├ ƒ /api/admin/newsletter/campaigns
+├ ƒ /api/admin/newsletter/campaigns/[id]
+├ ƒ /api/admin/order-requests
+├ ƒ /api/admin/order-requests/[id]
+├ ƒ /api/admin/production/assets
+├ ƒ /api/admin/production/clock
+├ ƒ /api/admin/production/health
+├ ƒ /api/admin/production/manual-complete
+├ ƒ /api/admin/production/notification-delivery
+├ ƒ /api/admin/production/retry
+├ ƒ /api/admin/production/storage-cleanup
+├ ƒ /api/admin/products
+├ ƒ /api/admin/products/[id]
+├ ƒ /api/admin/products/[id]/permanent-delete
+├ ƒ /api/admin/products/[id]/restore
+├ ƒ /api/admin/products/[id]/reviews
+├ ƒ /api/admin/products/[id]/reviews/[reviewId]
+├ ƒ /api/admin/products/[id]/workflow
+├ ƒ /api/admin/products/deleted
+├ ƒ /api/admin/settings
+├ ƒ /api/admin/settings/test-email
+├ ƒ /api/admin/uploads
+├ ƒ /api/ask-logy
+├ ƒ /api/checkout/quote
+├ ƒ /api/contact
+├ ƒ /api/customizations
+├ ƒ /api/customizations/[id]
+├ ƒ /api/customizer/assets/[id]
+├ ƒ /api/customizer/assets/resolve
+├ ƒ /api/customizer/elements
+├ ƒ /api/customizer/fonts
+├ ƒ /api/customizer/iconify/import
+├ ƒ /api/customizer/iconify/preview
+├ ƒ /api/customizer/iconify/search
+├ ƒ /api/customizer/library
+├ ƒ /api/customizer/library/[id]
+├ ƒ /api/customizer/preflight
+├ ƒ /api/customizer/render
+├ ƒ /api/customizer/render/[jobId]
+├ ƒ /api/customizer/upload
+├ ƒ /api/health
+├ ƒ /api/newsletter
+├ ƒ /api/order-requests
+├ ƒ /api/products/[slug]/reviews
+├ ƒ /api/settings
+├ ƒ /auth/callback
+├ ƒ /auth/callback/finish
+├ ƒ /cards
+├ ƒ /cart
+├ ƒ /checkout
+├ ƒ /collections
+├ ƒ /collections/[slug]
+├ ƒ /contact
+├ ƒ /designer
+├ ƒ /favorites
+├ ƒ /forgot-password
+├ ƒ /gifts
+├ ƒ /husnalogy-studio
+├ ƒ /login
+├ ƒ /orders
+├ ƒ /our-style
+├ ƒ /privacy
+├ ƒ /products
+├ ƒ /products/[slug]
+├ ƒ /products/[slug]/personalize
+├ ƒ /profile
+├ ƒ /reset-password
+├ ○ /robots.txt
+├ ƒ /save-the-dates
+├ ƒ /saved-addresses
+├ ƒ /search
+├ ƒ /signup
+├ ○ /sitemap.xml                                                  1h      1y
+├ ƒ /stationery
+├ ƒ /support
+├ ƒ /terms
+└ ƒ /weddings
+
+
+ƒ Proxy (Middleware)
+
+○  (Static)   prerendered as static content
+ƒ  (Dynamic)  server-rendered on demand
+
+exit=0

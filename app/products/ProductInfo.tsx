@@ -19,6 +19,7 @@ import {
   saveProductOptions,
 } from "../lib/product-options";
 import { parseProductOption } from "@/lib/products/options";
+import { canonicalProductOptions, createOptionAutosave, restoreProductOptions, type OptionAutosave } from "@/lib/products/option-persistence";
 import { formatCurrency, formatCurrencySurcharge, normalizeCurrency } from "@/lib/currency";
 
 const FORMAT_OPTIONS = [
@@ -405,6 +406,8 @@ export default function ProductInfo({ product, initialUser = undefined }) {
   const [saveStatus, setSaveStatus] = useState("idle");
 
   const mountedRef = useRef(false);
+  const autosaveRef = useRef<OptionAutosave | null>(null);
+  const loadedProductRef = useRef<unknown>(null);
   const cartMessageTimeoutRef = useRef(null);
   const saveMessageTimeoutRef = useRef(null);
 
@@ -467,18 +470,14 @@ export default function ProductInfo({ product, initialUser = undefined }) {
     0,
   );
 
-  const getCurrentOptionData = () => ({
-    format,
-    size,
-    quantity,
-    customQty,
-    envelope,
-    corner,
-    paper,
-    paperStyle,
-    printing,
-    logo,
-  });
+  // The ONE canonical record of the selected options: it is what is persisted
+  // and what triggers the autosave, so no option can be saved/restored but
+  // forgotten by the autosave (lib/products/option-persistence.ts).
+  const optionData = useMemo(
+    () => canonicalProductOptions({ format, size, quantity, customQty, envelope, corner, paper, paperStyle, printing, logo }),
+    [format, size, quantity, customQty, envelope, corner, paper, paperStyle, printing, logo],
+  );
+  const getCurrentOptionData = () => optionData;
 
   useEffect(() => {
     mountedRef.current = true;
@@ -531,26 +530,40 @@ export default function ProductInfo({ product, initialUser = undefined }) {
   useEffect(() => {
     let active = true;
 
+    // Apply a stored option object. Options missing from older saved objects
+    // (e.g. before Paper Style existed) keep the page default.
+    const applySaved = (saved: unknown) => {
+      const restored = restoreProductOptions(saved);
+      if (restored.format) setFormat(restored.format);
+      if (restored.size) setSize(restored.size);
+      if (restored.quantity) setQuantity(restored.quantity);
+      if (restored.customQty) setCustomQty(restored.customQty);
+      if (restored.envelope) setEnvelope(restored.envelope);
+      if (restored.corner) setCorner(restored.corner);
+      if (restored.paper) setPaper(restored.paper);
+      if (restored.paperStyle) setPaperStyle(restored.paperStyle);
+      if (restored.printing) setPrinting(restored.printing);
+      if (typeof restored.logo === "boolean") setLogo(restored.logo);
+    };
+    const markLoaded = () => {
+      loadedProductRef.current = product;
+      setSavedLoaded(true);
+    };
+
     async function loadSavedOptions() {
+      // Until this product's options are loaded, nothing may be autosaved
+      // for it (the previous product's selections must not be written here).
+      loadedProductRef.current = null;
       setSavedLoaded(false);
       setLogo(true);
 
       const localSaved = getLocalProductOptions(product);
 
       if (localSaved) {
-        if (localSaved.format) setFormat(localSaved.format);
-        if (localSaved.size) setSize(localSaved.size);
-        if (localSaved.quantity) setQuantity(localSaved.quantity);
-        if (localSaved.customQty) setCustomQty(localSaved.customQty);
-        if (localSaved.envelope) setEnvelope(localSaved.envelope);
-        if (localSaved.corner) setCorner(localSaved.corner);
-        if (localSaved.paper) setPaper(localSaved.paper);
-        if (localSaved.paperStyle) setPaperStyle(localSaved.paperStyle);
-        if (localSaved.printing) setPrinting(localSaved.printing);
-        if (typeof localSaved.logo === "boolean") setLogo(localSaved.logo);
+        applySaved(localSaved);
 
         if (active) {
-          setSavedLoaded(true);
+          markLoaded();
           setSaveStatus("local");
         }
 
@@ -558,7 +571,7 @@ export default function ProductInfo({ product, initialUser = undefined }) {
       }
 
       if (!user || !product) {
-        if (active) setSavedLoaded(true);
+        if (active) markLoaded();
         return;
       }
 
@@ -568,16 +581,7 @@ export default function ProductInfo({ product, initialUser = undefined }) {
         if (!active) return;
 
         if (saved) {
-          if (saved.format) setFormat(saved.format);
-          if (saved.size) setSize(saved.size);
-          if (saved.quantity) setQuantity(saved.quantity);
-          if (saved.customQty) setCustomQty(saved.customQty);
-          if (saved.envelope) setEnvelope(saved.envelope);
-          if (saved.corner) setCorner(saved.corner);
-          if (saved.paper) setPaper(saved.paper);
-          if (saved.paperStyle) setPaperStyle(saved.paperStyle);
-          if (saved.printing) setPrinting(saved.printing);
-          if (typeof saved.logo === "boolean") setLogo(saved.logo);
+          applySaved(saved);
 
           saveLocalProductOptions(product, saved);
           setSaveStatus("permanent-saved");
@@ -586,7 +590,7 @@ export default function ProductInfo({ product, initialUser = undefined }) {
         console.error("Could not load saved product options:", error);
       } finally {
         if (active) {
-          setSavedLoaded(true);
+          markLoaded();
         }
       }
     }
@@ -598,33 +602,31 @@ export default function ProductInfo({ product, initialUser = undefined }) {
     };
   }, [user, product]);
 
+  // One debounced autosave per product. A pending write is flushed (never
+  // dropped) when the customer leaves the page or switches product.
   useEffect(() => {
-    if (!savedLoaded || !product) return;
-
-    const timeout = window.setTimeout(() => {
-      saveLocalProductOptions(product, getCurrentOptionData());
-
-      if (mountedRef.current) {
-        setSaveStatus("local");
-      }
-    }, 250);
-
+    if (!product) return;
+    const autosave = createOptionAutosave({
+      delayMs: 250,
+      save: (data) => {
+        saveLocalProductOptions(product, data);
+        if (mountedRef.current) setSaveStatus("local");
+      },
+    });
+    autosaveRef.current = autosave;
+    const flush = () => autosave.flush();
+    window.addEventListener("pagehide", flush);
     return () => {
-      window.clearTimeout(timeout);
+      window.removeEventListener("pagehide", flush);
+      autosave.flush();
+      if (autosaveRef.current === autosave) autosaveRef.current = null;
     };
-  }, [
-    savedLoaded,
-    product,
-    format,
-    size,
-    quantity,
-    customQty,
-    envelope,
-    corner,
-    paper,
-    printing,
-    logo,
-  ]);
+  }, [product]);
+
+  useEffect(() => {
+    if (!savedLoaded || !product || loadedProductRef.current !== product) return;
+    autosaveRef.current?.schedule(optionData);
+  }, [savedLoaded, product, optionData]);
 
   const saveCurrentOptionsPermanently = async () => {
     const data = getCurrentOptionData();
@@ -1606,6 +1608,7 @@ function LargeOptionButton({ option, active, onClick, compact = false, showIcon 
     <button
       type="button"
       onClick={onClick}
+      aria-pressed={active}
       className={`group flex w-full min-w-0 items-center justify-between gap-3 rounded-none border px-3 text-left transition active:scale-[0.99] ${
         compact ? "py-2.5" : "py-3"
       } ${

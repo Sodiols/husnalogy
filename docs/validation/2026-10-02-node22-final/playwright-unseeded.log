@@ -1,0 +1,2421 @@
+[WebServer] [env] UPSTASH_REDIS_REST_URL is not set: rate limits are enforced per Node process only. That is exact for the single `npm start` process Hostinger runs; set REQUIRE_DISTRIBUTED_RATE_LIMIT=1 and configure Upstash before running more than one instance.
+[WebServer] [env] RESEND_API_KEY is not set: order confirmation and new-order emails are queued durably but NOT sent until email is configured.
+[WebServer] [env] SENTRY_DSN is not set: server errors are logged to stdout only; no one is alerted when checkout or production fails.
+[WebServer] [env] ENABLE_CUSTOMIZER_E2E_FIXTURE is enabled; the /__e2e test fixture pages are publicly reachable. Never set it on the live site.
+
+Running 123 tests using 6 workers
+
+  x    6 [chromium] › e2e\customizer-interaction-contract.spec.ts:249:7 › customizer interaction contract › the fixture mounts the real editor with no seeded database (10.7s)
+  x    3 [chromium] › e2e\customizer-performance.spec.ts:71:9 › large-document performance › 20 layers: one commit per drag, no workspace re-render (10.9s)
+  x    1 [chromium] › e2e\customizer-gesture-cancellation.spec.ts:266:7 › gesture cancellation › Escape abandons a live drag and leaves the editor usable (11.9s)
+  x    2 [chromium] › e2e\admin-canvas-interaction.spec.ts:122:7 › admin canvas interaction contract › admin selection attaches the transformer to the clicked object (12.1s)
+  x    4 [chromium] › e2e\customizer-resize.spec.ts:162:7 › resize — the shipped Konva path › a corner drag changes both dimensions and commits exactly once (13.6s)
+  ok   5 [chromium] › e2e\customizer-responsive.spec.ts:97:9 › customer customizer responsive shell › fits and centres the page at 320x568 (15.8s)
+  x    7 [chromium] › e2e\customizer-interaction-contract.spec.ts:275:7 › customizer interaction contract › a 20-step drag writes nothing and renders nothing until release, then commits once (5.8s)
+  ok  11 [chromium] › e2e\customizer-responsive.spec.ts:97:9 › customer customizer responsive shell › fits and centres the page at 360x800 (5.4s)
+  x    8 [chromium] › e2e\customizer-gesture-cancellation.spec.ts:277:7 › gesture cancellation › pointercancel abandons a live drag (6.1s)
+  x    9 [chromium] › e2e\customizer-performance.spec.ts:71:9 › large-document performance › 50 layers: one commit per drag, no workspace re-render (6.1s)
+  x   10 [chromium] › e2e\admin-canvas-interaction.spec.ts:127:7 › admin canvas interaction contract › admin drag is transient and commits once (5.6s)
+  ok  13 [chromium] › e2e\customizer-responsive.spec.ts:97:9 › customer customizer responsive shell › fits and centres the page at 375x812 (4.5s)
+  ok  12 [chromium] › e2e\customizer-resize.spec.ts:175:7 › resize — the shipped Konva path › an edge drag changes only its own axis (6.8s)
+  x   14 [chromium] › e2e\customizer-interaction-contract.spec.ts:298:7 › customizer interaction contract › drag undo and redo restore exact document geometry (6.4s)
+  x   15 [chromium] › e2e\customizer-gesture-cancellation.spec.ts:297:7 › gesture cancellation › losing the window abandons a live drag (6.2s)
+  ok  18 [chromium] › e2e\customizer-responsive.spec.ts:97:9 › customer customizer responsive shell › fits and centres the page at 390x844 (6.3s)
+  x   17 [chromium] › e2e\admin-canvas-interaction.spec.ts:142:7 › admin canvas interaction contract › admin resize re-renders only the resized layer and commits once (6.3s)
+  x   16 [chromium] › e2e\customizer-performance.spec.ts:71:9 › large-document performance › 100 layers: one commit per drag, no workspace re-render (6.9s)
+  ok  19 [chromium] › e2e\customizer-resize.spec.ts:186:7 › resize — the shipped Konva path › a corner drag anchors the opposite corner (6.6s)
+  ok  20 [chromium] › e2e\customizer-responsive.spec.ts:97:9 › customer customizer responsive shell › fits and centres the page at 414x896 (5.6s)
+  ok  21 [chromium] › e2e\customizer-resize.spec.ts:198:7 › resize — the shipped Konva path › Shift preserves the aspect ratio; a plain corner drag does not (7.7s)
+  x   23 [chromium] › e2e\customizer-gesture-cancellation.spec.ts:308:7 › gesture cancellation › hiding the tab abandons a live drag (7.0s)
+  x   22 [chromium] › e2e\customizer-interaction-contract.spec.ts:319:7 › customizer interaction contract › a 20-step resize re-renders only the resized layer and commits once (7.8s)
+  x   24 [chromium] › e2e\admin-canvas-interaction.spec.ts:158:7 › admin canvas interaction contract › admin rotation renders nothing until release and commits once (5.7s)
+  ok  26 [chromium] › e2e\customizer-responsive.spec.ts:97:9 › customer customizer responsive shell › fits and centres the page at 768x1024 (5.2s)
+  x   25 [chromium] › e2e\customizer-performance.spec.ts:71:9 › large-document performance › 200 layers: one commit per drag, no workspace re-render (6.1s)
+  ok  27 [chromium] › e2e\customizer-resize.spec.ts:221:7 › resize — the shipped Konva path › an object cannot be collapsed below the minimum size (5.4s)
+  ok  28 [chromium] › e2e\customizer-responsive.spec.ts:97:9 › customer customizer responsive shell › fits and centres the page at 1024x768 (landscape) (5.2s)
+  x   29 [chromium] › e2e\customizer-gesture-cancellation.spec.ts:328:7 › gesture cancellation › Escape abandons a live RESIZE without resizing the object (5.4s)
+  x   30 [chromium] › e2e\customizer-interaction-contract.spec.ts:346:7 › customizer interaction contract › resize undo and redo restore exact size (5.4s)
+  x   31 [chromium] › e2e\admin-canvas-interaction.spec.ts:181:7 › admin canvas interaction contract › an admin multi-object drag is one atomic commit (5.4s)
+  ok  34 [chromium] › e2e\customizer-responsive.spec.ts:97:9 › customer customizer responsive shell › fits and centres the page at 1366x768 (4.5s)
+  ok  33 [chromium] › e2e\customizer-text-drag.spec.ts:213:9 › text drags translate exactly › auto-width, left/top aligned: a plain drag moves the type by the gesture delta (8.4s)
+  ok  35 [chromium] › e2e\customizer-responsive.spec.ts:97:9 › customer customizer responsive shell › fits and centres the page at 1440x900 (4.7s)
+  x   36 [chromium] › e2e\customizer-gesture-cancellation.spec.ts:353:7 › gesture cancellation › Escape abandons a live ROTATION without rotating the object (5.1s)
+  x   32 [chromium] › e2e\customizer-resize.spec.ts:240:7 › resize — the shipped Konva path › a rotated object resizes along its OWN axes (11.7s)
+  x   37 [chromium] › e2e\customizer-interaction-contract.spec.ts:387:7 › customizer interaction contract › a 20-step rotation renders nothing until release, then commits once (4.8s)
+  x   38 [chromium] › e2e\admin-canvas-interaction.spec.ts:200:7 › admin canvas interaction contract › admin zoom: the same screen drag moves the document half as far at 2x (5.0s)
+  ok  40 [chromium] › e2e\customizer-responsive.spec.ts:97:9 › customer customizer responsive shell › fits and centres the page at 1920x1080 (4.9s)
+  ok  39 [chromium] › e2e\customizer-text-drag.spec.ts:220:9 › text drags translate exactly › auto-width, left/top aligned: enlarge, then drag (12.1s)
+  ok  44 [chromium] › e2e\customizer-text-editing.spec.ts:73:7 › on-canvas text editing keyboard contract › Ctrl+Enter finishes editing and commits, exactly like Done (5.4s)
+  ok  47 [chromium] › e2e\customizer-text-editing.spec.ts:93:7 › on-canvas text editing keyboard contract › an allowed text colour change applies to the selected text on the canvas (3.9s)
+  x   41 [chromium] › e2e\customizer-gesture-cancellation.spec.ts:390:7 › gesture cancellation › Escape with no gesture running still reaches the editor and clears the selection (6.2s)
+  x   43 [chromium] › e2e\customizer-interaction-contract.spec.ts:409:7 › customizer interaction contract › rotation undo and redo (8.9s)
+  x   45 [chromium] › e2e\admin-canvas-interaction.spec.ts:218:7 › admin canvas interaction contract › an admin-locked layer cannot be dragged (5.1s)
+  ok  48 [chromium] › e2e\customizer-text-editing.spec.ts:123:7 › on-canvas text editing keyboard contract › Escape leaves editing without stranding the editor open (4.9s)
+  x   42 [chromium] › e2e\customizer-resize.spec.ts:273:7 › resize — the shipped Konva path › resizing a multi-selection scales every member as one transaction (11.9s)
+  ok  49 [chromium] › e2e\customizer-text-editing.spec.ts:151:7 › on-canvas text editing keyboard contract › Enter inserts a real line break in a multiline editor and never closes it (3.7s)
+  ok  46 [chromium] › e2e\customizer-text-drag.spec.ts:226:9 › text drags translate exactly › auto-width, left/top aligned: shrink, then drag (14.2s)
+  ok  52 [chromium] › e2e\image-optimizer.spec.ts:8:5 › public catalogue images are optimized; private, signed and foreign sources are refused (4.7s)
+  x   50 [chromium] › e2e\customizer-interaction-contract.spec.ts:425:7 › customizer interaction contract › a multi-object drag is ONE atomic transaction however many objects move (5.9s)
+  x   51 [chromium] › e2e\customizer-gesture-cancellation.spec.ts:406:7 › gesture cancellation › a cancelled gesture is never autosaved (6.4s)
+  ok  56 [chromium] › e2e\product-option-persistence.spec.ts:27:7 › product option persistence (Paper Style) › changing ONLY Paper Style, leaving and returning restores it (4.4s)
+  x   53 [chromium] › e2e\customizer-text-editing.spec.ts:185:7 › on-canvas text editing keyboard contract › choosing a text preset inserts a text object in that style (8.6s)
+  ok  59 [chromium] › e2e\production-security-smoke.spec.ts:3:5 › anonymous clients cannot read production assets or invoke privileged recovery/worker (783ms)
+  ok  61 [chromium] › e2e\production-security-smoke.spec.ts:13:5 › expired-session logout works through proxy and cross-site logout is refused (206ms)
+  ok  54 [chromium] › e2e\customizer-text-drag.spec.ts:213:9 › text drags translate exactly › auto-height multiline: a plain drag moves the type by the gesture delta (8.6s)
+  ok  62 [chromium] › e2e\public-build-smoke.spec.ts:3:5 › local-font login shell is responsive and makes no Google Font request (5.5s)
+  x   55 [chromium] › e2e\customizer-resize.spec.ts:298:7 › resize — the shipped Konva path › a group resizes as one object and commits once (10.4s)
+  ok  58 [chromium] › e2e\product-option-persistence.spec.ts:39:7 › product option persistence (Paper Style) › Paper Style then another option: both are restored (8.1s)
+  x   57 [chromium] › e2e\customizer-interaction-contract.spec.ts:476:7 › customizer interaction contract › moving a group moves every member rigidly as one transaction (6.6s)
+  ok  64 [chromium] › e2e\webkit-critical.spec.ts:51:5 › homepage renders and does not overflow horizontally (3.6s)
+[WebServer] ⨯ Error: The destination stream closed early.
+[WebServer]     at ignore-listed frames {
+[WebServer]   digest: '3912632615'
+[WebServer] }
+  ok  65 [chromium] › e2e\product-option-persistence.spec.ts:50:7 › product option persistence (Paper Style) › rapid Paper Style changes restore the FINAL choice after a browser reload (6.3s)
+  ok  66 [chromium] › e2e\webkit-critical.spec.ts:63:5 › product listing and a product page render (5.3s)
+  ok  63 [chromium] › e2e\customizer-text-drag.spec.ts:220:9 › text drags translate exactly › auto-height multiline: enlarge, then drag (14.5s)
+  x   60 [chromium] › e2e\customizer-gesture-cancellation.spec.ts:425:7 › gesture cancellation › two cancellations in a row do not break the third, real gesture (7.0s)
+  ok  69 [chromium] › e2e\product-option-persistence.spec.ts:58:7 › product option persistence (Paper Style) › an OLD saved object without Paper Style falls back safely and keeps the other options (4.8s)
+  ok  70 [chromium] › e2e\webkit-critical.spec.ts:74:5 › cart and checkout routes respond on WebKit (4.6s)
+  x   68 [chromium] › e2e\customizer-interaction-contract.spec.ts:524:7 › customizer interaction contract › a locked layer cannot be dragged and writes nothing (6.8s)
+  x   67 [chromium] › e2e\customizer-resize.spec.ts:320:7 › resize — the shipped Konva path › a text box side drag changes the wrap width, not the type size (9.0s)
+  ok  73 [chromium] › e2e\webkit-critical.spec.ts:90:5 › customizer mounts, fits the page, and zooms on WebKit (7.9s)
+  ok  71 [chromium] › e2e\customizer-text-drag.spec.ts:226:9 › text drags translate exactly › auto-height multiline: shrink, then drag (14.2s)
+  x   72 [chromium] › e2e\customizer-gesture-cancellation.spec.ts:464:7 › transform handle reachability › an object near the top edge can still be rotated (8.2s)
+  x   75 [chromium] › e2e\customizer-interaction-contract.spec.ts:541:7 › customizer interaction contract › a hidden layer neither renders nor intercepts selection (5.5s)
+  ok  77 [chromium] › e2e\webkit-critical.spec.ts:144:5 › customizer text field accepts input on WebKit (6.4s)
+  ok  74 [webkit] › e2e\webkit-critical.spec.ts:51:5 › homepage renders and does not overflow horizontally (9.1s)
+  x   76 [chromium] › e2e\customizer-resize.spec.ts:336:7 › resize — the shipped Konva path › a text corner drag scales the TYPE rather than stretching the glyphs (8.4s)
+  ok  78 [chromium] › e2e\customizer-text-drag.spec.ts:213:9 › text drags translate exactly › fixed size: a plain drag moves the type by the gesture delta (8.4s)
+  x   79 [chromium] › e2e\customizer-gesture-cancellation.spec.ts:520:7 › transform handle reachability › the page still lines up exactly with the artwork underneath it (4.4s)
+  x   81 [chromium] › e2e\customizer-interaction-contract.spec.ts:551:7 › customizer interaction contract › front and back pages carry their own layers (5.9s)
+  ok  82 [mobile-safari] › e2e\webkit-critical.spec.ts:51:5 › homepage renders and does not overflow horizontally (6.2s)
+  ok  80 [webkit] › e2e\webkit-critical.spec.ts:63:5 › product listing and a product page render (10.5s)
+  ok  84 [chromium] › e2e\customizer-resize.spec.ts:348:7 › resize — the shipped Konva path › stretching a photo frame re-crops it and never distorts the image (7.4s)
+  ok  83 [chromium] › e2e\customizer-text-drag.spec.ts:220:9 › text drags translate exactly › fixed size: enlarge, then drag (11.1s)
+  ok  85 [mobile-safari] › e2e\webkit-critical.spec.ts:63:5 › product listing and a product page render (10.4s)
+  x   87 [chromium] › e2e\customizer-gesture-cancellation.spec.ts:543:7 › transform handle reachability › a click in the gutter outside the page clears the selection (6.1s)
+  ok  86 [webkit] › e2e\webkit-critical.spec.ts:74:5 › cart and checkout routes respond on WebKit (9.9s)
+  x   88 [chromium] › e2e\customizer-interaction-contract.spec.ts:561:7 › customizer interaction contract › entering crop mode creates no history and writes nothing (6.7s)
+  ok  89 [chromium] › e2e\customizer-resize.spec.ts:370:7 › resize — the shipped Konva path › resize survives undo and redo exactly (9.6s)
+  ok  91 [mobile-safari] › e2e\webkit-critical.spec.ts:74:5 › cart and checkout routes respond on WebKit (5.4s)
+  ok  90 [chromium] › e2e\customizer-text-drag.spec.ts:226:9 › text drags translate exactly › fixed size: shrink, then drag (13.0s)
+  x   93 [chromium] › e2e\customizer-interaction-contract.spec.ts:568:7 › customizer interaction contract › a 20-step crop pan writes nothing until release, then commits once (4.3s)
+  ok  92 [webkit] › e2e\webkit-critical.spec.ts:90:5 › customizer mounts, fits the page, and zooms on WebKit (12.1s)
+  ok  94 [mobile-safari] › e2e\webkit-critical.spec.ts:90:5 › customizer mounts, fits the page, and zooms on WebKit (11.2s)
+  x   96 [chromium] › e2e\customizer-interaction-contract.spec.ts:590:7 › customizer interaction contract › a wheel-zoom burst is ONE grouped crop commit (4.1s)
+  ok  97 [webkit] › e2e\webkit-critical.spec.ts:144:5 › customizer text field accepts input on WebKit (10.0s)
+  x   99 [chromium] › e2e\customizer-interaction-contract.spec.ts:606:7 › customizer interaction contract › crop Done commits a still-pending gesture exactly once (4.2s)
+  ok  98 [mobile-safari] › e2e\webkit-critical.spec.ts:144:5 › customizer text field accepts input on WebKit (9.9s)
+  x  100 [chromium] › e2e\customizer-interaction-contract.spec.ts:621:7 › customizer interaction contract › crop Done with no change writes nothing (3.5s)
+  ok  95 [chromium] › e2e\customizer-text-drag.spec.ts:238:7 › text drags translate exactly › repeated enlarge/drag/shrink/drag cycles never accumulate drift (22.5s)
+  x  102 [chromium] › e2e\customizer-interaction-contract.spec.ts:630:7 › customizer interaction contract › crop pan undo and redo restore the exact crop (3.3s)
+  ok 101 [chromium] › e2e\customizer-text-drag.spec.ts:247:7 › text drags translate exactly › undo and redo around a resize leave the next drag exact (9.9s)
+  x  103 [chromium] › e2e\customizer-interaction-contract.spec.ts:646:7 › customizer interaction contract › crop zoom undo and redo restore the exact zoom (3.6s)
+  x  105 [chromium] › e2e\customizer-interaction-contract.spec.ts:664:7 › customizer interaction contract › Cancel after several committed crop gestures rolls back document AND history (3.5s)
+  ok 104 [chromium] › e2e\customizer-text-drag.spec.ts:258:7 › text drags translate exactly › a rotated text layer still translates along the document axes (8.2s)
+  x  107 [chromium] › e2e\customizer-interaction-contract.spec.ts:702:7 › customizer interaction contract › Cancel during the wheel settle delay never commits afterwards (3.5s)
+  ok 106 [chromium] › e2e\customizer-text-drag.spec.ts:279:9 › text drags translate exactly › stays exact at 50% zoom (7.2s)
+  x  108 [chromium] › e2e\customizer-interaction-contract.spec.ts:717:7 › customizer interaction contract › pinch crop stays transient, commits once on lift, and Cancel rolls it back (3.4s)
+  ok 109 [chromium] › e2e\customizer-text-drag.spec.ts:279:9 › text drags translate exactly › stays exact at 100% zoom (7.4s)
+  x  110 [chromium] › e2e\customizer-interaction-contract.spec.ts:753:7 › customizer interaction contract › changing page during crop finalizes it once and no old-page timer fires (3.6s)
+  x  112 [chromium] › e2e\customizer-interaction-contract.spec.ts:770:7 › customizer interaction contract › selecting another object during crop is Done for the crop (3.6s)
+  ok 111 [chromium] › e2e\customizer-text-drag.spec.ts:279:9 › text drags translate exactly › stays exact at 150% zoom (7.8s)
+  x  114 [chromium] › e2e\customizer-interaction-contract.spec.ts:788:7 › customizer interaction contract › grid crop pan is transient until release, then commits once (3.3s)
+  ok 113 [chromium] › e2e\customizer-text-drag.spec.ts:279:9 › text drags translate exactly › stays exact at 200% zoom (7.7s)
+  x  115 [chromium] › e2e\customizer-interaction-contract.spec.ts:808:7 › customizer interaction contract › grid crop Cancel after a commit restores the slot and its history (3.5s)
+  ok 116 [chromium] › e2e\customizer-text-drag.spec.ts:298:7 › text drags translate exactly › a multi-selection of text and a shape keeps their spacing exactly (8.3s)
+  x  117 [chromium] › e2e\customizer-interaction-contract.spec.ts:828:7 › customizer interaction contract › grid crop Cancel during the wheel settle delay never commits afterwards (3.6s)
+  x  118 [chromium] › e2e\customizer-interaction-contract.spec.ts:840:7 › customizer interaction contract › grid crop undo and redo (3.3s)
+  x  119 [chromium] › e2e\customizer-interaction-contract.spec.ts:861:7 › customizer interaction contract › editing text commits the new value without creating a second layer (3.3s)
+  x  120 [chromium] › e2e\customizer-interaction-contract.spec.ts:878:7 › customizer interaction contract › selecting existing text layers never creates a new one (3.3s)
+  x  121 [chromium] › e2e\customizer-interaction-contract.spec.ts:895:7 › crop Cancel and autosave › holding a gesture past the autosave debounce never saves transient geometry (3.3s)
+  x  122 [chromium] › e2e\customizer-interaction-contract.spec.ts:911:7 › crop Cancel and autosave › Cancel after the modified crop already autosaved leaves the ORIGINAL crop saved (3.3s)
+  x  123 [chromium] › e2e\customizer-interaction-contract.spec.ts:927:7 › crop Cancel and autosave › an in-flight save cannot mark the restored document saved after Cancel (3.4s)
+
+
+  1) [chromium] › e2e\admin-canvas-interaction.spec.ts:122:7 › admin canvas interaction contract › admin selection attaches the transformer to the clicked object 
+
+    Error: page.evaluate: TypeError: Cannot set properties of undefined (setting 'documentCommits')
+        at eval (eval at evaluate (:303:30), <anonymous>:3:29)
+        at UtilityScript.evaluate (<anonymous>:305:16)
+        at UtilityScript.<anonymous> (<anonymous>:1:44)
+        at eval (eval at evaluate (:303:30), <anonymous>:3:29)
+        at UtilityScript.evaluate (<anonymous>:305:16)
+        at UtilityScript.<anonymous> (<anonymous>:1:44)
+        at reset (D:\HUSNALOGY\Main\e2e\admin-canvas-interaction.spec.ts:40:14)
+        at open (D:\HUSNALOGY\Main\e2e\admin-canvas-interaction.spec.ts:36:9)
+        at D:\HUSNALOGY\Main\e2e\admin-canvas-interaction.spec.ts:115:5
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results\admin-canvas-interaction-a-71a47-ormer-to-the-clicked-object-chromium\test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: video (video/webm) ──────────────────────────────────────────────────────────────
+    test-results\admin-canvas-interaction-a-71a47-ormer-to-the-clicked-object-chromium\video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results\admin-canvas-interaction-a-71a47-ormer-to-the-clicked-object-chromium\error-context.md
+
+    attachment #4: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results\admin-canvas-interaction-a-71a47-ormer-to-the-clicked-object-chromium\trace.zip
+    Usage:
+
+        npx playwright show-trace test-results\admin-canvas-interaction-a-71a47-ormer-to-the-clicked-object-chromium\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  2) [chromium] › e2e\admin-canvas-interaction.spec.ts:127:7 › admin canvas interaction contract › admin drag is transient and commits once 
+
+    Error: page.evaluate: TypeError: Cannot set properties of undefined (setting 'documentCommits')
+        at eval (eval at evaluate (:303:30), <anonymous>:3:29)
+        at UtilityScript.evaluate (<anonymous>:305:16)
+        at UtilityScript.<anonymous> (<anonymous>:1:44)
+        at eval (eval at evaluate (:303:30), <anonymous>:3:29)
+        at UtilityScript.evaluate (<anonymous>:305:16)
+        at UtilityScript.<anonymous> (<anonymous>:1:44)
+        at reset (D:\HUSNALOGY\Main\e2e\admin-canvas-interaction.spec.ts:40:14)
+        at open (D:\HUSNALOGY\Main\e2e\admin-canvas-interaction.spec.ts:36:9)
+        at D:\HUSNALOGY\Main\e2e\admin-canvas-interaction.spec.ts:115:5
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results\admin-canvas-interaction-a-93cb8--transient-and-commits-once-chromium\test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: video (video/webm) ──────────────────────────────────────────────────────────────
+    test-results\admin-canvas-interaction-a-93cb8--transient-and-commits-once-chromium\video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results\admin-canvas-interaction-a-93cb8--transient-and-commits-once-chromium\error-context.md
+
+    attachment #4: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results\admin-canvas-interaction-a-93cb8--transient-and-commits-once-chromium\trace.zip
+    Usage:
+
+        npx playwright show-trace test-results\admin-canvas-interaction-a-93cb8--transient-and-commits-once-chromium\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  3) [chromium] › e2e\admin-canvas-interaction.spec.ts:142:7 › admin canvas interaction contract › admin resize re-renders only the resized layer and commits once 
+
+    Error: page.evaluate: TypeError: Cannot set properties of undefined (setting 'documentCommits')
+        at eval (eval at evaluate (:303:30), <anonymous>:3:29)
+        at UtilityScript.evaluate (<anonymous>:305:16)
+        at UtilityScript.<anonymous> (<anonymous>:1:44)
+        at eval (eval at evaluate (:303:30), <anonymous>:3:29)
+        at UtilityScript.evaluate (<anonymous>:305:16)
+        at UtilityScript.<anonymous> (<anonymous>:1:44)
+        at reset (D:\HUSNALOGY\Main\e2e\admin-canvas-interaction.spec.ts:40:14)
+        at open (D:\HUSNALOGY\Main\e2e\admin-canvas-interaction.spec.ts:36:9)
+        at D:\HUSNALOGY\Main\e2e\admin-canvas-interaction.spec.ts:115:5
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results\admin-canvas-interaction-a-302f1-ized-layer-and-commits-once-chromium\test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: video (video/webm) ──────────────────────────────────────────────────────────────
+    test-results\admin-canvas-interaction-a-302f1-ized-layer-and-commits-once-chromium\video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results\admin-canvas-interaction-a-302f1-ized-layer-and-commits-once-chromium\error-context.md
+
+    attachment #4: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results\admin-canvas-interaction-a-302f1-ized-layer-and-commits-once-chromium\trace.zip
+    Usage:
+
+        npx playwright show-trace test-results\admin-canvas-interaction-a-302f1-ized-layer-and-commits-once-chromium\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  4) [chromium] › e2e\admin-canvas-interaction.spec.ts:158:7 › admin canvas interaction contract › admin rotation renders nothing until release and commits once 
+
+    Error: page.evaluate: TypeError: Cannot set properties of undefined (setting 'documentCommits')
+        at eval (eval at evaluate (:303:30), <anonymous>:3:29)
+        at UtilityScript.evaluate (<anonymous>:305:16)
+        at UtilityScript.<anonymous> (<anonymous>:1:44)
+        at eval (eval at evaluate (:303:30), <anonymous>:3:29)
+        at UtilityScript.evaluate (<anonymous>:305:16)
+        at UtilityScript.<anonymous> (<anonymous>:1:44)
+        at reset (D:\HUSNALOGY\Main\e2e\admin-canvas-interaction.spec.ts:40:14)
+        at open (D:\HUSNALOGY\Main\e2e\admin-canvas-interaction.spec.ts:36:9)
+        at D:\HUSNALOGY\Main\e2e\admin-canvas-interaction.spec.ts:115:5
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results\admin-canvas-interaction-a-3cd35-il-release-and-commits-once-chromium\test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: video (video/webm) ──────────────────────────────────────────────────────────────
+    test-results\admin-canvas-interaction-a-3cd35-il-release-and-commits-once-chromium\video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results\admin-canvas-interaction-a-3cd35-il-release-and-commits-once-chromium\error-context.md
+
+    attachment #4: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results\admin-canvas-interaction-a-3cd35-il-release-and-commits-once-chromium\trace.zip
+    Usage:
+
+        npx playwright show-trace test-results\admin-canvas-interaction-a-3cd35-il-release-and-commits-once-chromium\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  5) [chromium] › e2e\admin-canvas-interaction.spec.ts:181:7 › admin canvas interaction contract › an admin multi-object drag is one atomic commit 
+
+    Error: page.evaluate: TypeError: Cannot set properties of undefined (setting 'documentCommits')
+        at eval (eval at evaluate (:303:30), <anonymous>:3:29)
+        at UtilityScript.evaluate (<anonymous>:305:16)
+        at UtilityScript.<anonymous> (<anonymous>:1:44)
+        at eval (eval at evaluate (:303:30), <anonymous>:3:29)
+        at UtilityScript.evaluate (<anonymous>:305:16)
+        at UtilityScript.<anonymous> (<anonymous>:1:44)
+        at reset (D:\HUSNALOGY\Main\e2e\admin-canvas-interaction.spec.ts:40:14)
+        at open (D:\HUSNALOGY\Main\e2e\admin-canvas-interaction.spec.ts:36:9)
+        at D:\HUSNALOGY\Main\e2e\admin-canvas-interaction.spec.ts:115:5
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results\admin-canvas-interaction-a-9129c-t-drag-is-one-atomic-commit-chromium\test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: video (video/webm) ──────────────────────────────────────────────────────────────
+    test-results\admin-canvas-interaction-a-9129c-t-drag-is-one-atomic-commit-chromium\video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results\admin-canvas-interaction-a-9129c-t-drag-is-one-atomic-commit-chromium\error-context.md
+
+    attachment #4: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results\admin-canvas-interaction-a-9129c-t-drag-is-one-atomic-commit-chromium\trace.zip
+    Usage:
+
+        npx playwright show-trace test-results\admin-canvas-interaction-a-9129c-t-drag-is-one-atomic-commit-chromium\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  6) [chromium] › e2e\admin-canvas-interaction.spec.ts:200:7 › admin canvas interaction contract › admin zoom: the same screen drag moves the document half as far at 2x 
+
+    Error: page.evaluate: TypeError: Cannot set properties of undefined (setting 'documentCommits')
+        at eval (eval at evaluate (:303:30), <anonymous>:3:29)
+        at UtilityScript.evaluate (<anonymous>:305:16)
+        at UtilityScript.<anonymous> (<anonymous>:1:44)
+        at eval (eval at evaluate (:303:30), <anonymous>:3:29)
+        at UtilityScript.evaluate (<anonymous>:305:16)
+        at UtilityScript.<anonymous> (<anonymous>:1:44)
+        at reset (D:\HUSNALOGY\Main\e2e\admin-canvas-interaction.spec.ts:40:14)
+        at open (D:\HUSNALOGY\Main\e2e\admin-canvas-interaction.spec.ts:36:9)
+        at D:\HUSNALOGY\Main\e2e\admin-canvas-interaction.spec.ts:115:5
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results\admin-canvas-interaction-a-2a58b--document-half-as-far-at-2x-chromium\test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: video (video/webm) ──────────────────────────────────────────────────────────────
+    test-results\admin-canvas-interaction-a-2a58b--document-half-as-far-at-2x-chromium\video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results\admin-canvas-interaction-a-2a58b--document-half-as-far-at-2x-chromium\error-context.md
+
+    attachment #4: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results\admin-canvas-interaction-a-2a58b--document-half-as-far-at-2x-chromium\trace.zip
+    Usage:
+
+        npx playwright show-trace test-results\admin-canvas-interaction-a-2a58b--document-half-as-far-at-2x-chromium\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  7) [chromium] › e2e\admin-canvas-interaction.spec.ts:218:7 › admin canvas interaction contract › an admin-locked layer cannot be dragged 
+
+    Error: page.evaluate: TypeError: Cannot set properties of undefined (setting 'documentCommits')
+        at eval (eval at evaluate (:303:30), <anonymous>:3:29)
+        at UtilityScript.evaluate (<anonymous>:305:16)
+        at UtilityScript.<anonymous> (<anonymous>:1:44)
+        at eval (eval at evaluate (:303:30), <anonymous>:3:29)
+        at UtilityScript.evaluate (<anonymous>:305:16)
+        at UtilityScript.<anonymous> (<anonymous>:1:44)
+        at reset (D:\HUSNALOGY\Main\e2e\admin-canvas-interaction.spec.ts:40:14)
+        at open (D:\HUSNALOGY\Main\e2e\admin-canvas-interaction.spec.ts:36:9)
+        at D:\HUSNALOGY\Main\e2e\admin-canvas-interaction.spec.ts:115:5
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results\admin-canvas-interaction-a-b69d4-ked-layer-cannot-be-dragged-chromium\test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: video (video/webm) ──────────────────────────────────────────────────────────────
+    test-results\admin-canvas-interaction-a-b69d4-ked-layer-cannot-be-dragged-chromium\video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results\admin-canvas-interaction-a-b69d4-ked-layer-cannot-be-dragged-chromium\error-context.md
+
+    attachment #4: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results\admin-canvas-interaction-a-b69d4-ked-layer-cannot-be-dragged-chromium\trace.zip
+    Usage:
+
+        npx playwright show-trace test-results\admin-canvas-interaction-a-b69d4-ked-layer-cannot-be-dragged-chromium\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  8) [chromium] › e2e\customizer-gesture-cancellation.spec.ts:266:7 › gesture cancellation › Escape abandons a live drag and leaves the editor usable 
+
+    Error: run against a DEVELOPMENT build — editor metrics are compiled out of production
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: true
+    Received: false
+
+      67 |     instrumented,
+      68 |     "run against a DEVELOPMENT build — editor metrics are compiled out of production",
+    > 69 |   ).toBe(true);
+         |     ^
+      70 |   await resetMetrics(page);
+      71 | }
+      72 |
+        at openFixture (D:\HUSNALOGY\Main\e2e\customizer-gesture-cancellation.spec.ts:69:5)
+        at D:\HUSNALOGY\Main\e2e\customizer-gesture-cancellation.spec.ts:263:5
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results\customizer-gesture-cancell-4ecde-nd-leaves-the-editor-usable-chromium\test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: video (video/webm) ──────────────────────────────────────────────────────────────
+    test-results\customizer-gesture-cancell-4ecde-nd-leaves-the-editor-usable-chromium\video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results\customizer-gesture-cancell-4ecde-nd-leaves-the-editor-usable-chromium\error-context.md
+
+    attachment #4: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results\customizer-gesture-cancell-4ecde-nd-leaves-the-editor-usable-chromium\trace.zip
+    Usage:
+
+        npx playwright show-trace test-results\customizer-gesture-cancell-4ecde-nd-leaves-the-editor-usable-chromium\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  9) [chromium] › e2e\customizer-gesture-cancellation.spec.ts:277:7 › gesture cancellation › pointercancel abandons a live drag 
+
+    Error: run against a DEVELOPMENT build — editor metrics are compiled out of production
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: true
+    Received: false
+
+      67 |     instrumented,
+      68 |     "run against a DEVELOPMENT build — editor metrics are compiled out of production",
+    > 69 |   ).toBe(true);
+         |     ^
+      70 |   await resetMetrics(page);
+      71 | }
+      72 |
+        at openFixture (D:\HUSNALOGY\Main\e2e\customizer-gesture-cancellation.spec.ts:69:5)
+        at D:\HUSNALOGY\Main\e2e\customizer-gesture-cancellation.spec.ts:263:5
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results\customizer-gesture-cancell-05b7b-cancel-abandons-a-live-drag-chromium\test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: video (video/webm) ──────────────────────────────────────────────────────────────
+    test-results\customizer-gesture-cancell-05b7b-cancel-abandons-a-live-drag-chromium\video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results\customizer-gesture-cancell-05b7b-cancel-abandons-a-live-drag-chromium\error-context.md
+
+    attachment #4: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results\customizer-gesture-cancell-05b7b-cancel-abandons-a-live-drag-chromium\trace.zip
+    Usage:
+
+        npx playwright show-trace test-results\customizer-gesture-cancell-05b7b-cancel-abandons-a-live-drag-chromium\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  10) [chromium] › e2e\customizer-gesture-cancellation.spec.ts:297:7 › gesture cancellation › losing the window abandons a live drag 
+
+    Error: run against a DEVELOPMENT build — editor metrics are compiled out of production
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: true
+    Received: false
+
+      67 |     instrumented,
+      68 |     "run against a DEVELOPMENT build — editor metrics are compiled out of production",
+    > 69 |   ).toBe(true);
+         |     ^
+      70 |   await resetMetrics(page);
+      71 | }
+      72 |
+        at openFixture (D:\HUSNALOGY\Main\e2e\customizer-gesture-cancellation.spec.ts:69:5)
+        at D:\HUSNALOGY\Main\e2e\customizer-gesture-cancellation.spec.ts:263:5
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results\customizer-gesture-cancell-b051d-window-abandons-a-live-drag-chromium\test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: video (video/webm) ──────────────────────────────────────────────────────────────
+    test-results\customizer-gesture-cancell-b051d-window-abandons-a-live-drag-chromium\video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results\customizer-gesture-cancell-b051d-window-abandons-a-live-drag-chromium\error-context.md
+
+    attachment #4: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results\customizer-gesture-cancell-b051d-window-abandons-a-live-drag-chromium\trace.zip
+    Usage:
+
+        npx playwright show-trace test-results\customizer-gesture-cancell-b051d-window-abandons-a-live-drag-chromium\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  11) [chromium] › e2e\customizer-gesture-cancellation.spec.ts:308:7 › gesture cancellation › hiding the tab abandons a live drag 
+
+    Error: run against a DEVELOPMENT build — editor metrics are compiled out of production
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: true
+    Received: false
+
+      67 |     instrumented,
+      68 |     "run against a DEVELOPMENT build — editor metrics are compiled out of production",
+    > 69 |   ).toBe(true);
+         |     ^
+      70 |   await resetMetrics(page);
+      71 | }
+      72 |
+        at openFixture (D:\HUSNALOGY\Main\e2e\customizer-gesture-cancellation.spec.ts:69:5)
+        at D:\HUSNALOGY\Main\e2e\customizer-gesture-cancellation.spec.ts:263:5
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results\customizer-gesture-cancell-139ce-he-tab-abandons-a-live-drag-chromium\test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: video (video/webm) ──────────────────────────────────────────────────────────────
+    test-results\customizer-gesture-cancell-139ce-he-tab-abandons-a-live-drag-chromium\video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results\customizer-gesture-cancell-139ce-he-tab-abandons-a-live-drag-chromium\error-context.md
+
+    attachment #4: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results\customizer-gesture-cancell-139ce-he-tab-abandons-a-live-drag-chromium\trace.zip
+    Usage:
+
+        npx playwright show-trace test-results\customizer-gesture-cancell-139ce-he-tab-abandons-a-live-drag-chromium\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  12) [chromium] › e2e\customizer-gesture-cancellation.spec.ts:328:7 › gesture cancellation › Escape abandons a live RESIZE without resizing the object 
+
+    Error: run against a DEVELOPMENT build — editor metrics are compiled out of production
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: true
+    Received: false
+
+      67 |     instrumented,
+      68 |     "run against a DEVELOPMENT build — editor metrics are compiled out of production",
+    > 69 |   ).toBe(true);
+         |     ^
+      70 |   await resetMetrics(page);
+      71 | }
+      72 |
+        at openFixture (D:\HUSNALOGY\Main\e2e\customizer-gesture-cancellation.spec.ts:69:5)
+        at D:\HUSNALOGY\Main\e2e\customizer-gesture-cancellation.spec.ts:263:5
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results\customizer-gesture-cancell-02fbc-without-resizing-the-object-chromium\test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: video (video/webm) ──────────────────────────────────────────────────────────────
+    test-results\customizer-gesture-cancell-02fbc-without-resizing-the-object-chromium\video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results\customizer-gesture-cancell-02fbc-without-resizing-the-object-chromium\error-context.md
+
+    attachment #4: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results\customizer-gesture-cancell-02fbc-without-resizing-the-object-chromium\trace.zip
+    Usage:
+
+        npx playwright show-trace test-results\customizer-gesture-cancell-02fbc-without-resizing-the-object-chromium\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  13) [chromium] › e2e\customizer-gesture-cancellation.spec.ts:353:7 › gesture cancellation › Escape abandons a live ROTATION without rotating the object 
+
+    Error: run against a DEVELOPMENT build — editor metrics are compiled out of production
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: true
+    Received: false
+
+      67 |     instrumented,
+      68 |     "run against a DEVELOPMENT build — editor metrics are compiled out of production",
+    > 69 |   ).toBe(true);
+         |     ^
+      70 |   await resetMetrics(page);
+      71 | }
+      72 |
+        at openFixture (D:\HUSNALOGY\Main\e2e\customizer-gesture-cancellation.spec.ts:69:5)
+        at D:\HUSNALOGY\Main\e2e\customizer-gesture-cancellation.spec.ts:263:5
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results\customizer-gesture-cancell-3fd68-without-rotating-the-object-chromium\test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: video (video/webm) ──────────────────────────────────────────────────────────────
+    test-results\customizer-gesture-cancell-3fd68-without-rotating-the-object-chromium\video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results\customizer-gesture-cancell-3fd68-without-rotating-the-object-chromium\error-context.md
+
+    attachment #4: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results\customizer-gesture-cancell-3fd68-without-rotating-the-object-chromium\trace.zip
+    Usage:
+
+        npx playwright show-trace test-results\customizer-gesture-cancell-3fd68-without-rotating-the-object-chromium\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  14) [chromium] › e2e\customizer-gesture-cancellation.spec.ts:390:7 › gesture cancellation › Escape with no gesture running still reaches the editor and clears the selection 
+
+    Error: run against a DEVELOPMENT build — editor metrics are compiled out of production
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: true
+    Received: false
+
+      67 |     instrumented,
+      68 |     "run against a DEVELOPMENT build — editor metrics are compiled out of production",
+    > 69 |   ).toBe(true);
+         |     ^
+      70 |   await resetMetrics(page);
+      71 | }
+      72 |
+        at openFixture (D:\HUSNALOGY\Main\e2e\customizer-gesture-cancellation.spec.ts:69:5)
+        at D:\HUSNALOGY\Main\e2e\customizer-gesture-cancellation.spec.ts:263:5
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results\customizer-gesture-cancell-2087f-or-and-clears-the-selection-chromium\test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: video (video/webm) ──────────────────────────────────────────────────────────────
+    test-results\customizer-gesture-cancell-2087f-or-and-clears-the-selection-chromium\video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results\customizer-gesture-cancell-2087f-or-and-clears-the-selection-chromium\error-context.md
+
+    attachment #4: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results\customizer-gesture-cancell-2087f-or-and-clears-the-selection-chromium\trace.zip
+    Usage:
+
+        npx playwright show-trace test-results\customizer-gesture-cancell-2087f-or-and-clears-the-selection-chromium\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  15) [chromium] › e2e\customizer-gesture-cancellation.spec.ts:406:7 › gesture cancellation › a cancelled gesture is never autosaved 
+
+    Error: run against a DEVELOPMENT build — editor metrics are compiled out of production
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: true
+    Received: false
+
+      67 |     instrumented,
+      68 |     "run against a DEVELOPMENT build — editor metrics are compiled out of production",
+    > 69 |   ).toBe(true);
+         |     ^
+      70 |   await resetMetrics(page);
+      71 | }
+      72 |
+        at openFixture (D:\HUSNALOGY\Main\e2e\customizer-gesture-cancellation.spec.ts:69:5)
+        at D:\HUSNALOGY\Main\e2e\customizer-gesture-cancellation.spec.ts:263:5
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results\customizer-gesture-cancell-9883a--gesture-is-never-autosaved-chromium\test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: video (video/webm) ──────────────────────────────────────────────────────────────
+    test-results\customizer-gesture-cancell-9883a--gesture-is-never-autosaved-chromium\video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results\customizer-gesture-cancell-9883a--gesture-is-never-autosaved-chromium\error-context.md
+
+    attachment #4: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results\customizer-gesture-cancell-9883a--gesture-is-never-autosaved-chromium\trace.zip
+    Usage:
+
+        npx playwright show-trace test-results\customizer-gesture-cancell-9883a--gesture-is-never-autosaved-chromium\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  16) [chromium] › e2e\customizer-gesture-cancellation.spec.ts:425:7 › gesture cancellation › two cancellations in a row do not break the third, real gesture 
+
+    Error: run against a DEVELOPMENT build — editor metrics are compiled out of production
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: true
+    Received: false
+
+      67 |     instrumented,
+      68 |     "run against a DEVELOPMENT build — editor metrics are compiled out of production",
+    > 69 |   ).toBe(true);
+         |     ^
+      70 |   await resetMetrics(page);
+      71 | }
+      72 |
+        at openFixture (D:\HUSNALOGY\Main\e2e\customizer-gesture-cancellation.spec.ts:69:5)
+        at D:\HUSNALOGY\Main\e2e\customizer-gesture-cancellation.spec.ts:263:5
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results\customizer-gesture-cancell-53ea0-reak-the-third-real-gesture-chromium\test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: video (video/webm) ──────────────────────────────────────────────────────────────
+    test-results\customizer-gesture-cancell-53ea0-reak-the-third-real-gesture-chromium\video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results\customizer-gesture-cancell-53ea0-reak-the-third-real-gesture-chromium\error-context.md
+
+    attachment #4: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results\customizer-gesture-cancell-53ea0-reak-the-third-real-gesture-chromium\trace.zip
+    Usage:
+
+        npx playwright show-trace test-results\customizer-gesture-cancell-53ea0-reak-the-third-real-gesture-chromium\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  17) [chromium] › e2e\customizer-gesture-cancellation.spec.ts:464:7 › transform handle reachability › an object near the top edge can still be rotated 
+
+    Error: run against a DEVELOPMENT build — editor metrics are compiled out of production
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: true
+    Received: false
+
+      67 |     instrumented,
+      68 |     "run against a DEVELOPMENT build — editor metrics are compiled out of production",
+    > 69 |   ).toBe(true);
+         |     ^
+      70 |   await resetMetrics(page);
+      71 | }
+      72 |
+        at openFixture (D:\HUSNALOGY\Main\e2e\customizer-gesture-cancellation.spec.ts:69:5)
+        at D:\HUSNALOGY\Main\e2e\customizer-gesture-cancellation.spec.ts:461:5
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results\customizer-gesture-cancell-d17ad-p-edge-can-still-be-rotated-chromium\test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: video (video/webm) ──────────────────────────────────────────────────────────────
+    test-results\customizer-gesture-cancell-d17ad-p-edge-can-still-be-rotated-chromium\video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results\customizer-gesture-cancell-d17ad-p-edge-can-still-be-rotated-chromium\error-context.md
+
+    attachment #4: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results\customizer-gesture-cancell-d17ad-p-edge-can-still-be-rotated-chromium\trace.zip
+    Usage:
+
+        npx playwright show-trace test-results\customizer-gesture-cancell-d17ad-p-edge-can-still-be-rotated-chromium\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  18) [chromium] › e2e\customizer-gesture-cancellation.spec.ts:520:7 › transform handle reachability › the page still lines up exactly with the artwork underneath it 
+
+    Error: run against a DEVELOPMENT build — editor metrics are compiled out of production
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: true
+    Received: false
+
+      67 |     instrumented,
+      68 |     "run against a DEVELOPMENT build — editor metrics are compiled out of production",
+    > 69 |   ).toBe(true);
+         |     ^
+      70 |   await resetMetrics(page);
+      71 | }
+      72 |
+        at openFixture (D:\HUSNALOGY\Main\e2e\customizer-gesture-cancellation.spec.ts:69:5)
+        at D:\HUSNALOGY\Main\e2e\customizer-gesture-cancellation.spec.ts:461:5
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results\customizer-gesture-cancell-be946-h-the-artwork-underneath-it-chromium\test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: video (video/webm) ──────────────────────────────────────────────────────────────
+    test-results\customizer-gesture-cancell-be946-h-the-artwork-underneath-it-chromium\video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results\customizer-gesture-cancell-be946-h-the-artwork-underneath-it-chromium\error-context.md
+
+    attachment #4: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results\customizer-gesture-cancell-be946-h-the-artwork-underneath-it-chromium\trace.zip
+    Usage:
+
+        npx playwright show-trace test-results\customizer-gesture-cancell-be946-h-the-artwork-underneath-it-chromium\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  19) [chromium] › e2e\customizer-gesture-cancellation.spec.ts:543:7 › transform handle reachability › a click in the gutter outside the page clears the selection 
+
+    Error: run against a DEVELOPMENT build — editor metrics are compiled out of production
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: true
+    Received: false
+
+      67 |     instrumented,
+      68 |     "run against a DEVELOPMENT build — editor metrics are compiled out of production",
+    > 69 |   ).toBe(true);
+         |     ^
+      70 |   await resetMetrics(page);
+      71 | }
+      72 |
+        at openFixture (D:\HUSNALOGY\Main\e2e\customizer-gesture-cancellation.spec.ts:69:5)
+        at D:\HUSNALOGY\Main\e2e\customizer-gesture-cancellation.spec.ts:461:5
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results\customizer-gesture-cancell-eaeea-e-page-clears-the-selection-chromium\test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: video (video/webm) ──────────────────────────────────────────────────────────────
+    test-results\customizer-gesture-cancell-eaeea-e-page-clears-the-selection-chromium\video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results\customizer-gesture-cancell-eaeea-e-page-clears-the-selection-chromium\error-context.md
+
+    attachment #4: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results\customizer-gesture-cancell-eaeea-e-page-clears-the-selection-chromium\trace.zip
+    Usage:
+
+        npx playwright show-trace test-results\customizer-gesture-cancell-eaeea-e-page-clears-the-selection-chromium\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  20) [chromium] › e2e\customizer-interaction-contract.spec.ts:249:7 › customizer interaction contract › the fixture mounts the real editor with no seeded database 
+
+    Error: run against a DEVELOPMENT build — editor metrics are compiled out of production
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: true
+    Received: false
+
+      80 |   // A hard failure, not a skip: without metrics none of these contracts can be
+      81 |   // proven, and a silently skipped suite would read as a passing one.
+    > 82 |   expect(instrumented, "run against a DEVELOPMENT build — editor metrics are compiled out of production").toBe(true);
+         |                                                                                                           ^
+      83 |   await resetMetrics(page);
+      84 | }
+      85 |
+        at openFixture (D:\HUSNALOGY\Main\e2e\customizer-interaction-contract.spec.ts:82:107)
+        at D:\HUSNALOGY\Main\e2e\customizer-interaction-contract.spec.ts:244:5
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results\customizer-interaction-con-a53c4-tor-with-no-seeded-database-chromium\test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: video (video/webm) ──────────────────────────────────────────────────────────────
+    test-results\customizer-interaction-con-a53c4-tor-with-no-seeded-database-chromium\video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results\customizer-interaction-con-a53c4-tor-with-no-seeded-database-chromium\error-context.md
+
+    attachment #4: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results\customizer-interaction-con-a53c4-tor-with-no-seeded-database-chromium\trace.zip
+    Usage:
+
+        npx playwright show-trace test-results\customizer-interaction-con-a53c4-tor-with-no-seeded-database-chromium\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  21) [chromium] › e2e\customizer-interaction-contract.spec.ts:275:7 › customizer interaction contract › a 20-step drag writes nothing and renders nothing until release, then commits once 
+
+    Error: run against a DEVELOPMENT build — editor metrics are compiled out of production
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: true
+    Received: false
+
+      80 |   // A hard failure, not a skip: without metrics none of these contracts can be
+      81 |   // proven, and a silently skipped suite would read as a passing one.
+    > 82 |   expect(instrumented, "run against a DEVELOPMENT build — editor metrics are compiled out of production").toBe(true);
+         |                                                                                                           ^
+      83 |   await resetMetrics(page);
+      84 | }
+      85 |
+        at openFixture (D:\HUSNALOGY\Main\e2e\customizer-interaction-contract.spec.ts:82:107)
+        at D:\HUSNALOGY\Main\e2e\customizer-interaction-contract.spec.ts:244:5
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results\customizer-interaction-con-d124f-l-release-then-commits-once-chromium\test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: video (video/webm) ──────────────────────────────────────────────────────────────
+    test-results\customizer-interaction-con-d124f-l-release-then-commits-once-chromium\video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results\customizer-interaction-con-d124f-l-release-then-commits-once-chromium\error-context.md
+
+    attachment #4: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results\customizer-interaction-con-d124f-l-release-then-commits-once-chromium\trace.zip
+    Usage:
+
+        npx playwright show-trace test-results\customizer-interaction-con-d124f-l-release-then-commits-once-chromium\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  22) [chromium] › e2e\customizer-interaction-contract.spec.ts:298:7 › customizer interaction contract › drag undo and redo restore exact document geometry 
+
+    Error: run against a DEVELOPMENT build — editor metrics are compiled out of production
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: true
+    Received: false
+
+      80 |   // A hard failure, not a skip: without metrics none of these contracts can be
+      81 |   // proven, and a silently skipped suite would read as a passing one.
+    > 82 |   expect(instrumented, "run against a DEVELOPMENT build — editor metrics are compiled out of production").toBe(true);
+         |                                                                                                           ^
+      83 |   await resetMetrics(page);
+      84 | }
+      85 |
+        at openFixture (D:\HUSNALOGY\Main\e2e\customizer-interaction-contract.spec.ts:82:107)
+        at D:\HUSNALOGY\Main\e2e\customizer-interaction-contract.spec.ts:244:5
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results\customizer-interaction-con-c9893-ore-exact-document-geometry-chromium\test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: video (video/webm) ──────────────────────────────────────────────────────────────
+    test-results\customizer-interaction-con-c9893-ore-exact-document-geometry-chromium\video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results\customizer-interaction-con-c9893-ore-exact-document-geometry-chromium\error-context.md
+
+    attachment #4: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results\customizer-interaction-con-c9893-ore-exact-document-geometry-chromium\trace.zip
+    Usage:
+
+        npx playwright show-trace test-results\customizer-interaction-con-c9893-ore-exact-document-geometry-chromium\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  23) [chromium] › e2e\customizer-interaction-contract.spec.ts:319:7 › customizer interaction contract › a 20-step resize re-renders only the resized layer and commits once 
+
+    Error: run against a DEVELOPMENT build — editor metrics are compiled out of production
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: true
+    Received: false
+
+      80 |   // A hard failure, not a skip: without metrics none of these contracts can be
+      81 |   // proven, and a silently skipped suite would read as a passing one.
+    > 82 |   expect(instrumented, "run against a DEVELOPMENT build — editor metrics are compiled out of production").toBe(true);
+         |                                                                                                           ^
+      83 |   await resetMetrics(page);
+      84 | }
+      85 |
+        at openFixture (D:\HUSNALOGY\Main\e2e\customizer-interaction-contract.spec.ts:82:107)
+        at D:\HUSNALOGY\Main\e2e\customizer-interaction-contract.spec.ts:244:5
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results\customizer-interaction-con-79148-ized-layer-and-commits-once-chromium\test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: video (video/webm) ──────────────────────────────────────────────────────────────
+    test-results\customizer-interaction-con-79148-ized-layer-and-commits-once-chromium\video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results\customizer-interaction-con-79148-ized-layer-and-commits-once-chromium\error-context.md
+
+    attachment #4: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results\customizer-interaction-con-79148-ized-layer-and-commits-once-chromium\trace.zip
+    Usage:
+
+        npx playwright show-trace test-results\customizer-interaction-con-79148-ized-layer-and-commits-once-chromium\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  24) [chromium] › e2e\customizer-interaction-contract.spec.ts:346:7 › customizer interaction contract › resize undo and redo restore exact size 
+
+    Error: run against a DEVELOPMENT build — editor metrics are compiled out of production
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: true
+    Received: false
+
+      80 |   // A hard failure, not a skip: without metrics none of these contracts can be
+      81 |   // proven, and a silently skipped suite would read as a passing one.
+    > 82 |   expect(instrumented, "run against a DEVELOPMENT build — editor metrics are compiled out of production").toBe(true);
+         |                                                                                                           ^
+      83 |   await resetMetrics(page);
+      84 | }
+      85 |
+        at openFixture (D:\HUSNALOGY\Main\e2e\customizer-interaction-contract.spec.ts:82:107)
+        at D:\HUSNALOGY\Main\e2e\customizer-interaction-contract.spec.ts:244:5
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results\customizer-interaction-con-f9cd4-and-redo-restore-exact-size-chromium\test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: video (video/webm) ──────────────────────────────────────────────────────────────
+    test-results\customizer-interaction-con-f9cd4-and-redo-restore-exact-size-chromium\video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results\customizer-interaction-con-f9cd4-and-redo-restore-exact-size-chromium\error-context.md
+
+    attachment #4: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results\customizer-interaction-con-f9cd4-and-redo-restore-exact-size-chromium\trace.zip
+    Usage:
+
+        npx playwright show-trace test-results\customizer-interaction-con-f9cd4-and-redo-restore-exact-size-chromium\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  25) [chromium] › e2e\customizer-interaction-contract.spec.ts:387:7 › customizer interaction contract › a 20-step rotation renders nothing until release, then commits once 
+
+    Error: run against a DEVELOPMENT build — editor metrics are compiled out of production
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: true
+    Received: false
+
+      80 |   // A hard failure, not a skip: without metrics none of these contracts can be
+      81 |   // proven, and a silently skipped suite would read as a passing one.
+    > 82 |   expect(instrumented, "run against a DEVELOPMENT build — editor metrics are compiled out of production").toBe(true);
+         |                                                                                                           ^
+      83 |   await resetMetrics(page);
+      84 | }
+      85 |
+        at openFixture (D:\HUSNALOGY\Main\e2e\customizer-interaction-contract.spec.ts:82:107)
+        at D:\HUSNALOGY\Main\e2e\customizer-interaction-contract.spec.ts:244:5
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results\customizer-interaction-con-ec6c7-l-release-then-commits-once-chromium\test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: video (video/webm) ──────────────────────────────────────────────────────────────
+    test-results\customizer-interaction-con-ec6c7-l-release-then-commits-once-chromium\video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results\customizer-interaction-con-ec6c7-l-release-then-commits-once-chromium\error-context.md
+
+    attachment #4: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results\customizer-interaction-con-ec6c7-l-release-then-commits-once-chromium\trace.zip
+    Usage:
+
+        npx playwright show-trace test-results\customizer-interaction-con-ec6c7-l-release-then-commits-once-chromium\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  26) [chromium] › e2e\customizer-interaction-contract.spec.ts:409:7 › customizer interaction contract › rotation undo and redo 
+
+    Error: run against a DEVELOPMENT build — editor metrics are compiled out of production
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: true
+    Received: false
+
+      80 |   // A hard failure, not a skip: without metrics none of these contracts can be
+      81 |   // proven, and a silently skipped suite would read as a passing one.
+    > 82 |   expect(instrumented, "run against a DEVELOPMENT build — editor metrics are compiled out of production").toBe(true);
+         |                                                                                                           ^
+      83 |   await resetMetrics(page);
+      84 | }
+      85 |
+        at openFixture (D:\HUSNALOGY\Main\e2e\customizer-interaction-contract.spec.ts:82:107)
+        at D:\HUSNALOGY\Main\e2e\customizer-interaction-contract.spec.ts:244:5
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results\customizer-interaction-con-92e7e-ract-rotation-undo-and-redo-chromium\test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: video (video/webm) ──────────────────────────────────────────────────────────────
+    test-results\customizer-interaction-con-92e7e-ract-rotation-undo-and-redo-chromium\video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results\customizer-interaction-con-92e7e-ract-rotation-undo-and-redo-chromium\error-context.md
+
+    attachment #4: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results\customizer-interaction-con-92e7e-ract-rotation-undo-and-redo-chromium\trace.zip
+    Usage:
+
+        npx playwright show-trace test-results\customizer-interaction-con-92e7e-ract-rotation-undo-and-redo-chromium\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  27) [chromium] › e2e\customizer-interaction-contract.spec.ts:425:7 › customizer interaction contract › a multi-object drag is ONE atomic transaction however many objects move 
+
+    Error: run against a DEVELOPMENT build — editor metrics are compiled out of production
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: true
+    Received: false
+
+      80 |   // A hard failure, not a skip: without metrics none of these contracts can be
+      81 |   // proven, and a silently skipped suite would read as a passing one.
+    > 82 |   expect(instrumented, "run against a DEVELOPMENT build — editor metrics are compiled out of production").toBe(true);
+         |                                                                                                           ^
+      83 |   await resetMetrics(page);
+      84 | }
+      85 |
+        at openFixture (D:\HUSNALOGY\Main\e2e\customizer-interaction-contract.spec.ts:82:107)
+        at D:\HUSNALOGY\Main\e2e\customizer-interaction-contract.spec.ts:244:5
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results\customizer-interaction-con-50678-n-however-many-objects-move-chromium\test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: video (video/webm) ──────────────────────────────────────────────────────────────
+    test-results\customizer-interaction-con-50678-n-however-many-objects-move-chromium\video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results\customizer-interaction-con-50678-n-however-many-objects-move-chromium\error-context.md
+
+    attachment #4: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results\customizer-interaction-con-50678-n-however-many-objects-move-chromium\trace.zip
+    Usage:
+
+        npx playwright show-trace test-results\customizer-interaction-con-50678-n-however-many-objects-move-chromium\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  28) [chromium] › e2e\customizer-interaction-contract.spec.ts:476:7 › customizer interaction contract › moving a group moves every member rigidly as one transaction 
+
+    Error: run against a DEVELOPMENT build — editor metrics are compiled out of production
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: true
+    Received: false
+
+      80 |   // A hard failure, not a skip: without metrics none of these contracts can be
+      81 |   // proven, and a silently skipped suite would read as a passing one.
+    > 82 |   expect(instrumented, "run against a DEVELOPMENT build — editor metrics are compiled out of production").toBe(true);
+         |                                                                                                           ^
+      83 |   await resetMetrics(page);
+      84 | }
+      85 |
+        at openFixture (D:\HUSNALOGY\Main\e2e\customizer-interaction-contract.spec.ts:82:107)
+        at D:\HUSNALOGY\Main\e2e\customizer-interaction-contract.spec.ts:244:5
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results\customizer-interaction-con-3630c--rigidly-as-one-transaction-chromium\test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: video (video/webm) ──────────────────────────────────────────────────────────────
+    test-results\customizer-interaction-con-3630c--rigidly-as-one-transaction-chromium\video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results\customizer-interaction-con-3630c--rigidly-as-one-transaction-chromium\error-context.md
+
+    attachment #4: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results\customizer-interaction-con-3630c--rigidly-as-one-transaction-chromium\trace.zip
+    Usage:
+
+        npx playwright show-trace test-results\customizer-interaction-con-3630c--rigidly-as-one-transaction-chromium\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  29) [chromium] › e2e\customizer-interaction-contract.spec.ts:524:7 › customizer interaction contract › a locked layer cannot be dragged and writes nothing 
+
+    Error: run against a DEVELOPMENT build — editor metrics are compiled out of production
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: true
+    Received: false
+
+      80 |   // A hard failure, not a skip: without metrics none of these contracts can be
+      81 |   // proven, and a silently skipped suite would read as a passing one.
+    > 82 |   expect(instrumented, "run against a DEVELOPMENT build — editor metrics are compiled out of production").toBe(true);
+         |                                                                                                           ^
+      83 |   await resetMetrics(page);
+      84 | }
+      85 |
+        at openFixture (D:\HUSNALOGY\Main\e2e\customizer-interaction-contract.spec.ts:82:107)
+        at D:\HUSNALOGY\Main\e2e\customizer-interaction-contract.spec.ts:244:5
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results\customizer-interaction-con-96d30--dragged-and-writes-nothing-chromium\test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: video (video/webm) ──────────────────────────────────────────────────────────────
+    test-results\customizer-interaction-con-96d30--dragged-and-writes-nothing-chromium\video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results\customizer-interaction-con-96d30--dragged-and-writes-nothing-chromium\error-context.md
+
+    attachment #4: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results\customizer-interaction-con-96d30--dragged-and-writes-nothing-chromium\trace.zip
+    Usage:
+
+        npx playwright show-trace test-results\customizer-interaction-con-96d30--dragged-and-writes-nothing-chromium\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  30) [chromium] › e2e\customizer-interaction-contract.spec.ts:541:7 › customizer interaction contract › a hidden layer neither renders nor intercepts selection 
+
+    Error: run against a DEVELOPMENT build — editor metrics are compiled out of production
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: true
+    Received: false
+
+      80 |   // A hard failure, not a skip: without metrics none of these contracts can be
+      81 |   // proven, and a silently skipped suite would read as a passing one.
+    > 82 |   expect(instrumented, "run against a DEVELOPMENT build — editor metrics are compiled out of production").toBe(true);
+         |                                                                                                           ^
+      83 |   await resetMetrics(page);
+      84 | }
+      85 |
+        at openFixture (D:\HUSNALOGY\Main\e2e\customizer-interaction-contract.spec.ts:82:107)
+        at D:\HUSNALOGY\Main\e2e\customizer-interaction-contract.spec.ts:244:5
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results\customizer-interaction-con-4fa2d-rs-nor-intercepts-selection-chromium\test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: video (video/webm) ──────────────────────────────────────────────────────────────
+    test-results\customizer-interaction-con-4fa2d-rs-nor-intercepts-selection-chromium\video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results\customizer-interaction-con-4fa2d-rs-nor-intercepts-selection-chromium\error-context.md
+
+    attachment #4: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results\customizer-interaction-con-4fa2d-rs-nor-intercepts-selection-chromium\trace.zip
+    Usage:
+
+        npx playwright show-trace test-results\customizer-interaction-con-4fa2d-rs-nor-intercepts-selection-chromium\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  31) [chromium] › e2e\customizer-interaction-contract.spec.ts:551:7 › customizer interaction contract › front and back pages carry their own layers 
+
+    Error: run against a DEVELOPMENT build — editor metrics are compiled out of production
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: true
+    Received: false
+
+      80 |   // A hard failure, not a skip: without metrics none of these contracts can be
+      81 |   // proven, and a silently skipped suite would read as a passing one.
+    > 82 |   expect(instrumented, "run against a DEVELOPMENT build — editor metrics are compiled out of production").toBe(true);
+         |                                                                                                           ^
+      83 |   await resetMetrics(page);
+      84 | }
+      85 |
+        at openFixture (D:\HUSNALOGY\Main\e2e\customizer-interaction-contract.spec.ts:82:107)
+        at D:\HUSNALOGY\Main\e2e\customizer-interaction-contract.spec.ts:244:5
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results\customizer-interaction-con-af2e8-ages-carry-their-own-layers-chromium\test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: video (video/webm) ──────────────────────────────────────────────────────────────
+    test-results\customizer-interaction-con-af2e8-ages-carry-their-own-layers-chromium\video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results\customizer-interaction-con-af2e8-ages-carry-their-own-layers-chromium\error-context.md
+
+    attachment #4: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results\customizer-interaction-con-af2e8-ages-carry-their-own-layers-chromium\trace.zip
+    Usage:
+
+        npx playwright show-trace test-results\customizer-interaction-con-af2e8-ages-carry-their-own-layers-chromium\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  32) [chromium] › e2e\customizer-interaction-contract.spec.ts:561:7 › customizer interaction contract › entering crop mode creates no history and writes nothing 
+
+    Error: run against a DEVELOPMENT build — editor metrics are compiled out of production
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: true
+    Received: false
+
+      80 |   // A hard failure, not a skip: without metrics none of these contracts can be
+      81 |   // proven, and a silently skipped suite would read as a passing one.
+    > 82 |   expect(instrumented, "run against a DEVELOPMENT build — editor metrics are compiled out of production").toBe(true);
+         |                                                                                                           ^
+      83 |   await resetMetrics(page);
+      84 | }
+      85 |
+        at openFixture (D:\HUSNALOGY\Main\e2e\customizer-interaction-contract.spec.ts:82:107)
+        at D:\HUSNALOGY\Main\e2e\customizer-interaction-contract.spec.ts:244:5
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results\customizer-interaction-con-0d368--history-and-writes-nothing-chromium\test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: video (video/webm) ──────────────────────────────────────────────────────────────
+    test-results\customizer-interaction-con-0d368--history-and-writes-nothing-chromium\video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results\customizer-interaction-con-0d368--history-and-writes-nothing-chromium\error-context.md
+
+    attachment #4: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results\customizer-interaction-con-0d368--history-and-writes-nothing-chromium\trace.zip
+    Usage:
+
+        npx playwright show-trace test-results\customizer-interaction-con-0d368--history-and-writes-nothing-chromium\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  33) [chromium] › e2e\customizer-interaction-contract.spec.ts:568:7 › customizer interaction contract › a 20-step crop pan writes nothing until release, then commits once 
+
+    Error: run against a DEVELOPMENT build — editor metrics are compiled out of production
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: true
+    Received: false
+
+      80 |   // A hard failure, not a skip: without metrics none of these contracts can be
+      81 |   // proven, and a silently skipped suite would read as a passing one.
+    > 82 |   expect(instrumented, "run against a DEVELOPMENT build — editor metrics are compiled out of production").toBe(true);
+         |                                                                                                           ^
+      83 |   await resetMetrics(page);
+      84 | }
+      85 |
+        at openFixture (D:\HUSNALOGY\Main\e2e\customizer-interaction-contract.spec.ts:82:107)
+        at D:\HUSNALOGY\Main\e2e\customizer-interaction-contract.spec.ts:244:5
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results\customizer-interaction-con-dae35-l-release-then-commits-once-chromium\test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: video (video/webm) ──────────────────────────────────────────────────────────────
+    test-results\customizer-interaction-con-dae35-l-release-then-commits-once-chromium\video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results\customizer-interaction-con-dae35-l-release-then-commits-once-chromium\error-context.md
+
+    attachment #4: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results\customizer-interaction-con-dae35-l-release-then-commits-once-chromium\trace.zip
+    Usage:
+
+        npx playwright show-trace test-results\customizer-interaction-con-dae35-l-release-then-commits-once-chromium\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  34) [chromium] › e2e\customizer-interaction-contract.spec.ts:590:7 › customizer interaction contract › a wheel-zoom burst is ONE grouped crop commit 
+
+    Error: run against a DEVELOPMENT build — editor metrics are compiled out of production
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: true
+    Received: false
+
+      80 |   // A hard failure, not a skip: without metrics none of these contracts can be
+      81 |   // proven, and a silently skipped suite would read as a passing one.
+    > 82 |   expect(instrumented, "run against a DEVELOPMENT build — editor metrics are compiled out of production").toBe(true);
+         |                                                                                                           ^
+      83 |   await resetMetrics(page);
+      84 | }
+      85 |
+        at openFixture (D:\HUSNALOGY\Main\e2e\customizer-interaction-contract.spec.ts:82:107)
+        at D:\HUSNALOGY\Main\e2e\customizer-interaction-contract.spec.ts:244:5
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results\customizer-interaction-con-1d0e4--is-ONE-grouped-crop-commit-chromium\test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: video (video/webm) ──────────────────────────────────────────────────────────────
+    test-results\customizer-interaction-con-1d0e4--is-ONE-grouped-crop-commit-chromium\video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results\customizer-interaction-con-1d0e4--is-ONE-grouped-crop-commit-chromium\error-context.md
+
+    attachment #4: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results\customizer-interaction-con-1d0e4--is-ONE-grouped-crop-commit-chromium\trace.zip
+    Usage:
+
+        npx playwright show-trace test-results\customizer-interaction-con-1d0e4--is-ONE-grouped-crop-commit-chromium\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  35) [chromium] › e2e\customizer-interaction-contract.spec.ts:606:7 › customizer interaction contract › crop Done commits a still-pending gesture exactly once 
+
+    Error: run against a DEVELOPMENT build — editor metrics are compiled out of production
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: true
+    Received: false
+
+      80 |   // A hard failure, not a skip: without metrics none of these contracts can be
+      81 |   // proven, and a silently skipped suite would read as a passing one.
+    > 82 |   expect(instrumented, "run against a DEVELOPMENT build — editor metrics are compiled out of production").toBe(true);
+         |                                                                                                           ^
+      83 |   await resetMetrics(page);
+      84 | }
+      85 |
+        at openFixture (D:\HUSNALOGY\Main\e2e\customizer-interaction-contract.spec.ts:82:107)
+        at D:\HUSNALOGY\Main\e2e\customizer-interaction-contract.spec.ts:244:5
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results\customizer-interaction-con-88ff0-ending-gesture-exactly-once-chromium\test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: video (video/webm) ──────────────────────────────────────────────────────────────
+    test-results\customizer-interaction-con-88ff0-ending-gesture-exactly-once-chromium\video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results\customizer-interaction-con-88ff0-ending-gesture-exactly-once-chromium\error-context.md
+
+    attachment #4: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results\customizer-interaction-con-88ff0-ending-gesture-exactly-once-chromium\trace.zip
+    Usage:
+
+        npx playwright show-trace test-results\customizer-interaction-con-88ff0-ending-gesture-exactly-once-chromium\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  36) [chromium] › e2e\customizer-interaction-contract.spec.ts:621:7 › customizer interaction contract › crop Done with no change writes nothing 
+
+    Error: run against a DEVELOPMENT build — editor metrics are compiled out of production
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: true
+    Received: false
+
+      80 |   // A hard failure, not a skip: without metrics none of these contracts can be
+      81 |   // proven, and a silently skipped suite would read as a passing one.
+    > 82 |   expect(instrumented, "run against a DEVELOPMENT build — editor metrics are compiled out of production").toBe(true);
+         |                                                                                                           ^
+      83 |   await resetMetrics(page);
+      84 | }
+      85 |
+        at openFixture (D:\HUSNALOGY\Main\e2e\customizer-interaction-contract.spec.ts:82:107)
+        at D:\HUSNALOGY\Main\e2e\customizer-interaction-contract.spec.ts:244:5
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results\customizer-interaction-con-4e2cb-th-no-change-writes-nothing-chromium\test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: video (video/webm) ──────────────────────────────────────────────────────────────
+    test-results\customizer-interaction-con-4e2cb-th-no-change-writes-nothing-chromium\video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results\customizer-interaction-con-4e2cb-th-no-change-writes-nothing-chromium\error-context.md
+
+    attachment #4: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results\customizer-interaction-con-4e2cb-th-no-change-writes-nothing-chromium\trace.zip
+    Usage:
+
+        npx playwright show-trace test-results\customizer-interaction-con-4e2cb-th-no-change-writes-nothing-chromium\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  37) [chromium] › e2e\customizer-interaction-contract.spec.ts:630:7 › customizer interaction contract › crop pan undo and redo restore the exact crop 
+
+    Error: run against a DEVELOPMENT build — editor metrics are compiled out of production
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: true
+    Received: false
+
+      80 |   // A hard failure, not a skip: without metrics none of these contracts can be
+      81 |   // proven, and a silently skipped suite would read as a passing one.
+    > 82 |   expect(instrumented, "run against a DEVELOPMENT build — editor metrics are compiled out of production").toBe(true);
+         |                                                                                                           ^
+      83 |   await resetMetrics(page);
+      84 | }
+      85 |
+        at openFixture (D:\HUSNALOGY\Main\e2e\customizer-interaction-contract.spec.ts:82:107)
+        at D:\HUSNALOGY\Main\e2e\customizer-interaction-contract.spec.ts:244:5
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results\customizer-interaction-con-0a3b4-redo-restore-the-exact-crop-chromium\test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: video (video/webm) ──────────────────────────────────────────────────────────────
+    test-results\customizer-interaction-con-0a3b4-redo-restore-the-exact-crop-chromium\video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results\customizer-interaction-con-0a3b4-redo-restore-the-exact-crop-chromium\error-context.md
+
+    attachment #4: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results\customizer-interaction-con-0a3b4-redo-restore-the-exact-crop-chromium\trace.zip
+    Usage:
+
+        npx playwright show-trace test-results\customizer-interaction-con-0a3b4-redo-restore-the-exact-crop-chromium\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  38) [chromium] › e2e\customizer-interaction-contract.spec.ts:646:7 › customizer interaction contract › crop zoom undo and redo restore the exact zoom 
+
+    Error: run against a DEVELOPMENT build — editor metrics are compiled out of production
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: true
+    Received: false
+
+      80 |   // A hard failure, not a skip: without metrics none of these contracts can be
+      81 |   // proven, and a silently skipped suite would read as a passing one.
+    > 82 |   expect(instrumented, "run against a DEVELOPMENT build — editor metrics are compiled out of production").toBe(true);
+         |                                                                                                           ^
+      83 |   await resetMetrics(page);
+      84 | }
+      85 |
+        at openFixture (D:\HUSNALOGY\Main\e2e\customizer-interaction-contract.spec.ts:82:107)
+        at D:\HUSNALOGY\Main\e2e\customizer-interaction-contract.spec.ts:244:5
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results\customizer-interaction-con-78e88-redo-restore-the-exact-zoom-chromium\test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: video (video/webm) ──────────────────────────────────────────────────────────────
+    test-results\customizer-interaction-con-78e88-redo-restore-the-exact-zoom-chromium\video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results\customizer-interaction-con-78e88-redo-restore-the-exact-zoom-chromium\error-context.md
+
+    attachment #4: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results\customizer-interaction-con-78e88-redo-restore-the-exact-zoom-chromium\trace.zip
+    Usage:
+
+        npx playwright show-trace test-results\customizer-interaction-con-78e88-redo-restore-the-exact-zoom-chromium\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  39) [chromium] › e2e\customizer-interaction-contract.spec.ts:664:7 › customizer interaction contract › Cancel after several committed crop gestures rolls back document AND history 
+
+    Error: run against a DEVELOPMENT build — editor metrics are compiled out of production
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: true
+    Received: false
+
+      80 |   // A hard failure, not a skip: without metrics none of these contracts can be
+      81 |   // proven, and a silently skipped suite would read as a passing one.
+    > 82 |   expect(instrumented, "run against a DEVELOPMENT build — editor metrics are compiled out of production").toBe(true);
+         |                                                                                                           ^
+      83 |   await resetMetrics(page);
+      84 | }
+      85 |
+        at openFixture (D:\HUSNALOGY\Main\e2e\customizer-interaction-contract.spec.ts:82:107)
+        at D:\HUSNALOGY\Main\e2e\customizer-interaction-contract.spec.ts:244:5
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results\customizer-interaction-con-2c247-s-back-document-AND-history-chromium\test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: video (video/webm) ──────────────────────────────────────────────────────────────
+    test-results\customizer-interaction-con-2c247-s-back-document-AND-history-chromium\video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results\customizer-interaction-con-2c247-s-back-document-AND-history-chromium\error-context.md
+
+    attachment #4: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results\customizer-interaction-con-2c247-s-back-document-AND-history-chromium\trace.zip
+    Usage:
+
+        npx playwright show-trace test-results\customizer-interaction-con-2c247-s-back-document-AND-history-chromium\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  40) [chromium] › e2e\customizer-interaction-contract.spec.ts:702:7 › customizer interaction contract › Cancel during the wheel settle delay never commits afterwards 
+
+    Error: run against a DEVELOPMENT build — editor metrics are compiled out of production
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: true
+    Received: false
+
+      80 |   // A hard failure, not a skip: without metrics none of these contracts can be
+      81 |   // proven, and a silently skipped suite would read as a passing one.
+    > 82 |   expect(instrumented, "run against a DEVELOPMENT build — editor metrics are compiled out of production").toBe(true);
+         |                                                                                                           ^
+      83 |   await resetMetrics(page);
+      84 | }
+      85 |
+        at openFixture (D:\HUSNALOGY\Main\e2e\customizer-interaction-contract.spec.ts:82:107)
+        at D:\HUSNALOGY\Main\e2e\customizer-interaction-contract.spec.ts:244:5
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results\customizer-interaction-con-b085c-ay-never-commits-afterwards-chromium\test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: video (video/webm) ──────────────────────────────────────────────────────────────
+    test-results\customizer-interaction-con-b085c-ay-never-commits-afterwards-chromium\video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results\customizer-interaction-con-b085c-ay-never-commits-afterwards-chromium\error-context.md
+
+    attachment #4: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results\customizer-interaction-con-b085c-ay-never-commits-afterwards-chromium\trace.zip
+    Usage:
+
+        npx playwright show-trace test-results\customizer-interaction-con-b085c-ay-never-commits-afterwards-chromium\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  41) [chromium] › e2e\customizer-interaction-contract.spec.ts:717:7 › customizer interaction contract › pinch crop stays transient, commits once on lift, and Cancel rolls it back 
+
+    Error: run against a DEVELOPMENT build — editor metrics are compiled out of production
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: true
+    Received: false
+
+      80 |   // A hard failure, not a skip: without metrics none of these contracts can be
+      81 |   // proven, and a silently skipped suite would read as a passing one.
+    > 82 |   expect(instrumented, "run against a DEVELOPMENT build — editor metrics are compiled out of production").toBe(true);
+         |                                                                                                           ^
+      83 |   await resetMetrics(page);
+      84 | }
+      85 |
+        at openFixture (D:\HUSNALOGY\Main\e2e\customizer-interaction-contract.spec.ts:82:107)
+        at D:\HUSNALOGY\Main\e2e\customizer-interaction-contract.spec.ts:244:5
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results\customizer-interaction-con-eb274-ft-and-Cancel-rolls-it-back-chromium\test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: video (video/webm) ──────────────────────────────────────────────────────────────
+    test-results\customizer-interaction-con-eb274-ft-and-Cancel-rolls-it-back-chromium\video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results\customizer-interaction-con-eb274-ft-and-Cancel-rolls-it-back-chromium\error-context.md
+
+    attachment #4: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results\customizer-interaction-con-eb274-ft-and-Cancel-rolls-it-back-chromium\trace.zip
+    Usage:
+
+        npx playwright show-trace test-results\customizer-interaction-con-eb274-ft-and-Cancel-rolls-it-back-chromium\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  42) [chromium] › e2e\customizer-interaction-contract.spec.ts:753:7 › customizer interaction contract › changing page during crop finalizes it once and no old-page timer fires 
+
+    Error: run against a DEVELOPMENT build — editor metrics are compiled out of production
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: true
+    Received: false
+
+      80 |   // A hard failure, not a skip: without metrics none of these contracts can be
+      81 |   // proven, and a silently skipped suite would read as a passing one.
+    > 82 |   expect(instrumented, "run against a DEVELOPMENT build — editor metrics are compiled out of production").toBe(true);
+         |                                                                                                           ^
+      83 |   await resetMetrics(page);
+      84 | }
+      85 |
+        at openFixture (D:\HUSNALOGY\Main\e2e\customizer-interaction-contract.spec.ts:82:107)
+        at D:\HUSNALOGY\Main\e2e\customizer-interaction-contract.spec.ts:244:5
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results\customizer-interaction-con-82881-and-no-old-page-timer-fires-chromium\test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: video (video/webm) ──────────────────────────────────────────────────────────────
+    test-results\customizer-interaction-con-82881-and-no-old-page-timer-fires-chromium\video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results\customizer-interaction-con-82881-and-no-old-page-timer-fires-chromium\error-context.md
+
+    attachment #4: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results\customizer-interaction-con-82881-and-no-old-page-timer-fires-chromium\trace.zip
+    Usage:
+
+        npx playwright show-trace test-results\customizer-interaction-con-82881-and-no-old-page-timer-fires-chromium\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  43) [chromium] › e2e\customizer-interaction-contract.spec.ts:770:7 › customizer interaction contract › selecting another object during crop is Done for the crop 
+
+    Error: run against a DEVELOPMENT build — editor metrics are compiled out of production
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: true
+    Received: false
+
+      80 |   // A hard failure, not a skip: without metrics none of these contracts can be
+      81 |   // proven, and a silently skipped suite would read as a passing one.
+    > 82 |   expect(instrumented, "run against a DEVELOPMENT build — editor metrics are compiled out of production").toBe(true);
+         |                                                                                                           ^
+      83 |   await resetMetrics(page);
+      84 | }
+      85 |
+        at openFixture (D:\HUSNALOGY\Main\e2e\customizer-interaction-contract.spec.ts:82:107)
+        at D:\HUSNALOGY\Main\e2e\customizer-interaction-contract.spec.ts:244:5
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results\customizer-interaction-con-48e3d-g-crop-is-Done-for-the-crop-chromium\test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: video (video/webm) ──────────────────────────────────────────────────────────────
+    test-results\customizer-interaction-con-48e3d-g-crop-is-Done-for-the-crop-chromium\video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results\customizer-interaction-con-48e3d-g-crop-is-Done-for-the-crop-chromium\error-context.md
+
+    attachment #4: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results\customizer-interaction-con-48e3d-g-crop-is-Done-for-the-crop-chromium\trace.zip
+    Usage:
+
+        npx playwright show-trace test-results\customizer-interaction-con-48e3d-g-crop-is-Done-for-the-crop-chromium\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  44) [chromium] › e2e\customizer-interaction-contract.spec.ts:788:7 › customizer interaction contract › grid crop pan is transient until release, then commits once 
+
+    Error: run against a DEVELOPMENT build — editor metrics are compiled out of production
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: true
+    Received: false
+
+      80 |   // A hard failure, not a skip: without metrics none of these contracts can be
+      81 |   // proven, and a silently skipped suite would read as a passing one.
+    > 82 |   expect(instrumented, "run against a DEVELOPMENT build — editor metrics are compiled out of production").toBe(true);
+         |                                                                                                           ^
+      83 |   await resetMetrics(page);
+      84 | }
+      85 |
+        at openFixture (D:\HUSNALOGY\Main\e2e\customizer-interaction-contract.spec.ts:82:107)
+        at D:\HUSNALOGY\Main\e2e\customizer-interaction-contract.spec.ts:244:5
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results\customizer-interaction-con-bf34a-l-release-then-commits-once-chromium\test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: video (video/webm) ──────────────────────────────────────────────────────────────
+    test-results\customizer-interaction-con-bf34a-l-release-then-commits-once-chromium\video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results\customizer-interaction-con-bf34a-l-release-then-commits-once-chromium\error-context.md
+
+    attachment #4: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results\customizer-interaction-con-bf34a-l-release-then-commits-once-chromium\trace.zip
+    Usage:
+
+        npx playwright show-trace test-results\customizer-interaction-con-bf34a-l-release-then-commits-once-chromium\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  45) [chromium] › e2e\customizer-interaction-contract.spec.ts:808:7 › customizer interaction contract › grid crop Cancel after a commit restores the slot and its history 
+
+    Error: run against a DEVELOPMENT build — editor metrics are compiled out of production
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: true
+    Received: false
+
+      80 |   // A hard failure, not a skip: without metrics none of these contracts can be
+      81 |   // proven, and a silently skipped suite would read as a passing one.
+    > 82 |   expect(instrumented, "run against a DEVELOPMENT build — editor metrics are compiled out of production").toBe(true);
+         |                                                                                                           ^
+      83 |   await resetMetrics(page);
+      84 | }
+      85 |
+        at openFixture (D:\HUSNALOGY\Main\e2e\customizer-interaction-contract.spec.ts:82:107)
+        at D:\HUSNALOGY\Main\e2e\customizer-interaction-contract.spec.ts:244:5
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results\customizer-interaction-con-188a7-es-the-slot-and-its-history-chromium\test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: video (video/webm) ──────────────────────────────────────────────────────────────
+    test-results\customizer-interaction-con-188a7-es-the-slot-and-its-history-chromium\video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results\customizer-interaction-con-188a7-es-the-slot-and-its-history-chromium\error-context.md
+
+    attachment #4: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results\customizer-interaction-con-188a7-es-the-slot-and-its-history-chromium\trace.zip
+    Usage:
+
+        npx playwright show-trace test-results\customizer-interaction-con-188a7-es-the-slot-and-its-history-chromium\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  46) [chromium] › e2e\customizer-interaction-contract.spec.ts:828:7 › customizer interaction contract › grid crop Cancel during the wheel settle delay never commits afterwards 
+
+    Error: run against a DEVELOPMENT build — editor metrics are compiled out of production
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: true
+    Received: false
+
+      80 |   // A hard failure, not a skip: without metrics none of these contracts can be
+      81 |   // proven, and a silently skipped suite would read as a passing one.
+    > 82 |   expect(instrumented, "run against a DEVELOPMENT build — editor metrics are compiled out of production").toBe(true);
+         |                                                                                                           ^
+      83 |   await resetMetrics(page);
+      84 | }
+      85 |
+        at openFixture (D:\HUSNALOGY\Main\e2e\customizer-interaction-contract.spec.ts:82:107)
+        at D:\HUSNALOGY\Main\e2e\customizer-interaction-contract.spec.ts:244:5
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results\customizer-interaction-con-338af-ay-never-commits-afterwards-chromium\test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: video (video/webm) ──────────────────────────────────────────────────────────────
+    test-results\customizer-interaction-con-338af-ay-never-commits-afterwards-chromium\video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results\customizer-interaction-con-338af-ay-never-commits-afterwards-chromium\error-context.md
+
+    attachment #4: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results\customizer-interaction-con-338af-ay-never-commits-afterwards-chromium\trace.zip
+    Usage:
+
+        npx playwright show-trace test-results\customizer-interaction-con-338af-ay-never-commits-afterwards-chromium\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  47) [chromium] › e2e\customizer-interaction-contract.spec.ts:840:7 › customizer interaction contract › grid crop undo and redo 
+
+    Error: run against a DEVELOPMENT build — editor metrics are compiled out of production
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: true
+    Received: false
+
+      80 |   // A hard failure, not a skip: without metrics none of these contracts can be
+      81 |   // proven, and a silently skipped suite would read as a passing one.
+    > 82 |   expect(instrumented, "run against a DEVELOPMENT build — editor metrics are compiled out of production").toBe(true);
+         |                                                                                                           ^
+      83 |   await resetMetrics(page);
+      84 | }
+      85 |
+        at openFixture (D:\HUSNALOGY\Main\e2e\customizer-interaction-contract.spec.ts:82:107)
+        at D:\HUSNALOGY\Main\e2e\customizer-interaction-contract.spec.ts:244:5
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results\customizer-interaction-con-9f1af-act-grid-crop-undo-and-redo-chromium\test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: video (video/webm) ──────────────────────────────────────────────────────────────
+    test-results\customizer-interaction-con-9f1af-act-grid-crop-undo-and-redo-chromium\video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results\customizer-interaction-con-9f1af-act-grid-crop-undo-and-redo-chromium\error-context.md
+
+    attachment #4: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results\customizer-interaction-con-9f1af-act-grid-crop-undo-and-redo-chromium\trace.zip
+    Usage:
+
+        npx playwright show-trace test-results\customizer-interaction-con-9f1af-act-grid-crop-undo-and-redo-chromium\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  48) [chromium] › e2e\customizer-interaction-contract.spec.ts:861:7 › customizer interaction contract › editing text commits the new value without creating a second layer 
+
+    Error: run against a DEVELOPMENT build — editor metrics are compiled out of production
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: true
+    Received: false
+
+      80 |   // A hard failure, not a skip: without metrics none of these contracts can be
+      81 |   // proven, and a silently skipped suite would read as a passing one.
+    > 82 |   expect(instrumented, "run against a DEVELOPMENT build — editor metrics are compiled out of production").toBe(true);
+         |                                                                                                           ^
+      83 |   await resetMetrics(page);
+      84 | }
+      85 |
+        at openFixture (D:\HUSNALOGY\Main\e2e\customizer-interaction-contract.spec.ts:82:107)
+        at D:\HUSNALOGY\Main\e2e\customizer-interaction-contract.spec.ts:244:5
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results\customizer-interaction-con-7302f-out-creating-a-second-layer-chromium\test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: video (video/webm) ──────────────────────────────────────────────────────────────
+    test-results\customizer-interaction-con-7302f-out-creating-a-second-layer-chromium\video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results\customizer-interaction-con-7302f-out-creating-a-second-layer-chromium\error-context.md
+
+    attachment #4: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results\customizer-interaction-con-7302f-out-creating-a-second-layer-chromium\trace.zip
+    Usage:
+
+        npx playwright show-trace test-results\customizer-interaction-con-7302f-out-creating-a-second-layer-chromium\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  49) [chromium] › e2e\customizer-interaction-contract.spec.ts:878:7 › customizer interaction contract › selecting existing text layers never creates a new one 
+
+    Error: run against a DEVELOPMENT build — editor metrics are compiled out of production
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: true
+    Received: false
+
+      80 |   // A hard failure, not a skip: without metrics none of these contracts can be
+      81 |   // proven, and a silently skipped suite would read as a passing one.
+    > 82 |   expect(instrumented, "run against a DEVELOPMENT build — editor metrics are compiled out of production").toBe(true);
+         |                                                                                                           ^
+      83 |   await resetMetrics(page);
+      84 | }
+      85 |
+        at openFixture (D:\HUSNALOGY\Main\e2e\customizer-interaction-contract.spec.ts:82:107)
+        at D:\HUSNALOGY\Main\e2e\customizer-interaction-contract.spec.ts:244:5
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results\customizer-interaction-con-e1e3c-ers-never-creates-a-new-one-chromium\test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: video (video/webm) ──────────────────────────────────────────────────────────────
+    test-results\customizer-interaction-con-e1e3c-ers-never-creates-a-new-one-chromium\video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results\customizer-interaction-con-e1e3c-ers-never-creates-a-new-one-chromium\error-context.md
+
+    attachment #4: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results\customizer-interaction-con-e1e3c-ers-never-creates-a-new-one-chromium\trace.zip
+    Usage:
+
+        npx playwright show-trace test-results\customizer-interaction-con-e1e3c-ers-never-creates-a-new-one-chromium\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  50) [chromium] › e2e\customizer-interaction-contract.spec.ts:895:7 › crop Cancel and autosave › holding a gesture past the autosave debounce never saves transient geometry 
+
+    Error: run against a DEVELOPMENT build — editor metrics are compiled out of production
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: true
+    Received: false
+
+      80 |   // A hard failure, not a skip: without metrics none of these contracts can be
+      81 |   // proven, and a silently skipped suite would read as a passing one.
+    > 82 |   expect(instrumented, "run against a DEVELOPMENT build — editor metrics are compiled out of production").toBe(true);
+         |                                                                                                           ^
+      83 |   await resetMetrics(page);
+      84 | }
+      85 |
+        at openFixture (D:\HUSNALOGY\Main\e2e\customizer-interaction-contract.spec.ts:82:107)
+        at D:\HUSNALOGY\Main\e2e\customizer-interaction-contract.spec.ts:892:5
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results\customizer-interaction-con-beb1a-er-saves-transient-geometry-chromium\test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: video (video/webm) ──────────────────────────────────────────────────────────────
+    test-results\customizer-interaction-con-beb1a-er-saves-transient-geometry-chromium\video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results\customizer-interaction-con-beb1a-er-saves-transient-geometry-chromium\error-context.md
+
+    attachment #4: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results\customizer-interaction-con-beb1a-er-saves-transient-geometry-chromium\trace.zip
+    Usage:
+
+        npx playwright show-trace test-results\customizer-interaction-con-beb1a-er-saves-transient-geometry-chromium\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  51) [chromium] › e2e\customizer-interaction-contract.spec.ts:911:7 › crop Cancel and autosave › Cancel after the modified crop already autosaved leaves the ORIGINAL crop saved 
+
+    Error: run against a DEVELOPMENT build — editor metrics are compiled out of production
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: true
+    Received: false
+
+      80 |   // A hard failure, not a skip: without metrics none of these contracts can be
+      81 |   // proven, and a silently skipped suite would read as a passing one.
+    > 82 |   expect(instrumented, "run against a DEVELOPMENT build — editor metrics are compiled out of production").toBe(true);
+         |                                                                                                           ^
+      83 |   await resetMetrics(page);
+      84 | }
+      85 |
+        at openFixture (D:\HUSNALOGY\Main\e2e\customizer-interaction-contract.spec.ts:82:107)
+        at D:\HUSNALOGY\Main\e2e\customizer-interaction-contract.spec.ts:892:5
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results\customizer-interaction-con-8bc9f-ves-the-ORIGINAL-crop-saved-chromium\test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: video (video/webm) ──────────────────────────────────────────────────────────────
+    test-results\customizer-interaction-con-8bc9f-ves-the-ORIGINAL-crop-saved-chromium\video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results\customizer-interaction-con-8bc9f-ves-the-ORIGINAL-crop-saved-chromium\error-context.md
+
+    attachment #4: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results\customizer-interaction-con-8bc9f-ves-the-ORIGINAL-crop-saved-chromium\trace.zip
+    Usage:
+
+        npx playwright show-trace test-results\customizer-interaction-con-8bc9f-ves-the-ORIGINAL-crop-saved-chromium\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  52) [chromium] › e2e\customizer-interaction-contract.spec.ts:927:7 › crop Cancel and autosave › an in-flight save cannot mark the restored document saved after Cancel 
+
+    Error: run against a DEVELOPMENT build — editor metrics are compiled out of production
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: true
+    Received: false
+
+      80 |   // A hard failure, not a skip: without metrics none of these contracts can be
+      81 |   // proven, and a silently skipped suite would read as a passing one.
+    > 82 |   expect(instrumented, "run against a DEVELOPMENT build — editor metrics are compiled out of production").toBe(true);
+         |                                                                                                           ^
+      83 |   await resetMetrics(page);
+      84 | }
+      85 |
+        at openFixture (D:\HUSNALOGY\Main\e2e\customizer-interaction-contract.spec.ts:82:107)
+        at D:\HUSNALOGY\Main\e2e\customizer-interaction-contract.spec.ts:892:5
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results\customizer-interaction-con-1d19f-document-saved-after-Cancel-chromium\test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: video (video/webm) ──────────────────────────────────────────────────────────────
+    test-results\customizer-interaction-con-1d19f-document-saved-after-Cancel-chromium\video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results\customizer-interaction-con-1d19f-document-saved-after-Cancel-chromium\error-context.md
+
+    attachment #4: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results\customizer-interaction-con-1d19f-document-saved-after-Cancel-chromium\trace.zip
+    Usage:
+
+        npx playwright show-trace test-results\customizer-interaction-con-1d19f-document-saved-after-Cancel-chromium\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  53) [chromium] › e2e\customizer-performance.spec.ts:71:9 › large-document performance › 20 layers: one commit per drag, no workspace re-render 
+
+    Error: page.evaluate: TypeError: Cannot set properties of undefined (setting 'documentCommits')
+        at eval (eval at evaluate (:303:30), <anonymous>:3:33)
+        at UtilityScript.evaluate (<anonymous>:305:16)
+        at UtilityScript.<anonymous> (<anonymous>:1:44)
+        at eval (eval at evaluate (:303:30), <anonymous>:3:33)
+        at UtilityScript.evaluate (<anonymous>:305:16)
+        at UtilityScript.<anonymous> (<anonymous>:1:44)
+        at reset (D:\HUSNALOGY\Main\e2e\customizer-performance.spec.ts:92:14)
+        at D:\HUSNALOGY\Main\e2e\customizer-performance.spec.ts:101:13
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results\customizer-performance-lar-30b23-drag-no-workspace-re-render-chromium\test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: video (video/webm) ──────────────────────────────────────────────────────────────
+    test-results\customizer-performance-lar-30b23-drag-no-workspace-re-render-chromium\video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results\customizer-performance-lar-30b23-drag-no-workspace-re-render-chromium\error-context.md
+
+    Error Context: test-results\customizer-performance-lar-30b23-drag-no-workspace-re-render-chromium\error-context.md
+
+    attachment #5: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results\customizer-performance-lar-30b23-drag-no-workspace-re-render-chromium\trace.zip
+    Usage:
+
+        npx playwright show-trace test-results\customizer-performance-lar-30b23-drag-no-workspace-re-render-chromium\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  54) [chromium] › e2e\customizer-performance.spec.ts:71:9 › large-document performance › 50 layers: one commit per drag, no workspace re-render 
+
+    Error: page.evaluate: TypeError: Cannot set properties of undefined (setting 'documentCommits')
+        at eval (eval at evaluate (:303:30), <anonymous>:3:33)
+        at UtilityScript.evaluate (<anonymous>:305:16)
+        at UtilityScript.<anonymous> (<anonymous>:1:44)
+        at eval (eval at evaluate (:303:30), <anonymous>:3:33)
+        at UtilityScript.evaluate (<anonymous>:305:16)
+        at UtilityScript.<anonymous> (<anonymous>:1:44)
+        at reset (D:\HUSNALOGY\Main\e2e\customizer-performance.spec.ts:92:14)
+        at D:\HUSNALOGY\Main\e2e\customizer-performance.spec.ts:101:13
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results\customizer-performance-lar-979c2-drag-no-workspace-re-render-chromium\test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: video (video/webm) ──────────────────────────────────────────────────────────────
+    test-results\customizer-performance-lar-979c2-drag-no-workspace-re-render-chromium\video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results\customizer-performance-lar-979c2-drag-no-workspace-re-render-chromium\error-context.md
+
+    Error Context: test-results\customizer-performance-lar-979c2-drag-no-workspace-re-render-chromium\error-context.md
+
+    attachment #5: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results\customizer-performance-lar-979c2-drag-no-workspace-re-render-chromium\trace.zip
+    Usage:
+
+        npx playwright show-trace test-results\customizer-performance-lar-979c2-drag-no-workspace-re-render-chromium\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  55) [chromium] › e2e\customizer-performance.spec.ts:71:9 › large-document performance › 100 layers: one commit per drag, no workspace re-render 
+
+    Error: page.evaluate: TypeError: Cannot set properties of undefined (setting 'documentCommits')
+        at eval (eval at evaluate (:303:30), <anonymous>:3:33)
+        at UtilityScript.evaluate (<anonymous>:305:16)
+        at UtilityScript.<anonymous> (<anonymous>:1:44)
+        at eval (eval at evaluate (:303:30), <anonymous>:3:33)
+        at UtilityScript.evaluate (<anonymous>:305:16)
+        at UtilityScript.<anonymous> (<anonymous>:1:44)
+        at reset (D:\HUSNALOGY\Main\e2e\customizer-performance.spec.ts:92:14)
+        at D:\HUSNALOGY\Main\e2e\customizer-performance.spec.ts:101:13
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results\customizer-performance-lar-145bb-drag-no-workspace-re-render-chromium\test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: video (video/webm) ──────────────────────────────────────────────────────────────
+    test-results\customizer-performance-lar-145bb-drag-no-workspace-re-render-chromium\video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results\customizer-performance-lar-145bb-drag-no-workspace-re-render-chromium\error-context.md
+
+    Error Context: test-results\customizer-performance-lar-145bb-drag-no-workspace-re-render-chromium\error-context.md
+
+    attachment #5: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results\customizer-performance-lar-145bb-drag-no-workspace-re-render-chromium\trace.zip
+    Usage:
+
+        npx playwright show-trace test-results\customizer-performance-lar-145bb-drag-no-workspace-re-render-chromium\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  56) [chromium] › e2e\customizer-performance.spec.ts:71:9 › large-document performance › 200 layers: one commit per drag, no workspace re-render 
+
+    Error: page.evaluate: TypeError: Cannot set properties of undefined (setting 'documentCommits')
+        at eval (eval at evaluate (:303:30), <anonymous>:3:33)
+        at UtilityScript.evaluate (<anonymous>:305:16)
+        at UtilityScript.<anonymous> (<anonymous>:1:44)
+        at eval (eval at evaluate (:303:30), <anonymous>:3:33)
+        at UtilityScript.evaluate (<anonymous>:305:16)
+        at UtilityScript.<anonymous> (<anonymous>:1:44)
+        at reset (D:\HUSNALOGY\Main\e2e\customizer-performance.spec.ts:92:14)
+        at D:\HUSNALOGY\Main\e2e\customizer-performance.spec.ts:101:13
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results\customizer-performance-lar-174ba-drag-no-workspace-re-render-chromium\test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: video (video/webm) ──────────────────────────────────────────────────────────────
+    test-results\customizer-performance-lar-174ba-drag-no-workspace-re-render-chromium\video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results\customizer-performance-lar-174ba-drag-no-workspace-re-render-chromium\error-context.md
+
+    Error Context: test-results\customizer-performance-lar-174ba-drag-no-workspace-re-render-chromium\error-context.md
+
+    attachment #5: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results\customizer-performance-lar-174ba-drag-no-workspace-re-render-chromium\trace.zip
+    Usage:
+
+        npx playwright show-trace test-results\customizer-performance-lar-174ba-drag-no-workspace-re-render-chromium\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  57) [chromium] › e2e\customizer-resize.spec.ts:162:7 › resize — the shipped Konva path › a corner drag changes both dimensions and commits exactly once 
+
+    Error: a resize must be ONE document write
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: 1
+    Received: -1
+
+      170 |     expect(after.width).toBeGreaterThan(before.width);
+      171 |     expect(after.height).toBeGreaterThan(before.height);
+    > 172 |     expect(await commits(page), "a resize must be ONE document write").toBe(1);
+          |                                                                        ^
+      173 |   });
+      174 |
+      175 |   test("an edge drag changes only its own axis", async ({ page }) => {
+        at D:\HUSNALOGY\Main\e2e\customizer-resize.spec.ts:172:72
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results\customizer-resize-resize-—-e6aeb-ns-and-commits-exactly-once-chromium\test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: video (video/webm) ──────────────────────────────────────────────────────────────
+    test-results\customizer-resize-resize-—-e6aeb-ns-and-commits-exactly-once-chromium\video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results\customizer-resize-resize-—-e6aeb-ns-and-commits-exactly-once-chromium\error-context.md
+
+    attachment #4: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results\customizer-resize-resize-—-e6aeb-ns-and-commits-exactly-once-chromium\trace.zip
+    Usage:
+
+        npx playwright show-trace test-results\customizer-resize-resize-—-e6aeb-ns-and-commits-exactly-once-chromium\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  58) [chromium] › e2e\customizer-resize.spec.ts:240:7 › resize — the shipped Konva path › a rotated object resizes along its OWN axes 
+
+    Error: expect(received).toBe(expected) // Object.is equality
+
+    Expected: 1
+    Received: -1
+
+      268 |     );
+      269 |     expect(after.height, "a rotated edge drag leaked into the other axis").toBe(rotated.height);
+    > 270 |     expect(await commits(page)).toBe(1);
+          |                                 ^
+      271 |   });
+      272 |
+      273 |   test("resizing a multi-selection scales every member as one transaction", async ({ page }) => {
+        at D:\HUSNALOGY\Main\e2e\customizer-resize.spec.ts:270:33
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results\customizer-resize-resize-—-7af2c--resizes-along-its-OWN-axes-chromium\test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: video (video/webm) ──────────────────────────────────────────────────────────────
+    test-results\customizer-resize-resize-—-7af2c--resizes-along-its-OWN-axes-chromium\video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results\customizer-resize-resize-—-7af2c--resizes-along-its-OWN-axes-chromium\error-context.md
+
+    attachment #4: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results\customizer-resize-resize-—-7af2c--resizes-along-its-OWN-axes-chromium\trace.zip
+    Usage:
+
+        npx playwright show-trace test-results\customizer-resize-resize-—-7af2c--resizes-along-its-OWN-axes-chromium\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  59) [chromium] › e2e\customizer-resize.spec.ts:273:7 › resize — the shipped Konva path › resizing a multi-selection scales every member as one transaction 
+
+    Error: a multi-selection resize must be ONE transaction
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: 1
+    Received: -1
+
+      293 |       lineAfter.height !== lineBefore.height;
+      294 |     expect(changed, "resizing a multi-selection changed nothing").toBe(true);
+    > 295 |     expect(await commits(page), "a multi-selection resize must be ONE transaction").toBe(1);
+          |                                                                                     ^
+      296 |   });
+      297 |
+      298 |   test("a group resizes as one object and commits once", async ({ page }) => {
+        at D:\HUSNALOGY\Main\e2e\customizer-resize.spec.ts:295:85
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results\customizer-resize-resize-—-08801-y-member-as-one-transaction-chromium\test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: video (video/webm) ──────────────────────────────────────────────────────────────
+    test-results\customizer-resize-resize-—-08801-y-member-as-one-transaction-chromium\video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results\customizer-resize-resize-—-08801-y-member-as-one-transaction-chromium\error-context.md
+
+    attachment #4: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results\customizer-resize-resize-—-08801-y-member-as-one-transaction-chromium\trace.zip
+    Usage:
+
+        npx playwright show-trace test-results\customizer-resize-resize-—-08801-y-member-as-one-transaction-chromium\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  60) [chromium] › e2e\customizer-resize.spec.ts:298:7 › resize — the shipped Konva path › a group resizes as one object and commits once 
+
+    Error: a group resize must be ONE transaction
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: 1
+    Received: -1
+
+      315 |       `resizing the group left its children untouched (${JSON.stringify(childBefore)} -> ${JSON.stringify(childAfter)})`,
+      316 |     ).toBe(true);
+    > 317 |     expect(await commits(page), "a group resize must be ONE transaction").toBe(1);
+          |                                                                           ^
+      318 |   });
+      319 |
+      320 |   test("a text box side drag changes the wrap width, not the type size", async ({ page }) => {
+        at D:\HUSNALOGY\Main\e2e\customizer-resize.spec.ts:317:75
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results\customizer-resize-resize-—-9e611-one-object-and-commits-once-chromium\test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: video (video/webm) ──────────────────────────────────────────────────────────────
+    test-results\customizer-resize-resize-—-9e611-one-object-and-commits-once-chromium\video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results\customizer-resize-resize-—-9e611-one-object-and-commits-once-chromium\error-context.md
+
+    attachment #4: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results\customizer-resize-resize-—-9e611-one-object-and-commits-once-chromium\trace.zip
+    Usage:
+
+        npx playwright show-trace test-results\customizer-resize-resize-—-9e611-one-object-and-commits-once-chromium\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  61) [chromium] › e2e\customizer-resize.spec.ts:320:7 › resize — the shipped Konva path › a text box side drag changes the wrap width, not the type size 
+
+    Error: expect(received).toBe(expected) // Object.is equality
+
+    Expected: 1
+    Received: -1
+
+      331 |     expect(after.width, "the side handle did not change the wrap width").toBeLessThan(before.width);
+      332 |     expect(await fontSize(page, "fx_free_text"), "a side drag changed the font size").toBe(fontBefore);
+    > 333 |     expect(await commits(page)).toBe(1);
+          |                                 ^
+      334 |   });
+      335 |
+      336 |   test("a text corner drag scales the TYPE rather than stretching the glyphs", async ({ page }) => {
+        at D:\HUSNALOGY\Main\e2e\customizer-resize.spec.ts:333:33
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results\customizer-resize-resize-—-70318-rap-width-not-the-type-size-chromium\test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: video (video/webm) ──────────────────────────────────────────────────────────────
+    test-results\customizer-resize-resize-—-70318-rap-width-not-the-type-size-chromium\video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results\customizer-resize-resize-—-70318-rap-width-not-the-type-size-chromium\error-context.md
+
+    attachment #4: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results\customizer-resize-resize-—-70318-rap-width-not-the-type-size-chromium\trace.zip
+    Usage:
+
+        npx playwright show-trace test-results\customizer-resize-resize-—-70318-rap-width-not-the-type-size-chromium\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  62) [chromium] › e2e\customizer-resize.spec.ts:336:7 › resize — the shipped Konva path › a text corner drag scales the TYPE rather than stretching the glyphs 
+
+    Error: expect(received).toBe(expected) // Object.is equality
+
+    Expected: 1
+    Received: -1
+
+      343 |     const fontAfter = await fontSize(page, "fx_free_text");
+      344 |     expect(fontAfter, "a corner drag on text did not change the type size").toBeGreaterThan(fontBefore);
+    > 345 |     expect(await commits(page)).toBe(1);
+          |                                 ^
+      346 |   });
+      347 |
+      348 |   test("stretching a photo frame re-crops it and never distorts the image", async ({ page }) => {
+        at D:\HUSNALOGY\Main\e2e\customizer-resize.spec.ts:345:33
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results\customizer-resize-resize-—-5fedc--than-stretching-the-glyphs-chromium\test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: video (video/webm) ──────────────────────────────────────────────────────────────
+    test-results\customizer-resize-resize-—-5fedc--than-stretching-the-glyphs-chromium\video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results\customizer-resize-resize-—-5fedc--than-stretching-the-glyphs-chromium\error-context.md
+
+    attachment #4: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results\customizer-resize-resize-—-5fedc--than-stretching-the-glyphs-chromium\trace.zip
+    Usage:
+
+        npx playwright show-trace test-results\customizer-resize-resize-—-5fedc--than-stretching-the-glyphs-chromium\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  62 failed
+    [chromium] › e2e\admin-canvas-interaction.spec.ts:122:7 › admin canvas interaction contract › admin selection attaches the transformer to the clicked object 
+    [chromium] › e2e\admin-canvas-interaction.spec.ts:127:7 › admin canvas interaction contract › admin drag is transient and commits once 
+    [chromium] › e2e\admin-canvas-interaction.spec.ts:142:7 › admin canvas interaction contract › admin resize re-renders only the resized layer and commits once 
+    [chromium] › e2e\admin-canvas-interaction.spec.ts:158:7 › admin canvas interaction contract › admin rotation renders nothing until release and commits once 
+    [chromium] › e2e\admin-canvas-interaction.spec.ts:181:7 › admin canvas interaction contract › an admin multi-object drag is one atomic commit 
+    [chromium] › e2e\admin-canvas-interaction.spec.ts:200:7 › admin canvas interaction contract › admin zoom: the same screen drag moves the document half as far at 2x 
+    [chromium] › e2e\admin-canvas-interaction.spec.ts:218:7 › admin canvas interaction contract › an admin-locked layer cannot be dragged 
+    [chromium] › e2e\customizer-gesture-cancellation.spec.ts:266:7 › gesture cancellation › Escape abandons a live drag and leaves the editor usable 
+    [chromium] › e2e\customizer-gesture-cancellation.spec.ts:277:7 › gesture cancellation › pointercancel abandons a live drag 
+    [chromium] › e2e\customizer-gesture-cancellation.spec.ts:297:7 › gesture cancellation › losing the window abandons a live drag 
+    [chromium] › e2e\customizer-gesture-cancellation.spec.ts:308:7 › gesture cancellation › hiding the tab abandons a live drag 
+    [chromium] › e2e\customizer-gesture-cancellation.spec.ts:328:7 › gesture cancellation › Escape abandons a live RESIZE without resizing the object 
+    [chromium] › e2e\customizer-gesture-cancellation.spec.ts:353:7 › gesture cancellation › Escape abandons a live ROTATION without rotating the object 
+    [chromium] › e2e\customizer-gesture-cancellation.spec.ts:390:7 › gesture cancellation › Escape with no gesture running still reaches the editor and clears the selection 
+    [chromium] › e2e\customizer-gesture-cancellation.spec.ts:406:7 › gesture cancellation › a cancelled gesture is never autosaved 
+    [chromium] › e2e\customizer-gesture-cancellation.spec.ts:425:7 › gesture cancellation › two cancellations in a row do not break the third, real gesture 
+    [chromium] › e2e\customizer-gesture-cancellation.spec.ts:464:7 › transform handle reachability › an object near the top edge can still be rotated 
+    [chromium] › e2e\customizer-gesture-cancellation.spec.ts:520:7 › transform handle reachability › the page still lines up exactly with the artwork underneath it 
+    [chromium] › e2e\customizer-gesture-cancellation.spec.ts:543:7 › transform handle reachability › a click in the gutter outside the page clears the selection 
+    [chromium] › e2e\customizer-interaction-contract.spec.ts:249:7 › customizer interaction contract › the fixture mounts the real editor with no seeded database 
+    [chromium] › e2e\customizer-interaction-contract.spec.ts:275:7 › customizer interaction contract › a 20-step drag writes nothing and renders nothing until release, then commits once 
+    [chromium] › e2e\customizer-interaction-contract.spec.ts:298:7 › customizer interaction contract › drag undo and redo restore exact document geometry 
+    [chromium] › e2e\customizer-interaction-contract.spec.ts:319:7 › customizer interaction contract › a 20-step resize re-renders only the resized layer and commits once 
+    [chromium] › e2e\customizer-interaction-contract.spec.ts:346:7 › customizer interaction contract › resize undo and redo restore exact size 
+    [chromium] › e2e\customizer-interaction-contract.spec.ts:387:7 › customizer interaction contract › a 20-step rotation renders nothing until release, then commits once 
+    [chromium] › e2e\customizer-interaction-contract.spec.ts:409:7 › customizer interaction contract › rotation undo and redo 
+    [chromium] › e2e\customizer-interaction-contract.spec.ts:425:7 › customizer interaction contract › a multi-object drag is ONE atomic transaction however many objects move 
+    [chromium] › e2e\customizer-interaction-contract.spec.ts:476:7 › customizer interaction contract › moving a group moves every member rigidly as one transaction 
+    [chromium] › e2e\customizer-interaction-contract.spec.ts:524:7 › customizer interaction contract › a locked layer cannot be dragged and writes nothing 
+    [chromium] › e2e\customizer-interaction-contract.spec.ts:541:7 › customizer interaction contract › a hidden layer neither renders nor intercepts selection 
+    [chromium] › e2e\customizer-interaction-contract.spec.ts:551:7 › customizer interaction contract › front and back pages carry their own layers 
+    [chromium] › e2e\customizer-interaction-contract.spec.ts:561:7 › customizer interaction contract › entering crop mode creates no history and writes nothing 
+    [chromium] › e2e\customizer-interaction-contract.spec.ts:568:7 › customizer interaction contract › a 20-step crop pan writes nothing until release, then commits once 
+    [chromium] › e2e\customizer-interaction-contract.spec.ts:590:7 › customizer interaction contract › a wheel-zoom burst is ONE grouped crop commit 
+    [chromium] › e2e\customizer-interaction-contract.spec.ts:606:7 › customizer interaction contract › crop Done commits a still-pending gesture exactly once 
+    [chromium] › e2e\customizer-interaction-contract.spec.ts:621:7 › customizer interaction contract › crop Done with no change writes nothing 
+    [chromium] › e2e\customizer-interaction-contract.spec.ts:630:7 › customizer interaction contract › crop pan undo and redo restore the exact crop 
+    [chromium] › e2e\customizer-interaction-contract.spec.ts:646:7 › customizer interaction contract › crop zoom undo and redo restore the exact zoom 
+    [chromium] › e2e\customizer-interaction-contract.spec.ts:664:7 › customizer interaction contract › Cancel after several committed crop gestures rolls back document AND history 
+    [chromium] › e2e\customizer-interaction-contract.spec.ts:702:7 › customizer interaction contract › Cancel during the wheel settle delay never commits afterwards 
+    [chromium] › e2e\customizer-interaction-contract.spec.ts:717:7 › customizer interaction contract › pinch crop stays transient, commits once on lift, and Cancel rolls it back 
+    [chromium] › e2e\customizer-interaction-contract.spec.ts:753:7 › customizer interaction contract › changing page during crop finalizes it once and no old-page timer fires 
+    [chromium] › e2e\customizer-interaction-contract.spec.ts:770:7 › customizer interaction contract › selecting another object during crop is Done for the crop 
+    [chromium] › e2e\customizer-interaction-contract.spec.ts:788:7 › customizer interaction contract › grid crop pan is transient until release, then commits once 
+    [chromium] › e2e\customizer-interaction-contract.spec.ts:808:7 › customizer interaction contract › grid crop Cancel after a commit restores the slot and its history 
+    [chromium] › e2e\customizer-interaction-contract.spec.ts:828:7 › customizer interaction contract › grid crop Cancel during the wheel settle delay never commits afterwards 
+    [chromium] › e2e\customizer-interaction-contract.spec.ts:840:7 › customizer interaction contract › grid crop undo and redo 
+    [chromium] › e2e\customizer-interaction-contract.spec.ts:861:7 › customizer interaction contract › editing text commits the new value without creating a second layer 
+    [chromium] › e2e\customizer-interaction-contract.spec.ts:878:7 › customizer interaction contract › selecting existing text layers never creates a new one 
+    [chromium] › e2e\customizer-interaction-contract.spec.ts:895:7 › crop Cancel and autosave › holding a gesture past the autosave debounce never saves transient geometry 
+    [chromium] › e2e\customizer-interaction-contract.spec.ts:911:7 › crop Cancel and autosave › Cancel after the modified crop already autosaved leaves the ORIGINAL crop saved 
+    [chromium] › e2e\customizer-interaction-contract.spec.ts:927:7 › crop Cancel and autosave › an in-flight save cannot mark the restored document saved after Cancel 
+    [chromium] › e2e\customizer-performance.spec.ts:71:9 › large-document performance › 20 layers: one commit per drag, no workspace re-render 
+    [chromium] › e2e\customizer-performance.spec.ts:71:9 › large-document performance › 50 layers: one commit per drag, no workspace re-render 
+    [chromium] › e2e\customizer-performance.spec.ts:71:9 › large-document performance › 100 layers: one commit per drag, no workspace re-render 
+    [chromium] › e2e\customizer-performance.spec.ts:71:9 › large-document performance › 200 layers: one commit per drag, no workspace re-render 
+    [chromium] › e2e\customizer-resize.spec.ts:162:7 › resize — the shipped Konva path › a corner drag changes both dimensions and commits exactly once 
+    [chromium] › e2e\customizer-resize.spec.ts:240:7 › resize — the shipped Konva path › a rotated object resizes along its OWN axes 
+    [chromium] › e2e\customizer-resize.spec.ts:273:7 › resize — the shipped Konva path › resizing a multi-selection scales every member as one transaction 
+    [chromium] › e2e\customizer-resize.spec.ts:298:7 › resize — the shipped Konva path › a group resizes as one object and commits once 
+    [chromium] › e2e\customizer-resize.spec.ts:320:7 › resize — the shipped Konva path › a text box side drag changes the wrap width, not the type size 
+    [chromium] › e2e\customizer-resize.spec.ts:336:7 › resize — the shipped Konva path › a text corner drag scales the TYPE rather than stretching the glyphs 
+  61 passed (4.5m)
+exit=1

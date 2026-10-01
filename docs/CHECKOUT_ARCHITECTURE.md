@@ -131,3 +131,64 @@ select id, product_id, created_at from public.product_customizations where user_
 
 To withdraw a legacy partial order from the admin queue, set
 `checkout_state = 'failed'` in the SQL editor after review.
+
+## Checkout preparation (single flight, bounded, deterministic cleanup)
+
+Migration `20261003120000_worker_isolation_checkout_preparation.sql`.
+
+**Order of work in `placeCheckoutOrder`:** schema → idempotency replay →
+**cart pre-check** (a cart another tab already ordered is answered with that
+order at once) → products, prices, personalization, design ownership/options
+(all cheap reads) → **preparation lease** → expensive preparation (design
+validation, preflight, snapshot, production pinning) → the order transaction.
+
+**Lease.** `acquire_checkout_preparation(customer, submission, cart
+fingerprint, reserved order id)` takes a per-customer advisory lock, abandons
+this customer's expired leases, and inserts the lease — one `preparing` row per
+customer (unique partial index). A second request (other tab, double click,
+script) gets `busy` and does no expensive work: it polls cheaply for up to
+20 s; if the first request committed, a retry of the same submission replays
+that order and another tab gets `409 CART_ALREADY_ORDERED` with its id;
+otherwise `409 CHECKOUT_IN_PROGRESS`. The lease lasts 240 s.
+
+**Ownership is decided by the database.** The trigger
+`verify_consume_checkout_preparation` runs when an order becomes `finalized`:
+it locks the lease row, requires it to be `preparing`, unexpired and to match
+the order's customer/submission, and marks it `committed` — in the same
+transaction as the order. Therefore:
+
+- *definitive failure* (validation, limit, a refusal raised by the database,
+  a transaction that answered with an error): the request releases the lease
+  (`failed`) and only then deletes the objects it stored under
+  `orders/<reserved id>/`; the finalize trigger would now refuse that id;
+- *unknown outcome* (no database answer): nothing is deleted; the worker
+  abandons the lease after expiry with `FOR UPDATE SKIP LOCKED` — a commit in
+  flight holds the row and wins; an abandoned lease can never commit;
+- *crash*: same as unknown outcome.
+
+Storage cleanup removes `failed`/`abandoned` preparation bytes immediately and
+anything else unreferenced after 48 h; committed bytes are never candidates and
+the storage guard trigger refuses their deletion.
+
+**Aggregate limits** (`lib/customizer/production-limits.ts`, one budget shared
+by every line): 100 images and 24 font files per design; 200 images, 80 font
+files, 10 documents and 256 MiB per order; 30 MiB and 100 megapixels per image
+(checked from the header before decoding); 800 megapixels per order; 4 MiB per
+serialized snapshot and 16 MiB per order; 120 s preparation deadline; print
+canvas (automatic rendering, bleed included) ≤ 8,000 px per side, ≤ 36 MP per
+page, ≤ 150 MP per design, ≤ 32 pages, 72–600 dpi — checked from the PUBLISHED
+template before any download, and at admin publish time. That covers every
+card size at 300 dpi and posters up to 24×36 in at 200 dpi; 24×36 in at
+300 dpi (78 MP, ~1 GB peak in the web process) is not supported
+(`scripts/benchmark-render-limits.mjs`). Snapshots accepted earlier stay
+renderable under the renderer's safety ceiling (12,000 px, 50 MP, 1200 dpi).
+Database backstops: 600 assets / 512 MiB per order, 8 MiB per snapshot. A
+refusal is `422 PRODUCTION_LIMIT_EXCEEDED`.
+
+**Observability** (structured logs, no personal data): `checkout.preparation_started`,
+`checkout.preparation_busy`, `checkout.assets_pinned` (counts, bytes, pixels,
+duration), `checkout.preparation_completed`, `checkout.preparation_failed`
+(code), `checkout.preparation_uncertain`, `checkout.cleanup_scheduled`,
+`checkout.order_created`, and from the worker
+`checkout.preparation_lease_expired`. Counts are in `production_health()
+.checkoutPreparations`.

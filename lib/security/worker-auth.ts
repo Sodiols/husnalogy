@@ -6,14 +6,18 @@
  * so response timing does not reveal which secret matched.
  */
 
-import { timingSafeEqual } from "node:crypto";
+import { createHash, timingSafeEqual } from "node:crypto";
 import { getRenderWorkerSecrets } from "@/lib/env/server-env";
 
+/**
+ * Both sides are hashed to a fixed 32 bytes first, so the comparison takes the
+ * same time whatever the provided value's length (no length oracle).
+ */
 function safeSecretMatch(provided: string, secret: string) {
   if (!provided || !secret) return false;
-  const left = Buffer.from(provided);
-  const right = Buffer.from(secret);
-  return left.length === right.length && timingSafeEqual(left, right);
+  const left = createHash("sha256").update(provided, "utf8").digest();
+  const right = createHash("sha256").update(secret, "utf8").digest();
+  return timingSafeEqual(left, right);
 }
 
 function bearerToken(request: Request) {

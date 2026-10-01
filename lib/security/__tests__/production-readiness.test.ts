@@ -180,6 +180,27 @@ describe("PGRST303 clock-skew retry", () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
+  it("reports the measured skew (iat vs server clock, gateway Date) without ever logging the token", async () => {
+    vi.useFakeTimers();
+    const iat = Math.floor(Date.now() / 1000) + 45;
+    const token = [Buffer.from('{"alg":"HS256"}').toString("base64url"), Buffer.from(JSON.stringify({ iat, exp: iat + 3600, sub: "u" })).toString("base64url"), "c2lnbmF0dXJlLXNlY3JldA"].join(".");
+    const gateway = new Response(JSON.stringify({ code: "PGRST303", message: "JWT issued at future" }), { status: 401, headers: { date: new Date(Date.now() + 45_000).toUTCString() } });
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValueOnce(gateway).mockResolvedValueOnce(ok()));
+    const logged: string[] = [];
+    const spy = vi.spyOn(console, "error").mockImplementation((line: unknown) => { logged.push(String(line)); });
+    const { clockSkewRetryFetch } = await import("@/lib/supabase/server");
+    const pending = clockSkewRetryFetch("https://p.supabase.co/rest/v1/orders", { headers: { Authorization: `Bearer ${token}` } });
+    await vi.runAllTimersAsync();
+    await pending;
+    spy.mockRestore();
+    const event = JSON.parse(logged.find((line) => line.includes("supabase.jwt_issued_in_future")) || "{}");
+    expect(event).toMatchObject({ level: "error", credentialKind: "jwt", path: "/rest/v1/orders" });
+    expect(event.iatAheadOfServerMs).toBeGreaterThan(40_000);
+    expect(event.gatewayMinusServerMs).toBeGreaterThan(40_000);
+    expect(logged.join("\n")).not.toContain(token);
+    expect(logged.join("\n")).not.toContain("c2lnbmF0dXJlLXNlY3JldA");
+  });
+
   it("does not retry other 401s or non-PostgREST requests", async () => {
     const other401 = new Response(JSON.stringify({ code: "PGRST301" }), { status: 401 });
     const fetchMock = vi.fn().mockResolvedValueOnce(other401).mockResolvedValueOnce(skew());

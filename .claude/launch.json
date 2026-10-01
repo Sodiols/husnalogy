@@ -7,6 +7,12 @@
       "runtimeArgs": ["run", "dev"],
       "port": 3000,
       "autoPort": true
+    },
+    {
+      "name": "husnalogy-prod-e2e",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [".claude/start-prod-e2e.cjs"],
+      "port": 3100
     }
   ]
 }

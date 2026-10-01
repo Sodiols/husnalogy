@@ -92,10 +92,27 @@ const nextConfig = {
   serverExternalPackages: ["@resvg/resvg-js", "sharp"],
   images: {
     formats: ["image/avif", "image/webp"],
-    remotePatterns: [
-      // Storage objects of THIS project only (public buckets and signed URLs).
-      { protocol: "https", hostname: supabaseHost || "*.supabase.co", pathname: "/storage/v1/**" },
-    ],
+    // Only the PUBLIC catalogue buckets of THIS project, without query strings.
+    // Private buckets (customer uploads, production files, renders, admin
+    // assets) and signed URLs can never be fetched or cached by the optimizer.
+    remotePatterns: ["product-images", "product-mockups", "site-assets"].map((bucket) => ({
+      protocol: "https",
+      hostname: supabaseHost || "*.supabase.co",
+      port: "",
+      pathname: `/storage/v1/object/public/${bucket}/**`,
+      search: "",
+    })),
+    // A trusted host must not bounce the optimizer elsewhere (redirect targets
+    // are not re-checked against remotePatterns).
+    maximumRedirects: 0,
+    // Admin image uploads are capped at 15 MB.
+    maximumResponseBody: 16_000_000,
+    dangerouslyAllowLocalIP: false,
+    // Explicit secure defaults: no SVG through the optimizer; a direct visit to
+    // an optimized image downloads it, and it can never run script.
+    dangerouslyAllowSVG: false,
+    contentDispositionType: "attachment",
+    contentSecurityPolicy: "default-src 'self'; script-src 'none'; sandbox;",
   },
   async headers() {
     return [

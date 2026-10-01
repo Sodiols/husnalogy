@@ -3,12 +3,19 @@ import { createClient } from "@supabase/supabase-js";
 import { createHash } from "crypto";
 import { readFile, writeFile } from "fs/promises";
 import { join } from "path";
-
-nextEnv.loadEnvConfig(process.cwd());
+import { loadStagingEnv } from "./staging/staging-env.mjs";
 
 const target = String(process.env.CUSTOMIZER_SEED_TARGET || "").toLowerCase();
 if (!new Set(["local", "staging"]).has(target)) {
   throw new Error("Refusing to seed. Set CUSTOMIZER_SEED_TARGET=local or staging. Production is never an accepted target.");
+}
+if (target === "staging") {
+  // Staging reads ONLY .env.staging, refuses production project refs and the
+  // .env.local project, and requires STAGING_CONFIRM_PROJECT_REF.
+  const { env, ref } = loadStagingEnv(process.cwd(), { require: ["NEXT_PUBLIC_SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY", "STAGING_CONFIRM_PROJECT_REF", "CUSTOMIZER_SEED_PASSWORD"] });
+  Object.assign(process.env, env, { CUSTOMIZER_SEED_CONFIRM_PROJECT_REF: ref });
+} else {
+  nextEnv.loadEnvConfig(process.cwd());
 }
 
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
@@ -135,6 +142,43 @@ const customizationRow = { ...(existingCustomization?.id ? { id: existingCustomi
 const { data: customization, error: customizationError } = await supabase.from("product_customizations").upsert(customizationRow, { onConflict: "id" }).select("*").single();
 if (customizationError) throw customizationError;
 
+// Customer B's own design (cross-customer isolation tests use it).
+const { data: existingCustomizationB } = await supabase.from("product_customizations").select("id").eq("user_id", customerB.id).eq("product_id", productId).in("status", ["draft", "in_cart"]).order("updated_at", { ascending: false }).limit(1).maybeSingle();
+const { data: customizationB, error: customizationBError } = await supabase.from("product_customizations").upsert({ ...(existingCustomizationB?.id ? { id: existingCustomizationB.id } : {}), user_id: customerB.id, product_id: productId, template_id: template.id, template_version: 1, status: "draft", values: { guest_name: "Customer B Private" }, uploaded_files: {}, selected_options: customizationRow.selected_options, preview_images: {}, render_data: { editorState: {}, activePage: "front" }, print_files: {}, asset_references: [], updated_at: new Date().toISOString() }, { onConflict: "id" }).select("id").single();
+if (customizationBError) throw customizationBError;
+
+// A normal, LISTED, non-personalized product with every option group,
+// including Paper Style (storefront browse → options → cart → checkout).
+const normalProductId = "e2e-standard-card";
+const normalProductSlug = "e2e-standard-card";
+const { error: normalProductError } = await supabase.from("products").upsert({
+  id: normalProductId,
+  slug: normalProductSlug,
+  title: "E2E Standard Card",
+  category: "E2E",
+  status: "active",
+  visibility: "public",
+  price: 300,
+  thumbnail: fixtureUrl,
+  description: "Dedicated automated acceptance fixture (staging only). Do not use for customer orders.",
+  published_at: new Date().toISOString(),
+  data: {
+    currency: "BDT",
+    e2eSeed: true,
+    customizeEnabled: false,
+    quantityOptions: ["25", "50", "100"],
+    sizeOptions: ['5" x 7"', '6" x 8"'],
+    paperStyleOptions: ["Flat Card", "Folded Card"],
+    paperOptions: ["Signature Matte", { label: "Premium Linen", surcharge: 50 }],
+    envelopeOptions: ["No Envelopes", "Blank White Envelopes"],
+    cornerOptions: ["Squared", "Rounded"],
+    printingOptions: ["Standard"],
+    mockups: [fixtureUrl],
+  },
+  updated_at: new Date().toISOString(),
+});
+if (normalProductError) throw normalProductError;
+
 const flags = ["customizer_v2", "customizer_v2_grids", "customizer_v2_groups", "customizer_v2_mockups", "customizer_v2_perspective_mockups", "customizer_v2_server_rendering", "customizer_v2_print_pdf", "customizer_v2_customer_layers", "customizer_v2_customer_multiselect", "customizer_v2_customer_grouping", "customizer_v2_qr_codes", "customizer_v2_customer_shapes", "customizer_v2_customer_lines", "customizer_v2_customer_frames", "customizer_v2_customer_grids", "customizer_v2_image_filters", "customizer_v2_product_preview_editing", "customizer_v2_split_view"];
 const { error: flagError } = await supabase.from("customizer_feature_flags").upsert(flags.map((flag) => ({ product_id: productId, product_type: null, flag, enabled: true, scope: "product", scope_key: productId, environments: ["development", "preview", "production", "test"], rollout_percentage: 100, admin_only: false })), { onConflict: "scope,scope_key,flag" });
 if (flagError) throw flagError;
@@ -161,6 +205,9 @@ const manifest = {
   productSlug: slug,
   templateId: template.id,
   customizationAId: customization.id,
+  customizationBId: customizationB.id,
+  normalProductId,
+  normalProductSlug,
   customerAssetReference: assetReference,
   customerAId: customerA.id,
   customerBId: customerB.id,

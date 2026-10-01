@@ -21,7 +21,14 @@ export function withAdminMutation<Args extends any[]>(handler: (request: Request
         }
       }
       const bytes = await readBodyBytes(request, options.maxBytes ?? 256 * 1024);
-      const bounded = new Request(request, { body: bytes.length ? bytes : null });
+      // Built from primitives: the runtime's NextRequest is not an undici
+      // Request, so `new Request(request, …)` throws ("Cannot read private
+      // member #state") and would fail every authenticated admin mutation.
+      const bounded = new Request(request.url, {
+        method: request.method,
+        headers: new Headers(Array.from(request.headers.entries())),
+        body: bytes.length ? bytes : null,
+      });
       return await handler(bounded, ...args);
     } catch (error) {
       const response = bodyErrorResponse(error);

@@ -10,6 +10,7 @@ import {
   requireSeededAcceptance,
   seedManifest,
   supabaseAnonKey,
+  sessionAccessToken,
   supabaseUrl,
 } from "./helpers";
 
@@ -60,6 +61,19 @@ async function placeFrom(page: Page): Promise<{ response: Response; submissionId
   await page.getByRole("button", { name: "Place order" }).click();
   const submissionId = JSON.parse((await request).postData() || "{}").checkoutSubmissionId;
   return { response: await response, submissionId };
+}
+
+/**
+ * A tab refused with CHECKOUT_IN_PROGRESS (the other tab held the checkout
+ * preparation lease) shows an error; the customer presses Place order again
+ * and is then shown the order the other tab placed. Returns the final body.
+ */
+async function settleRefusedTab(page: Page, first: { status: number; body: any }) {
+  if (first.status !== 409 || first.body.code !== "CHECKOUT_IN_PROGRESS") return first;
+  await expect(page.getByText(/already being placed in another tab/i).first()).toBeVisible();
+  await expect(page.getByRole("button", { name: "Place order" })).toBeEnabled({ timeout: 30_000 });
+  const again = await placeFrom(page);
+  return { status: again.response.status(), body: await again.response.json() };
 }
 
 test.describe.serial("complete customer journey", () => {
@@ -149,11 +163,14 @@ test.describe("real multi-tab and multi-device checkout of ONE cart", () => {
     await fillCheckout(tabB);
 
     const [a, b] = await Promise.all([placeFrom(tabA), placeFrom(tabB)]);
-    const statuses = [a.response.status(), b.response.status()].sort();
-    // Same submission id → idempotent replay (200); different ids → the cart
-    // was consumed (409). Never two creations.
-    expect(statuses.filter((status) => status === 201)).toHaveLength(1);
-    expect(statuses.every((status) => status === 201 || status === 200 || status === 409)).toBe(true);
+    const first = await Promise.all([a, b].map(async ({ response }) => ({ status: response.status(), body: await response.json() })));
+    // Same submission id → idempotent replay (200); a concurrent tab → refused
+    // while the other prepares (409 CHECKOUT_IN_PROGRESS) or after the cart was
+    // consumed (409 CART_ALREADY_ORDERED). Never two creations.
+    expect(first.filter((result) => result.status === 201)).toHaveLength(1);
+    expect(first.every((result) => [201, 200, 409].includes(result.status))).toBe(true);
+    const settled = [first[0].status === 201 ? first[0] : await settleRefusedTab(tabA, first[0]), first[1].status === 201 ? first[1] : await settleRefusedTab(tabB, first[1])];
+    expect(settled.every((result) => result.status === 201 || result.status === 200 || result.body.code === "CART_ALREADY_ORDERED" || result.body.code === "SUBMISSION_REUSED")).toBe(true);
 
     const after = await ownOrderIds(tabA);
     const created = after.filter((id) => !before.includes(id));
@@ -163,6 +180,8 @@ test.describe("real multi-tab and multi-device checkout of ONE cart", () => {
 
     const tasks = await adminTasks(browser, created[0]);
     expect(tasks.notificationTasks).toHaveLength(2);
+    expect(tasks.productionTasks).toHaveLength(0); // plain product: no production, and no duplicates
+    expect(tasks.snapshots).toHaveLength(0);
     await context.close();
   });
 
@@ -185,11 +204,17 @@ test.describe("real multi-tab and multi-device checkout of ONE cart", () => {
     expect(a.submissionId).not.toBe(b.submissionId);
     const results = await Promise.all([a, b].map(async ({ response }) => ({ status: response.status(), body: await response.json() })));
     const created = results.filter((result) => result.status === 201);
-    const refused = results.filter((result) => result.status === 409);
+    const refusedIndex = results.findIndex((result) => result.status === 409);
     expect(created).toHaveLength(1);
-    expect(refused).toHaveLength(1);
-    expect(refused[0].body.code).toBe("CART_ALREADY_ORDERED");
-    expect(refused[0].body.orderId).toBe(created[0].body.order.id);
+    expect(refusedIndex).toBeGreaterThanOrEqual(0);
+    expect(["CHECKOUT_IN_PROGRESS", "CART_ALREADY_ORDERED"]).toContain(results[refusedIndex].body.code);
+    // The refused device is shown the other device's order (after one retry
+    // when it was refused while that order was still being prepared).
+    const refused = await settleRefusedTab(refusedIndex === 0 ? pageA : pageB, results[refusedIndex]);
+    expect(refused.body.code).toBe("CART_ALREADY_ORDERED");
+    expect(refused.body.orderId).toBe(created[0].body.order.id);
+    const tasks = await adminTasks(browser, created[0].body.order.id);
+    expect(tasks.notificationTasks).toHaveLength(2);
 
     const newOrders = (await ownOrderIds(pageA)).filter((id) => !before.includes(id));
     expect(newOrders).toEqual([created[0].body.order.id]);
@@ -214,6 +239,53 @@ test.describe("real multi-tab and multi-device checkout of ONE cart", () => {
     expect(two.status()).toBe(201);
     expect((await one.json()).order.id).not.toBe((await two.json()).order.id);
   });
+});
+
+/** Does this cart line still exist for the signed-in customer (Supabase REST, RLS)? */
+async function cartLineExists(page: Page, id: string) {
+  const token = await sessionAccessToken(page);
+  const response = await fetch(`${supabaseUrl}/rest/v1/cart_items?select=id&id=eq.${id}`, { headers: { apikey: supabaseAnonKey, Authorization: `Bearer ${token}` } });
+  return ((await response.json()) as unknown[]).length > 0;
+}
+
+test("two TABS checking out ONE PERSONALIZED cart line simultaneously → one order, one cart consumption, one snapshot, no duplicate tasks", async ({ browser }) => {
+  const context = await browser.newContext();
+  const tabA = await context.newPage();
+  await login(tabA, customerCredentials.email, customerCredentials.password);
+  const created = await tabA.request.post("/api/customizations", {
+    data: { productId: seedManifest.productId, templateId: seedManifest.templateId, templateVersion: 1, status: "in_cart", values: { guest_name: "Two Tabs" }, selectedOptions: SEEDED_OPTIONS },
+  });
+  expect(created.ok()).toBe(true);
+  const customizationId = (await created.json()).customization.id;
+  const cartItemId = await createCartLine(tabA, { productId: seedManifest.productId, quantity: 1, customizationId });
+  const before = await ownOrderIds(tabA);
+
+  const tabB = await context.newPage();
+  await tabA.goto("/checkout");
+  await tabB.goto("/checkout");
+  await fillCheckout(tabA);
+  await fillCheckout(tabB);
+  const [a, b] = await Promise.all([placeFrom(tabA), placeFrom(tabB)]);
+  const first = await Promise.all([a, b].map(async ({ response }) => ({ status: response.status(), body: await response.json() })));
+  expect(first.filter((result) => result.status === 201)).toHaveLength(1);
+  for (const [index, result] of first.entries()) {
+    if (result.status === 201) continue;
+    expect([200, 409]).toContain(result.status); // controlled: replay, in progress, or already ordered
+    const settled = await settleRefusedTab(index === 0 ? tabA : tabB, result);
+    expect(settled.status === 200 || ["CART_ALREADY_ORDERED", "SUBMISSION_REUSED"].includes(settled.body.code)).toBe(true);
+  }
+
+  const created201 = first.find((result) => result.status === 201)!;
+  const orderId = created201.body.order.id;
+  expect((await ownOrderIds(tabA)).filter((id) => !before.includes(id))).toEqual([orderId]);
+  expect(await cartLineExists(tabA, cartItemId)).toBe(false);
+  const tasks = await adminTasks(browser, orderId);
+  expect(tasks.snapshots).toHaveLength(1);
+  expect(tasks.snapshots[0].customizationId).toBe(customizationId);
+  expect(tasks.productionTasks).toHaveLength(1);
+  expect(tasks.notificationTasks).toHaveLength(2);
+  expect(created201.body.order.items).toHaveLength(1);
+  await context.close();
 });
 
 test("one order with TWO personalized designs links each snapshot and task to its own item", async ({ page, browser }) => {

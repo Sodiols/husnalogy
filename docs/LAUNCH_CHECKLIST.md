@@ -1,14 +1,24 @@
 # Husnalogy production launch checklist
 
-Deployment steps, environment variables, migrations and cron: see
-[`HOSTINGER_DEPLOYMENT.md`](../HOSTINGER_DEPLOYMENT.md).
+Deployment steps, environment variables, migrations, cron and staging:
+[`HOSTINGER_DEPLOYMENT.md`](../HOSTINGER_DEPLOYMENT.md) and
+[`docs/E2E_STAGING.md`](E2E_STAGING.md).
 
-Work top to bottom. Anything marked **BLOCKER** must be green before the site
-takes a real customer order.
+Statuses describe what is TRUE TODAY, re-checked against the code on
+2026-10-02:
 
-The status column records what is **verified in the repository today**, not what
-is planned. Items marked _Not implemented_ are genuine gaps, listed so nobody
-assumes otherwise.
+| Status | Meaning |
+|---|---|
+| **IMPLEMENTED** | In the code and covered by automated tests run locally (unit, PGlite, or real PostgreSQL 17). |
+| **PRODUCTION CONFIGURATION REQUIRED** | Implemented; works only once the listed production setting/secret is configured. |
+| **VERIFIED IN STAGING** | Exercised against a real staging Supabase project and staging deployment. |
+| **VERIFIED IN PRODUCTION** | Confirmed on the live site. |
+| **NOT IMPLEMENTED** | Genuinely missing. |
+| **BLOCKED** | Cannot be completed until the stated external access exists. |
+| **NOT FULLY VERIFIED** | Implemented, but a required verification layer has not run yet. |
+
+Nothing is marked VERIFIED IN STAGING or VERIFIED IN PRODUCTION yet: no
+dedicated staging project exists (see §8).
 
 ---
 
@@ -16,102 +26,109 @@ assumes otherwise.
 
 | Check | Status | Notes |
 |---|---|---|
-| Production Supabase project created | Manual | Separate from staging. |
-| Migrations applied in order | Manual | `supabase/migrations/`, oldest first. Never edit an applied migration. |
-| RLS enabled on every table | ✅ Verified | Enabled across `schema.sql` and `customizer_v2.sql`. |
-| `site_settings` read restricted to admins | ✅ Verified | `20260917120000_restrict_site_settings_read.sql`. The row holds SMTP and payment secrets. |
-| Storage buckets + policies applied | Manual | Customer uploads stay isolated per owner. |
-| Service-role key absent from client bundles | ✅ Verified | Grep of `.next/static/chunks` finds none. |
-| Domain + SSL configured | Manual | |
-| `.env` complete | ✅ Documented | See `.env.example`; every required variable is described there. |
+| Node.js 22 runtime | IMPLEMENTED · PRODUCTION CONFIGURATION REQUIRED | `package.json` `engines: 22.x`, `.nvmrc` = 22. Full validation ran on Node v22.23.3 (see §8). Select **Node.js 22.x** in hPanel. |
+| Production Supabase project | PRODUCTION CONFIGURATION REQUIRED | Must be separate from staging. |
+| Dedicated staging Supabase project | BLOCKED | Needs a disposable project in `.env.staging` (template: `.env.staging.example`). Tooling is implemented: `npm run staging:migrate`, `staging:seed`, `test:staging`, `test:e2e:staging`. |
+| Migrations applied in order | IMPLEMENTED · PRODUCTION CONFIGURATION REQUIRED | Order: `schema.sql` → `hero_collections.sql` → timestamped files. All apply cleanly on real PostgreSQL 17 (`staging-tooling.test.ts`); not yet on Supabase. Never edit an applied migration. |
+| RLS on every public table | IMPLEMENTED · NOT FULLY VERIFIED | Asserted on real PostgreSQL 17; staging Supabase check pending. |
+| `site_settings` readable by admins only | IMPLEMENTED | `20260917120000_restrict_site_settings_read.sql`. |
+| Storage buckets + policies | IMPLEMENTED · NOT FULLY VERIFIED | Private: `customer-uploads`, `customizer-renders`, `order-production`, `admin-assets`. Supabase Storage behaviour (policies, signed URLs) is covered by `test:staging`, which has not run. |
+| Service-role key and worker secrets absent from client bundles | IMPLEMENTED | Build output scanned (no secret value in `.next/static`; no source maps shipped). |
+| Domain + SSL | PRODUCTION CONFIGURATION REQUIRED | |
+| Server clock synchronized | PRODUCTION CONFIGURATION REQUIRED | `npm run check:clock` on the Hostinger host must show < 2 s. A local dev machine was measured +14 s fast. |
+| Environment variables complete | IMPLEMENTED · PRODUCTION CONFIGURATION REQUIRED | `.env.example`; startup refuses missing required values. List in HOSTINGER_DEPLOYMENT.md §2. |
 
 ## 2. Roles and authorization — **BLOCKER**
 
 | Check | Status | Notes |
 |---|---|---|
-| Three roles exist (`customer`, `designer`, `admin`) | ✅ | `profiles.role` check constraint. |
-| Capability layer, not raw role checks | ✅ Verified | `lib/auth/roles.ts` is the only place a role becomes a permission. Enforced by test. |
-| Every `/api/admin` route guarded | ✅ Verified | Structural test fails if an unguarded route is added. |
-| Designer cannot publish, see orders, customers, revenue, settings, users, backups, permanent delete | ✅ Verified | 30 unit tests in `designer-authorization.test.ts`. |
-| Designer cannot edit another designer's unassigned product | ✅ Verified | Ownership re-read server side in `requireProductEditor`. |
-| Product ownership columns + workflow state | ✅ Migration | `20260918120000_designer_role_and_product_workflow.sql`. **Apply before creating designer accounts.** |
-| Designer workspace UI | ❌ Not implemented | A designer has capabilities but no dedicated dashboard yet. |
-| Admin review screen (approve / request revision) | ❌ Not implemented | Workflow states exist; the UI to drive them does not. |
-| Designer-accessible product/design API routes wired | ❌ Not implemented | Authoring routes still require admin. |
-
-> **A designer account cannot complete the authoring workflow yet.** The
-> security boundary is in place and proven; the workspace that uses it is not
-> built. Do not create designer accounts on production until it is.
+| Roles `customer`, `designer`, `admin` | IMPLEMENTED | `profiles.role` constraint; role changes blocked through the public API. |
+| Capability layer, not raw role checks | IMPLEMENTED | `lib/auth/roles.ts`; enforced by test. |
+| Every `/api/admin` route guarded | IMPLEMENTED | Structural test fails on an unguarded route. Admin mutations use `withAdminMutation` (same origin, role, bounded body). |
+| Designer workspace UI | IMPLEMENTED · NOT FULLY VERIFIED | `/designer` (`app/designer`). Unit-tested; no browser test yet. |
+| Admin review screen (approve / request revision) | IMPLEMENTED · NOT FULLY VERIFIED | `/admin/review`. Unit-tested workflow; no browser test yet. |
+| Designer-accessible authoring APIs | IMPLEMENTED | Nine admin API routes accept the `studio` capability for designers; ownership re-read server side. |
+| Designer cannot publish or see orders, customers, revenue, settings | IMPLEMENTED | `designer-authorization.test.ts`. |
 
 ## 3. Published design isolation — **BLOCKER**
 
 | Check | Status | Notes |
 |---|---|---|
-| Customers receive only immutable published versions | ✅ Verified | `/personalize` resolves `getPublicCustomizerTemplate`; the working draft is stripped from the client payload. |
-| Draft edits never reach the public | ✅ Verified | 13 unit tests + production HTML check (`customizerTemplate` appears 0 times). |
-| In-progress customizations stay pinned to their version | ✅ Verified | Pin is read server side and ownership-checked. |
-| Orders keep their exact design version | ✅ | `getTrustedTemplateForCustomization` resolves the snapshot for validation and render. |
-| Publishing creates an immutable version | ✅ | DB trigger rejects UPDATE/DELETE on `customizer_template_versions`. |
-| Product detail gates on a PUBLISHED version | ✅ Verified | `hasPublishedCustomizer`, not the draft's `enabled` flag. |
-
-**Before launch, confirm every publicly active product has at least one
-published customizer version** — otherwise its Personalize button disappears.
-Query: `select p.slug from products p left join customizer_template_versions v
-on v.product_id = p.id where p.status = 'active' group by p.slug having
-count(v.id) = 0;`
+| Customers receive only immutable published versions | IMPLEMENTED | Working drafts are stripped from the client payload. |
+| Publishing creates an immutable version | IMPLEMENTED | Database trigger. |
+| Publishing refuses print sizes production cannot render | IMPLEMENTED | Automatic rendering: ≤ 36 MP per page incl. bleed, ≤ 8,000 px per side, ≤ 150 MP per design, ≤ 32 pages, 72–600 dpi (e.g. 24×36 in at 200 dpi). 24×36 in at 300 dpi is NOT supported. |
+| Every active personalizable product has a published version | PRODUCTION CONFIGURATION REQUIRED | `select p.slug from products p left join customizer_template_versions v on v.product_id = p.id where p.status = 'active' group by p.slug having count(v.id) = 0;` |
 
 ## 4. Orders and fulfilment
 
 | Check | Status | Notes |
 |---|---|---|
-| Server recalculates prices | ✅ | Browser-submitted prices are never trusted. |
-| Order idempotency | ✅ | `20260824090000_checkout_idempotency.sql`. |
-| Design snapshots stored per order | ✅ | `order_design_snapshots`. |
-| Render worker scheduled | Manual | Hostinger cron every 5 minutes calling `/api/admin/customizer/render/process` with `Authorization: Bearer $CRON_SECRET`. See `HOSTINGER_DEPLOYMENT.md` §5. |
-| Transactional order emails | ❌ Not implemented | Neither customer confirmation nor admin notification is sent. |
-| Admin notification recipients configurable | ❌ Not implemented | |
-
-> **No order email is sent today.** Staff must watch the admin orders screen.
+| Server-trusted prices, surcharges, delivery, currency | IMPLEMENTED | `lib/orders/pricing-resolver.ts`; client prices are never trusted. |
+| Atomic order transaction, cart claims, idempotency, cross-tab single order | IMPLEMENTED · NOT FULLY VERIFIED | Real PostgreSQL concurrency tests pass; Supabase/PostgREST concurrency and real multi-tab browser test pending staging. |
+| Checkout preparation leases + aggregate asset limits | IMPLEMENTED | `docs/CHECKOUT_ARCHITECTURE.md`. |
+| Immutable design snapshots + snapshot-based rendering | IMPLEMENTED | Re-rendering ignores live customization, template, product and temporary uploads. |
+| Production worker cron | PRODUCTION CONFIGURATION REQUIRED | Hostinger cron every 5 min, `Authorization: Bearer $CRON_SECRET`. HOSTINGER_DEPLOYMENT.md §5. |
+| Worker fault isolation + health | IMPLEMENTED | Critical subsystem failed/degraded/skipped → health 503; maintenance → 200 "degraded". |
+| Transactional order emails (customer + admin) | IMPLEMENTED · PRODUCTION CONFIGURATION REQUIRED | Durable notification outbox via Resend. Requires `RESEND_API_KEY`, `EMAIL_FROM` on a verified domain. Without them, emails wait (never lost). |
+| Admin notification recipient configurable | IMPLEMENTED · PRODUCTION CONFIGURATION REQUIRED | `ORDER_NOTIFICATION_EMAIL`, else the store email in Admin → Settings. |
 
 ## 5. Operations
 
 | Check | Status | Notes |
 |---|---|---|
-| Distributed rate limiting | ⚠️ Configure | Code supports Upstash; set `UPSTASH_REDIS_REST_URL` + `_TOKEN` in production or limits are per-instance only. |
-| Error monitoring | ❌ Not implemented | No Sentry/equivalent. Failures surface only in platform logs. |
-| Analytics | ❌ Not implemented | |
-| Health endpoint | ✅ | `/api/health`, deliberately minimal. |
-| Server failures produce actionable logs | ✅ | `lib/core/server-errors.ts` — never logs an opaque `{}`. |
-| Database backups / PITR | Manual | Configure in Supabase. The in-app export is **not** a database backup. |
-| "Export Full Backup" naming accurate | ⚠️ Review | Verify it exports what its label claims. |
+| Distributed rate limiting | PRODUCTION CONFIGURATION REQUIRED (only with > 1 process) | Upstash `UPSTASH_REDIS_REST_URL` + `_TOKEN`; single `npm start` process uses exact in-memory limits. |
+| Error monitoring | IMPLEMENTED · PRODUCTION CONFIGURATION REQUIRED | Sentry-protocol reporting without extra dependencies; set `SENTRY_DSN`. Without it errors are only in the app log. |
+| Uptime / production health monitoring | IMPLEMENTED · PRODUCTION CONFIGURATION REQUIRED | `/api/health` (public liveness) and `/api/admin/production/health` (Bearer `CRON_SECRET`) — point an uptime monitor at both. |
+| Analytics | NOT IMPLEMENTED | No analytics integration. |
+| Database backups / PITR | PRODUCTION CONFIGURATION REQUIRED | Configure in Supabase. |
+| "Export Full Backup" (admin) | IMPLEMENTED (catalogue export only) | Exports settings + products; NOT a database backup (no orders, customers, designs or files). |
+| Actionable server logs | IMPLEMENTED | Structured JSON lines; secrets redacted. |
 
 ## 6. Public site
 
 | Check | Status | Notes |
 |---|---|---|
-| Only published products are publicly listed | ✅ | `status = 'active'` + visibility filter. |
-| Personalize pages are `noindex` | ✅ | `robots: { index: false }`. |
-| Sitemap contains only public content | ⚠️ Verify | |
-| Storefront does not load the customizer bundle | ✅ Verified | Konva is a 327 KB lazy chunk, absent from `/`, `/products`, `/cart`, `/checkout`. |
-| Product detail is a single query | ✅ Verified | `getProductBySlug` no longer loads the whole catalogue. |
+| Only published, publicly listed products appear | IMPLEMENTED | `isPubliclyListed`. |
+| Sitemap contains only public content | IMPLEMENTED | Built from `getActiveProducts` (publicly listed only). |
+| Personalize and E2E fixture pages are `noindex` | IMPLEMENTED | Fixture pages also return 404 in production unless `ENABLE_CUSTOMIZER_E2E_FIXTURE=1` (staging only). |
+| Product option choices persist (incl. Paper Style) | IMPLEMENTED | Canonical option state + flush-on-leave autosave; browser-tested on the fixture page. |
+| Image optimizer restricted | IMPLEMENTED | Only this project's public catalogue buckets; no query strings, redirects or SVG. |
 
-## 7. Final manual sign-off
+## 7. Final manual sign-off (production)
 
 - [ ] Real desktop order completed end to end
 - [ ] Real mobile order completed end to end
 - [ ] Print render inspected at full resolution
 - [ ] Admin can publish a design version and a product
 - [ ] Customer who started before a re-publish still sees their original design
-- [ ] Order confirmation reaches the customer (**blocked until email ships**)
+- [ ] Order confirmation email reaches the customer, new-order alert reaches staff
+- [ ] `GET /api/admin/production/health` → 200 `healthy` after the first cron runs
+- [ ] `npm run check:clock` on the host shows < 2 s offset
 
----
+## 8. Verification status
 
-## Validation commands
+| Layer | Status | How |
+|---|---|---|
+| Unit + PGlite integration (`npm test`) | IMPLEMENTED (passes on Node 22) | Includes worker isolation, checkout preparation, render limits, option persistence. |
+| Real PostgreSQL 17 concurrency + migration tooling | IMPLEMENTED (passes locally) | `postgres-concurrency.test.ts`, `staging-tooling.test.ts`. |
+| Real Supabase staging integration (`npm run test:staging`) | BLOCKED · NOT FULLY VERIFIED | PostgREST, Auth, Storage, RLS, RPC, concurrency, rollback, worker leases. Needs `.env.staging`. |
+| Playwright — public, security and fixture specs | IMPLEMENTED (pass locally) | No seeded data needed. |
+| Playwright — complete seeded suite incl. real multi-tab checkout (`npm run test:e2e:staging`) | BLOCKED · NOT FULLY VERIFIED | Needs the staging project, seeded with `npm run staging:seed`. |
+| Controlled staging order (docs/E2E_STAGING.md §5) | BLOCKED | Needs staging. |
+
+## Validation commands (Node 22)
 
 ```bash
+node --version
+npm ci
 npm run typecheck
-npx eslint .
-npx vitest run
+npm run lint
+npm test
 npm run build
-npx playwright test --project=chromium
+npm run test:e2e:public
+npm audit
+npm run staging:migrate
+npm run staging:seed
+npm run test:staging
+npm run test:e2e:staging
 ```

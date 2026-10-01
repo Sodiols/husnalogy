@@ -1,7 +1,12 @@
 import { defineConfig, devices } from "@playwright/test";
 
 const externalBaseUrl = process.env.E2E_BASE_URL;
-const baseURL = externalBaseUrl || "http://127.0.0.1:3000";
+// The staging runner (scripts/staging/run-e2e.mjs) uses its own port and a
+// FRESH server, so it can never reuse a dev server configured for another
+// Supabase project.
+const port = Number(process.env.E2E_PORT || 3000);
+const freshServer = process.env.E2E_FRESH_SERVER === "1";
+const baseURL = externalBaseUrl || `http://127.0.0.1:${port}`;
 
 export default defineConfig({
   testDir: "./e2e",
@@ -36,9 +41,11 @@ export default defineConfig({
   webServer: externalBaseUrl
     ? undefined
     : {
-        command: "npm run dev",
+        // E2E_SERVER_COMMAND runs e.g. a production build (`next start`) under
+        // the Node version on PATH, for release validation.
+        command: process.env.E2E_SERVER_COMMAND || (freshServer ? `node --max-http-header-size=65536 node_modules/next/dist/bin/next dev -H 127.0.0.1 -p ${port}` : "npm run dev"),
         url: baseURL,
-        reuseExistingServer: true,
-        timeout: 180_000,
+        reuseExistingServer: !freshServer,
+        timeout: 300_000,
       },
 });

@@ -18,6 +18,8 @@ import {
   normalizeCanonicalText,
   promoteTextStyleForValue,
 } from "@/lib/customizer/v2/text-editing";
+import { isCustomizerFeatureEnabled } from "@/lib/customizer/v2/feature-flags";
+import { renderBoundsErrors } from "@/lib/customizer/production-limits";
 
 export const CUSTOMIZER_ENGINES = new Set(["svg"]);
 export const CUSTOMIZER_ORIENTATIONS = new Set(["portrait", "landscape", "square"]);
@@ -905,6 +907,13 @@ export function validateCustomizerTemplateDetailed(template: any = {}): { errors
 
   if (!(t.canvasWidthPx > 0) || !(t.canvasHeightPx > 0)) {
     errors.push("Canvas width and height must be positive numbers.");
+  } else if (isCustomizerFeatureEnabled(t, "customizer_v2_server_rendering")) {
+    // Automatic print rendering: the canvas must be within what production can
+    // render (the same limits checkout enforces), so a published product can
+    // never fail every order at checkout.
+    errors.push(...renderBoundsErrors(t).map((message) => `Print size: ${message}`));
+  } else if (renderBoundsErrors(t).length) {
+    warnings.push(`Print size exceeds automatic production limits (${renderBoundsErrors(t)[0]}). Orders will need manual production.`);
   }
   if (!enabledPages.length) errors.push("At least one enabled page is required.");
 

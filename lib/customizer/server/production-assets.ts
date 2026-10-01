@@ -16,6 +16,7 @@ import { loadTrustedImageBuffer, RenderError } from "@/lib/customizer/v2/server/
 import { sniffImageType, sanitizeSvg } from "@/lib/customizer/v2/uploads";
 import { readBodyBytes } from "@/lib/http/read-body";
 import { validateProductionPdf } from "@/lib/customizer/server/production-pdf";
+import { ProductionAssetBudget, ProductionLimitError, renderBoundsErrors } from "@/lib/customizer/production-limits";
 
 const digest = (bytes: Buffer) => createHash("sha256").update(bytes).digest("hex");
 export interface ProductionStorage {
@@ -69,14 +70,31 @@ export async function pinProductionInput(orderId: string, input: ProductionInput
   catalog?: () => Promise<GoogleFontFamily[]>;
   loadFont?: typeof readFontBuffer;
   loadLicense?: typeof loadGoogleFontLicense;
+  /** Order-wide budget shared by every line of one checkout. */
+  budget?: ProductionAssetBudget;
 } = {}): Promise<ProductionInput> {
   if (!/^[a-zA-Z0-9_-]{1,160}$/.test(orderId)) throw new Error("Invalid production order identity.");
+  const budget = deps.budget || new ProductionAssetBudget();
+  // Cheap bounds first: a template whose print canvas is out of range is
+  // refused before a single byte is downloaded.
+  // (Templates without print dimensions are refused by readProductionSnapshot.)
+  // Trusted limits from the PUBLISHED template — never from the customer.
+  if (input.mode === "automatic" && (input.template?.canvasWidthPx !== undefined || input.template?.canvasHeightPx !== undefined)) {
+    const boundsErrors = renderBoundsErrors(input.template);
+    if (boundsErrors.length) {
+      throw new ProductionLimitError("printCanvas", `This product's print size cannot be produced automatically (${boundsErrors[0]}) Please contact us to order it.`);
+    }
+  }
   const assets = new Map<string, ProductionAsset>();
   const pin = async (bytes: Buffer, mimeType: string, kind: ProductionAsset["kind"]) => {
-    if (!bytes.length || bytes.length > 30 * 1024 * 1024) throw new Error("Production asset size is invalid.");
+    if (!bytes.length || bytes.length > budget.limits.maxFileBytes) throw new ProductionLimitError("maxFileBytes", "A file in your design exceeds the 30 MB limit.");
     const checksum = digest(bytes);
     const asset = { key: checksum, bucket: ORDER_ASSET_BUCKET, path: `orders/${orderId}/assets/${checksum}`, checksum, size: bytes.length, mimeType, kind };
     if (!assets.has(checksum)) {
+      budget.reserveAsset(checksum, bytes.length, kind);
+      // Recorded before the upload: a stored object may exist even when the
+      // response is lost, and a failed checkout must be able to remove it.
+      budget.recordStored(asset.path);
       await storage.put(asset.path, bytes, mimeType);
       await readProductionAsset(asset, storage);
       assets.set(checksum, asset);
@@ -85,10 +103,12 @@ export async function pinProductionInput(orderId: string, input: ProductionInput
   };
   const urls = new Set<string>();
   for (const page of getEnabledPages(input.template)) for (const url of collectPageImageUrls(input.template, input.values, input.editorState, page.id)) urls.add(url);
-  if (urls.size > 100) throw new Error("Production design has too many assets.");
+  budget.assertDesignCounts(urls.size, 0);
   const replacements = new Map<string, string>();
   for (const source of urls) {
+    budget.assertTime();
     const bytes = await (deps.loadImage || loadTrustedImageBuffer)(source);
+    if (bytes.length > budget.limits.maxFileBytes) throw new ProductionLimitError("maxFileBytes", "A file in your design exceeds the 30 MB limit.");
     if (input.mode === "manual" && bytes.subarray(0, 5).toString("ascii") === "%PDF-") {
       await validateProductionPdf(bytes);
       const asset = await pin(bytes, "application/pdf", "document");
@@ -102,7 +122,14 @@ export async function pinProductionInput(orderId: string, input: ProductionInput
     if (sanitized && sanitized.ok === false) throw new RenderError("IMAGE_DECODE_FAILED", sanitized.error);
     const safe = sanitized?.ok ? Buffer.from(sanitized.svg) : bytes;
     if (sanitized?.ok && /<(?:text|animate|animateTransform|animateMotion|set)\b/i.test(sanitized.svg)) throw new RenderError("IMAGE_DECODE_FAILED", "Production vectors must have outlined text and static geometry.");
-    try { await sharp(safe, { limitInputPixels: 144_000_000, failOn: "error" }).resize(1, 1).raw().toBuffer(); }
+    // Header only (no decode): reserve the decoded size before decoding.
+    let pixels = 0;
+    try {
+      const meta = await sharp(safe, { limitInputPixels: false }).metadata();
+      pixels = Number(meta.width) * Number(meta.height) * Math.max(1, Number(meta.pages) || 1);
+    } catch { throw new RenderError("IMAGE_DECODE_FAILED", "Production image bytes cannot be decoded safely."); }
+    budget.reservePixels(pixels);
+    try { await sharp(safe, { limitInputPixels: budget.limits.maxImagePixels, failOn: "error" }).resize(1, 1).raw().toBuffer(); }
     catch { throw new RenderError("IMAGE_DECODE_FAILED", "Production image bytes cannot be decoded safely."); }
     const asset = await pin(safe, type.mime, "image");
     replacements.set(source, `order-asset:${asset.key}`);
@@ -111,9 +138,11 @@ export async function pinProductionInput(orderId: string, input: ProductionInput
   const catalog = styles.length ? await (deps.catalog || getFontCatalog)() : [];
   const { dependencies, missingFamilies } = collectFontDependencies(catalog, styles);
   if (missingFamilies.length) throw new RenderError("FONT_FILE_MISSING", `Required fonts unavailable: ${missingFamilies.join(", ")}`);
+  budget.assertDesignCounts(urls.size, dependencies.length);
   const fonts: ProductionInput["fonts"] = [];
   const licenses = new Map<string, ProductionAsset>();
   for (const font of dependencies) {
+    budget.assertTime();
     const bytes = await (deps.loadFont || readFontBuffer)(font);
     // A parse failure must not fall through to fallback measurement.
     try { opentype.parse(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength)); }

@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import GoogleFontMultiSelect from "@/app/components/customizer/GoogleFontMultiSelect";
 import { CUSTOMIZER_FEATURE_FLAGS } from "@/lib/customizer/v2/feature-flags";
+import { PRODUCTION_RENDER_LIMITS } from "@/lib/customizer/production-limits";
 import { GRID_PRESETS } from "@/lib/customizer/v2/grids";
 import EditableNumericStepper from "@/app/components/customizer/EditableNumericStepper";
 
@@ -177,9 +178,9 @@ export default function AdminTemplateSettings({ template, onChange, productName,
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
           <Field label="Card width (in)"><SettingStepper label="Card width in inches" value={t.cardWidthIn} minimum={0.25} maximum={100} step={0.01} onCommit={(cardWidthIn: number) => patch({ cardWidthIn })} /></Field>
           <Field label="Card height (in)"><SettingStepper label="Card height in inches" value={t.cardHeightIn} minimum={0.25} maximum={100} step={0.01} onCommit={(cardHeightIn: number) => patch({ cardHeightIn })} /></Field>
-          <Field label="DPI"><SettingStepper label="Print DPI" value={t.dpi} minimum={72} maximum={1200} onCommit={(dpi: number) => patch({ dpi })} /></Field>
-          <Field label="Canvas width (px)"><SettingStepper label="Canvas width in pixels" value={t.canvasWidthPx} minimum={10} maximum={20000} onCommit={(canvasWidthPx: number) => patch({ canvasWidthPx })} /></Field>
-          <Field label="Canvas height (px)"><SettingStepper label="Canvas height in pixels" value={t.canvasHeightPx} minimum={10} maximum={20000} onCommit={(canvasHeightPx: number) => patch({ canvasHeightPx })} /></Field>
+          <Field label="DPI"><SettingStepper label="Print DPI" value={t.dpi} minimum={PRODUCTION_RENDER_LIMITS.minDpi} maximum={PRODUCTION_RENDER_LIMITS.maxDpi} onCommit={(dpi: number) => patch({ dpi })} /></Field>
+          <Field label="Canvas width (px)"><SettingStepper label="Canvas width in pixels" value={t.canvasWidthPx} minimum={10} maximum={PRODUCTION_RENDER_LIMITS.maxSidePx} onCommit={(canvasWidthPx: number) => patch({ canvasWidthPx })} /></Field>
+          <Field label="Canvas height (px)"><SettingStepper label="Canvas height in pixels" value={t.canvasHeightPx} minimum={10} maximum={PRODUCTION_RENDER_LIMITS.maxSidePx} onCommit={(canvasHeightPx: number) => patch({ canvasHeightPx })} /></Field>
           <Field label="Orientation">
             <span className="relative block min-w-0">
               <select className={`${inputCls} appearance-none pr-10`} value={t.orientation} onChange={(e) => patch({ orientation: e.target.value })}>

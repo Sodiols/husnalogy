@@ -28,6 +28,7 @@ import { buildOrderDesignSnapshot } from "@/lib/customizer/order-snapshots";
 import { pricingBreakdown, type TrustedLinePrice } from "@/lib/orders/pricing-resolver";
 import type { CustomizationVerification } from "@/lib/orders/checkout";
 import { resolveFlagsIntoTemplate } from "@/lib/customizer/v2/feature-flags.server";
+import type { ProductionAssetBudget } from "@/lib/customizer/production-limits";
 
 export async function verifyCustomizationForCheckout(input: {
   orderId: string;
@@ -36,6 +37,8 @@ export async function verifyCustomizationForCheckout(input: {
   customerId: string;
   line: TrustedLinePrice;
   lineNumber: number;
+  /** Order-wide production asset budget (limits, deadline, stored paths). */
+  budget?: ProductionAssetBudget;
 }): Promise<CustomizationVerification> {
   const { row, product, customerId, line, lineNumber } = input;
   const customization = customizationFromRow(row);
@@ -94,7 +97,7 @@ export async function verifyCustomizationForCheckout(input: {
     selectedOptions: line.options,
     quantity: line.quantity,
     pricing: pricingBreakdown(line),
-  });
+  }, input.budget);
 
   return {
     ok: true,

@@ -90,6 +90,36 @@ test.describe("on-canvas text editing keyboard contract", () => {
     expect(lines).toContain("Anna and Joe");
   });
 
+  test("an allowed text colour change applies to the selected text on the canvas", async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto(personalizeUrl());
+    await expect(page.locator("[data-customizer-root]")).toBeVisible();
+    await switchToAdvancedCustomize(page);
+
+    await addAndOpenTextLayer(page);
+    await page.keyboard.type("Colour Test");
+    await page.keyboard.press("Control+Enter");
+    await expect.poll(async () => (await editorState(page)).open, { timeout: 5000 }).toBe(false);
+
+    // Free colour (input) or the template's allowed palette, whichever this design offers.
+    const root = page.locator("[data-customizer-root]");
+    const free = root.getByLabel("Text colour");
+    const palette = root.getByRole("button", { name: /^Set text colour / });
+    let wanted = "#b21c40";
+    if (await free.count()) await free.first().fill(wanted);
+    else {
+      const swatch = palette.last();
+      wanted = String((await swatch.getAttribute("aria-label")) || "").replace("Set text colour ", "");
+      await swatch.click();
+      await expect(swatch).toHaveAttribute("aria-pressed", "true");
+    }
+    // The renderer writes the colour into the text element's style (fill:#rrggbb).
+    await expect.poll(() => page.evaluate(() => {
+      const node = Array.from(document.querySelectorAll("svg text")).find((element) => (element.textContent || "").includes("Colour Test")) as SVGTextElement | undefined;
+      return String(node?.style.fill || "");
+    }), { timeout: 5000 }).toBe(await page.evaluate((hex) => { const probe = document.createElementNS("http://www.w3.org/2000/svg", "text"); probe.style.fill = hex; return probe.style.fill; }, wanted));
+  });
+
   test("Escape leaves editing without stranding the editor open", async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto(personalizeUrl());
