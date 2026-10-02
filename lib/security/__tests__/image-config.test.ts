@@ -1,5 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+// Typed locally: next.config.mjs is plain JS, and its JSDoc NextConfig type is
+// not resolved the same way by every build environment's type check.
+type ImagesConfig = Record<string, unknown> & { remotePatterns: unknown[]; contentSecurityPolicy: string };
+
 /**
  * Image optimization is an SSRF / cache-poisoning surface: only this
  * project's public catalogue buckets may be fetched, with no query strings,
@@ -8,11 +12,12 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 describe("next.config.mjs image optimization", () => {
   afterEach(() => vi.unstubAllEnvs());
 
-  async function load() {
+  async function load(): Promise<ImagesConfig> {
     vi.stubEnv("NEXT_PUBLIC_SUPABASE_URL", "https://abcd1234.supabase.co");
     vi.stubEnv("NODE_ENV", "test");
     vi.resetModules();
-    return (await import("../../../next.config.mjs")).default.images;
+    const config = (await import("../../../next.config.mjs")) as unknown as { default: { images: ImagesConfig } };
+    return config.default.images;
   }
 
   it("allows only this project's public catalogue buckets, without query strings", async () => {
