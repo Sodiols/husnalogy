@@ -47,14 +47,10 @@ export default function Hero({ collection }: { collection?: any }) {
     { image: thumbnailThree, href: thumbnailThreeHref },
   ];
   const countLabel = `${itemCount} ${Number(itemCount) === 1 ? "item" : "items"}`;
-  const headingWords = [headingLineOne, headingLineTwo]
-    .filter(Boolean)
-    .join(" ")
-    .trim()
-    .split(/\s+/)
-    .filter(Boolean);
-  const firstHeadingLine = headingWords.slice(0, 3).join(" ");
-  const secondHeadingLine = headingWords.slice(3).join(" ");
+  const eyebrow = seasonLabel || collectionLabel;
+  const heading = [headingLineOne, headingLineTwo].filter(Boolean).join(" ").trim();
+  const buttonBase =
+    "inline-flex h-[54px] items-center justify-center rounded-[6px] border border-[#303839] px-8 text-[15px] font-semibold transition-colors duration-300";
   const focusRing =
     "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-[#F8F6F1]";
 
@@ -63,32 +59,25 @@ export default function Hero({ collection }: { collection?: any }) {
       <div className="mx-auto grid max-w-[1480px] items-center gap-10 px-4 py-16 sm:px-6 sm:py-20 lg:grid-cols-[minmax(0,60fr)_minmax(0,40fr)] lg:gap-14 lg:px-10 lg:py-24">
         {/* LEFT — content */}
         <div className="order-2 max-w-[680px] lg:order-1">
-          <p className="flex flex-wrap items-center gap-x-2.5 text-[12px] font-semibold tracking-[0.01em]">
-            <span className="text-[#303839]">{seasonLabel}</span>
-            <span className="uppercase tracking-[0.14em] text-[#303839]/45">{collectionLabel}</span>
-          </p>
+          {eyebrow && (
+            <p className="text-[13px] font-semibold text-[#303839]/80">{eyebrow}</p>
+          )}
 
-          <h1 className="mt-5 font-body text-[2rem] font-medium leading-[1.05] tracking-[-0.03em] text-[#303839] sm:text-[2.5rem] lg:text-[2.75rem]">
-            {firstHeadingLine}
-            {secondHeadingLine && (
-              <>
-                <br />
-                {secondHeadingLine}
-              </>
-            )}
+          <h1 className="mt-5 font-display text-[2.75rem] font-medium leading-[1.05] tracking-[-0.01em] text-[#303839] sm:mt-6 sm:text-[3.75rem] lg:text-[4.5rem]">
+            {heading}
           </h1>
 
           {description && (
-            <p className="mt-6 max-w-[520px] text-[15px] leading-[1.75] text-[#303839]/75">
+            <p className="mt-6 max-w-[560px] text-[16px] leading-[1.8] text-[#303839]/80 sm:mt-7 sm:text-[17px]">
               {description}
             </p>
           )}
 
-          <div className="mt-8 flex flex-wrap items-center gap-x-8 gap-y-4">
+          <div className="mt-8 flex flex-wrap items-center gap-3 sm:mt-9">
             {primaryButtonText && (
               <Link
                 href={primaryButtonUrl || "/weddings"}
-                className={`inline-flex h-[52px] items-center justify-center rounded-[6px] border border-[#303839] bg-[#F8F6F1] px-8 text-[13px] font-semibold text-[#303839] transition-colors duration-300 hover:bg-[#303839] hover:text-[#F8F6F1] ${focusRing}`}
+                className={`${buttonBase} bg-[#303839] text-[#F8F6F1] hover:bg-[#303839]/90 ${focusRing}`}
               >
                 {primaryButtonText}
               </Link>
@@ -97,15 +86,9 @@ export default function Hero({ collection }: { collection?: any }) {
             {secondaryLinkText && (
               <Link
                 href={secondaryLinkUrl || "/weddings"}
-                className={`group inline-flex items-center gap-2 rounded-[4px] text-[13px] font-semibold text-[#303839] transition-colors duration-300 hover:text-[#303839]/60 ${focusRing}`}
+                className={`${buttonBase} bg-transparent text-[#303839] hover:bg-[#303839] hover:text-[#F8F6F1] ${focusRing}`}
               >
                 {secondaryLinkText}
-                <span aria-hidden="true" className="inline-flex transition-transform duration-300 ease-out group-hover:translate-x-1">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" width="15" height="15">
-                    <path d="M4 12h15" />
-                    <path d="m13 6 6 6-6 6" />
-                  </svg>
-                </span>
               </Link>
             )}
           </div>

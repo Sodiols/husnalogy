@@ -86,18 +86,19 @@ export default function Header({
             role="search"
             className="flex min-w-0 flex-1 justify-end lg:hidden"
           >
-            <div className="flex h-9 w-full max-w-[280px] items-center border-b border-[#303839]/25 bg-transparent px-1 transition-colors duration-200 focus-within:border-[#303839]/60">
+            <div className="flex h-10 w-full max-w-[320px] items-center rounded-full border border-[#ccc] bg-white pl-4 pr-1 transition-colors duration-200 focus-within:border-[#303839]/45">
               <input
                 type="text"
                 value={searchValue}
                 onChange={(event) => setSearchValue(event.target.value)}
                 placeholder="Search"
                 aria-label="Search"
-                className="min-w-0 flex-1 bg-transparent py-1 text-[13px] text-[#303839] outline-none placeholder:text-[#303839]/45"
+                className="min-w-0 flex-1 bg-transparent py-1 text-[14px] text-[#303839] outline-none placeholder:text-[#303839]/70"
               />
               <button
                 type="submit"
-                className="grid h-8 w-8 shrink-0 place-items-center text-[#303839]/60 transition-opacity duration-200 hover:opacity-75"
+                data-shape="round"
+                className="grid h-8 w-8 shrink-0 place-items-center text-[#303839] transition-colors duration-200 hover:bg-[#303839]/[0.06]"
                 aria-label="Submit search"
               >
                 <NavIcon name="search" className="h-4 w-4" />
@@ -110,18 +111,19 @@ export default function Header({
             role="search"
             className="hidden min-w-0 flex-1 lg:flex lg:justify-center lg:px-10"
           >
-            <div className="flex h-11 w-full max-w-[640px] items-center rounded-[6px] border border-[#303839]/15 bg-white pl-5 pr-2 transition-colors duration-200 focus-within:border-[#303839]/35">
+            <div className="flex h-11 w-full max-w-[760px] items-center rounded-full border border-[#ccc] bg-white pl-5 pr-1.5 transition-colors duration-200 focus-within:border-[#303839]/45">
               <input
                 type="text"
                 value={searchValue}
                 onChange={(event) => setSearchValue(event.target.value)}
-                placeholder="Search products, collections and gifts"
+                placeholder="Search invitations, suites and gifts"
                 aria-label="Search"
-                className="min-w-0 flex-1 bg-transparent py-1.5 text-[14px] text-[#303839] outline-none placeholder:text-[#303839]/45"
+                className="min-w-0 flex-1 bg-transparent py-1.5 text-[15px] text-[#303839] outline-none placeholder:text-[#303839]/70"
               />
               <button
                 type="submit"
-                className="grid h-9 w-9 shrink-0 place-items-center text-[#303839]/60 transition-opacity duration-200 hover:opacity-75"
+                data-shape="round"
+                className="grid h-9 w-9 shrink-0 place-items-center text-[#303839] transition-colors duration-200 hover:bg-[#303839]/[0.06]"
                 aria-label="Submit search"
               >
                 <NavIcon name="search" className="h-[17px] w-[17px]" />
