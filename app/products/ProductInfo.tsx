@@ -905,23 +905,6 @@ export default function ProductInfo({ product, initialUser = undefined }) {
           />
         </div>
 
-        {quantity === "custom" && (
-          <div className="mt-4">
-            <label htmlFor="custom-quantity" className="field-label">
-              Custom quantity
-            </label>
-            <input
-              id="custom-quantity"
-              type="number"
-              min="1"
-              inputMode="numeric"
-              value={customQty}
-              onChange={(event) => setCustomQty(event.target.value)}
-              className="field"
-            />
-          </div>
-        )}
-
         {hasPrice && (
           <div className="mt-4 flex items-baseline justify-between gap-3 border-t border-line pt-4">
             <span className="text-[14px] text-muted">
