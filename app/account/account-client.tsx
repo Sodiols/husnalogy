@@ -24,12 +24,12 @@ import {
 
 const NAV = [
   { id: "overview", label: "Overview", icon: "home" },
-  { id: "orders", label: "My Orders", icon: "bag" },
-  { id: "requests", label: "Personalized Designs", icon: "edit" },
+  { id: "orders", label: "Orders", icon: "bag" },
+  { id: "requests", label: "Personalized designs", icon: "edit" },
   { id: "wishlist", label: "Wishlist", icon: "heart" },
-  { id: "addresses", label: "Saved Addresses", icon: "pin" },
-  { id: "history", label: "History", icon: "history" },
-  { id: "profile", label: "Profile Settings", icon: "settings" },
+  { id: "addresses", label: "Saved addresses", icon: "pin" },
+  { id: "history", label: "Order history", icon: "history" },
+  { id: "profile", label: "Profile", icon: "settings" },
 ];
 
 const initials = (v) => {
@@ -220,8 +220,8 @@ export default function AccountClient() {
 
   if (authLoading) {
     return (
-      <main className="grid min-h-[60vh] place-items-center bg-[#FAF9F7] px-4 text-[#111111]">
-        <div className="flex items-center gap-3 text-sm font-semibold text-[#111111]/60">
+      <main className="grid min-h-[60vh] place-items-center bg-cream px-4 text-ink">
+        <div className="flex items-center gap-3 text-sm font-semibold text-muted">
           <Spinner /> Loading your account...
         </div>
       </main>
@@ -230,16 +230,16 @@ export default function AccountClient() {
 
   if (!user) {
     return (
-      <main className="grid min-h-[60vh] place-items-center bg-[#FAF9F7] px-4 text-[#111111]">
-        <div className="w-full max-w-[460px] rounded-[20px] border border-[#111111]/10 bg-white p-8 text-center shadow-[0_18px_55px_rgba(17,17,17,0.06)]">
-          <h1 className="heading-page">My Account</h1>
-          <p className="mt-3 text-sm leading-6 text-[#111111]/60">Please sign in to view your orders, personalized designs, wishlist, and saved addresses.</p>
+      <main className="grid min-h-[60vh] place-items-center bg-cream px-4 text-ink">
+        <div className="w-full max-w-[460px] rounded-[10px] border border-line bg-white p-8 text-center">
+          <h1 className="heading-page">Your account</h1>
+          <p className="mt-3 text-sm leading-6 text-muted">Please sign in to view your orders, personalized designs, wishlist, and saved addresses.</p>
           <button
             type="button"
             onClick={() => window.dispatchEvent(new CustomEvent("husnalogy-open-auth", { detail: { mode: "login" } }))}
-            className="mt-6 inline-flex h-12 items-center justify-center rounded-[10px] bg-[#111111] px-8 text-sm font-bold text-white transition hover:bg-black/85"
+            className="btn btn-primary btn-lg mt-6"
           >
-            Sign In
+            Sign in
           </button>
         </div>
       </main>
@@ -250,31 +250,33 @@ export default function AccountClient() {
   const firstName = name.split(" ")[0];
 
   return (
-    <main className="bg-[#FAF9F7] px-4 py-6 text-[#111111] sm:px-6 lg:px-10 lg:py-8">
-      <div className="mx-auto max-w-[1320px]">
-        <nav className="mb-5 flex items-center gap-2 text-xs font-semibold text-[#111111]/45">
-          <Link href="/" className="hover:text-[#111111]">Home</Link>
-          <span>/</span>
-          <span className="text-[#111111]/75">My Account</span>
+    <main className="bg-cream text-ink">
+      <div className="page-container pb-16 pt-6 lg:pb-20 lg:pt-8">
+        <nav aria-label="Breadcrumb" className="mb-6 flex items-center gap-2 text-[13px] text-muted">
+          <Link href="/" className="hover:text-ink hover:underline hover:underline-offset-4">Home</Link>
+          <span aria-hidden="true">/</span>
+          <span aria-current="page" className="text-ink">Your account</span>
         </nav>
 
         {/* Mobile profile header + tabs */}
         <div className="mb-4 lg:hidden">
-          <div className="flex items-center gap-3 rounded-[18px] border border-[#111111]/10 bg-white p-4 shadow-[0_12px_32px_rgba(17,17,17,0.05)]">
+          <div className="flex items-center gap-3 rounded-[10px] border border-line bg-white p-4">
             <Avatar profile={profile} size="h-12 w-12 text-base" />
             <div className="min-w-0">
-              <p className="truncate text-sm font-bold text-[#111111]">{name}</p>
-              <p className="truncate text-xs text-[#111111]/55">{profile.email}</p>
+              <p className="truncate text-[15px] font-semibold text-ink">{name}</p>
+              <p className="truncate text-xs text-muted">{profile.email}</p>
             </div>
           </div>
-          <div className="no-scrollbar mt-3 flex gap-2 overflow-x-auto">
+          <div className="no-scrollbar -mx-4 mt-3 flex gap-2 overflow-x-auto px-4 pb-1" role="tablist" aria-label="Account sections">
             {NAV.map((item) => (
               <button
                 key={item.id}
                 type="button"
+                role="tab"
+                aria-selected={view === item.id}
                 onClick={() => setView(item.id)}
-                className={`shrink-0 rounded-[10px] border px-4 py-2 text-[13px] font-semibold transition ${
-                  view === item.id ? "border-[#111111]/10 bg-[#F1F1F1] text-[#111111]" : "border-[#111111]/10 bg-white text-[#111111]/65 hover:bg-cream hover:text-[#111111]"
+                className={`min-h-10 shrink-0 border px-4 text-[14px] font-medium transition-colors ${
+                  view === item.id ? "border-ink bg-ink text-white" : "border-line bg-white text-ink hover:bg-cream"
                 }`}
               >
                 {item.label}
@@ -285,24 +287,24 @@ export default function AccountClient() {
 
         <div className="grid gap-8 lg:grid-cols-[260px_minmax(0,1fr)]">
           {/* Desktop sidebar */}
-          <aside className="hidden h-fit rounded-[18px] border border-[#111111]/10 bg-white p-5 shadow-[0_18px_50px_rgba(17,17,17,0.06)] lg:sticky lg:top-6 lg:block">
+          <aside className="hidden h-fit rounded-[10px] border border-line bg-white p-5 lg:sticky lg:top-[140px] lg:block" aria-label="Account navigation">
             <div className="flex flex-col items-center text-center">
               <Avatar profile={profile} size="h-20 w-20 text-2xl" />
-              <p className="mt-3 text-base font-bold text-[#111111]">{name}</p>
-              <p className="mt-0.5 max-w-full truncate text-xs text-[#111111]/55">{profile.email}</p>
-              <span className="mt-3 rounded-full bg-cream px-3 py-1 text-[10px] font-bold uppercase tracking-[0.08em] text-[#111111]">Member</span>
+              <p className="mt-3 font-display text-[1.375rem] font-medium leading-tight text-ink">{name}</p>
+              <p className="mt-1 max-w-full truncate text-[13px] text-muted">{profile.email}</p>
             </div>
-            <div className="my-6 h-px bg-[#111111]/8" />
+            <div className="my-5 h-px bg-line" />
             <div className="grid gap-1">
               {NAV.map((item) => (
                 <button
                   key={item.id}
                   type="button"
                   onClick={() => setView(item.id)}
-                  className={`relative flex items-center gap-3 rounded-[10px] px-4 py-3 text-left text-[13px] font-semibold transition ${
+                  aria-current={view === item.id ? "page" : undefined}
+                  className={`relative flex min-h-11 items-center gap-3 px-3 text-left text-[14px] transition-colors ${
                     view === item.id
-                      ? "bg-[#F1F1F1] text-[#111111] before:absolute before:left-0 before:top-2 before:bottom-2 before:w-px before:bg-[#111111]"
-                      : "text-[#111111]/65 hover:bg-cream hover:text-[#111111]"
+                      ? "bg-cream font-semibold text-ink before:absolute before:bottom-2 before:left-0 before:top-2 before:w-0.5 before:rounded-full before:bg-ink"
+                      : "font-medium text-muted hover:bg-cream hover:text-ink"
                   }`}
                 >
                   <Icon name={item.icon} className="h-[18px] w-[18px] shrink-0" />
@@ -313,10 +315,10 @@ export default function AccountClient() {
                 type="button"
                 onClick={handleLogout}
                 disabled={loggingOut}
-                className="mt-5 flex items-center gap-3 border-t border-[#111111]/8 px-4 pt-5 pb-3 text-left text-[13px] font-semibold text-[red]/65  hover:bg-red-50/50 transition disabled:opacity-60"
+                className="mt-4 flex min-h-11 items-center gap-3 border-t border-line px-3 pt-4 text-left text-[14px] font-medium text-muted transition-colors hover:text-ink disabled:opacity-60"
               >
                 {loggingOut ? <Spinner small /> : <Icon name="logout" className="h-[18px] w-[18px] shrink-0" />}
-                {loggingOut ? "Logging out..." : "Logout"}
+                {loggingOut ? "Signing out…" : "Sign out"}
               </button>
             </div>
           </aside>
@@ -364,46 +366,48 @@ export default function AccountClient() {
 
 function Overview({ firstName, profile, orders, ordersLoading, ordersError, personalizedDesigns, activeDesigns, personalizedLoading, wishlist, addresses, onView, onOpenOrder, onOpenRequest }) {
   const stats = [
-    { label: "Total Orders", value: orders.length, icon: "bag", action: "View all orders", to: "orders" },
-    { label: "Active Personalized Designs", value: activeDesigns.length, icon: "edit", action: "View all designs", to: "requests" },
-    { label: "Wishlist Items", value: wishlist.length, icon: "heart", action: "View wishlist", to: "wishlist" },
-    { label: "Saved Addresses", value: addresses.length, icon: "pin", action: "Manage addresses", to: "addresses" },
+    { label: "Orders", value: orders.length, icon: "bag", action: "View orders", to: "orders" },
+    { label: "Designs in progress", value: activeDesigns.length, icon: "edit", action: "View designs", to: "requests" },
+    { label: "Wishlist items", value: wishlist.length, icon: "heart", action: "View wishlist", to: "wishlist" },
+    { label: "Saved addresses", value: addresses.length, icon: "pin", action: "Manage addresses", to: "addresses" },
   ];
 
   return (
     <>
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="font-display flex flex-wrap items-end gap-3 text-3xl font-semibold leading-tight text-[#111111] sm:text-[2.55rem]">
-            <span>Welcome back{firstName ? `, ${firstName}` : ""}</span>
-          </h1>
-          <p className="mt-1 text-sm text-[#111111]/55">Here is what is happening with your account.</p>
+          <h1 className="heading-page">Welcome back{firstName ? `, ${firstName}` : ""}</h1>
+          <p className="text-lead mt-2">Your orders, saved designs and details in one place.</p>
         </div>
-        <Link href="/products" className="inline-flex h-12 shrink-0 items-center justify-center rounded-[10px] bg-[#111111] px-7 text-[0.72rem] font-bold uppercase tracking-[0.08em] text-white shadow-[0_14px_30px_rgba(17,17,17,0.14)] transition hover:bg-black/85 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#111111]/25">
-          Shop New Designs
+        <Link href="/products" className="btn btn-primary shrink-0">
+          Shop new designs
         </Link>
       </div>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {stats.map((s) => (
-          <button key={s.label} type="button" onClick={() => onView(s.to)} className="group rounded-[16px] border border-[#111111]/10 bg-white p-5 text-left shadow-[0_14px_35px_rgba(17,17,17,0.045)] transition hover:border-[#111111]/18 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#111111]/20">
-            <span className="grid h-11 w-11 place-items-center rounded-full bg-[#F1F1F1] text-[#111111]">
-              <Icon name={s.icon} className="h-5 w-5" />
+          <button key={s.label} type="button" onClick={() => onView(s.to)} className="group flex flex-col rounded-[10px] border border-line bg-white p-5 text-left transition-colors hover:border-ink/40">
+            <span className="flex items-center justify-between gap-3">
+              <span className="text-[14px] font-medium text-muted">{s.label}</span>
+              <span className="grid h-9 w-9 place-items-center rounded-full bg-cream text-ink">
+                <Icon name={s.icon} className="h-[18px] w-[18px]" />
+              </span>
             </span>
-            <p className="mt-4 text-[2rem] font-bold leading-none text-[#111111]">{s.value}</p>
-            <p className="mt-1.5 text-[13px] font-semibold text-[#111111]/60">{s.label}</p>
-            <span className="mt-3 inline-flex items-center gap-1 text-[12px] font-bold text-[#111111]">{s.action} <Arrow /></span>
+            <span className="mt-3 font-display text-[2.5rem] font-medium leading-none text-ink">{s.value}</span>
+            <span className="mt-4 inline-flex items-center gap-1 text-[13px] font-semibold text-ink group-hover:underline group-hover:underline-offset-4">
+              {s.action} <Arrow />
+            </span>
           </button>
         ))}
       </div>
 
-      <Panel title="Recent Orders" actionLabel="View All Orders" onAction={() => onView("orders")}>
+      <Panel title="Recent orders" actionLabel="View all orders" onAction={() => onView("orders")}>
         {ordersLoading ? (
           <LoadingRows />
         ) : ordersError ? (
           <ErrorState text={ordersError} />
         ) : orders.length ? (
-          <div className="divide-y divide-[#111111]/8">
+          <div className="divide-y divide-line">
             {orders.slice(0, 3).map((o) => (
               <OrderRow key={o.id} order={o} onOpen={() => onOpenOrder(o)} />
             ))}
@@ -413,11 +417,11 @@ function Overview({ firstName, profile, orders, ordersLoading, ordersError, pers
         )}
       </Panel>
 
-      <Panel title="Personalized Designs" actionLabel="View All Designs" onAction={() => onView("requests")}>
+      <Panel title="Personalized designs" actionLabel="View all designs" onAction={() => onView("requests")}>
         {personalizedLoading ? (
           <LoadingRows />
         ) : personalizedDesigns.length ? (
-          <div className="divide-y divide-[#111111]/8">
+          <div className="divide-y divide-line">
             {personalizedDesigns.slice(0, 3).map((d) => (
               <RequestRow key={d.id} request={d} onOpen={() => onOpenRequest(d)} />
             ))}
@@ -428,7 +432,7 @@ function Overview({ firstName, profile, orders, ordersLoading, ordersError, pers
       </Panel>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <AccountSummaryCard icon="heart" title="Wishlist" subtitle="Your saved items" count={wishlist.length} buttonLabel="View Wishlist" onButton={() => onView("wishlist")}>
+        <AccountSummaryCard icon="heart" title="Wishlist" subtitle="Designs you saved" count={wishlist.length} buttonLabel="View wishlist" onButton={() => onView("wishlist")}>
           {wishlist.length ? (
             <div className="grid w-full grid-cols-3 gap-2">
               {wishlist.slice(0, 3).map((item, i) => (
@@ -440,26 +444,26 @@ function Overview({ firstName, profile, orders, ordersLoading, ordersError, pers
           )}
         </AccountSummaryCard>
 
-        <AccountSummaryCard icon="pin" title="Saved Addresses" subtitle="Manage your addresses" count={addresses.length} buttonLabel="Manage Addresses" onButton={() => onView("addresses")}>
+        <AccountSummaryCard icon="pin" title="Saved addresses" subtitle="Delivery details for checkout" count={addresses.length} buttonLabel="Manage addresses" onButton={() => onView("addresses")}>
           <div className="flex w-full gap-2">
             {addresses.slice(0, 2).map((a) => (
-              <div key={a.id} className="grid h-16 flex-1 place-items-center rounded-[10px] bg-cream text-[#111111]">
+              <div key={a.id} className="grid h-16 flex-1 place-items-center rounded-[10px] bg-cream text-ink">
                 <Icon name="home" className="h-5 w-5" />
               </div>
             ))}
-            <button type="button" onClick={() => onView("addresses")} className="grid h-16 w-12 place-items-center rounded-[10px] border border-dashed border-[#111111]/20 text-lg text-[#111111]/45 transition hover:bg-cream">
+            <button type="button" onClick={() => onView("addresses")} className="grid h-16 w-12 place-items-center rounded-[10px] border border-dashed border-line text-lg text-muted transition hover:bg-cream">
               +
             </button>
           </div>
         </AccountSummaryCard>
 
-        <AccountSummaryCard icon="history" title="History" subtitle="Your order history" count={orders.length} buttonLabel="View History" onButton={() => onView("history")}>
+        <AccountSummaryCard icon="history" title="Order history" subtitle="Past and current orders" count={orders.length} buttonLabel="View history" onButton={() => onView("history")}>
           {orders.length ? (
             <div className="w-full space-y-2">
               {orders.slice(0, 2).map((o) => (
                 <div key={o.id} className="flex items-center justify-between gap-2 rounded-[10px] bg-cream px-3 py-2">
-                  <p className="truncate text-xs font-semibold text-[#111111]/70">{o.productTitle || o.items?.[0]?.title || "Order"}</p>
-                  <span className="shrink-0 text-[11px] text-[#111111]/45">{shortDate(o.createdAt)}</span>
+                  <p className="truncate text-xs font-semibold text-muted">{o.productTitle || o.items?.[0]?.title || "Order"}</p>
+                  <span className="shrink-0 text-[11px] text-muted">{shortDate(o.createdAt)}</span>
                 </div>
               ))}
             </div>
@@ -468,13 +472,13 @@ function Overview({ firstName, profile, orders, ordersLoading, ordersError, pers
           )}
         </AccountSummaryCard>
 
-        <AccountSummaryCard icon="settings" title="Profile Settings" subtitle="Update your profile info" buttonLabel="Edit Profile" onButton={() => onView("profile")}>
+        <AccountSummaryCard icon="settings" title="Profile" subtitle="Your name and contact details" buttonLabel="Edit profile" onButton={() => onView("profile")}>
           <div className="flex w-full items-center gap-3">
             <Avatar profile={profile} size="h-11 w-11 text-sm" />
             <div className="min-w-0">
-              <p className="truncate text-sm font-bold text-[#111111]">{customerName(profile)}</p>
-              <p className="truncate text-xs text-[#111111]/55">{profile.email}</p>
-              {profile.phone && <p className="truncate text-xs text-[#111111]/55">{profile.phone}</p>}
+              <p className="truncate text-[15px] font-semibold text-ink">{customerName(profile)}</p>
+              <p className="truncate text-xs text-muted">{profile.email}</p>
+              {profile.phone && <p className="truncate text-xs text-muted">{profile.phone}</p>}
             </div>
           </div>
         </AccountSummaryCard>
@@ -485,19 +489,19 @@ function Overview({ firstName, profile, orders, ordersLoading, ordersError, pers
 
 function AccountSummaryCard({ icon, title, subtitle, count, children, buttonLabel, onButton }: any) {
   return (
-    <div className="flex h-full min-h-[210px] flex-col rounded-[16px] border border-[#111111]/10 bg-white p-5 shadow-[0_14px_35px_rgba(17,17,17,0.045)] transition hover:border-[#111111]/18 hover:shadow-[0_18px_45px_rgba(17,17,17,0.08)]">
+    <div className="flex h-full min-h-[210px] flex-col rounded-[10px] border border-line bg-white p-5">
       <div className="flex items-start justify-between gap-3">
         <div className="flex items-center gap-3">
-          <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[#F1F1F1] text-[#111111]">
+          <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-cream text-ink">
             <Icon name={icon} className="h-[18px] w-[18px]" />
           </span>
           <div className="min-w-0">
-            <p className="text-sm font-bold text-[#111111]">{title}</p>
-            <p className="text-[11px] text-[#111111]/50">{subtitle}</p>
+            <h3 className="text-[15px] font-semibold text-ink">{title}</h3>
+            <p className="text-[13px] text-muted">{subtitle}</p>
           </div>
         </div>
         {count !== undefined && (
-          <span className="grid h-6 min-w-6 shrink-0 place-items-center rounded-full bg-[#111111] px-1.5 text-[11px] font-bold text-white">{count}</span>
+          <span className="badge shrink-0">{count}</span>
         )}
       </div>
 
@@ -506,7 +510,7 @@ function AccountSummaryCard({ icon, title, subtitle, count, children, buttonLabe
       <button
         type="button"
         onClick={onButton}
-        className="mt-auto w-full rounded-[10px] border border-[#111111]/15 px-4 py-2.5 text-center text-xs font-bold text-[#111111] transition hover:bg-cream focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#111111]/25"
+        className="btn btn-secondary btn-sm btn-block mt-auto"
       >
         {buttonLabel}
       </button>
@@ -515,7 +519,7 @@ function AccountSummaryCard({ icon, title, subtitle, count, children, buttonLabe
 }
 
 function SummaryEmpty({ text }) {
-  return <div className="grid h-16 w-full place-items-center rounded-[10px] bg-cream text-xs text-[#111111]/45">{text}</div>;
+  return <div className="grid h-16 w-full place-items-center rounded-[10px] bg-cream text-xs text-muted">{text}</div>;
 }
 
 /* ------------------------------ Orders ------------------------------ */
@@ -528,7 +532,7 @@ function OrdersView({ orders, loading, error, onOpen }) {
       ) : error ? (
         <ErrorState text={error} />
       ) : orders.length ? (
-        <div className="divide-y divide-[#111111]/8">
+        <div className="divide-y divide-line">
           {orders.map((o) => (
             <OrderRow key={o.id} order={o} onOpen={() => onOpen(o)} />
           ))}
@@ -545,15 +549,15 @@ function OrderRow({ order, onOpen }) {
     <div className="flex flex-col gap-3 py-4 sm:flex-row sm:items-center sm:gap-4">
       <img src={orderImage(order)} alt="" className="h-14 w-14 shrink-0 rounded-[10px] object-cover" />
       <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-bold text-[#111111]">{order.productTitle || order.items?.[0]?.title || "Custom order"}</p>
-        <p className="mt-0.5 text-xs text-[#111111]/50">{orderCode(order.id)} &middot; {shortDate(order.createdAt)}</p>
+        <p className="truncate text-[15px] font-semibold text-ink">{order.productTitle || order.items?.[0]?.title || "Custom order"}</p>
+        <p className="mt-0.5 text-xs text-muted">{orderCode(order.id)} &middot; {shortDate(order.createdAt)}</p>
       </div>
       <div className="flex flex-wrap items-center gap-2">
         <StatusBadge status={order.paymentStatus || "unpaid"} />
         <StatusBadge status={order.status || "pending"} />
       </div>
-      <p className="text-sm font-bold text-[#111111] sm:w-20 sm:text-right">{money(order.total, order.currency)}</p>
-      <button type="button" onClick={onOpen} className="shrink-0 rounded-full border border-[#111111]/15 px-4 py-2 text-xs font-bold text-[#111111] transition hover:bg-cream">
+      <p className="text-[15px] font-semibold text-ink sm:w-20 sm:text-right">{money(order.total, order.currency)}</p>
+      <button type="button" onClick={onOpen} className="btn btn-secondary btn-sm shrink-0">
         View Order
       </button>
     </div>
@@ -568,7 +572,7 @@ function RequestsView({ requests, loading, onOpen }) {
       {loading ? (
         <LoadingRows />
       ) : requests.length ? (
-        <div className="divide-y divide-[#111111]/8">
+        <div className="divide-y divide-line">
           {requests.map((r) => (
             <RequestRow key={r.id} request={r} onOpen={() => onOpen(r)} />
           ))}
@@ -594,19 +598,19 @@ function RequestRow({ request, onOpen }) {
       <div className="flex min-w-0 items-center gap-3 lg:w-56">
         <img src={request.image || orderImage(request)} alt="" className="h-14 w-14 shrink-0 rounded-[10px] object-cover" />
         <div className="min-w-0">
-          <p className="truncate text-sm font-bold text-[#111111]">{request.productTitle || "Personalized design"}</p>
-          <p className="mt-0.5 text-xs text-[#111111]/50">{designCode(request.id)} &middot; {shortDate(request.createdAt)}</p>
+          <p className="truncate text-[15px] font-semibold text-ink">{request.productTitle || "Personalized design"}</p>
+          <p className="mt-0.5 text-xs text-muted">{designCode(request.id)} &middot; {shortDate(request.createdAt)}</p>
         </div>
       </div>
       <div className="min-w-0 flex-1">
-        <p className="text-[11px] font-bold uppercase tracking-[0.08em] text-[#111111]/45">Your Design</p>
-        <p className="mt-1 line-clamp-2 text-xs leading-5 text-[#111111]/70">{designSummary(request)}</p>
+        <p className="text-[13px] font-semibold text-muted">Your design</p>
+        <p className="mt-1 line-clamp-2 text-xs leading-5 text-muted">{designSummary(request)}</p>
       </div>
       <div className="lg:w-36">
-        <p className="text-[11px] font-bold uppercase tracking-[0.08em] text-[#111111]/45">Status</p>
+        <p className="text-[13px] font-semibold text-muted">Status</p>
         <div className="mt-1"><StatusBadge status={designStatusLabel(request.status)} /></div>
       </div>
-      <button type="button" onClick={onOpen} className="shrink-0 rounded-full border border-[#111111]/15 px-4 py-2 text-xs font-bold text-[#111111] transition hover:bg-cream">
+      <button type="button" onClick={onOpen} className="btn btn-secondary btn-sm shrink-0">
         View Details
       </button>
     </div>
@@ -621,17 +625,17 @@ function WishlistView({ items, onRemove }) {
       {items.length ? (
         <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 xl:grid-cols-4">
           {items.map((item) => (
-            <div key={item.id || item.productId} className="group overflow-hidden rounded-[10px] border border-[#111111]/8 bg-white">
+            <div key={item.id || item.productId} className="group overflow-hidden rounded-[10px] border border-line bg-white">
               <Link href={item.slug ? `/products/${item.slug}` : "/products"} className="relative block aspect-[4/5] overflow-hidden">
                 <img src={item.image || "/images/weddings/classic.png"} alt={item.title} className="h-full w-full object-cover" />
               </Link>
               <div className="p-3">
-                <Link href={item.slug ? `/products/${item.slug}` : "/products"} className="line-clamp-1 text-sm font-bold text-[#111111] hover:text-[#111111]">
+                <Link href={item.slug ? `/products/${item.slug}` : "/products"} className="line-clamp-1 text-[15px] font-semibold text-ink hover:text-ink">
                   {item.title || "Product"}
                 </Link>
                 <div className="mt-1.5 flex items-center justify-between">
-                  <span className="text-sm font-bold text-[#111111]">{item.price ? money(item.price, item.currency) : ""}</span>
-                  <button type="button" onClick={() => onRemove(item.productId || item.id)} className="rounded-full border border-[#111111]/15 px-3 py-1 text-[11px] font-bold text-[#111111] transition hover:bg-cream">
+                  <span className="text-[15px] font-semibold text-ink">{item.price ? money(item.price, item.currency) : ""}</span>
+                  <button type="button" onClick={() => onRemove(item.productId || item.id)} className="btn btn-secondary btn-sm">
                     Remove
                   </button>
                 </div>
@@ -667,25 +671,25 @@ function AddressesView({ addresses }) {
       ) : addresses.length ? (
         <div className="grid gap-4 sm:grid-cols-2">
           {addresses.map((a) => (
-            <div key={a.id} className={`rounded-[10px] border bg-white p-4 ${a.isDefault ? "border-[#111111]/60" : "border-[#111111]/8"}`}>
+            <div key={a.id} className={`rounded-[10px] border bg-white p-4 ${a.isDefault ? "border-line" : "border-line"}`}>
               <div className="flex items-start justify-between gap-2">
-                <p className="text-sm font-bold text-[#111111]">{a.fullName || a.customerName || "Address"}</p>
-                {a.isDefault && <span className="rounded-full bg-cream px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-[0.08em] text-[#111111]">Default</span>}
+                <p className="text-[15px] font-semibold text-ink">{a.fullName || a.customerName || "Address"}</p>
+                {a.isDefault && <span className="badge">Default</span>}
               </div>
-              <p className="mt-1 text-xs leading-5 text-[#111111]/65">
+              <p className="mt-1 text-xs leading-5 text-muted">
                 {[a.address || a.addressLine1, a.area, a.city, a.district, a.phone || a.customerPhone].filter(Boolean).join(", ")}
               </p>
-              {a.note && <p className="mt-1 text-[11px] italic text-[#111111]/45">Note: {a.note}</p>}
+              {a.note && <p className="mt-1 text-[11px] italic text-muted">Note: {a.note}</p>}
               <div className="mt-3 flex flex-wrap gap-2">
                 {!a.isDefault && (
-                  <button type="button" onClick={() => setDefaultAddress(a.id)} className="rounded-full border border-[#111111]/15 px-3 py-1.5 text-[11px] font-bold text-[#111111] transition hover:bg-cream">
-                    Set Default
+                  <button type="button" onClick={() => setDefaultAddress(a.id)} className="btn btn-secondary btn-sm">
+                    Set as default
                   </button>
                 )}
-                <button type="button" onClick={() => setEditing(a)} className="rounded-full border border-[#111111]/15 px-3 py-1.5 text-[11px] font-bold text-[#111111] transition hover:bg-cream">
+                <button type="button" onClick={() => setEditing(a)} className="btn btn-secondary btn-sm">
                   Edit
                 </button>
-                <button type="button" onClick={() => removeCustomerAddress(a.id)} className="rounded-full border border-[#111111]/15 px-3 py-1.5 text-[11px] font-bold text-[#111111] transition hover:bg-cream">
+                <button type="button" onClick={() => removeCustomerAddress(a.id)} className="btn btn-secondary btn-sm">
                   Delete
                 </button>
               </div>
@@ -744,10 +748,10 @@ function AddressForm({ initial, onCancel, onSaved }) {
       <Field label="Full address" value={form.address} onChange={(v) => set("address", v)} error={errors.address} required className="sm:col-span-2" />
       <Field label="Note (optional)" value={form.note} onChange={(v) => set("note", v)} className="sm:col-span-2" />
       <div className="flex gap-3 sm:col-span-2">
-        <button type="submit" className="rounded-full bg-[#111111] px-6 py-3 text-sm font-bold text-white transition hover:bg-black/85">
+        <button type="submit" className="btn btn-primary">
           {initial.id ? "Update Address" : "Save Address"}
         </button>
-        <button type="button" onClick={onCancel} className="rounded-full border border-[#111111]/15 px-6 py-3 text-sm font-bold text-[#111111] transition hover:bg-cream">
+        <button type="button" onClick={onCancel} className="btn btn-secondary">
           Cancel
         </button>
       </div>
@@ -765,22 +769,22 @@ function HistoryView({ orders, loading, error, onOpen }) {
       ) : error ? (
         <ErrorState text={error} />
       ) : orders.length ? (
-        <ol className="relative ml-2 border-l border-[#111111]/12">
+        <ol className="relative ml-2 border-l border-line">
           {orders.map((o) => (
             <li key={o.id} className="relative py-4 pl-6">
-              <span className="absolute -left-[6px] top-6 h-[11px] w-[11px] rounded-full border border-white bg-[#111111]" />
-              <div className="flex flex-col gap-3 rounded-[12px] border border-[#111111]/8 bg-white p-3 sm:flex-row sm:items-center sm:gap-4">
+              <span className="absolute -left-[6px] top-6 h-[11px] w-[11px] rounded-full border border-white bg-ink" />
+              <div className="flex flex-col gap-3 rounded-[10px] border border-line bg-white p-3 sm:flex-row sm:items-center sm:gap-4">
                 <img src={orderImage(o)} alt="" className="h-12 w-12 shrink-0 rounded-[10px] object-cover" />
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-bold text-[#111111]">{o.productTitle || o.items?.[0]?.title || "Custom order"}</p>
-                  <p className="mt-0.5 text-xs text-[#111111]/50">{orderCode(o.id)} &middot; {shortDate(o.createdAt)}</p>
+                  <p className="truncate text-[15px] font-semibold text-ink">{o.productTitle || o.items?.[0]?.title || "Custom order"}</p>
+                  <p className="mt-0.5 text-xs text-muted">{orderCode(o.id)} &middot; {shortDate(o.createdAt)}</p>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
                   <StatusBadge status={o.paymentStatus || "unpaid"} />
                   <StatusBadge status={o.status || "pending"} />
                 </div>
-                <p className="text-sm font-bold text-[#111111] sm:w-20 sm:text-right">{money(o.total, o.currency)}</p>
-                <button type="button" onClick={() => onOpen(o)} className="shrink-0 rounded-full border border-[#111111]/15 px-4 py-2 text-xs font-bold text-[#111111] transition hover:bg-cream">
+                <p className="text-[15px] font-semibold text-ink sm:w-20 sm:text-right">{money(o.total, o.currency)}</p>
+                <button type="button" onClick={() => onOpen(o)} className="btn btn-secondary btn-sm shrink-0">
                   View Order
                 </button>
               </div>
@@ -850,8 +854,8 @@ function ProfileView({ profile, setProfile, addresses }) {
     <Panel title="Profile Settings">
       <div className="flex items-center gap-4">
         <Avatar profile={{ ...profile, photoURL: form.photoURL }} size="h-16 w-16 text-xl" />
-        <label className="cursor-pointer rounded-full border border-[#111111]/15 px-4 py-2 text-xs font-bold text-[#111111] transition hover:bg-cream">
-          Change Photo
+        <label className="btn btn-secondary btn-sm cursor-pointer">
+          Change photo
           <input type="file" accept="image/*" onChange={onPickPhoto} className="hidden" />
         </label>
       </div>
@@ -864,15 +868,15 @@ function ProfileView({ profile, setProfile, addresses }) {
       </div>
 
       {defaultAddress && (
-        <p className="mt-4 rounded-[10px] bg-cream px-4 py-3 text-xs text-[#111111]/60">
+        <p className="mt-4 rounded-[10px] bg-cream px-4 py-3 text-xs text-muted">
           Default address: {[defaultAddress.fullName || defaultAddress.customerName, defaultAddress.address || defaultAddress.addressLine1, defaultAddress.city].filter(Boolean).join(", ")}
         </p>
       )}
 
-      {status.message && <p className="mt-4 text-sm font-semibold text-[#111111]">{status.message}</p>}
+      {status.message && <p className="mt-4 text-[15px] font-semibold text-ink">{status.message}</p>}
       {status.error && <p className="mt-4 text-sm font-semibold text-red-600">{status.error}</p>}
 
-      <button type="button" onClick={save} disabled={status.saving} className="mt-5 inline-flex h-12 items-center justify-center gap-2 rounded-full bg-[#111111] px-7 text-sm font-bold text-white transition hover:bg-black/85 disabled:opacity-60">
+      <button type="button" onClick={save} disabled={status.saving} className="btn btn-primary mt-5">
         {status.saving ? <Spinner small /> : null}
         {status.saving ? "Saving..." : "Save Changes"}
       </button>
@@ -894,33 +898,33 @@ function OrderDetailModal({ order, onClose }) {
         <div className="flex flex-wrap items-center gap-2">
           <StatusBadge status={order.paymentStatus || "unpaid"} />
           <StatusBadge status={order.status || "pending"} />
-          <span className="text-xs text-[#111111]/50">Placed {shortDate(order.createdAt)}</span>
+          <span className="text-xs text-muted">Placed {shortDate(order.createdAt)}</span>
         </div>
 
         <div className="rounded-[10px] bg-cream p-4">
-          <p className="text-xs font-bold uppercase tracking-[0.08em] text-[#111111]/45">Customer</p>
-          <p className="mt-1 font-bold text-[#111111]">{order.customerName || "Customer"}</p>
-          <p className="text-xs text-[#111111]/60">{order.customerEmail}</p>
-          <p className="text-xs text-[#111111]/60">{order.customerPhone || ""}</p>
+          <p className="text-[13px] font-semibold text-muted">Customer</p>
+          <p className="mt-1 font-semibold text-ink">{order.customerName || "Customer"}</p>
+          <p className="text-xs text-muted">{order.customerEmail}</p>
+          <p className="text-xs text-muted">{order.customerPhone || ""}</p>
         </div>
 
         <div>
-          <p className="mb-2 text-xs font-bold uppercase tracking-[0.08em] text-[#111111]/45">Items</p>
+          <p className="mb-2 text-[13px] font-semibold text-muted">Items</p>
           <div className="space-y-2">
             {items.map((item, i) => (
               <div key={item.id || i} className="flex items-center gap-3">
                 <ServerCustomizationImage customizationId={item.customizationId} outputPageId={item.mockupOutputRef?.pageId} fallbackSrc={item.image || orderImage(order)} alt={item.title || item.productTitle || "Personalized product"} containerClassName="relative h-12 w-12 shrink-0 overflow-hidden rounded-[10px] bg-cream" />
                 <div className="min-w-0 flex-1">
-                  <p className="truncate font-semibold text-[#111111]">{item.title || item.productTitle}</p>
-                  <p className="text-xs text-[#111111]/55">Qty {item.quantity || 1}</p>
+                  <p className="truncate font-semibold text-ink">{item.title || item.productTitle}</p>
+                  <p className="text-xs text-muted">Qty {item.quantity || 1}</p>
                 </div>
-                <p className="font-bold">{money(item.finalPrice || item.price || 0, item.currency || order.currency)}</p>
+                <p className="font-semibold">{money(item.finalPrice || item.price || 0, item.currency || order.currency)}</p>
               </div>
             ))}
           </div>
         </div>
 
-        <div className="grid gap-1 border-t border-[#111111]/10 pt-3">
+        <div className="grid gap-1 border-t border-line pt-3">
           <Row label="Subtotal" value={money(order.subtotal ?? order.total ?? 0, order.currency)} />
           <Row label="Fulfillment" value={order.deliveryMethod === "store" ? "Store pickup" : "Delivery"} />
           <Row label="Payment" value={order.paymentMethod || "Cash on Delivery"} />
@@ -930,8 +934,8 @@ function OrderDetailModal({ order, onClose }) {
 
         {(addr.addressLine1 || addr.city) && (
           <div className="rounded-[10px] bg-cream p-4">
-            <p className="text-xs font-bold uppercase tracking-[0.08em] text-[#111111]/45">Delivery Address</p>
-            <p className="mt-1 text-xs leading-5 text-[#111111]/70">
+            <p className="text-[13px] font-semibold text-muted">Delivery address</p>
+            <p className="mt-1 text-xs leading-5 text-muted">
               {[addr.addressLine1, addr.addressLine2, addr.area, addr.city, addr.postalCode, addr.country].filter(Boolean).join(", ")}
             </p>
           </div>
@@ -939,7 +943,7 @@ function OrderDetailModal({ order, onClose }) {
 
         {!!custom.length && (
           <div>
-            <p className="mb-2 text-xs font-bold uppercase tracking-[0.08em] text-[#111111]/45">Personalization</p>
+            <p className="mb-2 text-[13px] font-semibold text-muted">Personalization</p>
             <div className="grid gap-1">
               {custom.map(([k, v]) => (
                 <Row key={k} label={k} value={String(v || "")} />
@@ -950,10 +954,10 @@ function OrderDetailModal({ order, onClose }) {
 
         {!!files.length && (
           <div>
-            <p className="mb-2 text-xs font-bold uppercase tracking-[0.08em] text-[#111111]/45">Uploaded Files</p>
+            <p className="mb-2 text-[13px] font-semibold text-muted">Uploaded files</p>
             <div className="flex flex-wrap gap-2">
               {files.map((f, i) => (
-                <a key={i} href={f.url} target="_blank" rel="noreferrer" className="rounded-[10px] border border-[#111111]/15 px-3 py-1.5 text-xs font-bold text-[#111111] hover:bg-cream">
+                <a key={i} href={f.url} target="_blank" rel="noreferrer" className="btn btn-secondary btn-sm">
                   {f.name || `File ${i + 1}`}
                 </a>
               ))}
@@ -963,8 +967,8 @@ function OrderDetailModal({ order, onClose }) {
 
         {order.message && (
           <div>
-            <p className="mb-1 text-xs font-bold uppercase tracking-[0.08em] text-[#111111]/45">Notes</p>
-            <p className="text-xs leading-5 text-[#111111]/70">{order.message}</p>
+            <p className="mb-1 text-[13px] font-semibold text-muted">Notes</p>
+            <p className="text-xs leading-5 text-muted">{order.message}</p>
           </div>
         )}
       </div>
@@ -1001,41 +1005,41 @@ function RequestDetailModal({ request, onClose }) {
         <div className="flex items-center gap-3">
           <img src={request.image || orderImage(request)} alt="" className="h-16 w-16 rounded-[10px] object-cover" />
           <div>
-            <p className="font-bold text-[#111111]">{request.productTitle || "Personalized design"}</p>
+            <p className="font-semibold text-ink">{request.productTitle || "Personalized design"}</p>
             <div className="mt-1"><StatusBadge status={designStatusLabel(request.status)} /></div>
           </div>
         </div>
 
         {!!details.length && (
           <div>
-            <p className="mb-2 text-xs font-bold uppercase tracking-[0.08em] text-[#111111]/45">Your Details</p>
+            <p className="mb-2 text-[13px] font-semibold text-muted">Your details</p>
             <div className="grid gap-1">{details.map(([k, v]) => <Row key={k} label={k} value={String(v || "")} />)}</div>
           </div>
         )}
 
         {!!options.length && (
           <div>
-            <p className="mb-2 text-xs font-bold uppercase tracking-[0.08em] text-[#111111]/45">Options</p>
+            <p className="mb-2 text-[13px] font-semibold text-muted">Options</p>
             <div className="grid gap-1">{options.map(([k, v]) => <Row key={k} label={k} value={String(v)} />)}</div>
           </div>
         )}
 
         {!!files.length && (
           <div>
-            <p className="mb-2 text-xs font-bold uppercase tracking-[0.08em] text-[#111111]/45">Your Files</p>
+            <p className="mb-2 text-[13px] font-semibold text-muted">Your files</p>
             <div className="flex flex-wrap gap-2">
               {files.map((f, i) => (
-                <a key={i} href={f.url} target="_blank" rel="noreferrer" className="rounded-[10px] border border-[#111111]/15 px-3 py-1.5 text-xs font-bold text-[#111111] hover:bg-cream">{f.name || `File ${i + 1}`}</a>
+                <a key={i} href={f.url} target="_blank" rel="noreferrer" className="btn btn-secondary btn-sm">{f.name || `File ${i + 1}`}</a>
               ))}
             </div>
           </div>
         )}
 
-        <div className="flex flex-wrap gap-3 border-t border-[#111111]/10 pt-4">
+        <div className="flex flex-wrap gap-3 border-t border-line pt-4">
           {editHref && (
-            <Link href={editHref} className="rounded-[10px] bg-[#111111] px-5 py-2.5 text-xs font-bold text-white transition hover:bg-black/85">Continue Editing</Link>
+            <Link href={editHref} className="btn btn-primary btn-sm">Continue editing</Link>
           )}
-          <Link href="/contact" className="rounded-[10px] border border-[#111111]/15 px-5 py-2.5 text-xs font-bold text-[#111111] transition hover:bg-cream">Request help</Link>
+          <Link href="/contact" className="btn btn-secondary btn-sm">Request help</Link>
         </div>
       </div>
     </Modal>
@@ -1052,11 +1056,11 @@ function Modal({ title, onClose, children }) {
   }, [onClose]);
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-end justify-center bg-[#111111]/45 p-0 backdrop-blur-sm sm:items-center sm:p-4">
-      <div className="flex max-h-[92vh] w-full max-w-[560px] flex-col rounded-t-[20px] bg-white shadow-[0_30px_80px_rgba(17,17,17,0.24)] sm:rounded-[20px]">
-        <div className="flex items-center justify-between border-b border-[#111111]/10 px-6 py-4">
-          <h3 className="text-base font-bold text-[#111111]">{title}</h3>
-          <button type="button" onClick={onClose} aria-label="Close" className="grid h-9 w-9 place-items-center rounded-full text-[#111111]/60 transition hover:bg-cream">
+    <div className="fixed inset-0 z-[100] flex items-end justify-center bg-ink/45 p-0 sm:items-center sm:p-4">
+      <div className="flex max-h-[92vh] w-full max-w-[560px] flex-col rounded-t-[20px] bg-white sm:rounded-[10px]">
+        <div className="flex items-center justify-between border-b border-line px-6 py-4">
+          <h3 className="font-display text-[1.5rem] font-medium leading-tight text-ink">{title}</h3>
+          <button type="button" onClick={onClose} aria-label="Close" className="grid h-9 w-9 place-items-center rounded-full text-muted transition hover:bg-cream">
             <Icon name="close" className="h-5 w-5" />
           </button>
         </div>
@@ -1068,11 +1072,11 @@ function Modal({ title, onClose, children }) {
 
 function Panel({ title, actionLabel, onAction, children }: any) {
   return (
-    <section className="rounded-[16px] border border-[#111111]/10 bg-white p-5 shadow-[0_14px_35px_rgba(17,17,17,0.045)] sm:p-6">
+    <section className="rounded-[10px] border border-line bg-white p-5 sm:p-6">
       <div className="mb-3 flex items-center justify-between gap-3">
-        <h2 className="text-lg font-bold text-[#111111]">{title}</h2>
+        <h2 className="font-display text-[1.6rem] font-medium leading-tight text-ink">{title}</h2>
         {actionLabel && onAction && (
-          <button type="button" onClick={onAction} className="group inline-flex items-center gap-1 rounded-[8px] px-2 py-1 text-[12px] font-bold text-[#111111] transition hover:bg-cream">
+          <button type="button" onClick={onAction} className="group inline-flex min-h-9 items-center gap-1 px-2 text-[13px] font-semibold text-ink underline-offset-4 hover:underline">
             {actionLabel} <Arrow />
           </button>
         )}
@@ -1084,7 +1088,7 @@ function Panel({ title, actionLabel, onAction, children }: any) {
 
 function Field({ label, value, onChange, error, required, readOnly, placeholder, className = "" }: any) {
   return (
-    <label className={`block text-xs font-bold text-[#111111]/65 ${className}`}>
+    <label className={`block text-xs font-semibold text-muted ${className}`}>
       <span className="mb-1.5 block">
         {label} {required && <span className="text-red-500">*</span>}
       </span>
@@ -1093,8 +1097,8 @@ function Field({ label, value, onChange, error, required, readOnly, placeholder,
         onChange={(e) => onChange(e.target.value)}
         readOnly={readOnly}
         placeholder={placeholder}
-        className={`h-11 w-full rounded-[10px] border bg-white px-3.5 text-sm font-medium text-[#111111] outline-none transition placeholder:font-normal placeholder:text-[#111111]/35 focus:border-[#111111]/45 ${
-          error ? "border-red-300" : "border-[#111111]/12 hover:border-[#111111]/25"
+        className={`h-11 w-full rounded-[10px] border bg-white px-3.5 text-sm font-medium text-ink outline-none transition placeholder:font-normal placeholder:text-muted focus:border-ink/40 ${
+          error ? "border-red-300" : "border-line hover:border-ink/40"
         } ${readOnly ? "cursor-not-allowed bg-cream" : ""}`}
       />
       {error && <span className="mt-1 block text-[11px] font-semibold text-red-500">{error}</span>}
@@ -1104,9 +1108,9 @@ function Field({ label, value, onChange, error, required, readOnly, placeholder,
 
 function Row({ label, value, strong }: any) {
   return (
-    <p className={`flex justify-between gap-3 ${strong ? "text-base font-bold" : "text-xs"}`}>
-      <span className="capitalize text-[#111111]/60">{label}</span>
-      <span className={strong ? "text-[#111111]" : "font-semibold text-[#111111]"}>{value}</span>
+    <p className={`flex justify-between gap-3 ${strong ? "text-base font-semibold" : "text-xs"}`}>
+      <span className="capitalize text-muted">{label}</span>
+      <span className={strong ? "text-ink" : "font-semibold text-ink"}>{value}</span>
     </p>
   );
 }
@@ -1115,7 +1119,7 @@ function Avatar({ profile, size }) {
   if (profile.photoURL) {
     return <img src={profile.photoURL} alt={profile.name || "User"} referrerPolicy="no-referrer" className={`${size} rounded-full object-cover`} />;
   }
-  return <span className={`${size} grid place-items-center rounded-full bg-cream font-bold text-[#111111]`}>{initials(profile.name || profile.email)}</span>;
+  return <span className={`${size} grid place-items-center rounded-full bg-cream font-semibold text-ink`}>{initials(profile.name || profile.email)}</span>;
 }
 
 function LoadingRows() {
@@ -1123,7 +1127,7 @@ function LoadingRows() {
     <div className="space-y-3 py-2">
       {[0, 1, 2].map((i) => (
         <div key={i} className="flex items-center gap-3">
-          <div className="h-14 w-14 shrink-0 animate-pulse rounded-[12px] bg-cream" />
+          <div className="h-14 w-14 shrink-0 animate-pulse rounded-[10px] bg-cream" />
           <div className="flex-1 space-y-2">
             <div className="h-3 w-1/2 animate-pulse rounded bg-cream" />
             <div className="h-3 w-1/3 animate-pulse rounded bg-cream" />
@@ -1136,24 +1140,24 @@ function LoadingRows() {
 
 function EmptyState({ icon = "folder", title, text, cta, linkLabel, linkHref, action }: any) {
   return (
-    <div className="grid place-items-center rounded-[14px] bg-[#FAF9F7] px-4 py-9 text-center">
-      <span className="grid h-12 w-12 place-items-center rounded-full bg-[#F1F1F1] text-[#111111]">
+    <div className="grid place-items-center rounded-[10px] bg-cream px-4 py-9 text-center">
+      <span className="grid h-12 w-12 place-items-center rounded-full bg-cream text-ink">
         <Icon name={icon} className="h-5 w-5" />
       </span>
-      {title && <p className="mt-4 text-sm font-bold text-[#111111]">{title}</p>}
-      <p className="mt-1 max-w-[360px] text-sm leading-6 text-[#111111]/55">{text}</p>
+      {title && <p className="mt-4 text-[15px] font-semibold text-ink">{title}</p>}
+      <p className="mt-1 max-w-[360px] text-sm leading-6 text-muted">{text}</p>
       {cta && (
-        <Link href="/products" className="mt-4 inline-flex h-11 items-center justify-center rounded-[10px] bg-[#111111] px-6 text-xs font-bold uppercase tracking-[0.08em] text-white transition hover:bg-black/85">
-          Shop New Designs
+        <Link href="/products" className="btn btn-primary btn-sm mt-4">
+          Shop new designs
         </Link>
       )}
       {linkLabel && linkHref && (
-        <Link href={linkHref} className="group mt-3 inline-flex items-center gap-1 text-xs font-bold text-[#111111] hover:text-[#111111]">
+        <Link href={linkHref} className="group mt-3 inline-flex min-h-9 items-center gap-1 text-[14px] font-semibold text-ink underline-offset-4 hover:underline">
           {linkLabel} <Arrow />
         </Link>
       )}
       {action && (
-        <button type="button" onClick={action.onClick} className="mt-4 inline-flex h-11 items-center justify-center rounded-[10px] border border-[#111111]/15 px-6 text-xs font-bold text-[#111111] transition hover:bg-cream">
+        <button type="button" onClick={action.onClick} className="btn btn-secondary btn-sm mt-4">
           {action.label}
         </button>
       )}
@@ -1186,11 +1190,11 @@ function BranchIcon({ className = "h-6 w-6" }) {
 
 function StatusBadge({ status }) {
   const s = String(status || "").toLowerCase();
-  let tone = "bg-[#F1F1F1] text-[#111111]";
-  if (["paid", "completed", "delivered", "approved", "active", "customer approved"].includes(s)) tone = "bg-[#111111] text-white";
-  else if (["cancelled", "refunded"].includes(s)) tone = "border border-[#111111]/20 bg-white text-[#111111]";
-  else if (["pending", "processing", "unpaid", "printing", "new", "ready for delivery", "in design review"].some((x) => s.includes(x))) tone = "bg-cream text-[#111111]";
-  return <span className={`inline-flex items-center rounded-full px-3 py-1 text-[11px] font-bold capitalize ${tone}`}>{String(status || "pending").replaceAll("-", " ")}</span>;
+  let tone = "bg-cream text-ink";
+  if (["paid", "completed", "delivered", "approved", "active", "customer approved"].includes(s)) tone = "bg-ink text-white";
+  else if (["cancelled", "refunded"].includes(s)) tone = "border border-line bg-white text-ink";
+  else if (["pending", "processing", "unpaid", "printing", "new", "ready for delivery", "in design review"].some((x) => s.includes(x))) tone = "bg-cream text-ink";
+  return <span className={`inline-flex items-center rounded-full px-3 py-1 text-[11px] font-semibold capitalize ${tone}`}>{String(status || "pending").replaceAll("-", " ")}</span>;
 }
 
 function Icon({ name, className = "h-5 w-5" }) {
