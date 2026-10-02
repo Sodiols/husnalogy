@@ -38,7 +38,7 @@ function CollectionCard({ collection }) {
       href={`/collections/${collection.slug}`}
       className="group w-[86%] shrink-0 sm:w-[48%] lg:w-[39rem]"
     >
-      <div className="relative grid aspect-[1.55] grid-cols-[minmax(0,1fr)_82px] gap-1.5 overflow-hidden bg-[#f8f6f1] sm:aspect-[1.62] sm:grid-cols-[minmax(0,1fr)_96px]">
+      <div className="relative grid aspect-[1.55] grid-cols-[minmax(0,1fr)_82px] gap-1.5 overflow-hidden bg-cream sm:aspect-[1.62] sm:grid-cols-[minmax(0,1fr)_96px]">
         <div className="min-w-0 overflow-hidden">
           <img
             src={images[0]}
@@ -93,7 +93,7 @@ export default function TrendingCollections({ collections = [] }) {
         </Reveal>
 
         {!visibleCollections.length ? (
-          <Reveal className="border border-[#303839]/12 bg-[#f8f6f1] p-7 text-sm leading-6 text-[#303839]/70">
+          <Reveal className="border border-[#303839]/12 bg-cream p-7 text-sm leading-6 text-[#303839]/70">
             No wedding collections are marked as trending yet. Check a collection as trending in the admin panel to show it here.
           </Reveal>
         ) : (

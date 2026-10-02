@@ -10,8 +10,8 @@ const points = [
   },
   {
     icon: "gem",
-    title: "Premium Materials",
-    text: "Refined papers, soft textures, and finishes crafted to feel luxurious.",
+    title: "Paper choices",
+    text: "Choose the paper, corners and finish that suit your design.",
   },
   {
     icon: "heart",
@@ -22,7 +22,7 @@ const points = [
 
 export default function WeddingDownHero() {
   return (
-    <section className="overflow-hidden bg-[#f8f6f1] px-4 py-16 sm:px-6 sm:py-20 lg:px-12 lg:py-24 xl:px-16">
+    <section className="overflow-hidden bg-cream px-4 py-16 sm:px-6 sm:py-20 lg:px-12 lg:py-24 xl:px-16">
       <div className="mx-auto max-w-[1480px]">
         <Reveal as="header" className="mx-auto max-w-[720px] text-center">
           <p className="flex items-center justify-center gap-4 text-[11px] font-semibold uppercase tracking-[0.3em] text-[#303839]/55">
@@ -46,7 +46,7 @@ export default function WeddingDownHero() {
           {points.map((point, i) => (
             <Reveal key={point.title} delay={i * 100} className="h-full">
               <div className="flex h-full flex-col items-center rounded-none border border-[#303839]/[0.06] bg-white p-7 text-center shadow-[0_10px_30px_rgba(48,56,57,0.05)] transition-all duration-500 hover:-translate-y-1.5 hover:border-[#303839]/35 hover:shadow-[0_24px_55px_rgba(48,56,57,0.12)]">
-                <span className="grid h-14 w-14 place-items-center rounded-full bg-[#ece9e1] text-[#303839]">
+                <span className="grid h-14 w-14 place-items-center rounded-full bg-cream-deep text-[#303839]">
                   <StudioIcon name={point.icon} />
                 </span>
                 <h3 className="mt-5 font-display text-[1.35rem] font-medium text-[#303839]">{point.title}</h3>

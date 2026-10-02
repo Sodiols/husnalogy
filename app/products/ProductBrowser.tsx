@@ -4,6 +4,8 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { ProductToolbar } from "@/app/components/product/product-toolbar";
+import { formatCurrency } from "@/lib/currency";
+import ExploreMoreTile from "@/app/components/explore-more-tile";
 import ProductCard from "./ProductCard";
 
 const SORT_OPTIONS = [
@@ -14,8 +16,6 @@ const SORT_OPTIONS = [
   ["price-high", "Price: high to low"],
 ];
 
-const PHOTO_COUNTS = ["No Photo", "1 Photo", "2-3 Photos", "4+ Photos"];
-const DELIVERY_TYPES = ["Digital Only", "Printed", "Express Available"];
 const HIGHLIGHT_FILTERS = [
   ["featured", "Featured"],
   ["newest", "New"],
@@ -109,10 +109,9 @@ export default function ProductBrowser({
     (key) => base[key]
   ).length;
 
-  const emptyDraft = { ...base, photoCount: "", delivery: "" };
-  const [draft, setDraft] = useState(emptyDraft);
+  const [draft, setDraft] = useState(base);
   useEffect(() => {
-    if (drawerOpen) setDraft({ ...base, photoCount: "", delivery: "" });
+    if (drawerOpen) setDraft(base);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [drawerOpen]);
 
@@ -141,7 +140,10 @@ export default function ProductBrowser({
   };
 
   const productRelations = useMemo(() => buildProductRelations(relatedCatalog, collections), [relatedCatalog, collections]);
-  const gridClass = "grid grid-cols-2 gap-4 sm:grid-cols-3 sm:gap-5 lg:grid-cols-4";
+  const gridClass = "grid grid-cols-2 gap-x-4 gap-y-10 sm:grid-cols-3 sm:gap-x-6 lg:grid-cols-4";
+  // A short result list closes with an invitation to keep browsing rather than
+  // leaving most of the row empty.
+  const showExploreTile = products.length > 0 && products.length < 4;
 
   return (
     <>
@@ -154,17 +156,24 @@ export default function ProductBrowser({
         onSortChange={(sort) => navigateWith({ sort })}
       />
 
-      {/* Grid */}
-      <div className={`mt-5 w-full max-w-full overflow-visible sm:mt-7 ${gridClass}`}>
-        {products.map((product) => (
-          <ProductCard
-            key={product.id || product.slug}
-            product={product}
-            hasOtherStyles={productRelations.get(product.slug)?.hasOtherStyles}
-            hasSuite={productRelations.get(product.slug)?.hasSuite}
-          />
-        ))}
-      </div>
+      {products.length > 0 && (
+        <ul className={`mt-6 w-full max-w-full overflow-visible sm:mt-8 ${gridClass}`}>
+          {products.map((product) => (
+            <li key={product.id || product.slug} className="min-w-0">
+              <ProductCard
+                product={product}
+                hasOtherStyles={productRelations.get(product.slug)?.hasOtherStyles}
+                hasSuite={productRelations.get(product.slug)?.hasSuite}
+              />
+            </li>
+          ))}
+          {showExploreTile && (
+            <li className="col-span-2 min-w-0 sm:col-span-1">
+              <ExploreMoreTile />
+            </li>
+          )}
+        </ul>
+      )}
 
       {drawerOpen && (
         <>
@@ -172,24 +181,24 @@ export default function ProductBrowser({
             type="button"
             aria-label="Close filters"
             onClick={() => setDrawerOpen(false)}
-            className="fixed inset-0 z-[2800] bg-[#303839]/40 backdrop-blur-sm"
+            className="fixed inset-0 z-[2800] bg-ink/40"
           />
           <aside
             role="dialog"
             aria-modal="true"
             aria-label="Product filters"
-            className="fixed inset-x-0 bottom-0 z-[2801] flex max-h-[88vh] flex-col rounded-none bg-white shadow-[0_-20px_60px_rgba(26,28,29,0.18)] transition-transform duration-300 ease-out sm:bottom-4 sm:left-auto sm:right-4 sm:top-4 sm:max-h-none sm:w-[min(430px,92vw)] sm:rounded-none sm:shadow-[-20px_0_60px_rgba(26,28,29,0.18)]"
+            className="fixed inset-x-0 bottom-0 z-[2801] flex max-h-[88vh] flex-col rounded-t-[10px] bg-white shadow-[var(--shadow-overlay)] sm:bottom-4 sm:left-auto sm:right-4 sm:top-4 sm:max-h-none sm:w-[min(430px,92vw)] sm:rounded-[10px]"
           >
-            <div className="relative border-b border-[#303839]/10 px-6 py-7">
-              <span aria-hidden="true" className="absolute left-1/2 top-4 h-1.5 w-10 -translate-x-1/2 rounded-none bg-[#E6E6E6]" />
+            <div className="relative border-b border-line px-6 py-6">
+              <span aria-hidden="true" className="absolute left-1/2 top-4 h-1.5 w-10 -translate-x-1/2 rounded-none bg-cream" />
               <div className="flex items-center justify-between">
-                <h2 className="text-lg font-bold text-[#303839]">Filters</h2>
+                <h2 className="font-display text-[1.75rem] font-medium leading-none text-ink">Filters</h2>
                 <button
                   type="button"
                   onClick={() => setDrawerOpen(false)}
                   aria-label="Close filters"
                   data-shape="round"
-                  className="grid h-9 w-9 place-items-center rounded-full text-[#303839]/60 transition hover:bg-[#f8f6f1] hover:text-[#303839]"
+                  className="grid h-11 w-11 place-items-center rounded-full text-ink transition-colors hover:bg-cream"
                 >
                   <CloseIcon />
                 </button>
@@ -247,19 +256,9 @@ export default function ProductBrowser({
             </FilterBlock>
           )}
 
-          <FilterBlock icon={<PhotoIcon />} label="Photo Count">
-            <div className="flex flex-wrap gap-2">
-              {PHOTO_COUNTS.map((item) => (
-                <SoftChip key={item} active={draft.photoCount === item} onClick={() => toggleDraft("photoCount", item)}>
-                  {item}
-                </SoftChip>
-              ))}
-            </div>
-          </FilterBlock>
-
           <FilterBlock
             icon={<PriceIcon />}
-            label="Price Range"
+            label="Price range"
             trailing={<PriceLabel min={draft.minPrice} max={draft.maxPrice} />}
           >
             <PriceRange
@@ -270,32 +269,22 @@ export default function ProductBrowser({
             />
           </FilterBlock>
 
-          <FilterBlock icon={<DeliveryIcon />} label="Delivery Type">
-            <div className="flex flex-wrap gap-2">
-              {DELIVERY_TYPES.map((item) => (
-                <SoftChip key={item} active={draft.delivery === item} onClick={() => toggleDraft("delivery", item)}>
-                  {item}
-                </SoftChip>
-              ))}
-            </div>
-          </FilterBlock>
         </div>
 
-        <div className="flex gap-3 border-t border-[#303839]/10 px-6 py-4">
+        <div className="flex gap-3 border-t border-line px-6 py-4">
           <button
             type="button"
             onClick={clearAll}
-            className="flex-1 rounded-full border border-[#303839]/15 px-5 py-3 text-sm font-bold text-[#303839] transition hover:bg-[#f8f6f1]"
+            className="btn btn-secondary flex-1"
           >
-            Clear All
+            Clear all
           </button>
           <button
             type="button"
             onClick={applyFilters}
-            className="inline-flex flex-[1.4] items-center justify-center gap-2 rounded-full bg-[#303839] px-5 py-3 text-sm font-bold text-white transition hover:bg-[#303839]"
+            className="btn btn-primary flex-[1.4]"
           >
-            Apply Filters
-            <SparkleIcon />
+            Show results
           </button>
         </div>
           </aside>
@@ -385,7 +374,7 @@ function ExpandableChips({ items, value, onPick, allLabel, onAll, limit = 4 }: a
           onClick={() => setExpanded((current) => !current)}
           aria-label={expanded ? "Show fewer" : "Show more"}
           data-shape="round"
-          className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-[#f8f6f1] text-[#303839]/70 transition hover:bg-[#ece9e1] hover:text-[#303839]"
+          className="grid h-10 w-10 shrink-0 place-items-center rounded-full border border-field bg-white text-ink transition-colors hover:border-ink/50"
         >
           {expanded ? <MinusIcon /> : <PlusIcon />}
         </button>
@@ -411,11 +400,18 @@ function ColorSwatches({ colors, value, onPick, limit = 8 }) {
             aria-label={color}
             onClick={() => onPick(color)}
             data-shape="round"
-            className={`h-8 w-8 rounded-full border transition ${
-              selected ? "border-[#303839] ring-2 ring-[#303839]/30 ring-offset-2" : "border-[#303839]/15"
+            aria-pressed={selected}
+            className={`relative grid h-10 w-10 place-items-center rounded-full border transition ${
+              selected ? "border-ink/60 ring-1 ring-ink ring-offset-2" : "border-field"
             }`}
             style={{ backgroundColor: swatchColor(color) }}
-          />
+          >
+            {selected && (
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="rounded-full bg-white text-ink">
+                <path d="m5 12 4 4 10-10" />
+              </svg>
+            )}
+          </button>
         );
       })}
       {hasMore && (
@@ -424,7 +420,7 @@ function ColorSwatches({ colors, value, onPick, limit = 8 }) {
           onClick={() => setExpanded((current) => !current)}
           aria-label={expanded ? "Show fewer colours" : "Show more colours"}
           data-shape="round"
-          className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-[#f8f6f1] text-[#303839]/70 transition hover:bg-[#ece9e1]"
+          className="grid h-10 w-10 shrink-0 place-items-center rounded-full border border-field bg-white text-ink transition-colors hover:border-ink/50"
         >
           {expanded ? <MinusIcon /> : <PlusIcon />}
         </button>
@@ -438,12 +434,16 @@ function SoftChip({ active, onClick, children }) {
     <button
       type="button"
       onClick={onClick}
-      className={`rounded-full px-3.5 py-2 text-[12.5px] font-semibold capitalize transition ${
-        active
-          ? "bg-[#303839] text-white"
-          : "bg-[#f8f6f1] text-[#303839]/75 hover:bg-[#ece9e1] hover:text-[#303839]"
+      aria-pressed={active}
+      className={`inline-flex min-h-10 items-center gap-1.5 border px-3.5 text-[14px] font-medium capitalize transition-colors ${
+        active ? "border-ink bg-ink text-white" : "border-field bg-white text-ink hover:border-ink/50"
       }`}
     >
+      {active && (
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <path d="m5 12 4 4 10-10" />
+        </svg>
+      )}
       {children}
     </button>
   );
@@ -453,7 +453,7 @@ function FilterBlock({ icon, label, trailing, children }: any) {
   return (
     <div className="mb-7">
       <div className="mb-3 flex items-center justify-between gap-3">
-        <p className="flex items-center gap-2 text-[13px] font-bold text-[#303839]">
+        <p className="flex items-center gap-2 text-[14px] font-semibold text-ink">
           <span className="text-[#303839]">{icon}</span>
           {label}
         </p>
@@ -468,8 +468,8 @@ function PriceLabel({ min, max }) {
   const lo = min === "" || min == null ? PRICE_DOMAIN_MIN : Number(min);
   const hi = max === "" || max == null ? PRICE_DOMAIN_MAX : Number(max);
   return (
-    <span className="text-[12px] font-semibold text-[#303839]/60">
-      ${lo} - ${hi}
+    <span className="text-[13px] font-medium text-muted">
+      {formatCurrency(lo, "BDT")} – {formatCurrency(hi, "BDT")}
       {hi >= PRICE_DOMAIN_MAX ? "+" : ""}
     </span>
   );
@@ -589,30 +589,11 @@ function DropIcon() {
     </svg>
   );
 }
-function PhotoIcon() {
-  return (
-    <svg width="15" height="15" viewBox="0 0 24 24" {...stroke} aria-hidden="true">
-      <rect x="3" y="5" width="18" height="14" rx="2" />
-      <path d="m4 16 5-5 4 4 2-2 5 5" />
-      <circle cx="15" cy="9" r="1.3" />
-    </svg>
-  );
-}
 function PriceIcon() {
   return (
     <svg width="15" height="15" viewBox="0 0 24 24" {...stroke} aria-hidden="true">
       <path d="M4 12V5h7l9 9-7 7-9-9Z" />
       <circle cx="8" cy="9" r="1.3" />
-    </svg>
-  );
-}
-function DeliveryIcon() {
-  return (
-    <svg width="15" height="15" viewBox="0 0 24 24" {...stroke} aria-hidden="true">
-      <path d="M3 6h11v9H3z" />
-      <path d="M14 9h4l3 3v3h-7z" />
-      <circle cx="7" cy="18" r="1.5" />
-      <circle cx="17" cy="18" r="1.5" />
     </svg>
   );
 }

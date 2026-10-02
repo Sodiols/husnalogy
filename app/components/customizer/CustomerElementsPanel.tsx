@@ -589,7 +589,7 @@ export default function CustomerElementsPanel({
                 onClick={() => onAddShape(shape.id)}
                 aria-label={`Add ${shape.label}`}
                 title={`Add ${shape.label}`}
-                className="grid aspect-square place-items-center rounded-lg bg-[#E6E6E6] text-[#B9B9B9] transition hover:bg-[#DCDCDC] hover:text-[#A9A9A9] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#D4AF37]"
+                className="grid aspect-square place-items-center rounded-lg bg-cream text-[#B9B9B9] transition hover:bg-[#DCDCDC] hover:text-[#A9A9A9] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#D4AF37]"
               >
                 <svg width="34" height="34" viewBox="0 0 24 24" fill="currentColor" aria-hidden>{shape.render}</svg>
               </button>
@@ -611,7 +611,7 @@ export default function CustomerElementsPanel({
                 type="button"
                 role="listitem"
                 onClick={() => setSearch(entry.query)}
-                className="shrink-0 rounded-full bg-white px-3 py-1 text-xs font-bold text-[#303839] transition hover:bg-[#ECE9E1] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#D4AF37]"
+                className="shrink-0 rounded-full bg-white px-3 py-1 text-xs font-bold text-[#303839] transition hover:bg-cream focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#D4AF37]"
               >
                 {entry.label}
               </button>
@@ -621,9 +621,9 @@ export default function CustomerElementsPanel({
 
         {categories.length > 0 && !searching && (
           <div className="mb-2 flex gap-1.5 overflow-x-auto pb-1 no-scrollbar" role="tablist" aria-label="Library categories">
-            <button type="button" role="tab" aria-selected={!category} onClick={() => { setCategory(""); setPage(1); }} className={`shrink-0 rounded-full px-3 py-1 text-xs font-bold transition ${!category ? "bg-[#303839] text-white" : "bg-white text-[#303839] hover:bg-[#ECE9E1]"}`}>All</button>
+            <button type="button" role="tab" aria-selected={!category} onClick={() => { setCategory(""); setPage(1); }} className={`shrink-0 rounded-full px-3 py-1 text-xs font-bold transition ${!category ? "bg-[#303839] text-white" : "bg-white text-[#303839] hover:bg-cream"}`}>All</button>
             {categories.map((cat) => (
-              <button key={cat.id} type="button" role="tab" aria-selected={category === cat.id} onClick={() => { setCategory(cat.id); setPage(1); }} className={`shrink-0 rounded-full px-3 py-1 text-xs font-bold transition ${category === cat.id ? "bg-[#303839] text-white" : "bg-white text-[#303839] hover:bg-[#ECE9E1]"}`}>{cat.name}</button>
+              <button key={cat.id} type="button" role="tab" aria-selected={category === cat.id} onClick={() => { setCategory(cat.id); setPage(1); }} className={`shrink-0 rounded-full px-3 py-1 text-xs font-bold transition ${category === cat.id ? "bg-[#303839] text-white" : "bg-white text-[#303839] hover:bg-cream"}`}>{cat.name}</button>
             ))}
           </div>
         )}
@@ -727,7 +727,7 @@ export default function CustomerElementsPanel({
                 onClick={() => onAddShape(shape.id)}
                 aria-label={`Add ${shape.label}`}
                 title={`Add ${shape.label}`}
-                className="grid aspect-square place-items-center rounded-lg bg-[#E6E6E6] text-[#B9B9B9] transition hover:bg-[#DCDCDC] hover:text-[#A9A9A9] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#D4AF37]"
+                className="grid aspect-square place-items-center rounded-lg bg-cream text-[#B9B9B9] transition hover:bg-[#DCDCDC] hover:text-[#A9A9A9] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#D4AF37]"
               >
                 <svg width="34" height="34" viewBox="0 0 24 24" fill="currentColor" aria-hidden>{shape.render}</svg>
               </button>
@@ -902,7 +902,7 @@ export default function CustomerElementsPanel({
               onClick={() => onAddShape(shape.id)}
               aria-label={`Add ${shape.label}`}
               title={`Add ${shape.label}`}
-              className="grid aspect-square place-items-center rounded-lg bg-[#E6E6E6] text-[#B9B9B9] transition hover:bg-[#DCDCDC] hover:text-[#A9A9A9] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#D4AF37]"
+              className="grid aspect-square place-items-center rounded-lg bg-cream text-[#B9B9B9] transition hover:bg-[#DCDCDC] hover:text-[#A9A9A9] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#D4AF37]"
             >
               <svg width="34" height="34" viewBox="0 0 24 24" fill="currentColor" aria-hidden>{shape.render}</svg>
             </button>

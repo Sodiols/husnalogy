@@ -48,7 +48,7 @@ export default function GoogleFontMultiSelect({ value, onChange }: Props) {
       </div>
 
       {allGoogleFonts ? (
-        <p className="rounded-lg bg-[#F8F6F1] px-3 py-2 text-[11px] leading-4 text-[#303839]/60">
+        <p className="rounded-lg bg-cream px-3 py-2 text-[11px] leading-4 text-[#303839]/60">
           <strong className="font-bold text-[#303839]">All Google Fonts</strong> — customers can search the
           complete catalog. Add families above to restrict the choice.
         </p>

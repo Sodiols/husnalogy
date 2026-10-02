@@ -6,7 +6,7 @@ export const dynamic = "force-dynamic";
 
 export const metadata = {
   title: "Cards",
-  description: "Browse Husnalogy cards with page specific filters.",
+  description: "Personalized cards from Husnalogy for thank-yous, celebrations and everyday notes.",
 };
 
 export default async function CardsPage({ searchParams }) {
@@ -17,15 +17,15 @@ export default async function CardsPage({ searchParams }) {
   return (
     <ProductListingPage
       title="Cards"
-      eyebrow="Shop cards"
-      description="Browse only card products. The filters stay visually consistent, but the options come only from matching card products."
+      eyebrow="Cards"
+      description="Thank you cards, greeting cards and notes, personalized with your own words."
       products={products}
       options={getFilterOptions(scopeProducts)}
       params={params || {}}
       clearHref="/cards"
       basePath="/cards"
-      emptyTitle="No card products found."
-      emptyDescription="Add an active card product in the admin dashboard and it will appear here automatically."
+      emptyTitle="New cards are coming soon"
+      emptyDescription="Browse our other collections or contact us about a card for your occasion."
       filterTitle="Filter cards"
       searchPlaceholder="Search cards, announcements..."
     />

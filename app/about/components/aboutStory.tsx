@@ -15,9 +15,9 @@ export default function AboutStory() {
           className="order-2 md:order-1"
         >
           <div className="relative max-w-sm mx-auto">
-            <div className="absolute -inset-3 rounded-none border border-[#E6E6E6]/40" />
+            <div className="absolute -inset-3 rounded-none border border-line/40" />
 
-            <div className="relative rounded-none bg-[#ece9e1] p-[clamp(1.5rem,4vw,2.5rem)] shadow-xl">
+            <div className="relative rounded-none bg-cream-deep p-[clamp(1.5rem,4vw,2.5rem)] shadow-xl">
               <svg
                 viewBox="0 0 80 80"
                 className="w-12 h-12 mb-6"
@@ -57,31 +57,28 @@ export default function AboutStory() {
         <div className="order-1 md:order-2">
           <Reveal>
             <span className="font-body text-xs uppercase tracking-[0.25em] text-[#303839]">
-              How we started
+              Our story
             </span>
           </Reveal>
 
           <Reveal delay={100}>
             <h2 className="mt-[clamp(0.75rem,2vh,1rem)] font-display text-[clamp(1.5rem,1.1rem+2vw,2.25rem)] leading-tight text-[#303839]">
-              A name built from love and a habit of finishing what we start.
+              A studio for the occasions you want to remember.
             </h2>
           </Reveal>
 
           <Reveal delay={200}>
             <p className="mt-[clamp(1rem,2.5vh,1.5rem)] font-body text-[clamp(0.9rem,0.82rem+0.5vw,1.0625rem)] leading-relaxed text-[#303839]/80">
-              Husnalogy began on a kitchen table, with a stack of cardstock, a
-              borrowed glue gun, and a wedding three weeks away. What started as
-              one favor for a friend turned into a small studio built on a
-              simple belief: the paper that announces your day deserves the same
-              care as the day itself.
+              Husnalogy was founded by Foyez Ahmed to create invitations, cards,
+              gifts and stationery for life&rsquo;s meaningful occasions, with
+              clear typography and quiet, considered detail.
             </p>
           </Reveal>
 
           <Reveal delay={300}>
             <p className="mt-[clamp(0.75rem,2vh,1rem)] font-body text-[clamp(0.9rem,0.82rem+0.5vw,1.0625rem)] leading-relaxed text-[#303839]/80">
-              Every piece we make still passes through the same hands that cut
-              that first card, slower than a factory, more stubborn than a trend,
-              and unwilling to let anything leave unfinished.
+              Every design is made to be personalized. Add your names, dates and
+              words, review the result, and we prepare your order with care.
             </p>
           </Reveal>
         </div>

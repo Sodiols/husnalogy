@@ -118,7 +118,7 @@ function MoreMenu({ items }: { items: Array<{ label: string; onSelect: () => voi
                 setOpen(false);
                 item.onSelect();
               }}
-              className="flex min-h-11 w-full items-center px-4 text-left text-sm font-semibold text-[#303839] transition-colors hover:bg-[#F8F6F1] focus-visible:outline-none focus-visible:bg-[#F8F6F1] disabled:opacity-40"
+              className="flex min-h-11 w-full items-center px-4 text-left text-sm font-semibold text-[#303839] transition-colors hover:bg-cream focus-visible:outline-none focus-visible:bg-cream disabled:opacity-40"
             >
               {item.label}
             </button>

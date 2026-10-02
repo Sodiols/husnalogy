@@ -193,7 +193,7 @@ export default function CustomerImageToolbar({
         <button
           type="button"
           onClick={onReplace}
-          className="min-h-11 whitespace-nowrap rounded-full bg-white px-3 py-1.5 text-xs font-bold text-[#303839] hover:bg-[#ECE9E1] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37]"
+          className="min-h-11 whitespace-nowrap rounded-full bg-white px-3 py-1.5 text-xs font-bold text-[#303839] hover:bg-cream focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37]"
         >
           {hasImage ? "Replace Photo" : "Add Photo"}
         </button>

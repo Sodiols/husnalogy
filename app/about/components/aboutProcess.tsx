@@ -12,7 +12,7 @@ const steps = [
   {
     number: "02",
     title: "Sketch",
-    body: "Concepts are shaped around your details, never copied from a fixed template.",
+    body: "Each design is shaped around your names, dates and details.",
   },
   {
     number: "03",
@@ -45,9 +45,9 @@ function Step({ step, isLast }) {
       )}
 
       <div
-        className={`flex h-12 w-12 flex-none items-center justify-center rounded-full border-2 font-body text-sm transition-colors duration-500 ${
+        className={`flex h-12 w-12 flex-none items-center justify-center rounded-full border font-body text-sm transition-colors duration-500 ${
           inView
-            ? "border-[#303839] bg-[#303839] text-[#f8f6f1]"
+            ? "border-[#303839] bg-[#303839] text-cream"
             : "border-[#303839]/30 bg-transparent text-[#303839]/45"
         }`}
       >
@@ -75,7 +75,7 @@ function Step({ step, isLast }) {
 
 export default function AboutProcess() {
   return (
-    <section className="relative z-[5] bg-[#f8f6f1] text-[#303839] lg:min-h-[145svh]">
+    <section className="relative z-[5] bg-cream text-[#303839] lg:min-h-[145svh]">
       <div className="flex min-h-[100svh] flex-col justify-center py-[clamp(1.25rem,3vh,3rem)] lg:sticky lg:top-[84px] lg:min-h-[calc(100svh-84px)]">
         <div className="max-w-3xl px-6 mx-auto">
           <div className="mb-[clamp(0.85rem,2vh,1.4rem)]">

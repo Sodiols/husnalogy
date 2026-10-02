@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useId, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { PillDropdown } from "@/app/components/product/product-toolbar";
 import RightArrowIcon from "../components/RightArrowIcon";
@@ -25,7 +26,7 @@ import { formatCurrency, formatCurrencySurcharge, normalizeCurrency } from "@/li
 const FORMAT_OPTIONS = [
   {
     value: "printed-flat-save-the-date-card",
-    label: "Printed Flat Save The Date Card",
+    label: "Printed Flat Card",
     description: "Printed and shipped to your address.",
     icon: "fa-solid fa-print",
   },
@@ -799,33 +800,104 @@ export default function ProductInfo({ product, initialUser = undefined }) {
     setCustomQty(nextQuantity);
   };
 
+  const saveStatusText =
+    saveStatus === "permanent-saving"
+      ? "Saving your choices to your account…"
+      : saveStatus === "permanent-saved"
+        ? "Choices saved to your account"
+        : saveStatus === "error"
+          ? "Your choices could not be saved. They are kept on this device."
+          : saveStatus === "local"
+            ? "Choices saved on this device"
+            : user
+              ? "Your choices are saved when you add to cart"
+              : "Sign in to keep your choices across devices";
+
+  const purchaseDisabled = cartLoading || Boolean(product.isStockOut);
+
   return (
     <>
-    <aside className="mx-auto mt-0 w-full min-w-0 max-w-full self-start rounded-none bg-white p-3 text-[#303839] sm:p-4 lg:mx-0 lg:max-w-none lg:px-4">
-      <div className="rounded-none bg-white p-4 sm:p-5">
-        <div className="flex min-w-0 items-start justify-between gap-3">
-          <div className="min-w-0">
-            <div className="flex flex-wrap items-end gap-x-2 gap-y-1">
-              {hasPrice && (
-                <h2 className="text-[28px] font-extrabold leading-none tracking-[-0.01em] sm:text-[30px]">
-                  {formatCurrency(unitPrice, currency)}
-                </h2>
-              )}
+    <aside className="w-full min-w-0 max-w-full self-start text-ink" aria-label="Product details and purchase options">
+      {/* 1. Title and supporting information */}
+      <h1 className="font-display text-[clamp(2rem,1.7rem+1.2vw,2.75rem)] font-medium leading-[1.1] text-ink">
+        {product.title}
+      </h1>
 
-              {product.oldPrice !== null && product.oldPrice !== undefined && (
-                <p className="pb-0.5 text-sm font-semibold text-[#303839]/42 line-through">
-                  {formatCurrency(product.oldPrice, currency)}
-                </p>
-              )}
-            </div>
+      <p className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-[14px] text-muted">
+        {reviewSummary.count > 0 ? (
+          <span>
+            <span aria-hidden="true" className="text-ink">
+              {"★".repeat(reviewSummary.stars)}
+              {"☆".repeat(5 - reviewSummary.stars)}
+            </span>{" "}
+            <span className="sr-only">Rated {reviewSummary.displayAverage} out of 5, </span>
+            {reviewSummary.displayAverage} ({reviewSummary.count} review{reviewSummary.count === 1 ? "" : "s"})
+          </span>
+        ) : (
+          <span>No reviews yet</span>
+        )}
+        <span aria-hidden="true">·</span>
+        <span>
+          By{" "}
+          <Link href="/about" className="font-semibold text-ink underline decoration-ink/30 underline-offset-4 hover:decoration-ink">
+            Husnalogy
+          </Link>
+        </span>
+      </p>
 
+      {/* 2. Price */}
+      {hasPrice && (
+        <div className="mt-5">
+          <p className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+            <span className="price text-[1.75rem] leading-none">{formatCurrency(unitPrice, currency)}</span>
             {savePercent > 0 && (
-              <p className="mt-2 text-xs font-extrabold text-red-600">
-                You save {savePercent}%
-              </p>
+              <>
+                <span className="text-[16px] text-muted line-through">
+                  <span className="sr-only">Was </span>
+                  {formatCurrency(oldPriceValue, currency)}
+                </span>
+                <span className="badge">Save {savePercent}%</span>
+              </>
             )}
-          </div>
+          </p>
+          <p className="mt-2 text-[13px] text-muted">
+            Per card
+            {optionsSurcharge > 0 && (
+              <span>
+                {" "}
+                · {formatCurrency(basePrice, currency)} base + {formatCurrency(optionsSurcharge, currency)} for your options
+              </span>
+            )}
+          </p>
+        </div>
+      )}
 
+      {product.isStockOut && (
+        <div className="notice mt-5 bg-cream" role="status">
+          <p className="font-semibold">Currently unavailable</p>
+          <p className="mt-1 text-muted">
+            {Number(product.comingInDays) > 0
+              ? `Expected back in ${Number(product.comingInDays)} day${Number(product.comingInDays) === 1 ? "" : "s"}.`
+              : "Please check back soon."}
+          </p>
+        </div>
+      )}
+
+      {/* Purchase — directly under the price, as before */}
+      <div className="mt-6 rounded-[10px] border border-line bg-white p-5 sm:p-6">
+        {hasCustomizer && (
+          <p className="mb-5 flex items-start gap-2 text-[14px] leading-6 text-ink">
+            <i className="fa-solid fa-pen-nib mt-1 text-[13px]" aria-hidden="true" />
+            <span>
+              Add your names, dates and wording in the designer. You can review your design before you order.
+            </span>
+          </p>
+        )}
+
+        <div className="flex items-center justify-between gap-4">
+          <span className="text-[14px] font-semibold text-ink" id="quantity-label">
+            Quantity
+          </span>
           <QuantityStepper
             quantity={safeQuantity}
             onDecrease={() => setQuantityFromNumber(safeQuantity - 1)}
@@ -833,292 +905,246 @@ export default function ProductInfo({ product, initialUser = undefined }) {
           />
         </div>
 
-        {hasPrice && (
-          <p className="mt-2 text-xs font-medium leading-5 text-[#303839]/62">
-            per card
-            {optionsSurcharge > 0 && (
-              <span>
-                {" "}
-                ({formatCurrency(basePrice, currency)} base + {formatCurrency(optionsSurcharge, currency)} options)
-              </span>
-            )}
-          </p>
+        {quantity === "custom" && (
+          <div className="mt-4">
+            <label htmlFor="custom-quantity" className="field-label">
+              Custom quantity
+            </label>
+            <input
+              id="custom-quantity"
+              type="number"
+              min="1"
+              inputMode="numeric"
+              value={customQty}
+              onChange={(event) => setCustomQty(event.target.value)}
+              className="field"
+            />
+          </div>
         )}
 
-        <h1 className="mt-4 font-display text-[1.55rem] leading-tight text-[#303839]">
-          {product.title}
-        </h1>
+        {hasPrice && (
+          <div className="mt-4 flex items-baseline justify-between gap-3 border-t border-line pt-4">
+            <span className="text-[14px] text-muted">
+              Estimated total ({safeQuantity} × {formatCurrency(unitPrice, currency)})
+            </span>
+            <span className="price shrink-0 text-[1.25rem]">{formatCurrency(lineTotal, currency)}</span>
+          </div>
+        )}
+        <p className="mt-1 text-[13px] text-muted">Delivery charges are confirmed after we review your order.</p>
 
-        <p className="mt-3 text-sm font-semibold leading-6">
-          {reviewSummary.count > 0 ? (
+        <div className="mt-5 grid gap-3">
+          {hasCustomizer ? (
             <>
-              {"★".repeat(reviewSummary.stars)}
-              {"☆".repeat(5 - reviewSummary.stars)}{" "}
-              <span className="font-normal">
-                {reviewSummary.displayAverage} ({reviewSummary.count} review
-                {reviewSummary.count === 1 ? "" : "s"})
-              </span>
+              <button
+                type="button"
+                onClick={() => router.push(`/products/${product.slug}/personalize`)}
+                disabled={Boolean(product.isStockOut)}
+                className="btn btn-primary btn-lg btn-block"
+              >
+                Personalize this design
+              </button>
+              <div className="grid gap-3 min-[420px]:grid-cols-2">
+                <button
+                  type="button"
+                  onClick={() => addToCart()}
+                  disabled={purchaseDisabled}
+                  aria-busy={cartLoading}
+                  className="btn btn-secondary btn-block"
+                >
+                  {product.isStockOut ? "Unavailable" : cartLoading ? "Adding…" : "Add to cart"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => addToCart({ goToCheckout: true })}
+                  disabled={purchaseDisabled}
+                  aria-busy={cartLoading}
+                  className="btn btn-secondary btn-block"
+                >
+                  Buy now
+                </button>
+              </div>
             </>
           ) : (
-            <span className="font-normal">No reviews yet</span>
-          )}{" "}
-          | by <span className="text-blue-700">Husnalogy</span>
+            <>
+              <button
+                type="button"
+                onClick={() => addToCart()}
+                disabled={purchaseDisabled}
+                aria-busy={cartLoading}
+                className="btn btn-primary btn-lg btn-block"
+              >
+                {product.isStockOut ? "Unavailable" : cartLoading ? "Adding…" : "Add to cart"}
+              </button>
+              <button
+                type="button"
+                onClick={() => addToCart({ goToCheckout: true })}
+                disabled={purchaseDisabled}
+                aria-busy={cartLoading}
+                className="btn btn-secondary btn-block"
+              >
+                Buy now
+              </button>
+            </>
+          )}
+        </div>
+
+        <p className="mt-3 min-h-6 text-[14px] font-medium text-ink" role="status" aria-live="polite">
+          {cartMessage}
         </p>
 
-        <div className="mt-4 flex min-h-6 items-center gap-2 text-xs font-bold text-[#303839]/55">
+        <p className="flex items-center gap-2 text-[13px] text-muted">
           <i
+            aria-hidden="true"
             className={`fa-solid ${
               saveStatus === "permanent-saving"
                 ? "fa-circle-notch animate-spin"
                 : saveStatus === "permanent-saved"
-                  ? "fa-cloud-circle-check text-green-600"
+                  ? "fa-circle-check text-success"
                   : saveStatus === "error"
-                    ? "fa-triangle-exclamation text-red-600"
-                    : saveStatus === "local"
-                      ? "fa-computer text-[#303839]"
-                      : "fa-cloud"
+                    ? "fa-triangle-exclamation text-error"
+                    : "fa-floppy-disk"
             }`}
           />
-
-          <span>
-            {saveStatus === "permanent-saving"
-              ? "Saving choices to your account"
-              : saveStatus === "permanent-saved"
-                ? "Choices saved to your account"
-                : saveStatus === "error"
-                  ? "Could not save choices"
-                  : saveStatus === "local"
-                    ? "Choices saved on this device"
-                    : user
-                      ? "Add to cart or wishlist to save to your account"
-                      : "Log in to save choices across devices"}
-          </span>
-        </div>
-
-        {product.isStockOut && (
-          <div className="mt-5 border border-[#303839]/15 bg-[#f8f6f1] px-4 py-3.5">
-            <p className="text-sm font-extrabold uppercase tracking-[0.08em] text-[#303839]">Stock Out</p>
-            <p className="mt-1 text-sm leading-6 text-[#303839]/70">
-              {Number(product.comingInDays) > 0
-                ? `This product is currently unavailable. Coming in ${Number(product.comingInDays)} day${Number(product.comingInDays) === 1 ? "" : "s"}.`
-                : "This product is currently unavailable. Please check back soon."}
-            </p>
-          </div>
-        )}
-
-        <div className="mt-5 grid gap-2.5">
-          {quantity === "custom" && (
-            <label className="block text-xs font-bold text-[#303839]/70">
-              Quantity
-              <input
-                type="number"
-                min="1"
-                value={customQty}
-                onChange={(event) => setCustomQty(event.target.value)}
-                placeholder="Enter custom quantity"
-                className="mt-2 h-11 w-full rounded-none border border-[#303839]/12 bg-white px-4 text-sm font-bold outline-none transition focus:border-[#303839]/40 focus:ring-2 focus:ring-[#303839]/10"
-              />
-            </label>
-          )}
-
-          <div className="grid gap-2.5 min-[420px]:grid-cols-2">
-            <button
-              type="button"
-              onClick={() => addToCart()}
-              disabled={cartLoading || Boolean(product.isStockOut)}
-              className="h-12 w-full rounded-full bg-[#E6E6E6] px-5 text-sm font-extrabold text-[#303839] transition-colors duration-300 ease-out hover:bg-[#dcdcdc] active:scale-[0.98] disabled:opacity-70"
-            >
-              {product.isStockOut ? "Stock Out" : cartLoading ? "Adding..." : "Add to Cart"}
-            </button>
-
-            <button
-              type="button"
-              onClick={() => addToCart({ goToCheckout: true })}
-              disabled={cartLoading || Boolean(product.isStockOut)}
-              className="h-12 w-full rounded-full bg-[#303839] px-5 text-sm font-extrabold text-white transition hover:bg-[#303839] active:scale-[0.98] disabled:opacity-70"
-            >
-              Buy Now
-            </button>
-          </div>
-
-          {hasCustomizer && (
-            <button
-              type="button"
-              onClick={() => router.push(`/products/${product.slug}/personalize`)}
-              className="h-11 w-full rounded-full border border-[#303839]/18 bg-white px-5 text-sm font-extrabold text-[#303839] transition-colors duration-300 ease-out hover:bg-[#F4F4F4] active:scale-[0.98]"
-            >
-              <i className="fa-solid fa-wand-magic-sparkles mr-2 text-xs" />
-              Personalize This Product
-            </button>
-          )}
-
-          {cartMessage && (
-            <p className="rounded-none bg-white px-4 py-3 text-sm font-bold leading-6 text-[#303839]">
-              {cartMessage}
-            </p>
-          )}
-
-          {hasPrice && (
-            <div className="flex items-center justify-between gap-3 rounded-none bg-white px-4 py-3 text-xs sm:text-sm">
-              <span className="min-w-0 text-[#303839]/60">
-                Estimated total ({safeQuantity} × {formatCurrency(unitPrice, currency)})
-              </span>
-
-              <span className="shrink-0 text-lg font-extrabold">{formatCurrency(lineTotal, currency)}</span>
-            </div>
-          )}
-        </div>
-
+          <span>{saveStatusText}</span>
+        </p>
       </div>
-
-      <div className="mt-4 grid gap-4">
-      <OptionSection title="Choose Your Format">
-        <AnimatedSelect
-          value={format}
-          onChange={setFormat}
-          options={formatOptions}
-          showIcon={false}
-        />
-      </OptionSection>
-
-      {!!sizeOptions.length && (
-        <OptionSection title="Size">
+      {/* Configuration */}
+      <div className="mt-8 divide-y divide-line border-y border-line">
+        <OptionSection title="Format">
           <AnimatedSelect
-            value={size}
-            onChange={setSize}
-            options={sizeOptions}
-            showBadge
+            value={format}
+            onChange={setFormat}
+            options={formatOptions}
+            label="Format"
             showIcon={false}
-            showDescription={false}
           />
         </OptionSection>
-      )}
 
-      {!!envelopeOptions.length && (
-        <OptionSection title="Envelopes">
-          <div className="grid gap-2">
-            {envelopeOptions.map((item) => (
-              <LargeOptionButton
-                key={item.value}
-                option={item}
-                active={envelope === item.value}
-                onClick={() => setEnvelope(item.value)}
-              />
-            ))}
-          </div>
-        </OptionSection>
-      )}
+        {!!sizeOptions.length && (
+          <OptionSection title="Size">
+            <AnimatedSelect
+              value={size}
+              onChange={setSize}
+              options={sizeOptions}
+              label="Size"
+              showBadge
+              showIcon={false}
+              showDescription={false}
+            />
+          </OptionSection>
+        )}
 
-      {!!cornerOptions.length && (
-        <OptionSection title="Corner Style" selectedText={selectedCorner.label}>
-          <div className="grid grid-cols-3 gap-2 sm:grid-cols-6 lg:grid-cols-3 2xl:grid-cols-6">
-            {cornerOptions.map((item) => (
-              <CornerOptionButton
-                key={item.value}
-                option={item}
-                active={corner === item.value}
-                onClick={() => setCorner(item.value)}
-              />
-            ))}
-          </div>
-        </OptionSection>
-      )}
+        {!!envelopeOptions.length && (
+          <OptionSection title="Envelopes" selectedText={selectedEnvelope.cartLabel || selectedEnvelope.label}>
+            <div className="grid gap-2" role="group" aria-label="Envelopes">
+              {envelopeOptions.map((item) => (
+                <LargeOptionButton
+                  key={item.value}
+                  option={item}
+                  active={envelope === item.value}
+                  onClick={() => setEnvelope(item.value)}
+                  showIcon={false}
+                />
+              ))}
+            </div>
+          </OptionSection>
+        )}
 
-      {!!paperStyleOptions.length && (
-        <OptionSection title="Paper Style" selectedText={selectedPaperStyle.label}>
-          <div className="grid gap-2 min-[520px]:grid-cols-2 lg:grid-cols-1 2xl:grid-cols-2">
-            {paperStyleOptions.map((item) => (
-              <LargeOptionButton
-                key={item.value}
-                option={item}
-                active={paperStyle === item.value}
-                onClick={() => setPaperStyle(item.value)}
-                compact
-                showIcon={false}
-              />
-            ))}
-          </div>
-        </OptionSection>
-      )}
+        {!!cornerOptions.length && (
+          <OptionSection title="Corners" selectedText={selectedCorner.label}>
+            <div className="grid grid-cols-3 gap-2 sm:grid-cols-6 lg:grid-cols-3 2xl:grid-cols-6" role="group" aria-label="Corners">
+              {cornerOptions.map((item) => (
+                <CornerOptionButton
+                  key={item.value}
+                  option={item}
+                  active={corner === item.value}
+                  onClick={() => setCorner(item.value)}
+                />
+              ))}
+            </div>
+          </OptionSection>
+        )}
 
-      {!!paperOptions.length && (
-        <OptionSection
-          title="Paper Type"
-          selectedText={selectedPaper.label}
-        >
-          <PaperPreview selectedPaper={paper} options={paperOptions} />
+        {!!paperStyleOptions.length && (
+          <OptionSection title="Paper style" selectedText={selectedPaperStyle.label}>
+            <div className="grid gap-2 min-[520px]:grid-cols-2 lg:grid-cols-1 2xl:grid-cols-2" role="group" aria-label="Paper style">
+              {paperStyleOptions.map((item) => (
+                <LargeOptionButton
+                  key={item.value}
+                  option={item}
+                  active={paperStyle === item.value}
+                  onClick={() => setPaperStyle(item.value)}
+                  compact
+                  showIcon={false}
+                />
+              ))}
+            </div>
+          </OptionSection>
+        )}
 
-          <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-2 2xl:grid-cols-4">
-            {paperOptions.map((item) => (
-              <PaperOption
-                key={item.value}
-                option={item}
-                active={paper === item.value}
-                onClick={() => setPaper(item.value)}
-              />
-            ))}
-          </div>
-        </OptionSection>
-      )}
+        {!!paperOptions.length && (
+          <OptionSection title="Paper" selectedText={selectedPaper.label}>
+            {selectedPaper.description && (
+              <p className="mb-3 text-[14px] leading-6 text-muted">{selectedPaper.description}</p>
+            )}
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-2 2xl:grid-cols-4" role="group" aria-label="Paper">
+              {paperOptions.map((item) => (
+                <PaperOption
+                  key={item.value}
+                  option={item}
+                  active={paper === item.value}
+                  onClick={() => setPaper(item.value)}
+                />
+              ))}
+            </div>
+          </OptionSection>
+        )}
 
-      {!!printingOptions.length && (
-        <OptionSection title="Printing Process">
-          <div className="grid gap-2 min-[520px]:grid-cols-2 lg:grid-cols-1 2xl:grid-cols-2">
-            {printingOptions.map((item) => (
-              <LargeOptionButton
-                key={item.value}
-                option={item}
-                active={printing === item.value}
-                onClick={() => setPrinting(item.value)}
-                compact
-                showIcon={false}
-              />
-            ))}
-          </div>
-        </OptionSection>
-      )}
+        {!!printingOptions.length && (
+          <OptionSection title="Printing" selectedText={selectedPrinting.label}>
+            <div className="grid gap-2 min-[520px]:grid-cols-2 lg:grid-cols-1 2xl:grid-cols-2" role="group" aria-label="Printing">
+              {printingOptions.map((item) => (
+                <LargeOptionButton
+                  key={item.value}
+                  option={item}
+                  active={printing === item.value}
+                  onClick={() => setPrinting(item.value)}
+                  compact
+                  showIcon={false}
+                />
+              ))}
+            </div>
+          </OptionSection>
+        )}
 
-      <div className="rounded-none bg-white p-4">
-        <h3 className="text-xs font-extrabold uppercase tracking-[0.04em] text-[#303839]">Husnalogy Logo</h3>
-
-        <button
-          type="button"
-          onClick={() => setLogo((current) => !current)}
-          className={`mt-3 flex w-full items-center justify-between gap-3 rounded-none border p-3 text-left text-sm transition ${
-            logo
-              ? "border-[#303839] bg-[#303839] text-white"
-              : "border-[#303839]/10 bg-white text-[#303839] hover:bg-[#E6E6E6]"
-          }`}
-        >
-          <span className="flex min-w-0 items-center gap-3">
-            <span
-              className={`grid h-10 w-10 shrink-0 place-items-center overflow-hidden rounded-full border transition ${
-                logo ? "border-white/20 bg-white" : "border-[#303839]/10 bg-white"
-              }`}
-            >
-              <img
-                src="/Brand Kit/Logo-2.png"
-                alt="Husnalogy logo"
-                className="h-8 w-8 scale-[1.85] object-contain"
-              />
-            </span>
+        <OptionSection title="Husnalogy logo">
+          <button
+            type="button"
+            role="switch"
+            aria-checked={logo}
+            onClick={() => setLogo((current) => !current)}
+            className="flex w-full items-center justify-between gap-4 text-left"
+          >
             <span className="min-w-0">
-              <span className="block font-bold">Add to back of card</span>
-              <span className={`mt-0.5 block text-xs ${logo ? "text-white/68" : "text-[#303839]/58"}`}>
-                A subtle mark of quality.
+              <span className="block text-[15px] font-medium text-ink">Add a small logo to the back of the card</span>
+              <span className="mt-0.5 block text-[13px] text-muted">{logo ? "Included" : "Not included"}</span>
+            </span>
+            <span
+              aria-hidden="true"
+              className={`relative h-7 w-12 shrink-0 rounded-full border transition-colors ${logo ? "border-ink bg-ink" : "border-field bg-white"}`}
+            >
+              <span
+                className={`absolute top-1/2 grid h-5 w-5 -translate-y-1/2 place-items-center rounded-full transition-all ${
+                  logo ? "left-6 bg-white text-ink" : "left-0.5 bg-field text-white"
+                }`}
+              >
+                {logo && <i className="fa-solid fa-check text-[10px]" />}
               </span>
             </span>
-          </span>
-
-          <span className={`relative h-7 w-12 shrink-0 rounded-none transition ${logo ? "bg-white" : "bg-[#303839]/16"}`}>
-            <span className={`absolute top-1 grid h-5 w-5 place-items-center rounded-none transition ${logo ? "left-6 bg-[#303839] text-white" : "left-1 bg-white text-[#303839]"}`}>
-              {logo && <i className="fa-solid fa-check text-[10px]" />}
-            </span>
-          </span>
-        </button>
+          </button>
+        </OptionSection>
       </div>
 
-      </div>
     </aside>
 
     <PersonalizationModal
@@ -1141,25 +1167,25 @@ export default function ProductInfo({ product, initialUser = undefined }) {
 
 function QuantityStepper({ quantity, onDecrease, onIncrease }) {
   return (
-    <div className="flex h-10 shrink-0 items-center rounded-none border border-[#303839]/12 bg-white px-1">
+    <div className="flex h-11 shrink-0 items-center rounded-[6px] border border-field bg-white" role="group" aria-labelledby="quantity-label">
       <button
         type="button"
         onClick={onDecrease}
         disabled={quantity <= 1}
         data-shape="round"
-        className="grid h-8 w-8 place-items-center rounded-full text-sm font-bold text-[#303839] transition hover:bg-[#E6E6E6] disabled:cursor-not-allowed disabled:opacity-35"
+        className="grid h-11 w-11 place-items-center rounded-full text-lg text-ink transition-colors hover:bg-cream disabled:cursor-not-allowed disabled:opacity-35"
         aria-label="Decrease quantity"
       >
         -
       </button>
-      <span className="grid min-w-10 place-items-center px-2 text-sm font-extrabold text-[#303839]">
+      <span className="grid min-w-10 place-items-center px-1 text-[15px] font-semibold tabular-nums text-ink" aria-live="polite">
         {quantity}
       </span>
       <button
         type="button"
         onClick={onIncrease}
         data-shape="round"
-        className="grid h-8 w-8 place-items-center rounded-full text-sm font-bold text-[#303839] transition hover:bg-[#E6E6E6]"
+        className="grid h-11 w-11 place-items-center rounded-full text-lg text-ink transition-colors hover:bg-cream"
         aria-label="Increase quantity"
       >
         +
@@ -1250,13 +1276,13 @@ function PersonalizationModal({
               type="button"
               onClick={onClose}
               data-shape="round"
-              className="grid h-10 w-10 shrink-0 place-items-center rounded-full border border-[#303839]/12 bg-[#E6E6E6] text-[#303839] transition hover:bg-white"
+              className="grid h-10 w-10 shrink-0 place-items-center rounded-full border border-[#303839]/12 bg-cream text-[#303839] transition hover:bg-white"
             >
               <i className="fa-solid fa-xmark" aria-hidden="true" />
             </button>
           </div>
 
-          <div className="mt-5 rounded-none border border-[#303839]/10 bg-[#E6E6E6] p-4">
+          <div className="mt-5 rounded-none border border-[#303839]/10 bg-cream p-4">
             <p className="text-xs font-bold uppercase tracking-[0.14em] text-[#303839]/55">
               Your details so far
             </p>
@@ -1284,7 +1310,7 @@ function PersonalizationModal({
           </div>
 
           {fields.length > 0 && (
-            <div className="mt-4 flex items-center gap-2 rounded-full bg-[#E6E6E6] px-3 py-1.5 text-xs font-semibold text-[#303839]/65">
+            <div className="mt-4 flex items-center gap-2 rounded-full bg-cream px-3 py-1.5 text-xs font-semibold text-[#303839]/65">
               <i
                 className="fa-solid fa-wand-magic-sparkles text-[#303839]/45"
                 aria-hidden="true"
@@ -1312,7 +1338,7 @@ function PersonalizationModal({
             ))}
 
             {fields.length === 0 && (
-              <p className="rounded-none border border-dashed border-[#303839]/20 bg-[#E6E6E6] px-4 py-5 text-center text-sm text-[#303839]/60">
+              <p className="rounded-none border border-dashed border-[#303839]/20 bg-cream px-4 py-5 text-center text-sm text-[#303839]/60">
                 This design does not need extra wording. Continue to checkout and
                 Husnalogy will process the order.
               </p>
@@ -1326,7 +1352,7 @@ function PersonalizationModal({
           )}
 
           {message && (
-            <p className="mt-4 rounded-none bg-[#E6E6E6] px-4 py-3 text-sm font-bold leading-6 text-[#303839]">
+            <p className="mt-4 rounded-none bg-cream px-4 py-3 text-sm font-bold leading-6 text-[#303839]">
               {message}
             </p>
           )}
@@ -1335,7 +1361,7 @@ function PersonalizationModal({
             <button
               type="button"
               onClick={onClose}
-              className="h-12 rounded-full border border-[#303839]/15 bg-white px-6 text-sm font-bold text-[#303839] transition hover:bg-[#E6E6E6]"
+              className="h-12 rounded-full border border-[#303839]/15 bg-white px-6 text-sm font-bold text-[#303839] transition hover:bg-cream"
             >
               Keep editing later
             </button>
@@ -1361,7 +1387,8 @@ function AnimatedSelect({
   showBadge = false,
   showIcon = true,
   showDescription = true,
-}) {
+  label = "",
+}: any) {
   const selectId = useId();
   const listId = useId();
   const wrapperRef = useRef(null);
@@ -1403,11 +1430,10 @@ function AnimatedSelect({
         aria-expanded={open}
         aria-controls={listId}
         aria-haspopup="listbox"
+        aria-label={label ? `${label}: ${selectedLabel}` : undefined}
         onClick={() => setOpen((current) => !current)}
-        className={`group flex min-h-[58px] w-full items-center justify-between gap-3 rounded-none border px-3 py-3 text-left outline-none transition ${
-          open
-            ? "border-[#303839] bg-white ring-2 ring-[#303839]/10"
-            : "border-[#303839]/10 bg-white hover:bg-[#E6E6E6]"
+        className={`group flex min-h-[52px] w-full items-center justify-between gap-3 rounded-[6px] border bg-white px-4 py-3 text-left transition-colors ${
+          open ? "border-ink/60 shadow-[0_0_0_2px_rgba(48,56,57,0.08)]" : "border-field hover:border-ink/50"
         }`}
       >
         <span className="flex min-w-0 items-center gap-3">
@@ -1425,38 +1451,34 @@ function AnimatedSelect({
 
           <span className="min-w-0">
             <span className="flex min-w-0 flex-wrap items-center gap-2">
-              <span className="block truncate text-sm font-bold text-[#303839]">
+              <span className="block truncate text-[15px] font-medium text-ink">
                 {selectedLabel}
               </span>
 
               {selected.price && (
-                <span className="shrink-0 text-sm font-extrabold text-[#303839]">
+                <span className="shrink-0 text-[14px] font-semibold text-ink">
                   {selected.price}
                 </span>
               )}
 
-              {showBadge && selected.badge && (
-                <span className="shrink-0 rounded-full bg-[#303839] px-2 py-0.5 text-[10px] font-bold text-white">
-                  {selected.badge}
-                </span>
-              )}
+              {showBadge && selected.badge && <span className="badge shrink-0">{selected.badge}</span>}
             </span>
 
             {showDescription && selected.description && (
-              <span className="mt-0.5 block truncate text-xs text-[#303839]/55">
+              <span className="mt-0.5 block truncate text-[13px] text-muted">
                 {selected.description}
               </span>
             )}
           </span>
         </span>
 
-        <span className={`grid h-8 w-8 shrink-0 place-items-center rounded-full bg-white text-[#303839] transition ${open ? "rotate-180" : "rotate-0"}`}>
+        <span aria-hidden="true" className={`grid h-8 w-8 shrink-0 place-items-center text-ink transition ${open ? "rotate-180" : "rotate-0"}`}>
           <i className="fa-solid fa-chevron-down text-xs" />
         </span>
       </button>
 
       <div
-          className={`absolute left-0 right-0 top-full z-50 mt-2 origin-top overflow-hidden rounded-none border border-[#303839]/10 bg-white shadow-[0_18px_40px_rgba(48,56,57,0.12)] transition-all duration-200 ${
+          className={`absolute left-0 right-0 top-full z-50 mt-2 origin-top overflow-hidden rounded-[10px] border border-line bg-white shadow-[var(--shadow-overlay)] transition-all duration-200 ${
           open
             ? "visible translate-y-0 scale-100 opacity-100"
             : "invisible -translate-y-2 scale-[0.98] opacity-0"
@@ -1483,17 +1505,15 @@ function AnimatedSelect({
                   onChange(item.value);
                   setOpen(false);
                 }}
-                  className={`group flex items-center justify-between gap-3 rounded-none px-3 py-3 text-left transition ${
-                  active
-                    ? "bg-[#303839] text-white"
-                    : "bg-white text-[#303839] hover:bg-[#E6E6E6]"
+                  className={`group flex min-h-11 items-center justify-between gap-3 px-3 py-2.5 text-left transition-colors ${
+                  active ? "bg-cream text-ink" : "bg-white text-ink hover:bg-cream"
                 }`}
               >
                 <span className="flex min-w-0 items-center gap-3">
                   {showIcon && (
                     <span
                       className={`grid h-9 w-9 shrink-0 place-items-center rounded-full transition ${
-                        active ? "bg-white/15" : "bg-[#E6E6E6]"
+                        active ? "bg-white/15" : "bg-cream"
                       }`}
                     >
                       <i className={item.icon} />
@@ -1502,35 +1522,17 @@ function AnimatedSelect({
 
                   <span className="min-w-0">
                     <span className="flex flex-wrap items-center gap-2">
-                      <span className="block truncate text-sm font-bold">
+                      <span className={`block truncate text-[14px] ${active ? "font-semibold" : "font-medium"}`}>
                         {itemLabel}
                       </span>
 
-                      {item.price && (
-                        <span className={`shrink-0 text-sm font-extrabold ${active ? "text-white" : "text-[#303839]"}`}>
-                          {item.price}
-                        </span>
-                      )}
+                      {item.price && <span className="shrink-0 text-[14px] font-semibold text-ink">{item.price}</span>}
 
-                      {showBadge && item.badge && (
-                        <span
-                          className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold ${
-                            active
-                              ? "bg-white text-[#303839]"
-                              : "bg-[#303839] text-white"
-                          }`}
-                        >
-                          {item.badge}
-                        </span>
-                      )}
+                      {showBadge && item.badge && <span className="badge shrink-0">{item.badge}</span>}
                     </span>
 
                     {showDescription && item.description && (
-                      <span
-                        className={`mt-0.5 block truncate text-xs ${
-                          active ? "text-white/70" : "text-[#303839]/55"
-                        }`}
-                      >
+                      <span className="mt-0.5 block truncate text-[13px] text-muted">
                         {item.description}
                       </span>
                     )}
@@ -1538,9 +1540,8 @@ function AnimatedSelect({
                 </span>
 
                 <i
-                  className={`fa-solid fa-circle-check transition-all duration-200 ${
-                    active ? "scale-100 opacity-100" : "scale-75 opacity-0"
-                  }`}
+                  aria-hidden="true"
+                  className={`fa-solid fa-circle-check transition-opacity duration-200 ${active ? "opacity-100" : "opacity-0"}`}
                 />
               </button>
             );
@@ -1561,24 +1562,19 @@ function OptionSection({
   noTopBorder = false,
 }: any) {
   return (
-    <section
-      className={`rounded-none bg-white p-4 ${
-        noTopBorder ? "" : ""
-      }`}
-    >
+    <section className="py-5">
       <div className="flex items-start justify-between gap-3">
         <div className="flex min-w-0 items-center gap-2.5">
           {icon && (
-            <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-[#E6E6E6] text-xs text-[#303839]">
+            <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-cream text-xs text-[#303839]">
               <i className={icon} />
             </span>
           )}
           <div className="min-w-0">
-          <h3 className="truncate text-xs font-extrabold uppercase tracking-[0.04em] text-[#303839]">{title}</h3>
-
-          {selectedText && (
-            <p className="mt-1 text-xs text-[#303839]/70">{selectedText}</p>
-          )}
+          <h2 className="text-[15px] font-semibold text-ink">
+            {title}
+            {selectedText && <span className="font-normal text-muted">: {selectedText}</span>}
+          </h2>
 
           {subtitle && (
             <p className="mt-1 max-w-[320px] text-xs leading-5 text-[#303839]/70">
@@ -1609,12 +1605,12 @@ function LargeOptionButton({ option, active, onClick, compact = false, showIcon 
       type="button"
       onClick={onClick}
       aria-pressed={active}
-      className={`group flex w-full min-w-0 items-center justify-between gap-3 rounded-none border px-3 text-left transition active:scale-[0.99] ${
+      className={`group flex min-h-12 w-full min-w-0 items-center justify-between gap-3 border px-4 text-left transition-colors ${
         compact ? "py-2.5" : "py-3"
       } ${
         active
-          ? "border-[#303839] bg-[#303839] text-white"
-          : "border-[#303839]/10 bg-white text-[#303839] hover:bg-[#E6E6E6]"
+          ? "border-ink/60 bg-cream text-ink"
+          : "border-field bg-white text-ink hover:border-ink/50"
       }`}
     >
       <span className="flex min-w-0 items-center gap-3">
@@ -1631,13 +1627,11 @@ function LargeOptionButton({ option, active, onClick, compact = false, showIcon 
         )}
 
         <span className="min-w-0">
-          <span className="block text-sm font-extrabold leading-5">{option.label}</span>
+          <span className="block text-[14px] font-semibold leading-5">{option.label}</span>
 
           {option.description && (
             <span
-              className={`mt-0.5 block text-xs leading-5 ${
-                active ? "text-white/70" : "text-[#303839]/55"
-              }`}
+              className="mt-0.5 block text-[13px] leading-5 text-muted"
             >
               {option.description}
             </span>
@@ -1645,9 +1639,7 @@ function LargeOptionButton({ option, active, onClick, compact = false, showIcon 
 
           {option.price && (
             <span
-              className={`mt-1 block text-xs font-bold ${
-                active ? "text-white" : "text-[#303839]"
-              }`}
+              className="mt-1 block text-[13px] font-semibold text-ink"
             >
               {option.price}
             </span>
@@ -1656,10 +1648,9 @@ function LargeOptionButton({ option, active, onClick, compact = false, showIcon 
       </span>
 
       <span
+        aria-hidden="true"
         className={`grid h-5 w-5 shrink-0 place-items-center rounded-full border transition ${
-          active
-            ? "border-white bg-white text-[#303839]"
-            : "border-[#303839]/25 bg-white text-transparent"
+          active ? "border-ink bg-ink text-white" : "border-field bg-white text-transparent"
         }`}
       >
         <i className="fa-solid fa-check text-[10px]" />
@@ -1670,28 +1661,28 @@ function LargeOptionButton({ option, active, onClick, compact = false, showIcon 
 
 function CornerOptionButton({ option, active, onClick }) {
   return (
-    <button type="button" onClick={onClick} className="group min-w-0 text-center">
+    <button type="button" onClick={onClick} aria-pressed={active} aria-label={`${option.label}${option.price ? `, ${option.price}` : ", included"}`} className="group min-w-0 text-center">
       <span
-        className={`relative grid min-h-[72px] place-items-center rounded-none border px-2 py-3 transition active:scale-95 ${
+        className={`relative grid min-h-[76px] place-items-center rounded-[6px] border px-2 py-3 transition-colors ${
           active
-            ? "border-[#303839] bg-[#303839] text-white"
-            : "border-[#303839]/10 bg-white text-[#303839] hover:bg-[#E6E6E6]"
+            ? "border-ink/60 bg-cream text-ink"
+            : "border-field bg-white text-ink group-hover:border-ink/50"
         }`}
       >
         <CornerIcon type={option.icon} active={active} />
 
         {active && (
-          <span className="absolute right-1.5 top-1.5 grid h-4 w-4 place-items-center rounded-full bg-white text-[9px] text-[#303839]">
+          <span className="absolute right-1.5 top-1.5 grid h-4 w-4 place-items-center rounded-full bg-ink text-[9px] text-white">
             <i className="fa-solid fa-check" />
           </span>
         )}
 
-        <span className={`mt-1.5 block text-[10px] font-bold ${active ? "text-white/80" : "text-[#303839]/58"}`}>
+        <span className="mt-1.5 block text-[12px] font-medium text-muted">
           {option.price || "Included"}
         </span>
       </span>
 
-      <span className="mt-1.5 block truncate text-[10px] font-bold text-[#303839]/70">
+      <span className="mt-1.5 block truncate text-[13px] font-medium text-ink">
         {option.label}
       </span>
     </button>
@@ -1766,61 +1757,28 @@ function CornerIcon({ type, active = false }) {
   );
 }
 
-function PaperPreview({ selectedPaper, options }) {
-  const selected = findOption(options, selectedPaper) || fallbackOption();
-
-  return (
-    <div className="grid grid-cols-[48px_minmax(0,1fr)_auto] items-center gap-3 rounded-none border border-[#303839]/10 bg-white p-3">
-      <span className="grid h-11 w-11 place-items-center rounded-none border border-[#303839]/10 bg-white text-base text-[#303839]">
-        <i className={selected.icon} />
-      </span>
-
-      <div className="min-w-0">
-        <p className="truncate text-xs font-extrabold text-[#303839]">{selected.label}</p>
-
-        <p className="mt-1 text-xs leading-5 text-[#303839]/65">
-          {selected.description}
-        </p>
-
-        <button
-          type="button"
-          className="hidden items-center gap-1"
-        >
-          Details <RightArrowIcon />
-        </button>
-      </div>
-
-      <span className="rounded-full bg-[#303839] px-3 py-1 text-[10px] font-extrabold uppercase tracking-[0.08em] text-white">
-        Selected
-      </span>
-    </div>
-  );
-}
-
 function PaperOption({ option, active, onClick }) {
   return (
-    <button type="button" onClick={onClick} className="group min-w-0 text-left">
+    <button type="button" onClick={onClick} aria-pressed={active} className="group min-w-0 text-left">
       <span
-        className={`relative flex min-h-[86px] flex-col justify-between rounded-none border p-3 transition active:scale-[0.98] ${
+        className={`relative flex min-h-[88px] flex-col justify-between rounded-[6px] border p-3 transition-colors ${
           active
-            ? "border-[#303839] bg-[#303839] text-white"
-            : "border-[#303839]/10 bg-white text-[#303839] hover:bg-[#E6E6E6]"
+            ? "border-ink/60 bg-cream text-ink"
+            : "border-field bg-white text-ink group-hover:border-ink/50"
         }`}
       >
         <span className="flex items-center justify-between">
-          <i className={`${option.icon} text-lg`} />
+          <i className={`${option.icon} text-lg`} aria-hidden="true" />
 
-          {active && <i className="fa-solid fa-circle-check text-sm" />}
+          {active && <i className="fa-solid fa-circle-check text-sm" aria-hidden="true" />}
         </span>
 
         <span>
-          <span className="block text-xs font-bold leading-4">{option.label}</span>
+          <span className="block text-[13px] font-semibold leading-4">{option.label}</span>
 
           {option.price && (
             <span
-              className={`mt-1 block text-[10px] font-bold ${
-                active ? "text-white/80" : "text-[#303839]/65"
-              }`}
+              className="mt-1 block text-[12px] font-medium text-muted"
             >
               {option.price}
             </span>
@@ -1962,12 +1920,12 @@ function DynamicField({ field, value, onChange, onFile, index }) {
           className={`flex cursor-pointer items-center gap-3 rounded-none border border-dashed px-4 py-4 text-sm transition ${
             hasValue
               ? "border-green-500/50 bg-green-50/50"
-              : "border-[#303839]/25 bg-white hover:border-[#303839]/45 hover:bg-[#E6E6E6]"
+              : "border-[#303839]/25 bg-white hover:border-[#303839]/45 hover:bg-cream"
           }`}
         >
           <span
             className={`grid h-10 w-10 shrink-0 place-items-center rounded-full ${
-              hasValue ? "bg-green-600 text-white" : "bg-[#E6E6E6] text-[#303839]"
+              hasValue ? "bg-green-600 text-white" : "bg-cream text-[#303839]"
             }`}
           >
             <i

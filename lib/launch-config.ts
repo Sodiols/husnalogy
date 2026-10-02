@@ -1,6 +1,29 @@
-export const BUSINESS_INFO = {
+/**
+ * Customer-facing business details. Contact, Support, the footer and the
+ * structured data all read from here so they cannot drift apart.
+ */
+export const BUSINESS_INFO: {
+  name: string;
+  tagline: string;
+  founder: string;
+  email: string;
+  phone: string;
+  phoneHref: string;
+  whatsappHref: string;
+  address: string;
+  city: string;
+  country: string;
+  /**
+   * Published support hours, e.g. "Sun–Thu, 10:00 AM–8:00 PM (BST)". Left
+   * null until the business confirms them: the storefront previously showed
+   * two conflicting schedules, and pages hide the hours while this is unset.
+   */
+  supportHours: string | null;
+  socialProfiles: { instagram: string; facebook: string };
+} = {
   name: "Husnalogy",
   tagline: "Timeless Invitations & Gifts",
+  founder: "Foyez Ahmed",
   email: "hello@husnalogy.com",
   phone: "+880 1575 004432",
   phoneHref: "tel:+8801575004432",
@@ -8,11 +31,12 @@ export const BUSINESS_INFO = {
   address: "42/4c Nurani, Bonkolapara, Subidbazar, Sylhet, Bangladesh",
   city: "Sylhet",
   country: "Bangladesh",
+  supportHours: null,
   socialProfiles: {
     instagram: "https://www.instagram.com/husnalogy",
     facebook: "https://www.facebook.com/husnalogy/",
   },
-} as const;
+};
 
 export const LAUNCH_FEATURES = {
   sslCommerz: false,

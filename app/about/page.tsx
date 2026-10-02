@@ -2,7 +2,6 @@ import AboutHero from "./components/aboutHero";
 import AboutStory from "./components/aboutStory";
 import AboutValues from "./components/aboutValues";
 import AboutDesign from "./components/aboutDesign";
-import AboutStats from "./components/aboutStats";
 import AboutProcess from "./components/aboutProcess";
 import AboutClosing from "./components/aboutClosing";
 import AboutScrollSeal from "./components/aboutScrollSeal";
@@ -19,7 +18,7 @@ export const metadata = {
 export default function AboutPage() {
   return (
     <main
-      className="bg-[#f8f6f1] text-[#303839]"
+      className="bg-cream text-[#303839]"
       style={{
         "--font-caveat": "var(--font-cormorant)",
         "--font-montserrat": "var(--font-inter)",
@@ -27,18 +26,17 @@ export default function AboutPage() {
     >
       <AboutHero />
       {/* Sits above the pinned hero and scrolls up over it (opaque backstop hides the hero). */}
-      <div className="relative z-10 bg-[#f8f6f1]">
+      <div className="relative z-10 bg-cream">
         <AboutStory />
         <AboutValues />
         <AboutDesign />
-        <AboutStats />
         <AboutProcess />
         <AboutClosing />
         <AboutScrollSeal />
         <AboutFAQ />
       </div>
       {/* Above the sticky stack so it isn't hidden behind the pinned FAQ on desktop. */}
-      <div className="relative z-20 bg-[#f8f6f1]">
+      <div className="relative z-20 bg-cream">
         <Newslatter />
       </div>
     </main>

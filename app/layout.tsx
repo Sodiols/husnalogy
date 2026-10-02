@@ -39,7 +39,7 @@ const fontVariables = `${fontDisplay.variable} ${fontBody.variable}`;
 const SITE_URL = getSiteUrl();
 
 const DESCRIPTION =
-  "Husnalogy creates premium personalized wedding invitations, save the dates, nikah invitations, cards, gifts and stationery with a refined, minimalist design.";
+  "Husnalogy creates personalized wedding invitations, save the dates, nikah invitations, cards, gifts and stationery with a refined, minimalist design.";
 
 export const metadata = {
   metadataBase: new URL(SITE_URL),
@@ -180,7 +180,7 @@ export default async function RootLayout({ children }) {
           which would otherwise log a false-positive hydration mismatch. */}
       <body
         suppressHydrationWarning
-        className="bg-white font-body text-charcoal antialiased selection:bg-[#E6E6E6] selection:text-black"
+        className="bg-white font-body text-charcoal antialiased selection:bg-cream selection:text-black"
       >
         <SiteShell initialUser={initialUser} initialSettings={initialSettings}>{children}</SiteShell>
       </body>

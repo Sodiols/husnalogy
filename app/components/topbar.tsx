@@ -1,30 +1,15 @@
-"use client";
-
 import Link from "next/link";
-import RightArrowIcon from "./RightArrowIcon";
 
 export default function TopBar() {
   return (
-    <div className="bg-charcoal text-white">
-      <div className="mx-auto flex max-w-[1480px] items-center justify-center px-4 py-2 text-center text-[10.5px] font-medium uppercase tracking-[0.18em] sm:px-6 lg:justify-between lg:px-10">
-        <div className="hidden items-center gap-6 text-white/75 lg:flex">
-          <span>Husnalogy</span>
-          <span aria-hidden="true" className="h-3 w-px bg-white/25" />
-          <span>Premium Design</span>
-          <span aria-hidden="true" className="h-3 w-px bg-white/25" />
-          <span>Personalized Gifts</span>
-        </div>
-
-        <p className="text-white/90">
-          Elegant cards, gifts and stationery crafted with intention
-        </p>
-
+    <div className="bg-ink text-white">
+      <div className="page-container flex min-h-9 items-center justify-center gap-4 py-2 text-center text-[13px] leading-5">
+        <p className="text-white/90">Personalized invitations, cards and gifts for life&rsquo;s meaningful occasions</p>
         <Link
           href="/products"
-          className="group hidden items-center gap-2 text-white underline-offset-4 transition hover:underline lg:inline-flex"
+          className="hidden shrink-0 font-semibold text-white underline decoration-white/40 underline-offset-4 transition-colors hover:decoration-white md:inline"
         >
-          Shop Now
-          <RightArrowIcon className="group-hover:translate-x-1" />
+          Shop all
         </Link>
       </div>
     </div>

@@ -49,45 +49,29 @@ export default function Hero({ collection }: { collection?: any }) {
   const countLabel = `${itemCount} ${Number(itemCount) === 1 ? "item" : "items"}`;
   const eyebrow = seasonLabel || collectionLabel;
   const heading = [headingLineOne, headingLineTwo].filter(Boolean).join(" ").trim();
-  const buttonBase =
-    "inline-flex h-[54px] items-center justify-center rounded-[6px] border border-[#303839] px-8 text-[15px] font-semibold transition-colors duration-300";
   const focusRing =
-    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-[#F8F6F1]";
+    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink focus-visible:ring-offset-2 focus-visible:ring-offset-cream";
 
   return (
-    <section className="bg-[#F8F6F1]">
-      <div className="mx-auto grid max-w-[1480px] items-center gap-10 px-4 py-16 sm:px-6 sm:py-20 lg:grid-cols-[minmax(0,60fr)_minmax(0,40fr)] lg:gap-14 lg:px-10 lg:py-24">
+    <section className="bg-cream">
+      <div className="page-container grid items-center gap-8 py-12 sm:gap-10 sm:py-16 lg:grid-cols-[minmax(0,60fr)_minmax(0,40fr)] lg:gap-16 lg:py-20">
         {/* LEFT — content */}
         <div className="order-2 max-w-[680px] lg:order-1">
-          {eyebrow && (
-            <p className="text-[13px] font-semibold text-[#303839]/80">{eyebrow}</p>
-          )}
+          {eyebrow && <p className="text-[13px] font-semibold text-muted">{eyebrow}</p>}
 
-          <h1 className="mt-5 font-display text-[2.75rem] font-medium leading-[1.05] tracking-[-0.01em] text-[#303839] sm:mt-6 sm:text-[3.75rem] lg:text-[4.5rem]">
-            {heading}
-          </h1>
+          <h1 className="heading-hero mt-4 sm:mt-5">{heading}</h1>
 
-          {description && (
-            <p className="mt-6 max-w-[560px] text-[16px] leading-[1.8] text-[#303839]/80 sm:mt-7 sm:text-[17px]">
-              {description}
-            </p>
-          )}
+          {description && <p className="text-lead mt-5 max-w-[560px] sm:mt-6">{description}</p>}
 
-          <div className="mt-8 flex flex-wrap items-center gap-3 sm:mt-9">
+          <div className="mt-8 flex flex-wrap items-center gap-3">
             {primaryButtonText && (
-              <Link
-                href={primaryButtonUrl || "/weddings"}
-                className={`${buttonBase} bg-[#303839] text-[#F8F6F1] hover:bg-[#303839]/90 ${focusRing}`}
-              >
+              <Link href={primaryButtonUrl || "/weddings"} className="btn btn-primary btn-lg">
                 {primaryButtonText}
               </Link>
             )}
 
             {secondaryLinkText && (
-              <Link
-                href={secondaryLinkUrl || "/weddings"}
-                className={`${buttonBase} bg-transparent text-[#303839] hover:bg-[#303839] hover:text-[#F8F6F1] ${focusRing}`}
-              >
+              <Link href={secondaryLinkUrl || "/weddings"} className="btn btn-secondary btn-lg bg-transparent hover:bg-ink hover:text-white">
                 {secondaryLinkText}
               </Link>
             )}
@@ -100,7 +84,7 @@ export default function Hero({ collection }: { collection?: any }) {
           <Link
             href={galleryHref}
             aria-label={`View the ${title || "featured"} collection`}
-            className={`group relative block aspect-square overflow-hidden rounded-[10px] bg-[#ece9e1] shadow-[0_22px_60px_-42px_rgba(48,56,57,0.45)] ${focusRing}`}
+            className={`group relative block aspect-square overflow-hidden rounded-[10px] bg-cream-deep shadow-[0_22px_60px_-42px_rgba(48,56,57,0.45)] ${focusRing}`}
           >
             <Image
               src={mainImage}
@@ -112,7 +96,7 @@ export default function Hero({ collection }: { collection?: any }) {
               className="object-cover object-center transition-transform duration-[1200ms] ease-out group-hover:scale-[1.03]"
             />
             {sourceCollectionName && (
-              <span className="absolute bottom-3 left-3 z-10 max-w-[calc(100%-1.5rem)] rounded-[6px] bg-[#F8F6F1] px-3 py-1.5 text-[11px] font-semibold leading-tight text-[#303839] shadow-[0_8px_24px_rgba(48,56,57,0.12)] sm:bottom-4 sm:left-4 sm:text-xs">
+              <span className="absolute bottom-3 left-3 z-10 max-w-[calc(100%-1.5rem)] rounded-[6px] bg-white px-3 py-1.5 text-[12px] font-semibold leading-tight text-ink shadow-[0_8px_24px_rgba(48,56,57,0.12)] sm:bottom-4 sm:left-4 sm:text-[13px]">
                 {sourceCollectionName}
               </span>
             )}
@@ -130,7 +114,7 @@ export default function Hero({ collection }: { collection?: any }) {
                       ? `View the ${title || "featured"} collection — ${countLabel}`
                       : `View the ${title || "featured"} collection`
                   }
-                  className={`group relative block overflow-hidden rounded-[10px] bg-[#ece9e1] ${focusRing}`}
+                  className={`group relative block overflow-hidden rounded-[10px] bg-cream-deep ${focusRing}`}
                 >
                   <Image
                     src={thumb.image}
@@ -140,7 +124,7 @@ export default function Hero({ collection }: { collection?: any }) {
                     className="object-cover object-center transition-transform duration-700 ease-out group-hover:scale-[1.05]"
                   />
                   {isLast && itemCount > 0 && (
-                    <span className="absolute bottom-2 left-2 rounded-[6px] bg-[#F8F6F1] px-2.5 py-1 text-[11px] font-semibold text-[#303839]">
+                    <span className="absolute bottom-2 left-2 rounded-[6px] bg-white px-2.5 py-1 text-[12px] font-semibold text-ink">
                       {countLabel}
                     </span>
                   )}

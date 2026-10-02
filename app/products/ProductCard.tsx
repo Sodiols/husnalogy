@@ -16,7 +16,7 @@ import { getMainMockupImage } from "./product-image";
 import { formatCurrency } from "@/lib/currency";
 
 const COLOR_SWATCH_CLASSES = {
-  beige: "bg-[#E6E6E6]",
+  beige: "bg-cream",
   black: "bg-[#303839]",
   blue: "bg-[#2f4d6e]",
   blush: "bg-[#e9cdc6]",
@@ -49,8 +49,8 @@ function getSwatches(product) {
     .flatMap((item) => String(item || "").split(/[,/]/))
     .map((item) => item.trim())
     .filter(Boolean);
-  const unique = [...new Set(values)].slice(0, 2);
-  return unique.length ? unique : ["White", "Charcoal"];
+  // Only colours the product actually lists; nothing is invented when empty.
+  return [...new Set(values)].slice(0, 3);
 }
 
 function swatchClass(color) {
@@ -123,7 +123,7 @@ export default function ProductCard({ product, hasOtherStyles = false, hasSuite 
   const originalPriceLabel = formatCurrency(product?.price, product.currency);
   const salePercent = getSalePercent(product);
   const hasOriginalPrice = Boolean(salePercent && originalPriceLabel);
-  const collectionLabel = product.collection || product.category || product.productType || "Husnalogy Collection";
+  const collectionLabel = product.collection || product.category || product.productType || "Husnalogy";
   const moreLikeThisHref = buildMoreLikeThisHref(product);
   const swatches = getSwatches(product);
   const isStockOut = Boolean(product.isStockOut);
@@ -133,111 +133,92 @@ export default function ProductCard({ product, hasOtherStyles = false, hasSuite 
   const isNewArrival = Boolean(product.isNew || product.isNewArrival);
 
   return (
-    <article className="product-card group min-w-0 text-[#303839]">
-      <div className="relative aspect-square overflow-hidden rounded-none bg-[#f8f6f1] ring-1 ring-[#303839]/8">
-        <Link href={`/products/${product.slug}`} className="relative block h-full w-full">
+    <article className="product-card group min-w-0 text-ink">
+      <div className="relative aspect-square overflow-hidden rounded-[10px] bg-cream">
+        <Link href={`/products/${product.slug}`} className="relative block h-full w-full" tabIndex={-1} aria-hidden="true">
           <Image
             src={image}
-            alt={product.title}
+            alt=""
             fill
             sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"
-            className={`object-cover transition-transform duration-500 ease-out group-hover:scale-[1.03] ${isStockOut ? "opacity-55" : ""}`}
+            className={`object-cover ${isStockOut ? "opacity-60" : ""}`}
           />
         </Link>
 
         {(isStockOut || isNewArrival || product.isBestSeller || isFeatured) && (
           <div className="pointer-events-none absolute left-2 top-2 flex flex-col items-start gap-1">
-            {isStockOut && (
-              <span className="rounded-none bg-[#303839]/85 px-2 py-1 text-[10px] font-bold uppercase tracking-[0.08em] text-white">
-                Stock Out
-              </span>
-            )}
-            {isNewArrival && (
-              <span className="rounded-none bg-white/95 px-2 py-1 text-[10px] font-bold uppercase tracking-[0.08em] text-[#303839]">
-                New Arrival
-              </span>
-            )}
-            {product.isBestSeller && (
-              <span className="rounded-none bg-[#303839] px-2 py-1 text-[10px] font-bold uppercase tracking-[0.08em] text-white">
-                Best Seller
-              </span>
-            )}
-            {isFeatured && (
-              <span className="rounded-none border border-[#303839]/70 bg-white/95 px-2 py-1 text-[10px] font-bold uppercase tracking-[0.08em] text-[#303839]">
-                Featured
-              </span>
-            )}
+            {isStockOut && <span className="badge badge-ink">Out of stock</span>}
+            {isNewArrival && <span className="badge">New</span>}
+            {product.isBestSeller && <span className="badge badge-ink">Best seller</span>}
+            {isFeatured && <span className="badge">Featured</span>}
           </div>
         )}
 
         <button
           type="button"
           onClick={toggleWishlist}
-          aria-label={wishlisted ? "Remove from wishlist" : "Add to wishlist"}
+          aria-label={wishlisted ? `Remove ${product.title} from wishlist` : `Add ${product.title} to wishlist`}
+          aria-pressed={wishlisted}
           data-shape="round"
-          className="absolute right-2 top-2 grid h-8 w-8 place-items-center rounded-full border border-[#303839]/10 bg-white/95 text-[13px] text-[#303839] opacity-0 transition-opacity duration-200 hover:bg-white focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839]/20 group-focus-within:opacity-100 group-hover:opacity-100"
+          className="absolute right-2 top-2 grid h-10 w-10 place-items-center rounded-full border border-line bg-white text-[15px] text-ink transition-colors hover:border-ink/50"
         >
-          <i className={wishlisted ? "fa-solid fa-heart text-[#303839]" : "fa-regular fa-heart"} />
+          <i className={wishlisted ? "fa-solid fa-heart" : "fa-regular fa-heart"} aria-hidden="true" />
         </button>
-
-        {salePercent && (
-          <span className="absolute bottom-2 left-2 rounded-none bg-white px-2 py-1 text-[11px] font-semibold leading-none text-[#303839]">
-            You save {salePercent}%
-          </span>
-        )}
       </div>
 
-      <div className="mt-3.5 px-0.5">
-        <div className="mb-2.5 flex items-center gap-1.5">
-          {swatches.map((color) => (
-            <span
-              key={color}
-              title={color}
-              className={`h-3.5 w-3.5 rounded-full border border-[#303839]/25 ring-1 ring-white ${swatchClass(color)}`}
-            />
-          ))}
-        </div>
-
-        <Link href={`/products/${product.slug}`} className="block min-w-0">
-          <h2 className="line-clamp-1 text-[14px] font-medium leading-5 tracking-[0.01em] text-[#303839]">
-            {product.title}
-          </h2>
-        </Link>
-
-        {currentPriceLabel && (
-          <div className="mt-1.5 flex min-w-0 flex-wrap items-baseline gap-x-1.5 gap-y-0.5 text-[14px] leading-4">
-            <span className="font-semibold text-[#303839]">{currentPriceLabel}</span>
-            {hasOriginalPrice && <span className="text-[13px] text-[#303839]/50 line-through">{originalPriceLabel}</span>}
-            {hasOriginalPrice && <span className="text-[13px] text-[#303839]/60">Comp. value</span>}
+      <div className="mt-3">
+        {swatches.length > 0 && (
+          <div className="mb-2 flex items-center gap-1.5" aria-label={`Colours: ${swatches.join(", ")}`}>
+            {swatches.map((color) => (
+              <span
+                key={color}
+                title={color}
+                className={`h-3.5 w-3.5 rounded-full border border-ink/25 ${swatchClass(color)}`}
+              />
+            ))}
           </div>
         )}
 
-        {isStockOut && (
-          <p className="mt-1 text-[12px] font-semibold leading-4 text-[#303839]/70">
-            {hasComingDays ? `Coming in ${comingInDays} day${comingInDays === 1 ? "" : "s"}` : "Stock Out"}
+        <h3 className="heading-card line-clamp-2 min-h-[2.7em]">
+          <Link href={`/products/${product.slug}`} className="hover:underline hover:underline-offset-4">
+            {product.title}
+          </Link>
+        </h3>
+
+        {currentPriceLabel && (
+          <p className="mt-1.5 flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5 text-[15px]">
+            <span className="price">{currentPriceLabel}</span>
+            {hasOriginalPrice && (
+              <>
+                <span className="text-[14px] text-muted line-through">
+                  <span className="sr-only">Was </span>
+                  {originalPriceLabel}
+                </span>
+                <span className="text-[13px] font-medium text-ink">Save {salePercent}%</span>
+              </>
+            )}
           </p>
         )}
 
-        <p className="mt-2 flex min-w-0 items-center gap-1.5 text-[12px] font-medium leading-4 text-[#303839]/70">
+        {isStockOut && (
+          <p className="mt-1 text-[13px] font-medium text-muted">
+            {hasComingDays ? `Back in ${comingInDays} day${comingInDays === 1 ? "" : "s"}` : "Currently unavailable"}
+          </p>
+        )}
+
+        <p className="mt-1.5 flex min-w-0 items-center gap-1.5 text-[13px] text-muted">
           <CollectionIcon />
           <span className="line-clamp-1">{collectionLabel}</span>
         </p>
 
-        {hasSuite ? (
+        {(hasSuite || hasOtherStyles) && (
           <Link
             href={moreLikeThisHref}
-            className="group mt-1 inline-flex items-center gap-1 text-[12px] font-semibold leading-4 text-black transition hover:text-[#303839]/70"
+            className="mt-2 inline-flex min-h-6 items-center gap-1 text-[13px] font-semibold text-ink underline-offset-4 hover:underline"
           >
-            Wedding Suite <RightArrowIcon className="group-hover:translate-x-1" />
+            {hasSuite ? "View the wedding suite" : "More like this"} <RightArrowIcon />
           </Link>
-        ) : hasOtherStyles ? (
-          <Link
-            href={moreLikeThisHref}
-            className="group mt-1 inline-flex items-center gap-1 text-[12px] font-semibold leading-4 text-black transition hover:text-[#303839]/70"
-          >
-            More like this <RightArrowIcon className="group-hover:translate-x-1" />
-          </Link>
-        ) : null}
+        )}
       </div>
     </article>
   );

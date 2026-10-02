@@ -1,5 +1,3 @@
-"use client";
-
 import Link from "next/link";
 import { BUSINESS_INFO } from "@/lib/launch-config";
 
@@ -7,99 +5,117 @@ const COLUMNS = [
   {
     title: "Shop",
     links: [
-      ["/weddings", "Wedding Invitations"],
-      ["/products", "Occasions"],
+      ["/weddings", "Wedding invitations"],
+      ["/save-the-dates", "Save the dates"],
+      ["/cards", "Cards"],
       ["/gifts", "Gifts"],
       ["/stationery", "Stationery"],
-      ["/products", "Explore All"],
+      ["/products", "Shop all"],
     ],
   },
   {
     title: "Help",
     links: [
-      ["/support#help-topics", "How It Works"],
+      ["/support#help-topics", "How it works"],
       ["/support#faq", "FAQs"],
-      ["/support#help-topics", "Shipping & Delivery"],
-      ["/support#help-topics", "Returns & Refunds"],
-      ["/contact", "Contact Us"],
+      ["/support#help-topics", "Shipping and delivery"],
+      ["/support#help-topics", "Returns and refunds"],
+      ["/contact", "Contact us"],
     ],
   },
   {
-    title: "About",
+    title: "Husnalogy",
     links: [
-      ["/about", "Our Story"],
-      ["/about", "Why Husnalogy"],
-      ["/products", "Reviews"],
+      ["/about", "About us"],
+      ["/collections", "All collections"],
+      ["/orders", "Track your orders"],
+      ["/account", "Your account"],
     ],
   },
 ];
 
 export default function Footer() {
   return (
-    <footer className="border-t border-[#303839]/8 bg-[#f8f6f1] text-[#303839]">
-      <div className="mx-auto max-w-[1480px] px-4 py-16 pb-28 sm:px-6 lg:px-10 lg:py-24 lg:pb-24">
-        <div className="grid grid-cols-2 gap-x-8 gap-y-12 sm:grid-cols-3 lg:grid-cols-[1.6fr_1fr_1fr_1fr_1.3fr] lg:gap-x-10">
-          {/* Brand */}
+    <footer className="bg-ink text-white">
+      {/* Bottom padding keeps the last row clear of the mobile tab bar and the Logy button. */}
+      <div className="page-container pb-28 pt-16 lg:pb-24 lg:pt-20">
+        <div className="grid grid-cols-2 gap-x-8 gap-y-12 sm:grid-cols-3 lg:grid-cols-[1.5fr_1fr_1fr_1fr_1.3fr] lg:gap-x-10">
           <div className="col-span-2 sm:col-span-3 lg:col-span-1">
             <Link href="/" className="inline-block" aria-label="Husnalogy home">
-              <img src="/Brand Kit/Logo-5.png" alt="Husnalogy" className="h-12 w-auto object-contain" />
+              <img src="/Brand Kit/Logo-5.png" alt="Husnalogy" className="h-11 w-auto object-contain brightness-0 invert" />
             </Link>
-            <p className="mt-5 max-w-[280px] text-[13px] leading-[1.8] text-[#303839]/60">
-              Timeless invitations, meaningful gifts and refined stationery crafted with intention for
-              life&rsquo;s special moments.
+            <p className="mt-5 max-w-[300px] text-[15px] leading-7 text-white/80">
+              Invitations, cards, gifts and stationery, personalized for the occasions that matter to you.
             </p>
-            <div className="mt-5 flex items-center gap-4 text-[#303839]/70">
-              <a href={BUSINESS_INFO.socialProfiles.instagram} target="_blank" rel="noopener noreferrer" aria-label="Instagram" className="transition hover:text-[#303839]">
-                <i className="fa-brands fa-instagram text-lg" />
-              </a>
-              <a href={BUSINESS_INFO.socialProfiles.facebook} target="_blank" rel="noopener noreferrer" aria-label="Facebook" className="transition hover:text-[#303839]">
-                <i className="fa-brands fa-facebook-f text-lg" />
-              </a>
-              <a href={`mailto:${BUSINESS_INFO.email}`} aria-label="Email" className="transition hover:text-[#303839]">
-                <i className="fa-regular fa-envelope text-lg" />
-              </a>
+            <div className="mt-6 flex items-center gap-2">
+              <SocialLink href={BUSINESS_INFO.socialProfiles.instagram} label="Husnalogy on Instagram" icon="fa-brands fa-instagram" external />
+              <SocialLink href={BUSINESS_INFO.socialProfiles.facebook} label="Husnalogy on Facebook" icon="fa-brands fa-facebook-f" external />
+              <SocialLink href={`mailto:${BUSINESS_INFO.email}`} label={`Email ${BUSINESS_INFO.email}`} icon="fa-regular fa-envelope" />
             </div>
           </div>
 
-          {/* Link columns */}
           {COLUMNS.map((col) => (
-            <div key={col.title}>
-              <h4 className="text-[11px] font-semibold uppercase tracking-[0.24em] text-[#303839]">{col.title}</h4>
-              <ul className="mt-6 space-y-3.5 text-[13px] text-[#303839]/65">
+            <nav key={col.title} aria-label={col.title}>
+              <h2 className="text-[13px] font-semibold uppercase tracking-[0.14em] text-white">{col.title}</h2>
+              <ul className="mt-5 space-y-3 text-[15px]">
                 {col.links.map(([href, label]) => (
                   <li key={label}>
-                    <a href={href} className="transition hover:text-[#303839]">{label}</a>
+                    <Link href={href} className="text-white/80 transition-colors hover:text-white hover:underline hover:underline-offset-4">
+                      {label}
+                    </Link>
                   </li>
                 ))}
               </ul>
-            </div>
+            </nav>
           ))}
 
-          {/* Support */}
-          <div>
-            <h4 className="text-[11px] font-semibold uppercase tracking-[0.24em] text-[#303839]">Support</h4>
-            <div className="mt-6 space-y-3.5 text-[13px] text-[#303839]/65">
-              <p className="flex items-center gap-2">
-                <i className="fa-solid fa-headset text-[#303839]" /> We&rsquo;re here to help
-              </p>
-              <a href={`mailto:${BUSINESS_INFO.email}`} className="block transition hover:text-[#303839]">{BUSINESS_INFO.email}</a>
-              <a href={BUSINESS_INFO.phoneHref} className="block transition hover:text-[#303839]">{BUSINESS_INFO.phone}</a>
-              <p>Mon &ndash; Fri, 10 AM &ndash; 6 PM (BST)</p>
-            </div>
+          <div className="col-span-2 sm:col-span-1">
+            <h2 className="text-[13px] font-semibold uppercase tracking-[0.14em] text-white">Get in touch</h2>
+            <ul className="mt-5 space-y-3 text-[15px] text-white/80">
+              <li>
+                <a href={`mailto:${BUSINESS_INFO.email}`} className="break-words transition-colors hover:text-white hover:underline hover:underline-offset-4">
+                  {BUSINESS_INFO.email}
+                </a>
+              </li>
+              <li>
+                <a href={BUSINESS_INFO.phoneHref} className="transition-colors hover:text-white hover:underline hover:underline-offset-4">
+                  {BUSINESS_INFO.phone}
+                </a>
+              </li>
+              {BUSINESS_INFO.supportHours && <li>{BUSINESS_INFO.supportHours}</li>}
+              <li className="leading-6">{BUSINESS_INFO.address}</li>
+            </ul>
           </div>
         </div>
 
-        <div className="mt-14 flex flex-col gap-4 border-t border-[#303839]/10 pt-7 text-xs tracking-[0.02em] text-[#303839]/55 sm:flex-row sm:items-center sm:justify-between">
-          <p>© 2026 Husnalogy. All rights reserved.</p>
-          <div className="flex items-center gap-3">
-            <a href="/privacy" className="transition hover:text-[#303839]">Privacy Policy</a>
-            <span className="text-[#303839]/25">|</span>
-            <a href="/terms" className="transition hover:text-[#303839]">Terms &amp; Conditions</a>
-            <span className="text-[#303839]/25">|</span>
-            <a href="/support" className="transition hover:text-[#303839]">Refund Policy</a>
-          </div>
+        <div className="mt-14 flex flex-col gap-4 border-t border-white/15 pt-6 text-[13px] text-white/70 sm:flex-row sm:items-center sm:justify-between">
+          <p>© {new Date().getFullYear()} {BUSINESS_INFO.name}. All rights reserved.</p>
+          <ul className="flex flex-wrap items-center gap-x-6 gap-y-2">
+            <li>
+              <Link href="/privacy" className="transition-colors hover:text-white">Privacy policy</Link>
+            </li>
+            <li>
+              <Link href="/terms" className="transition-colors hover:text-white">Terms and conditions</Link>
+            </li>
+            <li>
+              <Link href="/support#help-topics" className="transition-colors hover:text-white">Refund policy</Link>
+            </li>
+          </ul>
         </div>
       </div>
     </footer>
+  );
+}
+
+function SocialLink({ href, label, icon, external = false }) {
+  return (
+    <a
+      href={href}
+      aria-label={label}
+      {...(external ? { target: "_blank", rel: "noopener noreferrer" } : {})}
+      className="grid h-11 w-11 place-items-center rounded-full border border-white/25 text-white/85 transition-colors hover:border-white hover:text-white"
+    >
+      <i className={`${icon} text-base`} aria-hidden="true" />
+    </a>
   );
 }

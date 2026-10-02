@@ -55,10 +55,10 @@ const terms = [
 
 export default function TermsPage() {
   return (
-    <main className="bg-[#f8f6f1] text-[#303839]">
-      <section className="border-b border-[#303839]/8 bg-gradient-to-br from-[#f8f6f1] via-white to-[#f8f6f1] px-4 pb-12 pt-14 sm:px-6 lg:px-10">
+    <main className="bg-cream text-[#303839]">
+      <section className="border-b border-[#303839]/8 bg-gradient-to-br from-cream via-white to-cream px-4 pb-12 pt-14 sm:px-6 lg:px-10">
         <div className="mx-auto max-w-[1320px]">
-          <h1 className="font-display text-[2.9rem] font-medium leading-none text-[#303839] sm:text-[4.25rem]">
+          <h1 className="heading-page">
             Terms and Conditions
           </h1>
           <p className="mt-5 max-w-[680px] text-[0.98rem] leading-7 text-[#303839]/78">
@@ -73,7 +73,7 @@ export default function TermsPage() {
       <section className="px-4 py-6 sm:px-6 lg:px-10 lg:py-8">
         <div className="mx-auto max-w-[1320px] lg:hidden">
           <details className="rounded-none border border-[#303839]/10 bg-white p-3 shadow-[0_14px_36px_rgba(48,56,57,0.05)]">
-            <summary className="flex cursor-pointer list-none items-center justify-between rounded-none bg-[#f8f6f1] px-4 py-3 text-[0.78rem] font-extrabold uppercase tracking-[0.2em] text-[#303839]">
+            <summary className="flex cursor-pointer list-none items-center justify-between rounded-none bg-cream px-4 py-3 text-[0.78rem] font-extrabold uppercase tracking-[0.2em] text-[#303839]">
               Terms Sections
               <ChevronDownIcon className="h-4 w-4" />
             </summary>
@@ -83,7 +83,7 @@ export default function TermsPage() {
                   <li key={term.title}>
                     <a
                       href={`#${toId(term.title)}`}
-                      className="block rounded-none border border-[#303839]/8 bg-white px-4 py-3 text-sm font-semibold text-[#303839]/82 transition hover:bg-[#E6E6E6]/45"
+                      className="block rounded-none border border-[#303839]/8 bg-white px-4 py-3 text-sm font-semibold text-[#303839]/82 transition hover:bg-cream/45"
                     >
                       {term.title}
                     </a>
@@ -95,7 +95,7 @@ export default function TermsPage() {
         </div>
 
         <div className="mx-auto mt-6 grid max-w-[1320px] gap-6 lg:mt-0 lg:grid-cols-[310px_minmax(0,1fr)]">
-          <aside className="hidden rounded-none border border-[#303839]/8 bg-[#f8f6f1] p-4 shadow-[0_18px_50px_rgba(48,56,57,0.06)] lg:sticky lg:top-24 lg:block lg:self-start">
+          <aside className="hidden rounded-none border border-[#303839]/8 bg-cream p-4 shadow-[0_18px_50px_rgba(48,56,57,0.06)] lg:sticky lg:top-24 lg:block lg:self-start">
             <p className="px-4 pt-2 text-[0.72rem] font-extrabold uppercase tracking-[0.24em] text-[#303839]">
               Table of Contents
             </p>
@@ -119,7 +119,7 @@ export default function TermsPage() {
           </aside>
 
           <div className="min-w-0">
-            <section className="rounded-none border border-[#303839]/8 bg-[#E6E6E6] p-5 text-[#303839] shadow-[0_16px_42px_rgba(48,56,57,0.05)] sm:p-6">
+            <section className="rounded-none border border-[#303839]/8 bg-cream p-5 text-[#303839] shadow-[0_16px_42px_rgba(48,56,57,0.05)] sm:p-6">
               <p className="text-[0.78rem] font-extrabold uppercase tracking-[0.2em] text-[#303839]">
                 Important Order Notice
               </p>
@@ -136,7 +136,7 @@ export default function TermsPage() {
                   className="scroll-mt-28 rounded-none border border-[#303839]/10 bg-white p-5 shadow-[0_12px_34px_rgba(48,56,57,0.04)] sm:p-7"
                 >
                   <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:gap-5">
-                    <span className="inline-flex h-9 w-11 shrink-0 items-center justify-center rounded-none bg-[#f8f6f1] text-[0.8rem] font-extrabold tabular-nums text-[#303839]">
+                    <span className="inline-flex h-9 w-11 shrink-0 items-center justify-center rounded-none bg-cream text-[0.8rem] font-extrabold tabular-nums text-[#303839]">
                       {String(index + 1).padStart(2, "0")}
                     </span>
                     <div className="min-w-0">
@@ -155,7 +155,7 @@ export default function TermsPage() {
           </div>
         </div>
 
-        <section className="mx-auto mt-8 flex max-w-[1320px] flex-col gap-6 rounded-none border border-[#303839]/8 bg-[#f8f6f1] px-6 py-7 text-[#303839] shadow-[0_16px_42px_rgba(48,56,57,0.05)] sm:px-8 lg:flex-row lg:items-center lg:justify-between">
+        <section className="mx-auto mt-8 flex max-w-[1320px] flex-col gap-6 rounded-none border border-[#303839]/8 bg-cream px-6 py-7 text-[#303839] shadow-[0_16px_42px_rgba(48,56,57,0.05)] sm:px-8 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <p className="text-[0.72rem] font-extrabold uppercase tracking-[0.24em] text-[#303839]">
               Need Help?
@@ -171,13 +171,13 @@ export default function TermsPage() {
           <div className="grid gap-3 sm:grid-cols-2 lg:min-w-[440px]">
             <Link
               href="/contact"
-              className="inline-flex h-14 items-center justify-center rounded-none bg-[#303839] px-7 text-[0.88rem] font-extrabold text-white transition hover:bg-[#434c4d] focus:outline-none focus:ring-2 focus:ring-[#303839]/30 focus:ring-offset-2"
+              className="btn btn-primary btn-lg"
             >
               Contact Support
             </Link>
             <Link
               href="/support#faq"
-              className="inline-flex h-14 items-center justify-center rounded-none border border-[#303839]/60 bg-white/30 px-7 text-[0.88rem] font-extrabold text-[#303839] transition hover:bg-white focus:outline-none focus:ring-2 focus:ring-[#303839]/20 focus:ring-offset-2"
+              className="btn btn-secondary btn-lg"
             >
               Visit FAQ
             </Link>

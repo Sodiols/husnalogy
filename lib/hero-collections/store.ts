@@ -279,9 +279,12 @@ export async function getFeaturedHeroCollection() {
   const resolved = await resolveHeroImages(collection.sourceCollectionId);
   if (!resolved || !resolved.items.length) return null;
 
-  // Never emit an empty image src (next/image would throw): pad the four slots
-  // by cycling through whatever images the collection provides.
+  // `gallery` holds each real product image exactly once (up to four); the
+  // storefront lays it out by count instead of repeating images to fill slots.
+  // The padded single-image fields below remain for the admin preview, which
+  // expects all four (and next/image must never receive an empty src).
   const pool = resolved.items;
+  const gallery = pool.slice(0, 4);
   const pick = (index: number) => pool[index] || pool[index % pool.length] || pool[0];
   const main = pick(0);
   const one = pick(1);
@@ -294,10 +297,13 @@ export async function getFeaturedHeroCollection() {
     sourceCollectionSlug: resolved.collectionSlug,
     itemCount: resolved.itemCount,
     collectionUrl: `/collections/${resolved.collectionSlug}`,
-    primaryButtonText: "Browse all collections",
-    primaryButtonUrl: "/collections",
-    secondaryLinkText: "Buy this collection",
-    secondaryLinkUrl: `/collections/${resolved.collectionSlug}`,
+    gallery,
+    // The featured collection is the primary shopping action; the index of
+    // every collection is the secondary one.
+    primaryButtonText: "Shop this collection",
+    primaryButtonUrl: `/collections/${resolved.collectionSlug}`,
+    secondaryLinkText: "Browse all collections",
+    secondaryLinkUrl: "/collections",
     mainImage: main.image,
     mainImageHref: main.href,
     thumbnailOne: one.image,

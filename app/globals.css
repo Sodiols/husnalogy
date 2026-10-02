@@ -1,36 +1,54 @@
 @import "tailwindcss";
 
 /* ---------------------------------------------------------------------------
-   Husnalogy design tokens — monochrome luxury system.
+   Husnalogy brand system — the single source for storefront styling.
 
-   Backgrounds:  white (primary) · #F8F6F1 cream (secondary, ~30% of surfaces)
-                 #ECE9E1 (single deeper neutral: hovers, chips, pressed states)
-   Ink:          #303839 for text, headings, borders, icons, buttons
-   Black:        reserved for hover/contrast peaks only
-   #303839 is never a full-section background.
+   Surfaces   white (shopping surface) · #F8F6F1 cream (intentional alternate
+              sections, supporting surfaces, hover, pressed and selected states)
+              · #ECE9E1 cream-deep (image placeholders) · #F4ECEC blush is
+              defined but unused in the storefront
+   Ink        #303839 for text, headings, icons and primary actions
+   Accent     #D4AF37 gold, sparingly: rules, small marks. Never small text or
+              control fills (insufficient contrast on white).
+   Status     error / success / warning keep their own meaning-carrying colours.
+
+   Type       Cormorant Garamond for editorial headings (--font-display).
+              Gotham is the brand interface face; until its licensed files are
+              added to app/brand-fonts (see README there), --font-body resolves
+              to the self-hosted Inter fallback.
+   Spacing    4 · 8 · 12 · 16 · 24 · 32 · 48 · 64 · 80 px (Tailwind 1 · 2 · 3 ·
+              4 · 6 · 8 · 12 · 16 · 20).
 --------------------------------------------------------------------------- */
 @theme {
   --color-charcoal: #303839;
   --color-ink: #303839;
+  --color-ink-hover: #434c4d;
+  --color-muted: #5b6364;
   --color-cream: #f8f6f1;
+  --color-blush: #f4ecec;
+  --color-gold: #d4af37;
+  --color-line: #ebe6e6;
+  --color-field: #d3cece;
+  --color-error: #b42318;
+  --color-success: #2f6b3f;
+  --color-warning: #8a5a00;
   --color-cream-deep: #ece9e1;
-  --color-beige: #E6E6E6;
+  --color-beige: #e6e6e6;
   --color-purewhite: #ffffff;
   --color-pureblack: #000000;
-  --font-display: var(--font-cormorant), "Cormorant Garamond", serif;
-  --font-body: var(--font-inter), "Inter", sans-serif;
-  --shadow-soft: 0 18px 50px rgba(48, 56, 57, 0.08);
-  --shadow-premium: 0 30px 90px rgba(48, 56, 57, 0.14);
-  --shadow-card: 0 10px 30px rgba(48, 56, 57, 0.06);
 
-  /* Soft radius system — one subtle value shared by buttons, inputs, cards,
-     images, panels and dropdowns so the whole site feels visually connected. */
+  --font-display: var(--font-cormorant), "Cormorant Garamond", Georgia, serif;
+  --font-body: var(--font-inter), "Inter", Arial, sans-serif;
+
+  --shadow-soft: 0 12px 32px rgba(48, 56, 57, 0.08);
+  --shadow-premium: 0 16px 40px rgba(48, 56, 57, 0.1);
+  --shadow-card: 0 8px 24px rgba(48, 56, 57, 0.06);
+  --shadow-overlay: 0 18px 48px rgba(48, 56, 57, 0.16);
+
+  /* Controls (buttons, fields, chips) share one radius; cards and images
+     share a slightly softer one. */
   --radius: 10px;
-  --radius-sm: 8px;
-
-  /* Primary buttons rest on ink and lift to this soft, faded dark on hover —
-     never pure black — for a smoother, more premium interaction. */
-  --color-ink-hover: #434c4d;
+  --radius-sm: 6px;
 }
 
 html,
@@ -47,9 +65,365 @@ body {
   text-rendering: optimizeLegibility;
 }
 
+/* Sticky header (64px mobile / 116px desktop) must never cover anchor targets
+   or focused controls. */
+html {
+  scroll-padding-top: 80px;
+}
+
+@media (min-width: 1024px) {
+  html {
+    scroll-padding-top: 132px;
+  }
+}
+
 /* Display serif carries the brand voice: tight, calm, slightly condensed. */
 .font-display {
   letter-spacing: -0.01em;
+}
+
+/* ---------------------------------------------------------------------------
+   Shared components. Plain classes in the components layer, so any Tailwind
+   utility on the same element still wins without !important.
+--------------------------------------------------------------------------- */
+@layer components {
+  /* Layout ---------------------------------------------------------------- */
+  .page-container {
+    width: 100%;
+    max-width: 1480px;
+    margin-inline: auto;
+    padding-inline: 16px;
+  }
+
+  .section {
+    padding-block: 48px;
+  }
+
+  .section-tight {
+    padding-block: 32px;
+  }
+
+  @media (min-width: 640px) {
+    .page-container {
+      padding-inline: 24px;
+    }
+
+    .section {
+      padding-block: 64px;
+    }
+
+    .section-tight {
+      padding-block: 48px;
+    }
+  }
+
+  @media (min-width: 1024px) {
+    .page-container {
+      padding-inline: 40px;
+    }
+
+    .section {
+      padding-block: 80px;
+    }
+  }
+
+  /* Adjacent sections on the same surface share one gap instead of two. */
+  .section + .section.section-continues,
+  .section-tight + .section.section-continues {
+    padding-top: 0;
+  }
+
+  /* Typography ------------------------------------------------------------ */
+  .eyebrow {
+    font-family: var(--font-body);
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.14em;
+    line-height: 1.4;
+    text-transform: uppercase;
+    color: var(--color-muted);
+  }
+
+  .heading-hero,
+  .heading-page,
+  .heading-section {
+    font-family: var(--font-display);
+    font-weight: 500;
+    letter-spacing: -0.01em;
+    color: var(--color-ink);
+    text-wrap: balance;
+  }
+
+  .heading-hero {
+    font-size: clamp(2.75rem, 1.9rem + 3.4vw, 4.5rem);
+    line-height: 1.04;
+  }
+
+  .heading-page {
+    font-size: clamp(2.25rem, 1.85rem + 1.7vw, 3.25rem);
+    line-height: 1.08;
+  }
+
+  .heading-section {
+    font-size: clamp(1.875rem, 1.6rem + 1.1vw, 2.5rem);
+    line-height: 1.12;
+  }
+
+  .heading-card {
+    font-family: var(--font-body);
+    font-size: 15px;
+    font-weight: 600;
+    line-height: 1.35;
+    color: var(--color-ink);
+  }
+
+  .text-lead {
+    font-size: 17px;
+    line-height: 1.75;
+    color: var(--color-muted);
+  }
+
+  .text-caption {
+    font-size: 13px;
+    line-height: 1.5;
+    color: var(--color-muted);
+  }
+
+  .price {
+    font-family: var(--font-body);
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    color: var(--color-ink);
+  }
+
+  /* Buttons --------------------------------------------------------------- */
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    min-height: 48px;
+    padding: 0 24px;
+    border: 1px solid transparent;
+    border-radius: var(--radius-sm);
+    font-family: var(--font-body);
+    font-size: 14px;
+    font-weight: 600;
+    line-height: 1.2;
+    text-align: center;
+    text-decoration: none;
+    white-space: nowrap;
+    cursor: pointer;
+    transition:
+      background-color 180ms ease,
+      border-color 180ms ease,
+      color 180ms ease;
+  }
+
+  .btn:focus-visible {
+    outline: 1.5px solid var(--color-ink);
+    outline-offset: 2px;
+  }
+
+  .btn:disabled,
+  .btn[aria-disabled="true"] {
+    cursor: not-allowed;
+    opacity: 0.5;
+  }
+
+  .btn[aria-busy="true"] {
+    cursor: progress;
+  }
+
+  .btn-primary {
+    background-color: var(--color-ink);
+    border-color: var(--color-ink);
+    color: #ffffff;
+  }
+
+  .btn-primary:hover:not(:disabled):not([aria-disabled="true"]) {
+    background-color: var(--color-ink-hover);
+    border-color: var(--color-ink-hover);
+  }
+
+  .btn-secondary {
+    background-color: #ffffff;
+    border-color: rgba(48, 56, 57, 0.35);
+    color: var(--color-ink);
+  }
+
+  .btn-secondary:hover:not(:disabled):not([aria-disabled="true"]) {
+    background-color: var(--color-cream);
+    border-color: rgba(48, 56, 57, 0.6);
+  }
+
+  .btn-text {
+    min-height: 0;
+    padding: 4px 0;
+    border: 0;
+    background: transparent;
+    color: var(--color-ink);
+    text-decoration: underline;
+    text-decoration-color: rgba(48, 56, 57, 0.35);
+    text-underline-offset: 4px;
+  }
+
+  .btn-text:hover {
+    text-decoration-color: currentColor;
+  }
+
+  .btn-sm {
+    min-height: 40px;
+    padding: 0 16px;
+    font-size: 13px;
+  }
+
+  .btn-lg {
+    min-height: 54px;
+    padding: 0 32px;
+    font-size: 15px;
+  }
+
+  .btn-block {
+    width: 100%;
+  }
+
+  /* Form fields ----------------------------------------------------------- */
+  .field-label {
+    display: block;
+    margin-bottom: 6px;
+    font-size: 13px;
+    font-weight: 600;
+    line-height: 1.4;
+    color: var(--color-ink);
+  }
+
+  .field-label .field-optional {
+    font-weight: 400;
+    color: var(--color-muted);
+  }
+
+  .field {
+    display: block;
+    width: 100%;
+    min-height: 48px;
+    padding: 12px 14px;
+    border: 1px solid var(--color-field);
+    border-radius: var(--radius-sm);
+    background-color: #ffffff;
+    font-family: var(--font-body);
+    font-size: 15px;
+    line-height: 1.4;
+    color: var(--color-ink);
+    transition:
+      border-color 160ms ease,
+      box-shadow 160ms ease;
+  }
+
+  .field::placeholder {
+    color: #747b7c;
+    opacity: 1;
+  }
+
+  .field:hover {
+    border-color: #aaa4a4;
+  }
+
+  .field:focus,
+  .field:focus-visible {
+    border-color: rgba(48, 56, 57, 0.7);
+    box-shadow: 0 0 0 2px rgba(48, 56, 57, 0.1);
+    outline: none;
+  }
+
+  .field[aria-invalid="true"] {
+    border-color: var(--color-error);
+  }
+
+  .field[aria-invalid="true"]:focus {
+    box-shadow: 0 0 0 2px rgba(180, 35, 24, 0.12);
+  }
+
+  textarea.field {
+    min-height: 144px;
+    resize: vertical;
+  }
+
+  .field-hint {
+    margin-top: 6px;
+    font-size: 13px;
+    line-height: 1.5;
+    color: var(--color-muted);
+  }
+
+  .field-error {
+    display: flex;
+    align-items: flex-start;
+    gap: 6px;
+    margin-top: 6px;
+    font-size: 13px;
+    font-weight: 500;
+    line-height: 1.5;
+    color: var(--color-error);
+  }
+
+  /* Badges and status notes ---------------------------------------------- */
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    min-height: 24px;
+    padding: 0 8px;
+    border: 1px solid var(--color-line);
+    border-radius: 4px;
+    background-color: #ffffff;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    line-height: 1;
+    color: var(--color-ink);
+  }
+
+  .badge-ink {
+    border-color: var(--color-ink);
+    background-color: var(--color-ink);
+    color: #ffffff;
+  }
+
+  .notice {
+    padding: 12px 16px;
+    border: 1px solid var(--color-line);
+    border-radius: var(--radius-sm);
+    background-color: #ffffff;
+    font-size: 14px;
+    line-height: 1.6;
+    color: var(--color-ink);
+  }
+
+  .notice-error {
+    border-color: rgba(180, 35, 24, 0.35);
+    background-color: #fdf3f2;
+    color: var(--color-error);
+  }
+
+  .notice-success {
+    border-color: rgba(47, 107, 63, 0.35);
+    background-color: #f2f8f3;
+    color: var(--color-success);
+  }
+
+  /* Surfaces -------------------------------------------------------------- */
+  .surface-card {
+    border: 1px solid var(--color-line);
+    border-radius: var(--radius);
+    background-color: #ffffff;
+  }
+
+  .gold-rule {
+    display: block;
+    width: 40px;
+    height: 1px;
+    background-color: var(--color-gold);
+  }
 }
 
 .no-scrollbar::-webkit-scrollbar {
@@ -78,42 +452,51 @@ button {
   cursor: pointer;
 }
 
-/* Site-wide: buttons carry a small, consistent radius for a smooth premium feel. */
+/* Legacy normalisation: every storefront button and field shares the control
+   radius (--radius-sm). Markup written before the shared .btn/.field classes
+   relies on these; icon-only round buttons opt out with data-shape="round". */
 button {
   border-radius: var(--radius-sm) !important;
 }
 
-/* Site-wide: form fields stay squared; focus stays quiet. */
+button[data-shape="round"] {
+  border-radius: 9999px !important;
+}
+
 input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
 textarea,
 select {
+  border-radius: var(--radius-sm) !important;
+}
+
+/* Fields embedded inside a styled wrapper (the header search pill) stay square
+   and let the wrapper draw the shape and focus state. */
+input.input-bare,
+textarea.input-bare {
   border-radius: 0 !important;
 }
 
-/* Comfortable default padding for form fields. Low specificity on purpose so
-   any explicit Tailwind px-/py- utility still overrides it — this only gives
-   breathing room to fields that don't set their own. */
-input,
-textarea,
-select {
-  padding: 0.6rem 0.85rem;
-}
+/* Defaults live in the base layer: unlayered CSS would beat every Tailwind
+   utility and shared component class, whatever its specificity. */
+@layer base {
+  /* Breathing room for fields that don't set their own padding. */
+  input,
+  textarea,
+  select {
+    padding: 0.6rem 0.85rem;
+  }
 
-input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):focus,
-textarea:focus,
-select:focus {
-  border-color: rgba(48, 56, 57, 0.15) !important;
-  box-shadow: none !important;
-  outline: none !important;
-  --tw-ring-color: transparent !important;
-  --tw-ring-shadow: 0 0 #0000 !important;
-  --tw-ring-offset-shadow: 0 0 #0000 !important;
-}
+  /* Consistent keyboard focus across the whole site; components and
+     utilities with their own focus treatment override it. */
+  :focus-visible {
+    outline: 1.5px solid rgba(48, 56, 57, 0.7);
+    outline-offset: 2px;
+  }
 
-/* Exception: icon-only circular buttons (wishlist toggle, carousel arrows, close
-   buttons, quantity steppers, nav icons) opt back into a full circle via this marker. */
-button[data-shape="round"] {
-  border-radius: 9999px !important;
+  input.input-bare:focus-visible,
+  textarea.input-bare:focus-visible {
+    outline: none;
+  }
 }
 
 /* Soften every previously-squared surface — cards, product cards, image
@@ -128,16 +511,16 @@ button[data-shape="round"] {
   border-radius: 0 !important;
 }
 
-input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
-textarea,
-select {
-  border-radius: 0 !important;
-}
-
-/* Quiet, consistent keyboard focus across the whole site. */
-:focus-visible {
-  outline: 1.5px solid rgba(48, 56, 57, 0.55);
-  outline-offset: 3px;
+/* Visitors who prefer reduced motion get instant state changes everywhere. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }
 
 .cursor-image-expand,
@@ -145,10 +528,6 @@ select {
   cursor: url("/icons/expand-cursor.svg") 24 24, zoom-in;
 }
 
-
-header nav div button {
-  font-size: 15px;
-}
 
 /* Home hero: a quiet staggered rise on load. Defined only under
    no-preference so reduced-motion visitors see everything immediately with
@@ -169,63 +548,37 @@ header nav div button {
   }
 }
 
-header nav a {
-  font-size: 15px;
-}
-
-/* Checkout: rounded fields and quiet focus states. Scoped to .checkout-scope
-   so the rest of the site keeps its squared house style. */
-.checkout-scope {
-  --checkout-mist: #E6E6E6;
-}
-
-.checkout-scope button {
-  border-radius: 14px !important;
-}
-
-.checkout-scope input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
-.checkout-scope textarea,
-.checkout-scope select {
-  border-radius: 14px !important;
-}
-
+/* Checkout uses the shared field and button system; these rules only cover
+   checkout-specific markup (.checkout-field, .checkout-checkbox). */
 .checkout-scope .checkout-field {
-  border: 1px solid rgba(48, 56, 57, 0.12);
-  background: #E6E6E6;
+  border: 1px solid var(--color-field);
+  background: #ffffff;
   transition:
-    border-color 180ms ease,
-    background-color 180ms ease;
+    border-color 160ms ease,
+    box-shadow 160ms ease;
 }
 
 .checkout-scope .checkout-field:hover {
-  border-color: rgba(48, 56, 57, 0.18);
+  border-color: #aaa4a4;
 }
 
-.checkout-scope input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):focus,
-.checkout-scope textarea:focus,
-.checkout-scope select:focus {
-  border-color: rgba(48, 56, 57, 0.22) !important;
-  outline: none !important;
-  box-shadow: none !important;
+.checkout-scope .checkout-field:focus,
+.checkout-scope .checkout-field:focus-visible {
+  border-color: rgba(48, 56, 57, 0.7);
+  box-shadow: 0 0 0 2px rgba(48, 56, 57, 0.1);
+  outline: none;
 }
 
-.checkout-scope input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):focus-visible,
-.checkout-scope textarea:focus-visible,
-.checkout-scope select:focus-visible {
-  outline: none !important;
-}
-
-.checkout-scope button:focus-visible {
-  outline: 1px solid rgba(48, 56, 57, 0.24);
-  outline-offset: 2px;
+.checkout-scope .checkout-field[aria-invalid="true"] {
+  border-color: var(--color-error);
 }
 
 .checkout-scope .checkout-checkbox {
   appearance: none;
   display: grid;
   place-content: center;
-  border: 1px solid rgba(48, 56, 57, 0.26);
-  border-radius: 6px !important;
+  border: 1px solid var(--color-field);
+  border-radius: 4px !important;
   background: #ffffff;
   transition:
     background-color 160ms ease,
@@ -244,35 +597,26 @@ header nav a {
 }
 
 .checkout-scope .checkout-checkbox:checked {
-  border-color: #303839;
-  background: #303839;
+  border-color: var(--color-ink);
+  background: var(--color-ink);
 }
 
 .checkout-scope .checkout-checkbox:checked::before {
   transform: scale(1);
 }
 
-.checkout-scope .checkout-checkbox:focus {
-  box-shadow: none !important;
-}
-
 .checkout-scope .checkout-checkbox:focus-visible {
-  outline: 1px solid rgba(48, 56, 57, 0.24);
+  outline: 2px solid var(--color-ink);
   outline-offset: 2px;
 }
 
 .checkout-scope .checkout-primary-button {
-  background: #303839;
-  box-shadow: none !important;
-  transition:
-    background-color 200ms ease,
-    opacity 200ms ease;
+  background: var(--color-ink);
+  transition: background-color 180ms ease;
 }
 
 .checkout-scope .checkout-primary-button:hover:not(:disabled) {
-  background: #303839;
-  opacity: 0.82;
-  box-shadow: none !important;
+  background: var(--color-ink-hover);
 }
 
 /* Site-wide image behavior: artwork stays at its natural size on hover.
@@ -294,7 +638,7 @@ header nav a {
 [data-customizer-root],
 [data-admin-customizer] {
   --customizer-ink: #303839;
-  --customizer-paper: #F8F6F1;
+  --customizer-paper: #f8f6f1;
   --customizer-accent: #D4AF37;
   color-scheme: light;
   overscroll-behavior: none;
@@ -306,7 +650,7 @@ header nav a {
 [data-admin-customizer] input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
 [data-admin-customizer] textarea,
 [data-admin-customizer] select {
-  border-radius: 10px !important;
+  border-radius: var(--radius-sm) !important;
 }
 
 [data-customizer-root] select,

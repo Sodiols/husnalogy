@@ -173,7 +173,7 @@ function PhotoLibrary({
         className="mt-2 w-full rounded-full border border-[#303839]/12 px-3 py-1.5 text-xs text-[#303839] outline-none placeholder:text-[#303839]/40 focus:border-[#303839]/35"
       />
       {batch && (
-        <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-[#F8F6F1]" role="progressbar" aria-label="Photo upload progress" aria-valuemin={0} aria-valuemax={batch.total} aria-valuenow={batch.index}>
+        <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-cream" role="progressbar" aria-label="Photo upload progress" aria-valuemin={0} aria-valuemax={batch.total} aria-valuenow={batch.index}>
           <span className="block h-full rounded-full bg-[#D4AF37] transition-[width] duration-200" style={{ width: `${Math.round((batch.index / batch.total) * 100)}%` }} />
         </div>
       )}

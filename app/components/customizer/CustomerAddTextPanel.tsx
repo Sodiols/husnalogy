@@ -74,7 +74,7 @@ export default function CustomerAddTextPanel({
                 className={`flex min-h-14 cursor-pointer items-center gap-3 rounded-xl border px-3 py-2 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] ${
                   active
                     ? "border-[#D4AF37] bg-[#D4AF37]/8"
-                    : "border-[#303839]/10 hover:border-[#D4AF37]/60 hover:bg-[#F8F6F1]"
+                    : "border-[#303839]/10 hover:border-[#D4AF37]/60 hover:bg-cream"
                 }`}
               >
                 <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-[#303839] font-display text-base text-white" aria-hidden>

@@ -96,7 +96,7 @@ function AuthCallbackFinishInner() {
   }, [router, searchParams]);
 
   return (
-    <main className="grid min-h-[60vh] place-items-center bg-[#f8f6f1] px-4 text-center text-[#303839]">
+    <main className="grid min-h-[60vh] place-items-center bg-cream px-4 text-center text-[#303839]">
       <p className="text-sm font-semibold text-[#303839]/70">
         {error || "Verifying your link..."}
       </p>

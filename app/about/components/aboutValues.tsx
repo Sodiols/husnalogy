@@ -55,7 +55,7 @@ export default function AboutValues() {
             <Reveal
               key={value.label}
               delay={index * 150}
-              className="bg-[#f8f6f1] px-[clamp(1.5rem,4vw,3rem)] py-[clamp(2rem,4vh,4rem)]"
+              className="bg-cream px-[clamp(1.5rem,4vw,3rem)] py-[clamp(2rem,4vh,4rem)]"
             >
               <svg
                 viewBox="0 0 60 48"

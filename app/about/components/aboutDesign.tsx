@@ -91,7 +91,7 @@ function DesignCard({ item, index }) {
       <div
         ref={ref}
         style={{ transform: `translateY(${offset}px)` }}
-        className="h-full rounded-none border border-[#E6E6E6]/20 bg-[#ece9e1] p-[clamp(1.5rem,3vw,2.5rem)]"
+        className="h-full rounded-none border border-line/20 bg-cream-deep p-[clamp(1.5rem,3vw,2.5rem)]"
       >
         <svg
           viewBox="0 0 56 56"
@@ -113,7 +113,7 @@ function DesignCard({ item, index }) {
 
 export default function AboutDesign() {
   return (
-    <section className="lg:sticky lg:top-0 z-[3] flex min-h-[100svh] flex-col justify-center bg-[#f8f6f1] py-[clamp(2.5rem,7vh,7rem)]">
+    <section className="lg:sticky lg:top-0 z-[3] flex min-h-[100svh] flex-col justify-center bg-cream py-[clamp(2.5rem,7vh,7rem)]">
       <div className="max-w-6xl px-6 mx-auto">
         <Reveal className="max-w-xl">
           <span className="font-body text-xs uppercase tracking-[0.25em] text-[#303839]">

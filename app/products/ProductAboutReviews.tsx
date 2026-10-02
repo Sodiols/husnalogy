@@ -261,7 +261,7 @@ export default function ProductAboutReviews({
             </h3>
 
             <p className="mt-3 max-w-xl text-sm leading-7 text-[#303839]/80">
-              {product.aboutDesign || product.description || "This design keeps the focus on your names, your date, and the feeling of the moment with a simple premium layout."}
+              {product.aboutDesign || product.description || "This design keeps the focus on your names, your date, and the feeling of the moment with a simple, considered layout."}
             </p>
           </div>
         </div>
@@ -291,7 +291,7 @@ export default function ProductAboutReviews({
                   return (
                     <div key={star} className="flex items-center gap-3">
                       <span className="w-4 font-semibold">{star}</span>
-                      <div className="h-5 flex-1 rounded-none bg-[#ece9e1]">
+                      <div className="h-5 flex-1 rounded-none bg-cream-deep">
                         <div
                           className="h-full rounded-none bg-[#303839]"
                           style={{ width: `${width}%` }}
@@ -307,7 +307,7 @@ export default function ProductAboutReviews({
               type="button"
               onClick={handleReviewButton}
               disabled={authLoading || eligibility.loading || !eligibility.reviewsEnabled || Boolean(user && !eligibility.eligible)}
-              className="mt-6 h-14 w-full rounded-full bg-[#303839] text-sm font-bold text-white transition hover:bg-[#303839] disabled:cursor-not-allowed disabled:opacity-55"
+              className="btn btn-primary btn-lg btn-block mt-6"
             >
               {reviewButtonText}
             </button>
@@ -316,7 +316,7 @@ export default function ProductAboutReviews({
               {eligibility.message || "Reviews are accepted only from signed in customers whose order for this product has been delivered."}
             </p>
 
-            {status.error && <p className="mt-4 rounded-none bg-red-50 px-4 py-3 text-sm font-bold text-red-600">{status.error}</p>}
+            {status.error && <p role="alert" className="notice notice-error mt-4">{status.error}</p>}
             {status.success && <p className="mt-4 rounded-none bg-green-50 px-4 py-3 text-sm font-bold text-green-700">{status.success}</p>}
 
             <div
@@ -365,7 +365,7 @@ export default function ProductAboutReviews({
                   <button
                     type="submit"
                     disabled={status.loading}
-                    className="h-12 w-full rounded-full bg-[#303839] text-sm font-bold text-white transition hover:bg-[#303839] disabled:opacity-60"
+                    className="btn btn-primary btn-block"
                   >
                     {status.loading ? "Saving..." : "Submit verified review"}
                   </button>
@@ -398,7 +398,7 @@ function ReviewCard({ review }) {
       <div className="flex flex-wrap items-center gap-3">
         <p className="text-lg">{"★".repeat(rating)}{"☆".repeat(5 - rating)}</p>
         {review.verifiedPurchase && (
-          <span className="rounded-full bg-[#E6E6E6] px-3 py-1 text-xs font-bold text-[#303839]/70">
+          <span className="rounded-full bg-cream px-3 py-1 text-xs font-bold text-[#303839]/70">
             Verified purchase
           </span>
         )}

@@ -35,7 +35,7 @@ export default function ShopByTheme() {
                 href={theme.href}
                 className="group flex h-full flex-col items-center text-center"
               >
-                <div className="relative h-[130px] w-[130px] overflow-hidden rounded-full bg-[#f8f6f1] sm:h-[150px] sm:w-[150px] lg:h-[160px] lg:w-[160px]">
+                <div className="relative h-[130px] w-[130px] overflow-hidden rounded-full bg-cream sm:h-[150px] sm:w-[150px] lg:h-[160px] lg:w-[160px]">
                   <Image
                     src={theme.image}
                     alt={`${theme.title} wedding theme`}

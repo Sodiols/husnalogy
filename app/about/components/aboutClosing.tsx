@@ -11,7 +11,7 @@ export default function AboutClosing() {
   return (
     <section
       ref={ref}
-      className="lg:sticky lg:top-0 z-[6] flex min-h-[65svh] flex-col items-center justify-center overflow-hidden border-t border-[#303839]/8 bg-[#f8f6f1] px-6 py-[clamp(2.5rem,7vh,6rem)]"
+      className="lg:sticky lg:top-0 z-[6] flex min-h-[65svh] flex-col items-center justify-center overflow-hidden border-t border-[#303839]/8 bg-cream px-6 py-[clamp(2.5rem,7vh,6rem)]"
     >
       {/* Soft neutral glow for depth */}
       <div

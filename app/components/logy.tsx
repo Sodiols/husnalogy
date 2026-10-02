@@ -1,6 +1,14 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
+
+// Starter questions shown while the conversation is new.
+const SUGGESTIONS = [
+  "Help me choose wedding invitations",
+  "Gift ideas for a birthday",
+  "Which paper options do you offer?",
+];
 
 export default function Logy({ askOpen, setAskOpen }) {
   const [message, setMessage] = useState("");
@@ -54,8 +62,8 @@ export default function Logy({ askOpen, setAskOpen }) {
       .trim();
   };
 
-  const sendMessage = async () => {
-    const cleanMessage = message.trim();
+  const sendMessage = async (text?: string) => {
+    const cleanMessage = (typeof text === "string" ? text : message).trim();
 
     if (!cleanMessage || loading) return;
 
@@ -128,104 +136,159 @@ export default function Logy({ askOpen, setAskOpen }) {
 
   return (
     <>
-      <button type="button" onClick={toggleLogy} className="group fixed bottom-[76px] right-5 z-30 overflow-hidden rounded-full bg-[#303839] px-6 py-3 text-[12px] font-semibold uppercase tracking-[0.18em] text-white transition-all duration-300 hover:scale-[1.02] sm:right-6 sm:px-7 sm:py-3.5 lg:bottom-6" aria-label="Open Logy assistant">
-        <span className="absolute inset-0 -translate-x-full rounded-none bg-white transition-transform duration-500 ease-out group-hover:translate-x-0" />
-
-        <span className="relative z-10 duration-500 group-hover:text-[#303839] font-bold">
-          Logy
-        </span>
+      {/* Sits above the mobile tab bar (60px + safe area) and in the corner on
+          desktop, clear of page content and purchase controls. */}
+      <button
+        type="button"
+        onClick={toggleLogy}
+        data-shape="round"
+        aria-expanded={askOpen}
+        className="fixed bottom-[calc(72px+env(safe-area-inset-bottom))] right-4 z-30 inline-flex h-12 w-12 items-center justify-center gap-2 rounded-full border border-ink bg-ink text-[14px] sm:h-11 sm:w-auto sm:px-4 font-semibold text-white shadow-[var(--shadow-card)] transition-colors duration-200 hover:bg-ink-hover sm:right-6 lg:bottom-6"
+        aria-label={askOpen ? "Close Logy assistant" : "Open Logy assistant"}
+      >
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12Z" />
+        </svg>
+        <span className="hidden sm:inline">Ask Logy</span>
       </button>
 
       {askOpen && (
         <section
-          className="fixed inset-x-3 bottom-[144px] z-50 mx-auto flex max-h-[78vh] w-auto max-w-[420px] flex-col overflow-hidden rounded-none border border-[#E6E6E6]/20 bg-white shadow-[0_30px_90px_rgba(0,0,0,0.22)] sm:inset-x-auto sm:right-6 sm:w-[420px] sm:rounded-none lg:bottom-24"
-          aria-label="Logy assistant"
+          role="dialog"
+          aria-modal="false"
+          aria-labelledby="logy-title"
+          className="fixed inset-x-3 bottom-[calc(128px+env(safe-area-inset-bottom))] z-50 mx-auto flex max-h-[72vh] w-auto max-w-[400px] flex-col overflow-hidden rounded-[10px] border border-line bg-white shadow-[var(--shadow-overlay)] sm:inset-x-auto sm:right-6 sm:w-[400px] lg:bottom-20"
         >
-          <div className="bg-[#303839] p-4 text-white sm:p-5">
-            <div className="flex items-center justify-between gap-4">
-              <div>
-                <h2 className="text-xl font-semibold leading-none sm:text-2xl">
-                  Chat with Logy
-                </h2>
-              </div>
-
-              <button
-                type="button"
-                onClick={closeLogy}
-                className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-white/10 text-2xl leading-none transition hover:bg-white hover:text-black"
-                aria-label="Close Logy"
-              >
-                ×
-              </button>
+          <header className="flex items-center gap-3 border-b border-line px-4 py-3">
+            <span aria-hidden="true" className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-ink text-white">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12Z" />
+              </svg>
+            </span>
+            <div className="min-w-0 flex-1">
+              <h2 id="logy-title" className="font-display text-[1.375rem] font-medium leading-tight text-ink">
+                Logy
+              </h2>
+              <p className="text-[13px] leading-5 text-muted">Husnalogy shopping assistant</p>
             </div>
-          </div>
+            <button
+              type="button"
+              onClick={closeLogy}
+              data-shape="round"
+              className="grid h-10 w-10 shrink-0 place-items-center rounded-full text-ink transition-colors hover:bg-cream"
+              aria-label="Close Logy"
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true">
+                <path d="m6 6 12 12" />
+                <path d="m18 6-12 12" />
+              </svg>
+            </button>
+          </header>
 
           <div className="flex min-h-0 flex-1 flex-col">
-            <div className="max-h-[46vh] flex-1 space-y-3 overflow-y-auto p-4 sm:max-h-[420px] sm:p-5">
+            <div className="max-h-[46vh] flex-1 space-y-3 overflow-y-auto bg-cream/60 px-4 py-4 sm:max-h-[380px]" aria-live="polite">
               {messages.map((item, index) => {
                 const isUser = item.role === "user";
 
                 return (
-                  <div
-                    key={`${item.role}-${index}`}
-                    className={`flex ${isUser ? "justify-end" : "justify-start"
+                  <div key={`${item.role}-${index}`} className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
+                    <p
+                      className={`max-w-[85%] whitespace-pre-line px-3.5 py-2.5 text-[14px] leading-6 ${
+                        isUser
+                          ? "rounded-[10px] rounded-br-[4px] bg-ink text-white"
+                          : "rounded-[10px] rounded-bl-[4px] border border-line bg-white text-ink"
                       }`}
-                  >
-                    <div
-                      className={`max-w-[85%] whitespace-pre-line rounded-none px-4 py-3 text-sm leading-6 ${isUser
-                        ? "bg-[#303839] text-white"
-                        : "border border-black/5 bg-white text-[#303839]/80 shadow-sm"
-                        }`}
                     >
+                      <span className="sr-only">{isUser ? "You: " : "Logy: "}</span>
                       {item.content}
-                    </div>
+                    </p>
                   </div>
                 );
               })}
 
+              {messages.length === 1 && !loading && (
+                <div className="flex flex-wrap gap-2 pt-1" aria-label="Suggested questions">
+                  {SUGGESTIONS.map((suggestion) => (
+                    <button
+                      key={suggestion}
+                      type="button"
+                      onClick={() => sendMessage(suggestion)}
+                      className="min-h-9 border border-field bg-white px-3 py-1.5 text-left text-[13px] font-medium text-ink transition-colors hover:border-ink/50 hover:bg-cream"
+                    >
+                      {suggestion}
+                    </button>
+                  ))}
+                </div>
+              )}
+
               {loading && (
                 <div className="flex justify-start">
-                  <div className="rounded-none border border-black/5 bg-white px-4 py-3 text-sm leading-6 text-[#303839]/60 shadow-sm">
-                    Logy is thinking...
-                  </div>
+                  <p className="inline-flex items-center gap-1.5 rounded-[10px] rounded-bl-[4px] border border-line bg-white px-3.5 py-3" role="status">
+                    <span className="sr-only">Logy is typing</span>
+                    {[0, 1, 2].map((dot) => (
+                      <span
+                        key={dot}
+                        aria-hidden="true"
+                        className="h-1.5 w-1.5 animate-pulse rounded-full bg-ink/50"
+                        style={{ animationDelay: `${dot * 160}ms` }}
+                      />
+                    ))}
+                  </p>
                 </div>
               )}
 
               <div ref={messagesEndRef} />
             </div>
 
-            <div className="border-t border-black/10 bg-white p-4 sm:p-5">
+            <form
+              className="border-t border-line bg-white p-3"
+              onSubmit={(event) => {
+                event.preventDefault();
+                sendMessage();
+              }}
+            >
               {error && (
-                <p className="mb-3 rounded-none bg-red-50 px-4 py-3 text-xs leading-5 text-red-700">
+                <p role="alert" className="notice notice-error mb-3 text-[13px]">
                   {error}
                 </p>
               )}
 
-              <div className="flex items-end gap-2">
+              <div className="flex items-end gap-2 rounded-[10px] border border-field bg-white p-1.5 pl-3 transition-colors focus-within:border-ink focus-within:shadow-[0_0_0_2px_rgba(48,56,57,0.08)]">
+                <label htmlFor="logy-message" className="sr-only">
+                  Message Logy
+                </label>
                 <textarea
+                  id="logy-message"
                   ref={inputRef}
                   value={message}
                   onChange={(event) => setMessage(event.target.value)}
                   onKeyDown={handleKeyDown}
                   rows={1}
-                  className="min-h-12 max-h-28 flex-1 resize-none rounded-none border border-black/10 px-5 py-3 text-sm leading-6 text-[#303839] outline-none transition focus:border-[#303839]"
-                  placeholder="Ask about cards, gifts, or invitations"
+                  placeholder="Ask about cards, gifts or invitations"
+                  className="input-bare max-h-28 min-h-9 flex-1 resize-none border-0 bg-transparent px-0 py-1.5 text-[15px] leading-6 text-ink outline-none placeholder:text-[#747b7c]"
                 />
-
                 <button
-                  type="button"
-                  onClick={sendMessage}
+                  type="submit"
                   disabled={loading || !message.trim()}
-                  className="h-12 shrink-0 rounded-full bg-[#303839] px-5 text-xs font-extrabold uppercase tracking-[0.12em] text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-45 sm:px-6"
+                  data-shape="round"
+                  aria-label="Send message"
+                  className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-ink text-white transition-colors hover:bg-ink-hover disabled:cursor-not-allowed disabled:bg-line disabled:text-muted"
                 >
-                  {loading ? "Wait" : "Send"}
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <path d="M12 19V5" />
+                    <path d="m5 12 7-7 7 7" />
+                  </svg>
                 </button>
               </div>
 
-              <p className="mt-3 text-center text-[10px] leading-4 text-black/40">
-                Logy can help with finding the best products, gift ideas and more. Just ask!
+              <p className="mt-2 text-center text-[12px] leading-5 text-muted">
+                For help with an existing order,{" "}
+                <Link href="/contact" onClick={closeLogy} className="font-semibold text-ink underline underline-offset-2">
+                  contact us
+                </Link>
+                .
               </p>
-            </div>
+            </form>
           </div>
         </section>
       )}

@@ -227,10 +227,10 @@ export default function HeroCollectionSection({ onAction }: { onAction?: (messag
         thumbnailThree: resolved.thumbnailThree,
         thumbnailThreeHref: resolved.thumbnailThreeHref,
         itemCount: resolved.itemCount,
-        primaryButtonText: "Browse all collections",
-        primaryButtonUrl: "/collections",
-        secondaryLinkText: "Buy this collection",
-        secondaryLinkUrl: resolved.collectionUrl,
+        primaryButtonText: "Shop this collection",
+        primaryButtonUrl: resolved.collectionUrl,
+        secondaryLinkText: "Browse all collections",
+        secondaryLinkUrl: "/collections",
       }
     : null;
 
@@ -353,8 +353,8 @@ export default function HeroCollectionSection({ onAction }: { onAction?: (messag
               <TextAreaField label="Description" value={form.description} onChange={(v) => setField("description", v)} />
 
               <div className="border border-[#303839]/10 bg-[#F8F6F1] px-4 py-3 text-xs leading-5 text-[#303839]/75">
-                Buttons are automatic: <strong className="text-[#303839]">Browse all collections</strong> opens the
-                collections index, and <strong className="text-[#303839]">Buy this collection</strong> opens the selected collection.
+                Buttons are automatic: <strong className="text-[#303839]">Shop this collection</strong> opens the selected
+                collection, and <strong className="text-[#303839]">Browse all collections</strong> opens the collections index.
               </div>
 
               <div className="grid gap-3 sm:grid-cols-2">

@@ -4,13 +4,31 @@ import { getProductCollections } from "@/lib/collections/store";
 
 const PRODUCTS_PER_PAGE = 20;
 
+const FILTER_PARAM_KEYS = [
+  "style",
+  "occasion",
+  "productType",
+  "color",
+  "minPrice",
+  "maxPrice",
+  "featured",
+  "newest",
+  "bestSeller",
+  "category",
+  "collection",
+];
+
 export default async function ProductListingPage({
+  title = "Shop all",
+  eyebrow = "",
+  description = "",
   products = [],
   options = {},
   params = {},
   basePath = "/products",
-  emptyTitle = "No active products found.",
-  emptyDescription = "When matching active products are added in the admin dashboard, they will appear here automatically.",
+  clearHref = "",
+  emptyTitle = "Nothing here yet",
+  emptyDescription = "New designs are added regularly. Browse all collections or contact us about a custom design.",
 }: any) {
   const collections = await getProductCollections().catch(() => []);
   const totalProducts = products.length;
@@ -19,10 +37,18 @@ export default async function ProductListingPage({
   const currentPage = Math.min(Math.max(Number.isFinite(requestedPage) ? requestedPage : 1, 1), totalPages);
   const startIndex = (currentPage - 1) * PRODUCTS_PER_PAGE;
   const paginatedProducts = products.slice(startIndex, startIndex + PRODUCTS_PER_PAGE);
+  const hasActiveFilters = FILTER_PARAM_KEYS.some((key) => params?.[key]);
+  const resetHref = clearHref || basePath;
 
   return (
-    <main className="bg-white text-[#303839]">
-      <section id="catalog" className="mx-auto max-w-[1480px] scroll-mt-28 px-4 py-8 sm:px-6 sm:py-10 lg:px-8">
+    <main className="bg-white text-ink">
+      <section id="catalog" className="page-container scroll-mt-28 pb-16 pt-8 sm:pt-10 lg:pb-20 lg:pt-12">
+        <header className="max-w-[720px]">
+          {eyebrow && <p className="eyebrow">{eyebrow}</p>}
+          <h1 className={`heading-page ${eyebrow ? "mt-3" : ""}`}>{title}</h1>
+          {description && <p className="text-lead mt-4 max-w-[640px]">{description}</p>}
+        </header>
+
         <ProductBrowser
           products={paginatedProducts}
           relatedCatalog={products}
@@ -34,9 +60,27 @@ export default async function ProductListingPage({
         />
 
         {!totalProducts && (
-          <div className="mt-10 rounded-none border border-[#303839]/12 bg-white p-6">
-            <p className="text-sm font-semibold text-[#303839]">{emptyTitle}</p>
-            <p className="mt-2 text-sm leading-6 text-[#303839]/68">{emptyDescription}</p>
+          <div className="mt-8 rounded-[10px] bg-cream px-6 py-10 text-center sm:px-10 sm:py-14" role="status">
+            <h2 className="font-display text-[1.75rem] font-medium leading-tight text-ink">
+              {hasActiveFilters ? "No designs match these filters" : emptyTitle}
+            </h2>
+            <p className="mx-auto mt-3 max-w-[480px] text-[15px] leading-7 text-muted">
+              {hasActiveFilters ? "Try removing a filter or two to see more designs." : emptyDescription}
+            </p>
+            <div className="mt-6 flex flex-wrap justify-center gap-3">
+              {hasActiveFilters ? (
+                <Link href={resetHref} className="btn btn-primary">
+                  Clear filters
+                </Link>
+              ) : (
+                <Link href="/collections" className="btn btn-primary">
+                  Browse all collections
+                </Link>
+              )}
+              <Link href="/contact" className="btn btn-secondary">
+                Contact us
+              </Link>
+            </div>
           </div>
         )}
 
@@ -60,13 +104,13 @@ function ProductPagination({ basePath, params = {}, currentPage, totalPages }) {
 
   return (
     <nav
-      className="mt-12 flex flex-wrap items-center justify-center gap-2 border-t border-[#303839]/10 pt-8"
+      className="mt-12 flex flex-wrap items-center justify-center gap-2 border-t border-line pt-8"
       aria-label="Product pagination"
     >
       {currentPage > 1 && (
         <Link
           href={buildPageHref(basePath, params, previousPage)}
-          className="rounded-none border border-[#303839]/15 bg-white px-5 py-3 text-sm font-bold text-[#303839] transition hover:border-[#303839]"
+          className="btn btn-secondary btn-sm"
         >
           Previous
         </Link>
@@ -77,7 +121,7 @@ function ProductPagination({ basePath, params = {}, currentPage, totalPages }) {
           return (
             <span
               key={`ellipsis-${index}`}
-              className="grid h-11 min-w-11 place-items-center rounded-full px-3 text-sm font-bold text-[#303839]/45"
+              className="grid h-11 min-w-11 place-items-center px-3 text-sm font-semibold text-muted"
             >
               ...
             </span>
@@ -92,10 +136,10 @@ function ProductPagination({ basePath, params = {}, currentPage, totalPages }) {
             href={buildPageHref(basePath, params, item)}
             aria-current={isActive ? "page" : undefined}
             className={[
-              "grid h-11 min-w-11 place-items-center rounded-none px-4 text-sm font-bold transition",
+              "grid h-11 min-w-11 place-items-center rounded-[6px] px-4 text-sm font-semibold transition-colors",
               isActive
-                ? "bg-[#303839] text-white"
-                : "border border-[#303839]/15 bg-white text-[#303839] hover:border-[#303839]",
+                ? "bg-ink text-white"
+                : "border border-field bg-white text-ink hover:border-ink/50",
             ].join(" ")}
           >
             {item}
@@ -106,7 +150,7 @@ function ProductPagination({ basePath, params = {}, currentPage, totalPages }) {
       {currentPage < totalPages && (
         <Link
           href={buildPageHref(basePath, params, nextPage)}
-          className="rounded-none bg-[#303839] px-5 py-3 text-sm font-bold text-white transition hover:bg-[#303839]"
+          className="btn btn-primary btn-sm"
         >
           Next
         </Link>

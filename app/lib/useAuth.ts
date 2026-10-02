@@ -103,11 +103,14 @@ export default function useAuth(initialUser: any = undefined) {
   const isServer = typeof window === "undefined";
   if (!isServer && initialUser !== undefined) seedAuthState(initialUser);
 
+  // Without an `initialUser` the server cannot know who is signed in, so it
+  // renders the loading state — the same state the browser starts from —
+  // instead of a "signed out" view that would not match on hydration.
   const [state, setState] = useState(() =>
     isServer
       ? initialUser
         ? { user: initialUser, authLoading: false }
-        : { user: null, authLoading: false }
+        : { user: null, authLoading: initialUser === undefined }
       : authState,
   );
 

@@ -58,7 +58,7 @@ export default function AboutFAQ() {
   }
 
   return (
-    <section className="lg:sticky lg:top-0 z-[7] flex min-h-[70vh] flex-col justify-center bg-[#f8f6f1] px-6 py-[clamp(2.5rem,7vh,7rem)] sm:px-10 lg:px-12 xl:px-20">
+    <section className="lg:sticky lg:top-0 z-[7] flex min-h-[70vh] flex-col justify-center bg-cream px-6 py-[clamp(2.5rem,7vh,7rem)] sm:px-10 lg:px-12 xl:px-20">
       <div
         ref={revealRef}
         className={`mx-auto w-full max-w-[980px] transition-all duration-700 ease-out motion-reduce:transition-opacity ${

@@ -120,7 +120,7 @@ export default function SidePanel({ type, setType, user, openAuth }) {
             type="button"
             onClick={closePanel}
             data-shape="round"
-            className="grid h-10 w-10 shrink-0 place-items-center rounded-full text-black transition-colors duration-200 hover:bg-[#E6E6E6] active:bg-[#E6E6E6]"
+            className="grid h-10 w-10 shrink-0 place-items-center rounded-full text-black transition-colors duration-200 hover:bg-cream active:bg-cream"
             aria-label="Close panel"
           >
             <svg
@@ -158,7 +158,7 @@ export default function SidePanel({ type, setType, user, openAuth }) {
                       <Link
                         href={productHref}
                         onClick={closePanel}
-                        className="relative block aspect-square w-[86px] shrink-0 overflow-hidden rounded-[10px] bg-[#f8f6f1] ring-1 ring-[#303839]/8"
+                        className="relative block aspect-square w-[86px] shrink-0 overflow-hidden rounded-[10px] bg-cream ring-1 ring-[#303839]/8"
                       >
                         <img
                           src={item.image || "/images/weddings.png"}
@@ -191,7 +191,7 @@ export default function SidePanel({ type, setType, user, openAuth }) {
                               <button
                                 type="button"
                                 onClick={() => changeQuantity(item.id, Number(item.quantity || 1) - 1)}
-                                className="grid h-9 w-9 place-items-center text-[15px] text-[#303839]/70 transition-colors hover:bg-[#E6E6E6] hover:text-[#303839] active:bg-[#E6E6E6] disabled:opacity-30"
+                                className="grid h-9 w-9 place-items-center text-[15px] text-[#303839]/70 transition-colors hover:bg-cream hover:text-[#303839] active:bg-cream disabled:opacity-30"
                                 aria-label="Decrease quantity"
                                 disabled={Number(item.quantity || 1) <= 1}
                               >
@@ -203,7 +203,7 @@ export default function SidePanel({ type, setType, user, openAuth }) {
                               <button
                                 type="button"
                                 onClick={() => changeQuantity(item.id, Number(item.quantity || 1) + 1)}
-                                className="grid h-9 w-9 place-items-center text-[15px] text-[#303839]/70 transition-colors hover:bg-[#E6E6E6] hover:text-[#303839] active:bg-[#E6E6E6]"
+                                className="grid h-9 w-9 place-items-center text-[15px] text-[#303839]/70 transition-colors hover:bg-cream hover:text-[#303839] active:bg-cream"
                                 aria-label="Increase quantity"
                               >
                                 +
@@ -213,7 +213,7 @@ export default function SidePanel({ type, setType, user, openAuth }) {
                             <Link
                               href={productHref}
                               onClick={closePanel}
-                              className="rounded-[8px] px-2 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-[#303839]/70 transition-colors hover:bg-[#E6E6E6] hover:text-[#303839] active:bg-[#E6E6E6]"
+                              className="rounded-[8px] px-2 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-[#303839]/70 transition-colors hover:bg-cream hover:text-[#303839] active:bg-cream"
                             >
                               View product
                             </Link>
@@ -223,7 +223,7 @@ export default function SidePanel({ type, setType, user, openAuth }) {
                             type="button"
                             disabled={loading}
                             onClick={() => removeItem(item.id)}
-                            className="rounded-[8px] px-2 py-1 text-[11px] font-medium uppercase tracking-[0.1em] text-[#303839]/45 transition-colors hover:bg-[#E6E6E6] hover:text-[#303839] active:bg-[#E6E6E6] disabled:opacity-40"
+                            className="rounded-[8px] px-2 py-1 text-[11px] font-medium uppercase tracking-[0.1em] text-[#303839]/45 transition-colors hover:bg-cream hover:text-[#303839] active:bg-cream disabled:opacity-40"
                           >
                             Remove
                           </button>
@@ -257,7 +257,7 @@ export default function SidePanel({ type, setType, user, openAuth }) {
             <Link
               href="/checkout"
               onClick={closePanel}
-              className="mt-5 flex h-12 w-full items-center justify-center rounded-[10px] bg-[#303839] px-6 text-center text-[12.5px] font-semibold uppercase tracking-[0.16em] text-white transition-colors duration-300 hover:bg-[#E6E6E6] hover:text-[#303839] active:bg-[#E6E6E6]"
+              className="btn btn-primary btn-block mt-5"
             >
               Checkout
             </Link>
@@ -265,7 +265,7 @@ export default function SidePanel({ type, setType, user, openAuth }) {
             <button
               type="button"
               onClick={closePanel}
-              className="mt-2.5 h-11 w-full rounded-[10px] text-[11px] font-semibold uppercase tracking-[0.14em] text-[#303839]/55 transition-colors hover:bg-[#E6E6E6] hover:text-[#303839] active:bg-[#E6E6E6]"
+              className="mt-2.5 h-11 w-full rounded-[10px] text-[11px] font-semibold uppercase tracking-[0.14em] text-[#303839]/55 transition-colors hover:bg-cream hover:text-[#303839] active:bg-cream"
             >
               Continue shopping
             </button>
@@ -277,7 +277,7 @@ export default function SidePanel({ type, setType, user, openAuth }) {
             <Link
               href="/products"
               onClick={closePanel}
-              className="flex h-12 w-full items-center justify-center rounded-[10px] bg-[#303839] px-6 text-[12.5px] font-semibold uppercase tracking-[0.14em] text-white transition-colors duration-300 hover:bg-[#E6E6E6] hover:text-[#303839] active:bg-[#E6E6E6]"
+              className="btn btn-primary btn-block"
             >
               Browse more
             </Link>
@@ -292,7 +292,7 @@ function EmptyBox({ title, cta, href, onClose }) {
   return (
     <div className="flex flex-1 items-center justify-center px-6 py-8">
       <div className="w-full text-center">
-        <div className="mx-auto grid h-16 w-16 place-items-center rounded-full bg-[#f8f6f1] text-[#303839]/70">
+        <div className="mx-auto grid h-16 w-16 place-items-center rounded-full bg-cream text-[#303839]/70">
           <svg
             aria-hidden="true"
             viewBox="0 0 24 24"
@@ -311,7 +311,7 @@ function EmptyBox({ title, cta, href, onClose }) {
         <Link
           href={href}
           onClick={onClose}
-          className="mt-6 inline-flex h-11 items-center justify-center rounded-[10px] bg-[#303839] px-7 text-[11px] font-semibold uppercase tracking-[0.14em] text-white transition-colors duration-300 hover:bg-[#E6E6E6] hover:text-[#303839] active:bg-[#E6E6E6]"
+          className="btn btn-primary mt-6"
         >
           {cta}
         </Link>

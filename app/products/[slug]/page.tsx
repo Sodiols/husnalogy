@@ -209,7 +209,7 @@ export default async function ProductDetailsPage({ params }) {
   }
 
   return (
-    <main className="overflow-x-hidden bg-white px-3 pb-10 pt-4 text-[#303839] sm:px-4 lg:px-8">
+    <main className="page-container overflow-x-hidden bg-white pb-16 pt-4 text-ink">
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: serializeJsonLd(productJsonLd) }}

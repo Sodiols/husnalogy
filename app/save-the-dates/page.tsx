@@ -6,7 +6,7 @@ export const dynamic = "force-dynamic";
 
 export const metadata = {
   title: "Save The Dates",
-  description: "Browse save the date designs from Husnalogy with page specific filters.",
+  description: "Personalized save the date cards from Husnalogy.",
 };
 
 export default async function SaveTheDatesPage({ searchParams }) {
@@ -16,16 +16,16 @@ export default async function SaveTheDatesPage({ searchParams }) {
 
   return (
     <ProductListingPage
-      title="Save The Dates"
+      title="Save the dates"
       eyebrow="Wedding stationery"
-      description="Browse only save the date products. The filters below are built from save the date products only."
+      description="Share your date early with a save the date personalized with your names and details."
       products={products}
       options={getFilterOptions(scopeProducts)}
       params={params || {}}
       clearHref="/save-the-dates"
       basePath="/save-the-dates"
-      emptyTitle="No save the date products found."
-      emptyDescription="Add an active save the date product in the admin dashboard and it will appear here automatically."
+      emptyTitle="New save the dates are coming soon"
+      emptyDescription="Browse our wedding invitations or contact us about a save the date design."
       filterTitle="Filter save the dates"
       searchPlaceholder="Search save the date designs..."
     />

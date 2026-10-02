@@ -13,7 +13,7 @@ function CarouselButton({ children, onClick, ariaLabel }) {
       onClick={onClick}
       aria-label={ariaLabel}
       data-shape="round"
-      className="grid h-9 w-9 place-items-center rounded-full bg-white text-[22px] text-[#303839] ring-1 ring-[#303839]/10 transition hover:bg-[#E6E6E6] active:scale-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#303839]/20"
+      className="grid h-9 w-9 place-items-center rounded-full bg-white text-[22px] text-[#303839] ring-1 ring-[#303839]/10 transition hover:bg-cream active:scale-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#303839]/20"
     >
       {children}
     </button>
@@ -138,7 +138,7 @@ export default function RecentlyViewedCarousel({ currentSlug, catalog = [] }) {
                 key={product.id || product.slug || product.title}
                 href={`/products/${product.slug}`}
                 aria-label={product.title ? `View ${product.title}` : "View product"}
-                className="group relative block aspect-square w-[104px] shrink-0 snap-start overflow-hidden rounded-none bg-[#E6E6E6] ring-1 ring-[#303839]/10 transition hover:ring-[#303839]/25 sm:w-[112px] md:w-[120px] lg:w-[124px]"
+                className="group relative block aspect-square w-[104px] shrink-0 snap-start overflow-hidden rounded-none bg-cream ring-1 ring-[#303839]/10 transition hover:ring-[#303839]/25 sm:w-[112px] md:w-[120px] lg:w-[124px]"
               >
                 <Image
                   src={image}

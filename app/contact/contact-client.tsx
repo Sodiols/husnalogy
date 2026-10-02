@@ -6,16 +6,37 @@ import { BUSINESS_INFO, LAUNCH_FEATURES } from "@/lib/launch-config";
 export default function ContactPage() {
   const [form, setForm] = useState({ name: "", email: "", phone: "", subject: "", message: "" });
   const [status, setStatus] = useState({ loading: false, success: "", error: "" });
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
   const [newsletterEmail, setNewsletterEmail] = useState("");
   const [newsletter, setNewsletter] = useState({ loading: false, success: "", error: "" });
 
   const updateForm = (key, value) => {
     setForm((current) => ({ ...current, [key]: value }));
+    if (fieldErrors[key]) setFieldErrors((current) => ({ ...current, [key]: "" }));
+  };
+
+  // Mirrors the server's checks (lib/messages) so customers see problems next
+  // to the field before anything is sent. The server remains authoritative.
+  const validate = () => {
+    const errors: Record<string, string> = {};
+    if (!form.name.trim()) errors.name = "Enter your name.";
+    if (!form.email.trim()) errors.email = "Enter your email address.";
+    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())) errors.email = "Enter a valid email address, like name@example.com.";
+    if (!form.message.trim()) errors.message = "Enter your message.";
+    return errors;
   };
 
   const handleSubmit = async (event) => {
     event.preventDefault();
+    const errors = validate();
+    setFieldErrors(errors);
+    if (Object.values(errors).some(Boolean)) {
+      setStatus({ loading: false, success: "", error: "Please check the highlighted fields." });
+      const firstKey = ["name", "email", "message"].find((key) => errors[key]);
+      if (firstKey) document.getElementById(`contact-${firstKey}`)?.focus();
+      return;
+    }
     setStatus({ loading: true, success: "", error: "" });
 
     try {
@@ -27,12 +48,14 @@ export default function ContactPage() {
       const data = await response.json();
 
       if (!response.ok) {
+        if (data?.errors && typeof data.errors === "object") setFieldErrors(data.errors);
         const firstError = data?.errors ? Object.values(data.errors)[0] : data?.error;
-        throw new Error(firstError || "Message could not be sent.");
+        throw new Error(String(firstError || "Your message could not be sent. Please try again."));
       }
 
       setForm({ name: "", email: "", phone: "", subject: "", message: "" });
-      setStatus({ loading: false, success: "Your message has been sent successfully.", error: "" });
+      setFieldErrors({});
+      setStatus({ loading: false, success: "Thank you. Your message has been sent and we will reply by email.", error: "" });
     } catch (error) {
       setStatus({ loading: false, success: "", error: error.message || "Something went wrong." });
     }
@@ -63,115 +86,110 @@ export default function ContactPage() {
   };
 
   return (
-    <main className="text-charcoal">
-      <section className="mx-auto grid min-h-[90vh] max-w-[1480px] items-center gap-10 px-4 py-8 sm:px-6 lg:grid-cols-[1fr_0.96fr] lg:gap-14 lg:px-8 lg:py-10">
-        <div className="flex flex-col justify-center">
-          <p className="flex items-center gap-4 text-[11px] font-semibold uppercase tracking-[0.3em] text-[#303839]/55">
-            <span aria-hidden="true" className="h-px w-10 bg-[#303839]/45" />
-            We would love to hear from you
-          </p>
-          <h1 className="mt-7 font-display text-[3.4rem] font-medium leading-[0.96] text-[#303839] sm:text-[4.6rem] lg:text-[5.3rem]">
-            Get in touch
-          </h1>
-          <p className="mt-6 max-w-xl text-[16px] leading-8 text-charcoal/72">
-            We&rsquo;re here to help with any questions about your order, custom designs, or special requests. Reach out to us and we&rsquo;ll get back to you as soon as possible.
+    <main className="text-ink">
+      <section className="page-container section grid gap-12 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.05fr)] lg:gap-16">
+        <div>
+          <p className="eyebrow">Contact</p>
+          <h1 className="heading-page mt-3">Get in touch</h1>
+          <p className="text-lead mt-4 max-w-[520px]">
+            Questions about an order, a custom design or a special request? Send us a message and we will reply by email.
           </p>
 
-          <div className="mt-12 grid gap-y-9 sm:grid-cols-3 sm:divide-x sm:divide-[#303839]/14">
+          <dl className="mt-10 grid gap-6 border-t border-line pt-8 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
             <ContactMethod icon={<MailIcon />} title="Email">
-              <a href={`mailto:${BUSINESS_INFO.email}`} className="font-semibold hover:text-black">
+              <a href={`mailto:${BUSINESS_INFO.email}`} className="font-semibold text-ink underline decoration-ink/30 underline-offset-4 hover:decoration-ink">
                 {BUSINESS_INFO.email}
               </a>
-              <p className="mt-2 text-charcoal/58">We reply as soon as possible</p>
             </ContactMethod>
             <ContactMethod icon={<PhoneIcon />} title="Phone">
-              <a href={BUSINESS_INFO.phoneHref} className="font-semibold hover:text-black">
+              <a href={BUSINESS_INFO.phoneHref} className="font-semibold text-ink underline decoration-ink/30 underline-offset-4 hover:decoration-ink">
                 {BUSINESS_INFO.phone}
               </a>
-              <p className="mt-2 text-charcoal/58">Sun - Thu, 10:00 AM - 8:00 PM (BDT)</p>
+              {BUSINESS_INFO.supportHours && <p className="mt-1 text-muted">{BUSINESS_INFO.supportHours}</p>}
             </ContactMethod>
-            <ContactMethod icon={<PinIcon />} title="Studio">
-              <p className="font-semibold">{BUSINESS_INFO.address}</p>
-              <p className="mt-2 text-charcoal/58">By appointment only</p>
+            <ContactMethod icon={<PinIcon />} title="Address">
+              <p>{BUSINESS_INFO.address}</p>
             </ContactMethod>
-          </div>
+          </dl>
         </div>
 
-        <div className="rounded-none bg-white/95 p-6 sm:p-8 md:p-10 lg:p-12">
-          <h2 className="font-display text-4xl font-medium leading-tight text-[#303839] sm:text-[2.65rem]">Send Us a Message</h2>
-          <p className="mt-4 max-w-md text-sm leading-6 text-charcoal/60">
-            Fill out the form below and we&rsquo;ll get back to you as soon as possible.
-          </p>
+        <div className="rounded-[10px] border border-line bg-white p-6 sm:p-8">
+          <h2 className="heading-section text-[1.875rem]">Send us a message</h2>
+          <p className="mt-2 text-[14px] text-muted">Fields marked * are required.</p>
 
-          <form onSubmit={handleSubmit} className="mt-8 space-y-6">
-            <div className="grid gap-x-5 gap-y-6 sm:grid-cols-2">
+          <form onSubmit={handleSubmit} noValidate className="mt-6 grid gap-5">
+            <div className="grid gap-5 sm:grid-cols-2">
               <Field
-                placeholder="Your Name"
+                id="contact-name"
+                label="Name"
+                autoComplete="name"
                 value={form.name}
                 onChange={(value) => updateForm("name", value)}
+                error={fieldErrors.name}
                 required
               />
               <Field
+                id="contact-email"
                 type="email"
-                placeholder="Email Address"
+                label="Email address"
+                autoComplete="email"
                 value={form.email}
                 onChange={(value) => updateForm("email", value)}
+                error={fieldErrors.email}
                 required
               />
               <Field
+                id="contact-phone"
                 type="tel"
-                placeholder="Phone Number"
+                label="Phone number"
+                autoComplete="tel"
                 value={form.phone}
                 onChange={(value) => updateForm("phone", value)}
+                error={fieldErrors.phone}
               />
               <Field
-                placeholder="Subject"
+                id="contact-subject"
+                label="Subject"
                 value={form.subject}
                 onChange={(value) => updateForm("subject", value)}
+                error={fieldErrors.subject}
               />
             </div>
-            <textarea
-              value={form.message}
-              onChange={(event) => updateForm("message", event.target.value)}
-              placeholder="Your Message"
-              required
-              rows={5}
-              className="min-h-[150px] w-full resize-y rounded-none border-0 border-b border-[#303839]/22 bg-transparent px-0 py-3 text-sm outline-none transition placeholder:text-charcoal/42 focus:border-charcoal"
-            />
 
-            {status.success && (
-              <p className="text-sm font-semibold text-green-700">{status.success}</p>
-            )}
-            {status.error && <p className="text-sm font-semibold text-red-600">{status.error}</p>}
+            <div>
+              <label htmlFor="contact-message" className="field-label">
+                Message <span aria-hidden="true">*</span>
+              </label>
+              <textarea
+                id="contact-message"
+                value={form.message}
+                onChange={(event) => updateForm("message", event.target.value)}
+                required
+                aria-required="true"
+                aria-invalid={fieldErrors.message ? true : undefined}
+                aria-describedby={fieldErrors.message ? "contact-message-error" : undefined}
+                rows={6}
+                className="field"
+              />
+              {fieldErrors.message && <FieldError id="contact-message-error">{fieldErrors.message}</FieldError>}
+            </div>
 
-            <div className="flex flex-col gap-5 pt-1 sm:flex-row sm:items-center">
-              <button
-                type="submit"
-                disabled={status.loading}
-                className="inline-flex h-14 shrink-0 items-center justify-center gap-3 rounded-none bg-[#303839] px-8 text-sm font-extrabold text-white transition hover:bg-[#434c4d] disabled:opacity-60"
-              >
+            <div aria-live="polite">
+              {status.success && <p className="notice notice-success">{status.success}</p>}
+              {status.error && <p className="notice notice-error">{status.error}</p>}
+            </div>
+
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
+              <button type="submit" disabled={status.loading} aria-busy={status.loading} className="btn btn-primary btn-lg">
                 <SendIcon />
-                {status.loading ? "Sending..." : "Send Message"}
+                {status.loading ? "Sending…" : "Send message"}
               </button>
-
-              <div className="flex items-start gap-3 text-charcoal/58">
+              <p className="flex items-start gap-2 text-[13px] leading-5 text-muted">
                 <ShieldIcon />
-                <p className="text-sm leading-6">
-                  <span className="block font-extrabold text-charcoal">We respect your privacy.</span>
-                  Your information is safe with us.
-                </p>
-              </div>
+                We only use your details to reply to your message.
+              </p>
             </div>
           </form>
-        </div>
-      </section>
-
-      <section className="mx-auto max-w-[1480px] px-4 pt-6 sm:px-6 lg:px-8">
-        <div className="grid gap-y-6 rounded-none bg-white p-6 sm:grid-cols-2 sm:p-8 lg:grid-cols-4 lg:divide-x lg:divide-charcoal/10">
-          <Feature icon={<SupportIcon />} title="Dedicated Support" text="We're here to help with care and attention." />
-          <Feature icon={<PencilIcon />} title="Custom Design Help" text="Share your ideas and we'll bring them to life." />
-          <Feature icon={<TruckIcon />} title="Delivery Support" text="Delivery details are confirmed after order review." />
-          <Feature icon={<HeartIcon />} title="Made with Love" text="Every piece is designed with meaning." />
         </div>
       </section>
 
@@ -196,12 +214,13 @@ export default function ContactPage() {
               value={newsletterEmail}
               onChange={(event) => setNewsletterEmail(event.target.value)}
               placeholder="Enter your email address"
-              className="h-12 w-full rounded-none border-0 border-b border-charcoal/24 bg-transparent px-0 text-sm outline-none transition placeholder:text-charcoal/42 focus:border-charcoal sm:flex-1"
+              aria-label="Email address"
+              className="field sm:flex-1"
             />
             <button
               type="submit"
               disabled={newsletter.loading}
-              className="h-12 shrink-0 rounded-none bg-charcoal px-7 text-sm font-bold text-white transition hover:bg-[#434c4d] disabled:opacity-60"
+              className="btn btn-primary shrink-0"
             >
               {newsletter.loading ? "..." : "Subscribe"}
             </button>
@@ -221,40 +240,50 @@ export default function ContactPage() {
   );
 }
 
-function Field({ type = "text", placeholder, value, onChange, required = false }) {
+function Field({ id, type = "text", label, value, onChange, required = false, error = "", autoComplete = undefined }: any) {
+  const errorId = `${id}-error`;
   return (
-    <input
-      type={type}
-      value={value}
-      onChange={(event) => onChange(event.target.value)}
-      placeholder={placeholder}
-      required={required}
-      className="h-12 w-full rounded-none border-0 border-b border-[#303839]/22 bg-transparent px-0 text-sm outline-none transition placeholder:text-charcoal/42 focus:border-charcoal"
-    />
+    <div>
+      <label htmlFor={id} className="field-label">
+        {label} {required ? <span aria-hidden="true">*</span> : <span className="field-optional">(optional)</span>}
+      </label>
+      <input
+        id={id}
+        type={type}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        required={required}
+        aria-required={required || undefined}
+        aria-invalid={error ? true : undefined}
+        aria-describedby={error ? errorId : undefined}
+        autoComplete={autoComplete}
+        className="field"
+      />
+      {error && <FieldError id={errorId}>{error}</FieldError>}
+    </div>
+  );
+}
+
+function FieldError({ id, children }) {
+  return (
+    <p id={id} className="field-error">
+      <svg {...svgProps} width={16} height={16} className="mt-0.5 shrink-0">
+        <circle cx="12" cy="12" r="9" />
+        <path d="M12 8v5" />
+        <path d="M12 16h.01" />
+      </svg>
+      {children}
+    </p>
   );
 }
 
 function ContactMethod({ icon, title, children }) {
   return (
-    <div className="px-0 text-center text-sm text-charcoal/74 sm:px-6 sm:first:pl-0 sm:last:pr-0">
-      <span className="mx-auto grid h-12 w-12 place-items-center text-charcoal">
-        {icon}
-      </span>
-      <p className="mt-4 text-[12px] font-extrabold uppercase tracking-[0.14em] text-charcoal">{title}</p>
-      <div className="mt-3 leading-6">{children}</div>
-    </div>
-  );
-}
-
-function Feature({ icon, title, text }) {
-  return (
-    <div className="flex items-start gap-4 lg:px-6 lg:first:pl-0 lg:last:pr-0">
-      <span className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-[#f8f6f1] text-charcoal">
-        {icon}
-      </span>
+    <div className="flex items-start gap-4 text-[15px] leading-6">
+      <span className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-cream text-ink">{icon}</span>
       <div className="min-w-0">
-        <p className="text-sm font-bold text-charcoal">{title}</p>
-        <p className="mt-1 text-xs leading-5 text-charcoal/60">{text}</p>
+        <dt className="text-[13px] font-semibold uppercase tracking-[0.12em] text-muted">{title}</dt>
+        <dd className="mt-1 break-words">{children}</dd>
       </div>
     </div>
   );
@@ -280,7 +309,7 @@ function SendIcon() {
 }
 function ShieldIcon() {
   return (
-    <svg {...svgProps} width={24} height={24} className="mt-0.5 shrink-0 text-charcoal/45">
+    <svg {...svgProps} width={18} height={18} className="shrink-0">
       <path d="M12 3 5 6v6c0 4 3 6.5 7 9 4-2.5 7-5 7-9V6l-7-3Z" />
       <path d="m9 12 2 2 4-4" />
     </svg>
@@ -288,7 +317,7 @@ function ShieldIcon() {
 }
 function MailIcon() {
   return (
-    <svg {...svgProps} width={32} height={32}>
+    <svg {...svgProps} width={22} height={22}>
       <rect x="3" y="5" width="18" height="14" rx="2" />
       <path d="m3 7 9 6 9-6" />
     </svg>
@@ -296,51 +325,16 @@ function MailIcon() {
 }
 function PhoneIcon() {
   return (
-    <svg {...svgProps} width={32} height={32}>
+    <svg {...svgProps} width={22} height={22}>
       <path d="M5 4h4l2 5-3 2a12 12 0 0 0 5 5l2-3 5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2Z" />
     </svg>
   );
 }
 function PinIcon() {
   return (
-    <svg {...svgProps} width={32} height={32}>
+    <svg {...svgProps} width={22} height={22}>
       <path d="M12 21s-6-5.2-6-10a6 6 0 0 1 12 0c0 4.8-6 10-6 10Z" />
       <circle cx="12" cy="11" r="2.2" />
-    </svg>
-  );
-}
-function SupportIcon() {
-  return (
-    <svg {...svgProps} width={22} height={22}>
-      <path d="M4 13v-1a8 8 0 0 1 16 0v1" />
-      <rect x="2.5" y="13" width="4" height="6" rx="1.4" />
-      <rect x="17.5" y="13" width="4" height="6" rx="1.4" />
-      <path d="M20 19a4 4 0 0 1-4 3h-3" />
-    </svg>
-  );
-}
-function PencilIcon() {
-  return (
-    <svg {...svgProps} width={22} height={22}>
-      <path d="m4 20 4-1 10-10a2.1 2.1 0 0 0-3-3L5 16l-1 4Z" />
-      <path d="m14 7 3 3" />
-    </svg>
-  );
-}
-function TruckIcon() {
-  return (
-    <svg {...svgProps} width={22} height={22}>
-      <path d="M3 6h11v9H3z" />
-      <path d="M14 9h4l3 3v3h-7z" />
-      <circle cx="7" cy="18" r="1.6" />
-      <circle cx="17" cy="18" r="1.6" />
-    </svg>
-  );
-}
-function HeartIcon() {
-  return (
-    <svg {...svgProps} width={22} height={22}>
-      <path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.29 1.49 4.04 3 5.5l7 7Z" />
     </svg>
   );
 }

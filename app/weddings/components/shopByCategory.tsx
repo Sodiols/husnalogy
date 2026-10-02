@@ -115,7 +115,7 @@ function CategoryLinks({ groups }) {
                 className={`group block rounded-none px-3 py-2 text-[0.92rem] transition duration-200 ${
                   link.bold
                     ? "mt-1 font-semibold text-[#303839] hover:text-[#303839]"
-                    : "font-normal text-[#303839]/80 hover:bg-[#f8f6f1] hover:text-[#303839]"
+                    : "font-normal text-[#303839]/80 hover:bg-cream hover:text-[#303839]"
                 }`}
               >
                 {link.bold ? (
@@ -137,7 +137,7 @@ function CategoryLinks({ groups }) {
 
 export default function WeddingCategorySection() {
   return (
-    <section className="overflow-hidden bg-[#f8f6f1] px-4 py-16 sm:px-6 sm:py-20 lg:px-12 lg:py-24 xl:px-16">
+    <section className="overflow-hidden bg-cream px-4 py-16 sm:px-6 sm:py-20 lg:px-12 lg:py-24 xl:px-16">
       <div className="mx-auto max-w-[1480px]">
         <Reveal as="header" className="mx-auto max-w-[680px] text-center">
           <p className="mb-4 text-[11px] font-semibold uppercase tracking-[0.3em] text-[#303839]/55">
@@ -155,7 +155,7 @@ export default function WeddingCategorySection() {
           {weddingCategories.map((category, i) => (
             <Reveal key={category.title} delay={i * 120} className="h-full">
               <div className="group flex h-full flex-col rounded-none border border-[#303839]/[0.06] bg-white p-5 shadow-[0_12px_35px_rgba(48,56,57,0.05)] transition-all duration-500 hover:-translate-y-1 hover:shadow-[0_24px_55px_rgba(48,56,57,0.12)] sm:p-6">
-                <div className="overflow-hidden rounded-none bg-[#f8f6f1]">
+                <div className="overflow-hidden rounded-none bg-cream">
                   <img
                     src={category.image}
                     alt={category.imageAlt}
@@ -173,7 +173,7 @@ export default function WeddingCategorySection() {
           ))}
         </div>
 
-        <Reveal className="group mt-6 overflow-hidden rounded-none bg-[#f8f6f1] shadow-[0_12px_35px_rgba(48,56,57,0.05)]">
+        <Reveal className="group mt-6 overflow-hidden rounded-none bg-cream shadow-[0_12px_35px_rgba(48,56,57,0.05)]">
           <img
             src="/images/weddings/wedding-parties-gifts.png"
             alt="Wedding parties, favors, and gifts collection"

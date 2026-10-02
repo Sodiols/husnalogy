@@ -59,7 +59,7 @@ export default function AboutScrollSeal() {
         />
       </svg>
 
-      <span className="absolute inset-0 flex items-center justify-center font-display text-lg italic text-[#f8f6f1]">
+      <span className="absolute inset-0 flex items-center justify-center font-display text-lg italic text-cream">
         H
       </span>
     </div>

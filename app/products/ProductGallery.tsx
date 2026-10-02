@@ -57,7 +57,7 @@ function GalleryCircleButton({
       disabled={disabled}
       aria-label={ariaLabel}
       data-shape="round"
-      className={`grid place-items-center rounded-full border border-[#303839]/10 bg-white text-[#303839] transition-all duration-300 ease-out hover:scale-[1.04] hover:border-[#303839]/25 hover:bg-[#E6E6E6] active:scale-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#303839]/20 disabled:pointer-events-none disabled:opacity-40 ${className}`}
+      className={`grid place-items-center rounded-full border border-[#303839]/10 bg-white text-[#303839] transition-all duration-300 ease-out hover:scale-[1.04] hover:border-[#303839]/25 hover:bg-cream active:scale-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#303839]/20 disabled:pointer-events-none disabled:opacity-40 ${className}`}
     >
       {children}
     </button>
@@ -87,7 +87,7 @@ function ThumbCarouselButton({
       disabled={disabled}
       aria-label={ariaLabel}
       data-shape="round"
-      className={`grid place-items-center rounded-full border border-[#303839]/10 bg-white/95 text-[10px] text-[#303839] backdrop-blur-sm transition-all duration-300 ease-out hover:border-[#303839]/25 hover:bg-[#E6E6E6] active:scale-95 disabled:pointer-events-none disabled:opacity-35 ${className}`}
+      className={`grid place-items-center rounded-full border border-[#303839]/10 bg-white/95 text-[10px] text-[#303839] backdrop-blur-sm transition-all duration-300 ease-out hover:border-[#303839]/25 hover:bg-cream active:scale-95 disabled:pointer-events-none disabled:opacity-35 ${className}`}
     >
       <i className={`fa-solid ${iconClass}`} />
     </button>
@@ -436,7 +436,7 @@ export default function ProductGallery({ product, belowMainContent = null, initi
           disabled={wishlistLoading}
           aria-label={wishlisted ? "Remove from wishlist" : "Add to wishlist"}
           data-shape="round"
-          className="absolute right-4 top-4 z-30 grid h-[44px] w-[44px] place-items-center rounded-full border border-[#303839]/10 bg-white text-[20px] text-[#303839] transition-all duration-300 ease-out hover:scale-[1.04] hover:border-[#303839]/25 hover:bg-[#E6E6E6] disabled:opacity-70 md:h-[52px] md:w-[52px] md:text-[22px]"
+          className="absolute right-4 top-4 z-30 grid h-[44px] w-[44px] place-items-center rounded-full border border-[#303839]/10 bg-white text-[20px] text-[#303839] transition-all duration-300 ease-out hover:scale-[1.04] hover:border-[#303839]/25 hover:bg-cream disabled:opacity-70 md:h-[52px] md:w-[52px] md:text-[22px]"
         >
           {wishlistLoading ? (
             <i className="fa-solid fa-circle-notch animate-spin" />

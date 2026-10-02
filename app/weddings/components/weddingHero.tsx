@@ -4,11 +4,11 @@ import Link from "next/link";
 import Reveal from "../../components/reveal";
 
 const focusRing =
-  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-[#F8F6F1]";
+  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-cream";
 
 export default function WeddingHero() {
   return (
-    <section className="relative isolate overflow-hidden bg-[#f8f6f1]">
+    <section className="relative isolate overflow-hidden bg-cream">
       <Image
         src="/images/weddings/WeddingHeroIMG.png"
         alt=""
@@ -18,7 +18,7 @@ export default function WeddingHero() {
         sizes="100vw"
         className="object-cover object-center md:object-[78%_center] lg:object-[72%_center]"
       />
-      <div className="absolute inset-0 bg-gradient-to-b from-[#f8f6f1]/88 via-[#f8f6f1]/45 to-[#f8f6f1]/88 md:bg-gradient-to-r md:from-[#f8f6f1] md:via-[#f8f6f1]/62 md:to-transparent" />
+      <div className="absolute inset-0 bg-gradient-to-b from-cream/88 via-cream/45 to-cream/88 md:bg-gradient-to-r md:from-cream md:via-cream/62 md:to-transparent" />
       <div aria-hidden="true" className="absolute inset-x-0 bottom-0 h-px bg-[#303839]/20" />
 
       <div className="relative mx-auto flex min-h-[70vh] max-w-[1480px] items-center px-4 py-16 sm:px-6 lg:px-10 lg:py-20">
@@ -30,7 +30,7 @@ export default function WeddingHero() {
             </span>
           </p>
 
-          <h1 className="mt-5 font-body text-[2rem] font-medium leading-[1.05] tracking-[-0.03em] text-[#303839] sm:text-[2.5rem] lg:text-[2.75rem]">
+          <h1 className="heading-hero mt-5">
             Wedding invitations
             <br />
             made for your moment.
@@ -44,7 +44,7 @@ export default function WeddingHero() {
           <div className="mt-8 flex flex-wrap items-center gap-x-8 gap-y-4">
             <Link
               href="/collections/wedding-invitations"
-              className={`inline-flex h-[52px] items-center justify-center rounded-[6px] border border-[#303839] bg-[#F8F6F1] px-8 text-[13px] font-semibold text-[#303839] transition-colors duration-300 hover:bg-[#303839] hover:text-[#F8F6F1] ${focusRing}`}
+              className={`inline-flex h-[52px] items-center justify-center rounded-[6px] border border-[#303839]/35 bg-cream px-8 text-[13px] font-semibold text-[#303839] transition-colors duration-300 hover:bg-[#303839] hover:text-cream ${focusRing}`}
             >
               Shop Wedding Invitations
             </Link>

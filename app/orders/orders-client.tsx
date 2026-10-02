@@ -116,7 +116,7 @@ export default function OrdersClient() {
   return (
     <main className="px-4 py-12 text-[#303839]">
       <section className="mx-auto max-w-[980px]">
-        <h1 className="font-display text-4xl">My Orders</h1>
+        <h1 className="heading-page">My Orders</h1>
         <p className="mt-2 text-sm text-[#303839]/65">{headingText}</p>
         <p className="mt-1 text-sm leading-6 text-[#303839]/60">{helperText}</p>
 
@@ -139,7 +139,7 @@ export default function OrdersClient() {
                     <p className="mt-1 text-xs text-[#303839]/55">Placed {formatOrderDate(order.createdAt)}</p>
                   </div>
 
-                  <span className="rounded-full bg-[#E6E6E6] px-4 py-2 text-xs font-bold uppercase tracking-[0.1em] text-[#303839]">
+                  <span className="rounded-full bg-cream px-4 py-2 text-xs font-bold uppercase tracking-[0.1em] text-[#303839]">
                     {order.status || "pending"}
                   </span>
                 </div>
@@ -148,7 +148,7 @@ export default function OrdersClient() {
                   <div className="mt-4 space-y-3">
                     {items.map((item) => (
                       <div key={item.id || item.productId || item.productSlug || item.slug} className="flex items-center gap-3">
-                        <ServerCustomizationImage customizationId={item.customizationId} outputPageId={item.mockupOutputRef?.pageId} fallbackSrc={item.image || "/images/weddings.png"} alt={item.title || item.productTitle || "Product"} containerClassName="relative h-14 w-14 shrink-0 overflow-hidden bg-[#F8F6F1]" />
+                        <ServerCustomizationImage customizationId={item.customizationId} outputPageId={item.mockupOutputRef?.pageId} fallbackSrc={item.image || "/images/weddings.png"} alt={item.title || item.productTitle || "Product"} containerClassName="relative h-14 w-14 shrink-0 overflow-hidden bg-cream" />
                         <div className="flex-1">
                           <p className="text-sm font-bold">{item.title || item.productTitle}</p>
                           <p className="text-xs text-[#303839]/60">Qty {item.quantity || 1}</p>
@@ -169,9 +169,9 @@ export default function OrdersClient() {
           })}
 
           {!loadingOrders && !orders.length && (
-            <div className="rounded-none border border-[#303839]/10 bg-[#E6E6E6] p-8 text-center">
+            <div className="rounded-none border border-[#303839]/10 bg-cream p-8 text-center">
               <p className="font-bold">No order requests found yet.</p>
-              <Link href="/products" className="mt-4 inline-flex rounded-none bg-[#303839] px-6 py-3 text-sm font-bold text-white">Start Shopping</Link>
+              <Link href="/products" className="btn btn-primary mt-4">Start Shopping</Link>
             </div>
           )}
         </div>

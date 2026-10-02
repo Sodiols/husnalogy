@@ -18,18 +18,19 @@ const HEADLINE_WORDS = [
   { text: "detail.", script: false },
 ];
 
+// Factual notes only: no invented dates or milestones.
 const STORY_NOTES = [
   {
-    year: "2018",
-    text: "Started with a love for meaningful cards and refined details.",
+    year: "Founded",
+    text: "Husnalogy was founded by Foyez Ahmed.",
   },
   {
-    year: "2021",
-    text: "Designed more thoughtful pieces for weddings, gifts, and memories.",
+    year: "What we make",
+    text: "Invitations, cards, gifts and stationery for meaningful occasions.",
   },
   {
-    year: "Today",
-    text: "Still creating every design with care, patience, and purpose.",
+    year: "How it works",
+    text: "Personalize a design online and review it before you order.",
   },
 ];
 
@@ -104,7 +105,7 @@ export default function AboutHero() {
   return (
     <section
       ref={sectionRef}
-      className="lg:sticky lg:top-0 z-0 overflow-hidden bg-[#f8f6f1] text-[#303839] [font-family:var(--font-about-body)]"
+      className="lg:sticky lg:top-0 z-0 overflow-hidden bg-cream text-[#303839] [font-family:var(--font-about-body)]"
       style={{
         "--font-about-display": "var(--font-cormorant), serif",
         "--font-about-body": "var(--font-montserrat), var(--font-inter), sans-serif",
@@ -112,9 +113,9 @@ export default function AboutHero() {
       } as any}
     >
       <div aria-hidden="true" className="absolute inset-0 overflow-hidden">
-        <div className="absolute left-[-12rem] top-[-12rem] h-[26rem] w-[26rem] rounded-full border border-[#E6E6E6]/20" />
+        <div className="absolute left-[-12rem] top-[-12rem] h-[26rem] w-[26rem] rounded-full border border-line/20" />
         <div className="absolute bottom-[-14rem] right-[-14rem] h-[32rem] w-[32rem] rounded-full border border-[#303839]/10" />
-        <div className="absolute left-[8%] top-[20%] h-2 w-2 rounded-full bg-[#E6E6E6]/45" />
+        <div className="absolute left-[8%] top-[20%] h-2 w-2 rounded-full bg-cream/45" />
         <div className="absolute right-[12%] top-[70%] h-3 w-3 rounded-full bg-[#303839]/15" />
       </div>
 
@@ -168,7 +169,7 @@ export default function AboutHero() {
           <a
             href="#about-story"
             onClick={handleContinueStory}
-            className={`group mt-[clamp(1rem,2.4vh,1.65rem)] inline-flex items-center gap-2.5 rounded-none border border-[#303839]/80 px-5 py-2.5 text-[10px] font-medium uppercase tracking-[0.14em] text-[#303839] transition-all duration-700 hover:bg-[#303839] hover:text-[#f8f6f1] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#E6E6E6] focus-visible:ring-offset-4 focus-visible:ring-offset-[#f8f6f1] ${isVisible
+            className={`group mt-[clamp(1rem,2.4vh,1.65rem)] inline-flex items-center gap-2.5 rounded-none border border-[#303839]/80 px-5 py-2.5 text-[10px] font-medium uppercase tracking-[0.14em] text-[#303839] transition-all duration-700 hover:bg-[#303839] hover:text-cream focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#E6E6E6] focus-visible:ring-offset-4 focus-visible:ring-offset-cream ${isVisible
               ? "translate-y-0 opacity-100"
               : "translate-y-4 opacity-0"
               }`}
@@ -188,7 +189,7 @@ export default function AboutHero() {
           >
           <div
             ref={cardRef}
-            className={`relative aspect-[5/3.35] w-[min(82vw,310px)] rounded-none border border-[#303839]/12 bg-[#f8f6f1] shadow-[0_34px_80px_-38px_rgba(48,56,57,0.75),inset_0_1px_0_rgba(255,255,255,0.7)] transition-all duration-700 ${isVisible
+            className={`relative aspect-[5/3.35] w-[min(82vw,310px)] rounded-none border border-[#303839]/12 bg-cream shadow-[0_34px_80px_-38px_rgba(48,56,57,0.75),inset_0_1px_0_rgba(255,255,255,0.7)] transition-all duration-700 ${isVisible
               ? "translate-y-0 opacity-100"
               : "translate-y-8 opacity-0"
               }`}
@@ -197,10 +198,10 @@ export default function AboutHero() {
               transitionDelay: "520ms",
             }}
           >
-            <div className="absolute inset-[10px] rounded-none border border-[#E6E6E6]/24" />
+            <div className="absolute inset-[10px] rounded-none border border-line/24" />
 
             <div className="absolute inset-0 flex flex-col justify-center px-8 py-7">
-              <span className="mb-5 block h-px w-16 bg-[#E6E6E6]/70" />
+              <span className="mb-5 block h-px w-16 bg-cream/70" />
 
               <p className="[font-family:var(--font-about-display)] text-3xl italic leading-none text-[#303839]">
                 Husnalogy
@@ -257,7 +258,7 @@ export default function AboutHero() {
               return (
                 <div
                   key={note.year}
-                  className={`flex items-baseline gap-3 rounded-none border border-[#303839]/10 bg-[#f8f6f1] px-4 py-[clamp(0.32rem,0.8vh,0.5rem)] shadow-[0_16px_26px_-22px_rgba(48,56,57,0.65)] transition-all duration-700 ${isVisible
+                  className={`flex flex-col gap-0.5 rounded-[6px] border border-line bg-cream px-4 py-[clamp(0.4rem,0.9vh,0.6rem)] transition-all duration-700 ${isVisible
                     ? "translate-y-0 opacity-100"
                     : "translate-y-5 opacity-0"
                     }`}
@@ -266,11 +267,11 @@ export default function AboutHero() {
                     transitionDelay: `${1100 + index * 180}ms`,
                   }}
                 >
-                  <span className="[font-family:var(--font-about-display)] shrink-0 text-[15px] font-semibold text-[#303839]/50">
+                  <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted">
                     {note.year}
                   </span>
 
-                  <span className="text-[13px] leading-[1.55] text-[#303839]/62">
+                  <span className="text-[13px] leading-[1.5] text-ink">
                     {note.text}
                   </span>
                 </div>

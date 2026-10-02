@@ -168,7 +168,7 @@ export default function ToolbarDropdown({
               <span className="text-[9px] font-extrabold uppercase tracking-[0.14em] text-[#303839]/50">
                 {label}
               </span>
-              <span className="rounded-full bg-[#F8F6F1] px-2 py-0.5 text-[9px] font-bold text-[#303839]/50">
+              <span className="rounded-full bg-cream px-2 py-0.5 text-[9px] font-bold text-[#303839]/50">
                 {options.length} choices
               </span>
             </div>
@@ -185,7 +185,7 @@ export default function ToolbarDropdown({
                   event.preventDefault();
                   menuRef.current?.querySelector<HTMLElement>('[role="option"]:not([disabled])')?.focus();
                 }}
-                className="mb-2 h-9 w-full rounded-lg border border-[#303839]/12 bg-[#F8F6F1]/60 px-2.5 text-[13px] font-semibold text-[#303839] outline-none placeholder:text-[#303839]/35 focus:border-[#D4AF37] focus:bg-white focus-visible:ring-2 focus-visible:ring-[#D4AF37]/25"
+                className="mb-2 h-9 w-full rounded-lg border border-[#303839]/12 bg-cream/60 px-2.5 text-[13px] font-semibold text-[#303839] outline-none placeholder:text-[#303839]/35 focus:border-[#D4AF37] focus:bg-white focus-visible:ring-2 focus-visible:ring-[#D4AF37]/25"
               />
             )}
             <div className="grid gap-1">
@@ -210,7 +210,7 @@ export default function ToolbarDropdown({
                         ? "cursor-not-allowed text-[#303839]/35"
                         : isSelected
                           ? "cursor-pointer bg-[#303839] text-white"
-                          : "cursor-pointer text-[#303839] hover:bg-[#F8F6F1]"
+                          : "cursor-pointer text-[#303839] hover:bg-cream"
                     }`}
                   >
                     <span className="truncate font-semibold" style={{ fontFamily: option.fontFamily }}>
@@ -280,7 +280,7 @@ export default function ToolbarDropdown({
         }}
         className={
           triggerClassName ??
-          "flex h-7 min-w-0 cursor-pointer items-center justify-between gap-2 rounded-md px-1 text-left text-[13px] font-bold leading-7 text-[#303839] outline-none transition-colors hover:bg-[#F8F6F1] focus-visible:ring-2 focus-visible:ring-[#D4AF37] disabled:cursor-not-allowed disabled:opacity-40"
+          "flex h-7 min-w-0 cursor-pointer items-center justify-between gap-2 rounded-md px-1 text-left text-[13px] font-bold leading-7 text-[#303839] outline-none transition-colors hover:bg-cream focus-visible:ring-2 focus-visible:ring-[#D4AF37] disabled:cursor-not-allowed disabled:opacity-40"
         }
       >
         <span

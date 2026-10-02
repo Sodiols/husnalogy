@@ -8,6 +8,7 @@ import { getFilterOptions } from "@/lib/products";
 import ProductListingPage from "../../products/ProductListingPage";
 import { getMainMockupImage } from "../../products/product-image";
 import Link from "next/link";
+import ExploreMoreTile from "@/app/components/explore-more-tile";
 
 export const dynamic = "force-dynamic";
 
@@ -44,8 +45,8 @@ export default async function CollectionPage({ params, searchParams }) {
       params={queryParams || {}}
       clearHref={`/collections/${slug}`}
       basePath={`/collections/${slug}`}
-      emptyTitle="No matching products are live yet."
-      emptyDescription="This page is already connected. When you add an active product with matching title, category, collection, theme, or tags, it will appear here automatically."
+      emptyTitle="New designs are coming soon"
+      emptyDescription="This collection is being prepared. Browse our other collections or contact us about a design for your occasion."
       filterTitle={`Filter ${collection.title}`}
       searchPlaceholder={`Search ${collection.title.toLowerCase()}...`}
     />
@@ -57,33 +58,38 @@ function CollectionSuitePage({ collection, subCollections = [] }) {
   const totalChildren = visibleChildren.length;
 
   return (
-    <main className="bg-white text-[#303839]">
-      <section className="mx-auto max-w-[1480px] px-4 py-12 sm:px-6 lg:px-8">
-        <header className="mb-8 max-w-3xl">
-          <p className="text-[11px] font-bold uppercase tracking-[0.22em] text-[#303839]">Wedding suite</p>
-          <h1 className="mt-3 font-display text-[2.2rem] font-semibold leading-tight text-[#303839] sm:text-[3rem]">
-            {collection.name}
-          </h1>
-          {collection.description && (
-            <p className="mt-4 text-sm leading-7 text-[#303839]/65">{collection.description}</p>
-          )}
+    <main className="bg-white text-ink">
+      <section className="page-container pb-16 pt-8 sm:pt-10 lg:pb-20 lg:pt-12">
+        <header className="max-w-[720px]">
+          <p className="eyebrow">Wedding suite</p>
+          <h1 className="heading-page mt-3 capitalize">{collection.name}</h1>
+          {collection.description && <p className="text-lead mt-4 max-w-[640px]">{collection.description}</p>}
         </header>
 
-        <div className="grid gap-x-5 gap-y-12 sm:grid-cols-2 lg:grid-cols-4">
+        <p className="mt-8 border-y border-line py-3 text-[14px] text-muted">
+          <span className="font-semibold text-ink">{totalChildren}</span> {totalChildren === 1 ? "design" : "designs"} in this suite
+        </p>
+
+        <ul className="mt-8 grid grid-cols-2 gap-x-4 gap-y-10 sm:grid-cols-3 sm:gap-x-6 lg:grid-cols-4">
           {visibleChildren.map((child) => (
-            <SubCollectionCard key={child.id} collection={child} />
+            <li key={child.id} className="min-w-0">
+              <SubCollectionCard collection={child} />
+            </li>
           ))}
-        </div>
+          {totalChildren > 0 && totalChildren < 4 && (
+            <li className="col-span-2 min-w-0 sm:col-span-1">
+              <ExploreMoreTile />
+            </li>
+          )}
+        </ul>
 
         {!visibleChildren.length && (
-          <div className="border border-[#303839]/12 bg-[#f8f6f1] p-6 text-sm text-[#303839]/65">
-            No sub-collections in this suite have active products yet.
+          <div className="mt-8 rounded-[10px] bg-cream px-6 py-10 text-center" role="status">
+            <h2 className="font-display text-[1.75rem] font-medium text-ink">This suite is being prepared</h2>
+            <p className="mx-auto mt-3 max-w-[480px] text-[15px] leading-7 text-muted">Browse our other collections in the meantime.</p>
+            <Link href="/collections" className="btn btn-primary mt-6">Browse all collections</Link>
           </div>
         )}
-
-        <p className="mt-16 text-center text-sm text-[#303839]/70">
-          Showing {totalChildren} of {totalChildren} sub-collections
-        </p>
       </section>
     </main>
   );
@@ -95,21 +101,18 @@ function SubCollectionCard({ collection }) {
 
   return (
     <Link href={`/collections/${collection.slug}`} className="group block min-w-0">
-      <div className="aspect-square overflow-hidden rounded-[18px] bg-[#f8f6f1]">
-        <img
-          src={image}
-          alt={collection.name}
-          className="h-full w-full object-cover transition duration-500 group-hover:scale-[1.035]"
-        />
-      </div>
-      <h2 className="mt-2 line-clamp-1 text-[0.95rem] font-extrabold leading-5 text-[#303839]">
+      <span className="block aspect-square overflow-hidden rounded-[10px] bg-cream">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={image} alt="" className="h-full w-full object-cover" />
+      </span>
+      <h2 className="heading-card mt-3 line-clamp-2 capitalize group-hover:underline group-hover:underline-offset-4">
         {collection.name}
       </h2>
       {productCount > 0 && (
-        <p className="mt-1 flex items-center gap-1.5 text-sm text-[#303839]">
-          <span className="relative inline-block h-3.5 w-3.5">
-            <span className="absolute left-0 top-1 h-2.5 w-2.5 border border-[#303839]" />
-            <span className="absolute left-1 top-0 h-2.5 w-2.5 border border-[#303839] bg-white/40" />
+        <p className="mt-1 flex items-center gap-1.5 text-[13px] text-muted">
+          <span aria-hidden="true" className="relative inline-block h-3.5 w-3.5">
+            <span className="absolute left-0 top-1 h-2.5 w-2.5 border border-ink/60" />
+            <span className="absolute left-1 top-0 h-2.5 w-2.5 border border-ink/60 bg-white/40" />
           </span>
           {productCount} style{productCount === 1 ? "" : "s"}
         </p>

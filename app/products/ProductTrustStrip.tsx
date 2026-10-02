@@ -7,7 +7,7 @@ import { ORDER_POLICY } from "@/lib/launch-config";
 function TrustRow({ icon, title, value }) {
   return (
     <div className="flex items-start gap-3">
-      <span className="mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-full bg-[#E6E6E6] text-[#303839]">
+      <span className="mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-full bg-cream text-[#303839]">
         <i className={`fa-solid ${icon} text-[13px]`} aria-hidden="true" />
       </span>
       <div className="min-w-0">

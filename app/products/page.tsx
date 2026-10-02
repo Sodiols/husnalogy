@@ -31,14 +31,15 @@ export default async function ProductsPage({ searchParams }) {
 
   return (
     <ProductListingPage
-      title="Wedding Invitations"
-      description="Timeless designs for your forever day."
+      title="Shop all"
+      eyebrow="Husnalogy"
+      description="Wedding invitations, save the dates, cards, gifts and stationery. Every design can be personalized before you order."
       products={products}
       options={getFilterOptions(allProducts)}
       params={params || {}}
       basePath="/products"
-      emptyTitle="No active products found."
-      emptyDescription="Try clearing the filters or add active products in the admin dashboard."
+      emptyTitle="New designs are coming soon"
+      emptyDescription="Browse our collections or contact us about a design for your occasion."
     />
   );
 }

@@ -113,7 +113,7 @@ function FontRow({
       aria-selected={selected}
       onClick={onPick}
       className={`flex w-full items-center justify-between gap-3 px-3 py-2 text-left transition-colors ${
-        active ? "bg-[#F4ECEC]" : "hover:bg-[#F8F6F1]"
+        active ? "bg-[#F4ECEC]" : "hover:bg-cream"
       } ${selected ? "font-bold" : ""}`}
     >
       <span
@@ -278,7 +278,7 @@ export default function GoogleFontSelector({
               onKeyDown={onKeyDown}
               placeholder="Search Google Fonts…"
               aria-label="Search Google Fonts"
-              className="h-9 w-full rounded-lg border border-[#303839]/12 bg-[#F8F6F1] px-3 text-sm text-[#303839] outline-none focus:border-[#D4AF37] focus:bg-white focus:ring-2 focus:ring-[#D4AF37]/20"
+              className="h-9 w-full rounded-lg border border-[#303839]/12 bg-cream px-3 text-sm text-[#303839] outline-none focus:border-[#D4AF37] focus:bg-white focus:ring-2 focus:ring-[#D4AF37]/20"
             />
             {!loading && !error && (
               <p className="px-1 pt-1.5 text-[10px] font-semibold text-[#303839]/45">
@@ -298,7 +298,7 @@ export default function GoogleFontSelector({
                 <button
                   type="button"
                   onClick={retry}
-                  className="mt-3 rounded-lg border border-[#303839]/15 px-3 py-1.5 text-xs font-bold text-[#303839] hover:bg-[#F8F6F1] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37]"
+                  className="mt-3 rounded-lg border border-[#303839]/15 px-3 py-1.5 text-xs font-bold text-[#303839] hover:bg-cream focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37]"
                 >
                   Retry
                 </button>

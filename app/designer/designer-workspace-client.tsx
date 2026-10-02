@@ -38,7 +38,7 @@ const FILTERS: Array<{ value: string; label: string }> = [
 
 /** Colour by state so the queue is readable at a glance. */
 const STATE_STYLES: Record<string, string> = {
-  draft: "bg-[#F4F4F4] text-[#555]",
+  draft: "bg-cream text-[#555]",
   in_review: "bg-[#FFF4D6] text-[#7A5B00]",
   needs_revision: "bg-[#FDE8E8] text-[#8C1F1F]",
   approved: "bg-[#E6F4EA] text-[#1B5E20]",
@@ -130,7 +130,7 @@ export default function DesignerWorkspaceClient({
     const state = (editing?.workflowState || "draft") as WorkflowState;
     const locked = Boolean(editing) && !designerMayEdit(state);
     return (
-      <main className="min-h-screen bg-[#F8F6F1] px-4 py-8 sm:px-8">
+      <main className="min-h-screen bg-cream px-4 py-8 sm:px-8">
         <div className="mx-auto max-w-[1400px]">
           <button
             type="button"
@@ -188,7 +188,7 @@ export default function DesignerWorkspaceClient({
   }
 
   return (
-    <main className="min-h-screen bg-[#F8F6F1] px-4 py-8 sm:px-8">
+    <main className="min-h-screen bg-cream px-4 py-8 sm:px-8">
       <div className="mx-auto max-w-[1200px]">
         <header className="flex flex-col gap-3 border-b border-[#303839]/10 pb-6 sm:flex-row sm:items-center sm:justify-between">
           <div>

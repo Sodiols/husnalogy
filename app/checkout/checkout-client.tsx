@@ -300,39 +300,34 @@ export default function CheckoutClient({ initialUser = undefined }: any) {
   const itemCount = items.reduce((sum, item) => sum + Number(item.quantity || 1), 0);
 
   return (
-    <main className="checkout-scope relative bg-[#fbfaf7] px-4 py-8 text-[#303839] sm:px-6 lg:px-10 lg:py-10 xl:py-12">
-      {/* Soft neutral wash over a white base */}
-      <div
-        aria-hidden="true"
-        className="pointer-events-none absolute inset-0 bg-[radial-gradient(75%_58%_at_46%_-8%,rgba(230,230,230,0.72),transparent_58%),radial-gradient(64%_52%_at_105%_100%,rgba(230,230,230,0.48),transparent_60%)]"
-      />
-      <div className="relative mx-auto max-w-[1180px]">
+    <main className="checkout-scope bg-white text-ink">
+      <div className="page-container pb-16 pt-8 sm:pt-10 lg:pb-20 lg:pt-12">
         <div className="mb-7 flex items-center gap-3 sm:mb-8 lg:mb-9">
           <Link
             href="/cart"
             aria-label="Back to cart"
-            className="grid h-10 w-10 place-items-center rounded-full border border-[#303839]/10 bg-white/80 text-[#303839] shadow-[0_10px_24px_-18px_rgba(48,56,57,0.55)] transition-all hover:bg-[#E6E6E6]"
+            className="grid h-11 w-11 place-items-center rounded-full border border-field bg-white text-ink transition-colors hover:border-ink/50"
           >
             <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
               <path d="m15 18-6-6 6-6" />
             </svg>
           </Link>
-          <h1 className="font-body text-4xl font-extrabold leading-none tracking-normal sm:text-[2.75rem]">Checkout</h1>
+          <h1 className="heading-page">Checkout</h1>
         </div>
 
-        <form onSubmit={handleSubmit} className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_360px] lg:items-start lg:gap-9 xl:grid-cols-[minmax(0,1fr)_384px]">
+        <form onSubmit={handleSubmit} className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_380px] lg:items-start lg:gap-12">
           {/* Details */}
           <div className="space-y-8 lg:space-y-9">
             {!authLoading && !user && (
-              <div className="flex flex-col gap-3 rounded-[18px] border border-white/80 bg-white/85 p-5 shadow-[0_22px_48px_-32px_rgba(48,56,57,0.5)] backdrop-blur sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex flex-col gap-3 rounded-[10px] bg-cream p-5 sm:flex-row sm:items-center sm:justify-between">
                 <div>
-                  <p className="text-sm font-bold text-[#303839]">Sign in before checkout</p>
-                  <p className="mt-1 text-sm leading-6 text-[#303839]/60">Your order can only be saved to your account when you are signed in.</p>
+                  <p className="text-[15px] font-semibold text-ink">Sign in before checkout</p>
+                  <p className="mt-1 text-[14px] leading-6 text-muted">Your order can only be saved to your account when you are signed in.</p>
                 </div>
                 <button
                   type="button"
                   onClick={openCustomerLogin}
-                  className="checkout-primary-button shrink-0 px-6 py-3 text-[11px] font-semibold uppercase tracking-[0.16em] text-white duration-200"
+                  className="checkout-primary-button btn btn-primary shrink-0"
                 >
                   Sign in
                 </button>
@@ -346,11 +341,11 @@ export default function CheckoutClient({ initialUser = undefined }: any) {
                 <Field label="Last name" value={customer.lastName} onChange={(v) => updateCustomer("lastName", v)} maxLength={60} autoComplete="family-name" required />
                 <Field label="Phone" type="tel" value={customer.customerPhone} onChange={(v) => updateCustomer("customerPhone", v)} placeholder="01XXXXXXXXX" error={fieldErrors.customerPhone} maxLength={20} autoComplete="tel" inputMode="tel" required />
                 <label className="block">
-                  <span className="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.08em] text-[#303839]/45">Account email</span>
-                  <span className="checkout-field flex h-[52px] w-full cursor-not-allowed items-center bg-[#E6E6E6]/50 px-4 text-sm font-medium text-[#303839]/70 sm:h-[54px]">
+                  <span className="field-label">Account email</span>
+                  <span className="flex min-h-12 w-full cursor-not-allowed items-center rounded-[6px] border border-line bg-cream px-4 text-[15px] text-muted">
                     {user?.email || "—"}
                   </span>
-                  <span className="mt-1.5 block text-[11px] leading-4 text-[#303839]/45">Orders are placed with your signed-in account email and can&apos;t be changed here.</span>
+                  <span className="field-hint block">Orders are placed with your signed-in account email and can&apos;t be changed here.</span>
                 </label>
               </div>
             </Section>
@@ -378,37 +373,39 @@ export default function CheckoutClient({ initialUser = undefined }: any) {
 
               {deliveryMethod === "delivery" ? (
                 <>
-                  <p className="mt-4 rounded-[14px] bg-[#E6E6E6]/60 px-4 py-3 text-xs leading-5 text-[#303839]/70">{ORDER_POLICY.deliveryCharge}</p>
+                  <p className="mt-4 rounded-[10px] bg-cream px-4 py-3 text-[14px] leading-6 text-muted">{ORDER_POLICY.deliveryCharge}</p>
                   <div className="mt-4 grid gap-x-4 gap-y-4 sm:grid-cols-3">
                     <Field label="City" value={customer.city} onChange={(v) => updateCustomer("city", v)} error={fieldErrors.city} maxLength={80} autoComplete="address-level2" required />
                     <Field label="Address" value={customer.addressLine1} onChange={(v) => updateCustomer("addressLine1", v)} error={fieldErrors.addressLine1} maxLength={300} autoComplete="street-address" required />
                     <Field label="Zip code" value={customer.postalCode} onChange={(v) => updateCustomer("postalCode", v)} error={fieldErrors.postalCode} maxLength={4} autoComplete="postal-code" inputMode="numeric" />
                   </div>
                   <label className="mt-4 block">
-                    <span className="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.08em] text-[#303839]/45">Delivery note</span>
-                    <textarea value={customer.deliveryNote} maxLength={500} onChange={(event) => updateCustomer("deliveryNote", event.target.value)} placeholder="Preferred time or special delivery instructions…" className="checkout-field min-h-24 w-full px-4 py-3.5 text-sm text-[#303839] outline-none placeholder:text-[#303839]/35" />
-                    {fieldErrors.deliveryNote && <span className="mt-1.5 block text-[11px] leading-4 text-red-700">{fieldErrors.deliveryNote}</span>}
+                    <span className="field-label">
+                      Delivery note <span className="field-optional">(optional)</span>
+                    </span>
+                    <textarea value={customer.deliveryNote} maxLength={500} onChange={(event) => updateCustomer("deliveryNote", event.target.value)} placeholder="Preferred time or special delivery instructions" aria-invalid={fieldErrors.deliveryNote ? true : undefined} className="checkout-field field min-h-24" />
+                    {fieldErrors.deliveryNote && <span className="field-error">{fieldErrors.deliveryNote}</span>}
                   </label>
-                  <label className="mt-4 flex cursor-pointer items-center gap-3 rounded-[14px] px-4 py-3 text-sm font-medium text-[#303839]/80">
+                  <label className="mt-4 flex cursor-pointer items-center gap-3 py-2 text-[14px] text-ink">
                     <input type="checkbox" checked={saveAddress} onChange={(event) => setSaveAddress(event.target.checked)} className="checkout-checkbox h-5 w-5 shrink-0 accent-[#303839]" />
-                    <span className="flex min-w-0 flex-col"><span className="text-[13px] font-bold text-[#303839]">Save this address</span><span className="text-[12px] leading-5 text-[#303839]/55">Keep it on this device for faster checkout.</span></span>
+                    <span className="flex min-w-0 flex-col"><span className="text-[14px] font-semibold text-ink">Save this address</span><span className="text-[13px] leading-5 text-muted">Keep it on this device for faster checkout.</span></span>
                   </label>
                 </>
               ) : (
-                <p className="mt-4 rounded-[14px] bg-[#E6E6E6]/60 px-4 py-3 text-xs leading-5 text-[#303839]/70">No delivery address or delivery charge is required for store pickup. Husnalogy will confirm when your order is ready to collect.</p>
+                <p className="mt-4 rounded-[10px] bg-cream px-4 py-3 text-[14px] leading-6 text-muted">No delivery address or delivery charge is required for store pickup. Husnalogy will confirm when your order is ready to collect.</p>
               )}
             </Section>
 
             {/* 3. Payment method */}
             <Section n="3" title="Payment method">
               <div className="max-w-[380px]">
-                <div className="flex items-center gap-3 rounded-[18px] border border-[#303839]/75 bg-white/95 px-4 py-4 shadow-[0_14px_30px_-20px_rgba(48,56,57,0.5)]">
+                <div className="flex items-center gap-3 rounded-[10px] border border-ink/60 bg-white px-4 py-4">
                   <span className="grid h-9 w-9 place-items-center rounded-full bg-[#303839] text-white">
                     <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="7" width="18" height="10" rx="2" /><circle cx="12" cy="12" r="2.2" /><path d="M6 12h.01M18 12h.01" /></svg>
                   </span>
                   <div className="flex-1">
-                    <p className="text-sm font-bold text-[#303839]">{ORDER_POLICY.paymentMethod}</p>
-                    <p className="text-xs text-[#303839]/55">Pay when a delivery order arrives or when collecting a store pickup order.</p>
+                    <p className="text-[15px] font-semibold text-ink">{ORDER_POLICY.paymentMethod}</p>
+                    <p className="text-[13px] leading-5 text-muted">Pay when a delivery order arrives or when collecting a store pickup order.</p>
                   </div>
                   <span className="grid h-5 w-5 place-items-center rounded-full bg-[#303839] text-white">
                     <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="m5 12 5 5 9-11" /></svg>
@@ -419,19 +416,19 @@ export default function CheckoutClient({ initialUser = undefined }: any) {
           </div>
 
           {/* Order summary */}
-          <aside className="lg:sticky lg:top-6">
-            <div className="rounded-[22px] border border-white/80 bg-white/90 p-5 shadow-[0_34px_80px_-48px_rgba(48,56,57,0.58)] backdrop-blur sm:p-6">
+          <aside className="lg:sticky lg:top-[140px]" aria-label="Order summary">
+            <div className="rounded-[10px] border border-line bg-white p-5 sm:p-6">
               {placedOrder && (
-                <div role="status" className="mb-5 rounded-[16px] border border-green-200 bg-green-50 px-4 py-4 text-[13px] leading-5 text-[#303839]">
+                <div role="status" className="notice notice-success mb-5">
                   <p className="font-bold">Order placed</p>
                   <p className="mt-1 text-[#303839]/70">Order ID: {placedOrder.id}. We&apos;ll confirm the details with you soon.</p>
                   <Link href="/orders" className="mt-2 inline-block font-semibold underline underline-offset-2">View your orders</Link>
                 </div>
               )}
               <div className="flex items-center justify-between">
-                <h2 className="text-lg font-bold text-[#303839]">Order</h2>
+                <h2 className="font-display text-[1.75rem] font-medium leading-none text-ink">Your order</h2>
                 {itemCount > 0 && (
-                  <span className="rounded-full bg-[#E6E6E6] px-2.5 py-1 text-[11px] font-bold text-[#303839]">
+                  <span className="badge">
                     {itemCount} {itemCount === 1 ? "item" : "items"}
                   </span>
                 )}
@@ -444,14 +441,14 @@ export default function CheckoutClient({ initialUser = undefined }: any) {
                   const meta = [options.size ? `Size: ${options.size}` : "", options.color ? `Color: ${options.color}` : ""].filter(Boolean).join("   ");
                   return (
                     <div key={item.id} className="flex items-center gap-3">
-                      <ServerCustomizationImage customizationId={item.customizationId} outputPageId={item.mockupOutputRef?.pageId} fallbackSrc={item.image} alt={item.title} containerClassName="relative h-16 w-16 shrink-0 overflow-hidden rounded-[14px] bg-[#F8F6F1] shadow-[inset_0_1px_0_rgba(255,255,255,0.65)]" />
+                      <ServerCustomizationImage customizationId={item.customizationId} outputPageId={item.mockupOutputRef?.pageId} fallbackSrc={item.image} alt={item.title} containerClassName="relative h-16 w-16 shrink-0 overflow-hidden rounded-[6px] bg-cream" />
                       <div className="min-w-0 flex-1">
-                        <p className="line-clamp-2 text-[13px] font-bold leading-snug text-[#303839]">{item.title}</p>
-                        {meta && <p className="mt-0.5 text-[11px] text-[#303839]/55">{meta}</p>}
-                        <p className="mt-0.5 text-[11px] text-[#303839]/55">Qty {item.quantity || 1}</p>
-                        {trusted && !trusted.ok && <p className="mt-0.5 text-[11px] font-semibold text-red-700">{trusted.error}</p>}
+                        <p className="line-clamp-2 text-[14px] font-semibold leading-snug text-ink">{item.title}</p>
+                        {meta && <p className="mt-0.5 text-[13px] text-muted">{meta}</p>}
+                        <p className="mt-0.5 text-[13px] text-muted">Qty {item.quantity || 1}</p>
+                        {trusted && !trusted.ok && <p className="mt-0.5 text-[13px] font-medium text-error">{trusted.error}</p>}
                       </div>
-                      <p className="shrink-0 text-sm font-bold text-[#303839]">
+                      <p className="price shrink-0 text-[14px]">
                         {trusted?.ok
                           ? money(trusted.lineTotal, trusted.currency)
                           : money(Number(item.price || 0) * Number(item.quantity || 1), item.currency)}
@@ -460,38 +457,38 @@ export default function CheckoutClient({ initialUser = undefined }: any) {
                   );
                 })}
                 {!items.length && (
-                  <p className="rounded-[14px] bg-[#E6E6E6]/60 px-4 py-6 text-center text-sm text-[#303839]/55">Your cart is empty.</p>
+                  <p className="rounded-[10px] bg-cream px-4 py-6 text-center text-[14px] text-muted">Your cart is empty.</p>
                 )}
               </div>
 
-              <div className="mt-5 space-y-2.5 border-t border-[#303839]/10 pt-5 text-[13px]">
-                <div className="flex justify-between text-[#303839]/60">
-                  <span className="uppercase tracking-[0.06em]">Subtotal</span>
-                  <span className="font-bold text-[#303839]">{money(totals.subtotal)}</span>
+              <div className="mt-5 space-y-2.5 border-t border-line pt-5 text-[14px]">
+                <div className="flex justify-between gap-4 text-muted">
+                  <span>Subtotal</span>
+                  <span className="price">{money(totals.subtotal)}</span>
                 </div>
-                <div className="flex justify-between text-[#303839]/60">
-                  <span className="uppercase tracking-[0.06em]">Delivery charge</span>
+                <div className="flex justify-between gap-4 text-muted">
+                  <span>Delivery charge</span>
                   <span>{deliveryMethod === "store" ? "No charge" : "Confirmed after review"}</span>
                 </div>
               </div>
 
-              <div className="mt-4 flex items-baseline justify-between border-t border-[#303839]/10 pt-4">
-                <span className="text-base font-bold uppercase tracking-[0.04em] text-[#303839]">{deliveryMethod === "store" ? "Total" : "Order subtotal"}</span>
-                <span className="text-2xl font-bold text-[#303839]">{money(totals.total)}</span>
+              <div className="mt-4 flex items-baseline justify-between border-t border-line pt-4">
+                <span className="text-[16px] font-semibold text-ink">{deliveryMethod === "store" ? "Total" : "Order subtotal"}</span>
+                <span className="price text-[1.5rem]">{money(totals.total)}</span>
               </div>
-              {deliveryMethod === "delivery" && <p className="mt-2 text-[11px] leading-5 text-[#303839]/55">The confirmed delivery charge will be added to the amount due on delivery.</p>}
+              {deliveryMethod === "delivery" && <p className="mt-2 text-[13px] leading-5 text-muted">The confirmed delivery charge will be added to the amount due on delivery.</p>}
               {pricesChanged && !placedOrder && (
-                <p className="mt-2 rounded-[12px] bg-[#E6E6E6]/60 px-3 py-2 text-[11px] leading-5 text-[#303839]/75">Prices have been updated to our current prices. The total above is what you will pay.</p>
+                <p className="notice mt-3 bg-cream text-[13px]">Prices have been updated to our current prices. The total above is what you will pay.</p>
               )}
               {quoteBlocked && !placedOrder && (
-                <p role="alert" className="mt-2 rounded-[12px] border border-red-200 bg-red-50 px-3 py-2 text-[11px] leading-5 text-red-800">{quote?.error || "Some items in your cart need attention before you can check out."}</p>
+                <p role="alert" className="notice notice-error mt-3 text-[13px]">{quote?.error || "Some items in your cart need attention before you can check out."}</p>
               )}
 
               <button
                 type="submit"
                 disabled={status.loading || authLoading || !user || !items.length || !acceptTerms || Boolean(placedOrder) || quoteBlocked}
                 aria-busy={status.loading}
-                className="checkout-primary-button mt-5 flex w-full items-center justify-center gap-2 px-6 py-4 text-sm font-bold text-white duration-200 disabled:cursor-not-allowed disabled:opacity-50 disabled:shadow-none"
+                className="checkout-primary-button btn btn-primary btn-lg btn-block mt-5"
               >
                 {status.loading ? "Placing order…" : placedOrder ? "Order placed" : !user ? "Sign in to place order" : "Place order"}
                 {!status.loading && user && !placedOrder && (
@@ -499,14 +496,14 @@ export default function CheckoutClient({ initialUser = undefined }: any) {
                 )}
               </button>
 
-              <label className="mt-4 flex cursor-pointer items-start gap-2.5 text-[12px] leading-5 text-[#303839]/60">
+              <label className="mt-4 flex cursor-pointer items-start gap-2.5 text-[13px] leading-5 text-muted">
                 <input
                   type="checkbox"
                   checked={acceptTerms}
                   onChange={(event) => setAcceptTerms(event.target.checked)}
                   required
                   aria-describedby="checkout-terms-label"
-                  className="mt-0.5 h-4 w-4 shrink-0 accent-[#303839]"
+                  className="mt-0.5 h-5 w-5 shrink-0 accent-[#303839]"
                 />
                 <span id="checkout-terms-label">
                   I have read and accept the{" "}
@@ -550,7 +547,7 @@ function CheckoutNotification({ status }: any) {
     <div
       role={isSuccess ? "status" : "alert"}
       aria-live={isSuccess ? "polite" : "assertive"}
-      className={`fixed bottom-24 right-4 z-[2600] w-[calc(100vw-2rem)] max-w-[360px] rounded-[14px] border bg-white px-4 py-3 text-sm font-semibold text-[#303839] shadow-[0_18px_44px_-26px_rgba(48,56,57,0.65)] transition-all duration-300 sm:right-6 lg:bottom-6 ${
+      className={`fixed bottom-24 right-4 z-[2600] w-[calc(100vw-2rem)] max-w-[360px] rounded-[10px] border bg-white px-4 py-3 text-sm font-semibold text-ink shadow-[var(--shadow-overlay)] transition-all duration-300 sm:right-6 lg:bottom-20 ${
         isSuccess ? "border-green-200" : "border-red-200"
       } ${visible ? "translate-y-0 opacity-100" : "pointer-events-none translate-y-2 opacity-0"}`}
     >
@@ -592,8 +589,8 @@ function CheckoutNotification({ status }: any) {
 function Section({ n, title, children }: any) {
   return (
     <section>
-      <h2 className="mb-5 text-[15px] font-bold text-[#303839] lg:mb-3">
-        <span className="text-[#303839]/45">{n}.</span> {title}
+      <h2 className="mb-4 text-[17px] font-semibold text-ink">
+        <span className="text-muted">{n}.</span> {title}
       </h2>
       {children}
     </section>
@@ -606,16 +603,17 @@ function ChoiceTile({ selected, onClick, icon, label }: any) {
       type="button"
       onClick={onClick}
       aria-pressed={selected}
-      className={`flex min-h-[56px] items-center justify-center gap-2.5 border px-4 py-3.5 text-sm font-semibold transition-all duration-200 sm:min-h-[58px] ${
+      className={`relative flex min-h-[56px] items-center justify-center gap-2.5 border px-4 py-3.5 text-[15px] font-semibold transition-colors ${
         selected
-          ? "border-[#303839]/45 bg-[#d8d8d8] text-[#303839] shadow-[inset_0_1px_0_rgba(255,255,255,0.42)]"
-          : "border-white/50 bg-[#E6E6E6] text-[#303839]/60 shadow-[inset_0_1px_0_rgba(255,255,255,0.6)] hover:bg-[#dddddd]"
+          ? "border-ink/60 bg-cream text-ink"
+          : "border-field bg-white text-ink hover:border-ink/50"
       }`}
     >
-      <span className={`grid h-7 w-7 place-items-center rounded-full ${selected ? "bg-[#303839] text-white" : "bg-white/80 text-[#303839]/45"}`}>
+      <span className={`grid h-7 w-7 place-items-center rounded-full ${selected ? "bg-ink text-white" : "bg-cream text-ink"}`}>
         {icon}
       </span>
       {label}
+      {selected && <span className="sr-only">(selected)</span>}
     </button>
   );
 }
@@ -623,8 +621,8 @@ function ChoiceTile({ selected, onClick, icon, label }: any) {
 function Field({ label, value, onChange, type = "text", required = false, placeholder = "", className = "", error = "", maxLength = undefined, autoComplete = undefined, inputMode = undefined }: any) {
   return (
     <label className={`block ${className}`}>
-      <span className="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.08em] text-[#303839]/45">
-        {label} {required && <span className="text-[#303839]/35">*</span>}
+      <span className="field-label">
+        {label} {required ? <span aria-hidden="true">*</span> : <span className="field-optional">(optional)</span>}
       </span>
       <input
         type={type}
@@ -636,9 +634,10 @@ function Field({ label, value, onChange, type = "text", required = false, placeh
         autoComplete={autoComplete}
         inputMode={inputMode}
         aria-invalid={error ? true : undefined}
-        className="checkout-field h-[52px] w-full px-4 text-sm font-medium text-[#303839] outline-none placeholder:text-[#303839]/35 sm:h-[54px]"
+        aria-required={required || undefined}
+        className="checkout-field field"
       />
-      {error && <span className="mt-1.5 block text-[11px] leading-4 text-red-700">{error}</span>}
+      {error && <span className="field-error">{error}</span>}
     </label>
   );
 }

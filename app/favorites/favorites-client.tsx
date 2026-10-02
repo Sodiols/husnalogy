@@ -18,11 +18,11 @@ export default function FavoritesClient() {
   return (
     <main className="px-4 py-12 text-[#303839]">
       <section className="mx-auto max-w-[1180px]">
-        <h1 className="font-display text-4xl">Favorites</h1>
+        <h1 className="heading-page">Favorites</h1>
         {!authLoading && !user && (
-          <div className="mt-6 rounded-none border border-[#303839]/10 bg-[#E6E6E6] p-5">
+          <div className="mt-6 rounded-none border border-[#303839]/10 bg-cream p-5">
             <p className="text-sm font-bold text-[#303839]">Sign in to view your wishlist.</p>
-            <button type="button" onClick={openCustomerLogin} className="mt-4 rounded-full bg-[#303839] px-6 py-3 text-sm font-bold text-white">
+            <button type="button" onClick={openCustomerLogin} className="btn btn-primary mt-4">
               Sign in
             </button>
           </div>

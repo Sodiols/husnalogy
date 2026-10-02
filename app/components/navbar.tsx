@@ -70,8 +70,8 @@ export default function Header({
 
   return (
     <>
-    <header className="sticky top-0 z-[2400] border-b border-[#303839]/10 bg-[#ffffff] backdrop-blur-xl">
-      <div className="mx-auto max-w-[1480px] px-4 sm:px-6 lg:px-10">
+    <header className="sticky top-0 z-[2400] border-b border-line bg-white">
+      <div className="page-container">
         <div className="flex h-[64px] items-center justify-between gap-4 lg:h-[72px]">
           <Link href="/" className="flex shrink-0 items-center" aria-label="Husnalogy Home">
             <img
@@ -86,14 +86,14 @@ export default function Header({
             role="search"
             className="flex min-w-0 flex-1 justify-end lg:hidden"
           >
-            <div className="flex h-10 w-full max-w-[320px] items-center rounded-full border border-[#ccc] bg-white pl-4 pr-1 transition-colors duration-200 focus-within:border-[#303839]/45">
+            <div className="flex h-10 w-full max-w-[320px] items-center rounded-full border border-[#ccc] bg-white pl-4 pr-1 transition-colors duration-200 focus-within:border-[#303839]/60 focus-within:shadow-[0_0_0_2px_rgba(48,56,57,0.08)]">
               <input
-                type="text"
+                type="search"
                 value={searchValue}
                 onChange={(event) => setSearchValue(event.target.value)}
                 placeholder="Search"
-                aria-label="Search"
-                className="min-w-0 flex-1 bg-transparent py-1 text-[14px] text-[#303839] outline-none placeholder:text-[#303839]/70"
+                aria-label="Search products"
+                className="input-bare min-w-0 flex-1 bg-transparent px-0 py-1 text-[14px] text-[#303839] outline-none placeholder:text-[#303839]/70"
               />
               <button
                 type="submit"
@@ -111,14 +111,14 @@ export default function Header({
             role="search"
             className="hidden min-w-0 flex-1 lg:flex lg:justify-center lg:px-10"
           >
-            <div className="flex h-11 w-full max-w-[760px] items-center rounded-full border border-[#ccc] bg-white pl-5 pr-1.5 transition-colors duration-200 focus-within:border-[#303839]/45">
+            <div className="flex h-11 w-full max-w-[760px] items-center rounded-full border border-[#ccc] bg-white pl-5 pr-1.5 transition-colors duration-200 focus-within:border-[#303839]/60 focus-within:shadow-[0_0_0_2px_rgba(48,56,57,0.08)]">
               <input
-                type="text"
+                type="search"
                 value={searchValue}
                 onChange={(event) => setSearchValue(event.target.value)}
                 placeholder="Search invitations, suites and gifts"
-                aria-label="Search"
-                className="min-w-0 flex-1 bg-transparent py-1.5 text-[15px] text-[#303839] outline-none placeholder:text-[#303839]/70"
+                aria-label="Search products"
+                className="input-bare min-w-0 flex-1 bg-transparent px-0 py-1.5 text-[15px] text-[#303839] outline-none placeholder:text-[#303839]/70"
               />
               <button
                 type="submit"
@@ -136,10 +136,10 @@ export default function Header({
               type="button"
               onClick={() => openProtectedPanel("wishlist")}
               data-shape="round"
-              className="relative grid h-10 w-10 place-items-center rounded-full text-[#303839] transition-opacity duration-200 hover:opacity-75"
+              className="relative grid h-11 w-11 place-items-center rounded-full text-[#303839] transition-colors duration-200 hover:bg-cream"
               aria-label="Open wishlist"
             >
-              <NavIcon name="heart" className="h-4 w-4 xl:h-5 xl:w-5" />
+              <NavIcon name="heart" size={20} />
               {wishlistCount > 0 && <CountBadge count={wishlistCount} />}
             </button>
 
@@ -147,10 +147,10 @@ export default function Header({
               type="button"
               onClick={() => openProtectedPanel("cart")}
               data-shape="round"
-              className="relative grid h-10 w-10 place-items-center rounded-full text-[#303839] transition-opacity duration-200 hover:opacity-75"
+              className="relative grid h-11 w-11 place-items-center rounded-full text-[#303839] transition-colors duration-200 hover:bg-cream"
               aria-label="Open cart"
             >
-              <NavIcon name="bag" className="h-4 w-4 xl:h-5 xl:w-5" />
+              <NavIcon name="bag" size={20} />
               {cartCount > 0 && <CountBadge count={cartCount} />}
             </button>
 
@@ -158,12 +158,12 @@ export default function Header({
               type="button"
               onClick={handleAccount}
               data-shape="round"
-              className="flex h-10 items-center gap-2 rounded-full px-3 text-[#303839] transition-opacity duration-200 hover:opacity-75"
+              className="ml-1 flex h-11 items-center gap-2 rounded-full px-3 text-[#303839] transition-colors duration-200 hover:bg-cream"
               aria-label={user ? "My account" : "Open account login"}
             >
-              <NavIcon name="user" className="h-4 w-4 xl:h-5 xl:w-5" />
-              <span className="max-w-[120px] truncate text-[11px] font-semibold uppercase tracking-[0.18em] text-[#303839]">
-                {user ? String(user.name || "").split(" ")[0] || "Account" : "Sign In"}
+              <NavIcon name="user" size={20} />
+              <span className="max-w-[120px] truncate text-[14px] font-semibold text-[#303839]">
+                {user ? String(user.name || "").split(" ")[0] || "Account" : "Sign in"}
               </span>
             </button>
           </div>
@@ -172,7 +172,7 @@ export default function Header({
 
       <div className="hidden lg:block">
         <nav
-          className="mx-auto flex h-[44px] max-w-[1480px] items-stretch justify-center gap-1 px-4 sm:px-6 lg:px-10 xl:gap-2"
+          className="page-container flex h-[48px] items-stretch justify-center gap-1 xl:gap-2"
           aria-label="Main Navigation"
         >
             {mainMenu.map((item) => {
@@ -184,7 +184,7 @@ export default function Header({
                 ? [
                     {
                       href: item.href,
-                      title: `Shop All ${item.label}`,
+                      title: `Shop all ${item.label.toLowerCase()}`,
                     },
                     ...item.children,
                   ]
@@ -204,11 +204,12 @@ export default function Header({
                 >
                   <button
                     type="button"
-                    onClick={() => setDesktopDropdown(item.label)}
-                    className={`relative flex h-full items-center gap-1 bg-transparent px-3 text-sm font-semibold text-[#303839] transition-colors duration-200 after:absolute after:bottom-0 after:left-3 after:right-3 after:h-[2px] after:origin-left after:bg-[#303839] after:transition-transform after:duration-300 after:ease-out hover:text-[#303839] hover:after:scale-x-100 group-hover:after:scale-x-100 focus-visible:outline-none focus-visible:after:scale-x-100 xl:px-4 xl:after:left-4 xl:after:right-4 ${
+                    onClick={() => setDesktopDropdown(isDropdownOpen ? false : item.label)}
+                    className={`relative flex h-full items-center gap-1 bg-transparent px-3 text-[15px] font-semibold text-[#303839] transition-colors duration-200 after:absolute after:bottom-0 after:left-3 after:right-3 after:h-[2px] after:origin-left after:bg-[#303839] after:transition-transform after:duration-300 after:ease-out hover:text-[#303839] hover:after:scale-x-100 group-hover:after:scale-x-100 focus-visible:outline-none focus-visible:after:scale-x-100 xl:px-4 xl:after:left-4 xl:after:right-4 ${
                       isDropdownOpen || isActiveParent ? "after:scale-x-100" : "after:scale-x-0"
                     }`}
                     aria-haspopup="true"
+                    aria-label={`${item.label} menu`}
                     aria-expanded={isDropdownOpen}
                     aria-controls={dropdownId}
                   >
@@ -230,16 +231,16 @@ export default function Header({
                         : "invisible translate-y-2 opacity-0"
                     }`}
                   >
-                    <div className="relative overflow-hidden border-x border-b border-[#303839]/10 bg-white py-4 shadow-[0_18px_42px_-30px_rgba(48,56,57,0.35)]">
+                    <div className="relative overflow-hidden rounded-b-[10px] border border-line bg-white py-2 shadow-[var(--shadow-overlay)]">
                       <div className={isWideDropdown ? "grid grid-cols-2 gap-0" : "grid gap-0"}>
                         {dropdownItems.map((child) => (
                           <a
                             key={`${child.href}-${child.title}`}
                             href={child.href}
                             onClick={() => setDesktopDropdown(false)}
-                            className="group/dropdown flex items-center justify-between gap-2 px-7 py-2.5 text-left text-[#303839] transition-colors duration-200 ease-out hover:bg-[#E6E6E6] active:bg-[#E6E6E6] focus-visible:bg-[#E6E6E6] focus-visible:outline-none"
+                            className="group/dropdown flex min-h-11 items-center justify-between gap-2 px-5 py-2 text-left text-[#303839] transition-colors duration-200 ease-out hover:bg-cream active:bg-cream focus-visible:bg-cream focus-visible:outline-none"
                           >
-                            <span className="block text-[14px] font-medium  text-[#303839] px-2 py-2">
+                            <span className="block text-[15px] font-medium text-[#303839]">
                               {child.title}
                             </span>
                             <span className="grid w-0 shrink-0 place-items-center overflow-hidden opacity-0 transition-all duration-200 ease-out group-hover/dropdown:w-3.5 group-hover/dropdown:opacity-60">
@@ -255,7 +256,7 @@ export default function Header({
                 <a
                   key={item.label}
                   href={item.href}
-                  className={`group relative flex h-full items-center px-3 text-sm font-semibold text-[#303839] transition-colors duration-200 after:absolute after:bottom-0 after:left-3 after:right-3 after:h-[2px] after:origin-left after:bg-[#303839] after:transition-transform after:duration-300 after:ease-out hover:text-[#303839] hover:after:scale-x-100 focus-visible:outline-none focus-visible:after:scale-x-100 xl:px-4 xl:after:left-4 xl:after:right-4 ${
+                  className={`group relative flex h-full items-center px-3 text-[15px] font-semibold text-[#303839] transition-colors duration-200 after:absolute after:bottom-0 after:left-3 after:right-3 after:h-[2px] after:origin-left after:bg-[#303839] after:transition-transform after:duration-300 after:ease-out hover:text-[#303839] hover:after:scale-x-100 focus-visible:outline-none focus-visible:after:scale-x-100 xl:px-4 xl:after:left-4 xl:after:right-4 ${
                     isActiveParent ? "after:scale-x-100" : "after:scale-x-0"
                   }`}
                 >
@@ -271,7 +272,7 @@ export default function Header({
         open so it never floats above its scrim. */}
     <nav
       aria-label="Mobile navigation"
-      className={`fixed inset-x-0 bottom-0 z-[2200] border-t border-[#303839]/10 bg-[#ffffff] backdrop-blur-xl shadow-[0_-8px_28px_-20px_rgba(48,56,57,0.4)] transition-transform duration-300 lg:hidden ${
+      className={`fixed inset-x-0 bottom-0 z-[2200] border-t border-line bg-white transition-transform duration-300 lg:hidden ${
         menuOpen ? "translate-y-full" : "translate-y-0"
       }`}
       style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
@@ -300,7 +301,7 @@ export default function Header({
           className="relative flex h-[60px] flex-1 items-center justify-center text-[#303839] transition-opacity duration-200 hover:opacity-75"
           aria-label="Open wishlist"
         >
-          <NavIcon name="heart" size={21} />
+          <NavIcon name="heart" size={22} />
           {wishlistCount > 0 && (
             <span className="absolute right-[24%] top-2.5 grid h-[18px] min-w-[18px] place-items-center rounded-full bg-charcoal px-1 text-[10px] font-bold leading-none text-white">
               {wishlistCount > 99 ? "99+" : wishlistCount}
@@ -314,7 +315,7 @@ export default function Header({
           className="relative flex h-[60px] flex-1 items-center justify-center text-[#303839] transition-opacity duration-200 hover:opacity-75"
           aria-label="Open cart"
         >
-          <NavIcon name="bag" size={21} />
+          <NavIcon name="bag" size={22} />
           {cartCount > 0 && (
             <span className="absolute right-[24%] top-2.5 grid h-[18px] min-w-[18px] place-items-center rounded-full bg-charcoal px-1 text-[10px] font-bold leading-none text-white">
               {cartCount > 99 ? "99+" : cartCount}
@@ -328,7 +329,7 @@ export default function Header({
           className="flex h-[60px] flex-1 items-center justify-center text-[#303839] transition-opacity duration-200 hover:opacity-75"
           aria-label="My account"
         >
-          <NavIcon name="user" size={21} />
+          <NavIcon name="user" size={22} />
         </button>
       </div>
     </nav>
@@ -347,7 +348,11 @@ function CountBadge({ count }) {
 
 function isActiveNavItem(pathname, item) {
   const normalizedPath = normalizePath(pathname);
-  const hrefs = [item.href, ...(item.children || []).map((child) => child.href)].filter(Boolean);
+  // Child links that are search queries (/search?q=…) all share one path, so
+  // they would mark every menu active on any search page; only real paths count.
+  const hrefs = [item.href, ...(item.children || []).map((child) => child.href)].filter(
+    (href) => href && !String(href).includes("?"),
+  );
 
   return hrefs.some((href) => {
     const normalizedHref = normalizePath(href);
@@ -361,12 +366,12 @@ function normalizePath(value) {
 }
 
 function NavIcon({ name, className = "", size }: any) {
-  const boldIconNames = new Set(["search", "user", "heart", "bag"]);
+  // One stroke weight for every header and tab-bar icon.
   const base: any = {
     viewBox: "0 0 24 24",
     fill: "none",
     stroke: "currentColor",
-    strokeWidth: boldIconNames.has(name) ? 2.25 : 1.7,
+    strokeWidth: 1.8,
     strokeLinecap: "round",
     strokeLinejoin: "round",
     "aria-hidden": "true",

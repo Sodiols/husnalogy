@@ -38,7 +38,7 @@ export default function ProductSuite({
       <div className="mt-7 grid min-w-0 grid-cols-2 gap-x-4 gap-y-8 sm:grid-cols-3 sm:gap-x-5 lg:grid-cols-4">
         {visibleCollections.map((child) => (
           <Link key={child.id} href={child.href} className="group block min-w-0">
-            <div className="max-w-full overflow-hidden rounded-none bg-[#f8f6f1]">
+            <div className="max-w-full overflow-hidden rounded-none bg-cream">
               <img
                 src={child.image}
                 alt={child.name}
@@ -65,7 +65,7 @@ export default function ProductSuite({
           <button
             type="button"
             onClick={() => setShowAll((value) => !value)}
-            className="rounded-none border-2 border-[#303839]/70 px-8 py-3 text-sm font-semibold text-[#303839] transition hover:border-[#303839] hover:bg-[#303839] hover:text-white"
+            className="btn btn-secondary"
           >
             {showAll ? "Show Fewer Products" : "Show More Products"}
           </button>

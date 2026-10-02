@@ -1,10 +1,10 @@
 export default function MaintenanceScreen({ storeName = "Husnalogy", storeTagline = "" }: { storeName?: string; storeTagline?: string }) {
   return (
-    <main className="relative min-h-screen overflow-hidden bg-[#f8f6f1] text-[#303839]">
+    <main className="relative min-h-screen overflow-hidden bg-cream text-[#303839]">
       {/* Soft brand circle */}
       <div
         aria-hidden="true"
-        className="pointer-events-none absolute left-1/2 top-1/2 h-[min(94vw,620px)] w-[min(94vw,620px)] -translate-x-1/2 -translate-y-1/2 rounded-full bg-[#ece9e1]/60"
+        className="pointer-events-none absolute left-1/2 top-1/2 h-[min(94vw,620px)] w-[min(94vw,620px)] -translate-x-1/2 -translate-y-1/2 rounded-full bg-cream-deep/60"
       />
 
       {/* Unplugged cable — the signature element */}

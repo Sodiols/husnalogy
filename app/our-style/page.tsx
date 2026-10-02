@@ -22,7 +22,7 @@ export default function OurStylePage() {
 
         <div className="mt-10 grid gap-5 md:grid-cols-2">
           {stylePoints.map(([title, text]) => (
-            <article key={title} className="rounded-none border border-[#303839]/10 bg-[#f8f6f1] p-6">
+            <article key={title} className="rounded-none border border-[#303839]/10 bg-cream p-6">
               <h2 className="font-display text-2xl">{title}</h2>
               <p className="mt-3 text-sm leading-7 text-[#303839]/70">{text}</p>
             </article>

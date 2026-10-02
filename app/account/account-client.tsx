@@ -232,7 +232,7 @@ export default function AccountClient() {
     return (
       <main className="grid min-h-[60vh] place-items-center bg-[#FAF9F7] px-4 text-[#111111]">
         <div className="w-full max-w-[460px] rounded-[20px] border border-[#111111]/10 bg-white p-8 text-center shadow-[0_18px_55px_rgba(17,17,17,0.06)]">
-          <h1 className="font-display text-3xl font-semibold">My Account</h1>
+          <h1 className="heading-page">My Account</h1>
           <p className="mt-3 text-sm leading-6 text-[#111111]/60">Please sign in to view your orders, personalized designs, wishlist, and saved addresses.</p>
           <button
             type="button"
@@ -274,7 +274,7 @@ export default function AccountClient() {
                 type="button"
                 onClick={() => setView(item.id)}
                 className={`shrink-0 rounded-[10px] border px-4 py-2 text-[13px] font-semibold transition ${
-                  view === item.id ? "border-[#111111]/10 bg-[#F1F1F1] text-[#111111]" : "border-[#111111]/10 bg-white text-[#111111]/65 hover:bg-[#F4F4F4] hover:text-[#111111]"
+                  view === item.id ? "border-[#111111]/10 bg-[#F1F1F1] text-[#111111]" : "border-[#111111]/10 bg-white text-[#111111]/65 hover:bg-cream hover:text-[#111111]"
                 }`}
               >
                 {item.label}
@@ -290,7 +290,7 @@ export default function AccountClient() {
               <Avatar profile={profile} size="h-20 w-20 text-2xl" />
               <p className="mt-3 text-base font-bold text-[#111111]">{name}</p>
               <p className="mt-0.5 max-w-full truncate text-xs text-[#111111]/55">{profile.email}</p>
-              <span className="mt-3 rounded-full bg-[#E6E6E6] px-3 py-1 text-[10px] font-bold uppercase tracking-[0.08em] text-[#111111]">Premium Member</span>
+              <span className="mt-3 rounded-full bg-cream px-3 py-1 text-[10px] font-bold uppercase tracking-[0.08em] text-[#111111]">Member</span>
             </div>
             <div className="my-6 h-px bg-[#111111]/8" />
             <div className="grid gap-1">
@@ -302,7 +302,7 @@ export default function AccountClient() {
                   className={`relative flex items-center gap-3 rounded-[10px] px-4 py-3 text-left text-[13px] font-semibold transition ${
                     view === item.id
                       ? "bg-[#F1F1F1] text-[#111111] before:absolute before:left-0 before:top-2 before:bottom-2 before:w-px before:bg-[#111111]"
-                      : "text-[#111111]/65 hover:bg-[#F4F4F4] hover:text-[#111111]"
+                      : "text-[#111111]/65 hover:bg-cream hover:text-[#111111]"
                   }`}
                 >
                   <Icon name={item.icon} className="h-[18px] w-[18px] shrink-0" />
@@ -443,11 +443,11 @@ function Overview({ firstName, profile, orders, ordersLoading, ordersError, pers
         <AccountSummaryCard icon="pin" title="Saved Addresses" subtitle="Manage your addresses" count={addresses.length} buttonLabel="Manage Addresses" onButton={() => onView("addresses")}>
           <div className="flex w-full gap-2">
             {addresses.slice(0, 2).map((a) => (
-              <div key={a.id} className="grid h-16 flex-1 place-items-center rounded-[10px] bg-[#F4F4F4] text-[#111111]">
+              <div key={a.id} className="grid h-16 flex-1 place-items-center rounded-[10px] bg-cream text-[#111111]">
                 <Icon name="home" className="h-5 w-5" />
               </div>
             ))}
-            <button type="button" onClick={() => onView("addresses")} className="grid h-16 w-12 place-items-center rounded-[10px] border border-dashed border-[#111111]/20 text-lg text-[#111111]/45 transition hover:bg-[#F4F4F4]">
+            <button type="button" onClick={() => onView("addresses")} className="grid h-16 w-12 place-items-center rounded-[10px] border border-dashed border-[#111111]/20 text-lg text-[#111111]/45 transition hover:bg-cream">
               +
             </button>
           </div>
@@ -457,7 +457,7 @@ function Overview({ firstName, profile, orders, ordersLoading, ordersError, pers
           {orders.length ? (
             <div className="w-full space-y-2">
               {orders.slice(0, 2).map((o) => (
-                <div key={o.id} className="flex items-center justify-between gap-2 rounded-[10px] bg-[#F4F4F4] px-3 py-2">
+                <div key={o.id} className="flex items-center justify-between gap-2 rounded-[10px] bg-cream px-3 py-2">
                   <p className="truncate text-xs font-semibold text-[#111111]/70">{o.productTitle || o.items?.[0]?.title || "Order"}</p>
                   <span className="shrink-0 text-[11px] text-[#111111]/45">{shortDate(o.createdAt)}</span>
                 </div>
@@ -506,7 +506,7 @@ function AccountSummaryCard({ icon, title, subtitle, count, children, buttonLabe
       <button
         type="button"
         onClick={onButton}
-        className="mt-auto w-full rounded-[10px] border border-[#111111]/15 px-4 py-2.5 text-center text-xs font-bold text-[#111111] transition hover:bg-[#F4F4F4] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#111111]/25"
+        className="mt-auto w-full rounded-[10px] border border-[#111111]/15 px-4 py-2.5 text-center text-xs font-bold text-[#111111] transition hover:bg-cream focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#111111]/25"
       >
         {buttonLabel}
       </button>
@@ -515,7 +515,7 @@ function AccountSummaryCard({ icon, title, subtitle, count, children, buttonLabe
 }
 
 function SummaryEmpty({ text }) {
-  return <div className="grid h-16 w-full place-items-center rounded-[10px] bg-[#F4F4F4] text-xs text-[#111111]/45">{text}</div>;
+  return <div className="grid h-16 w-full place-items-center rounded-[10px] bg-cream text-xs text-[#111111]/45">{text}</div>;
 }
 
 /* ------------------------------ Orders ------------------------------ */
@@ -553,7 +553,7 @@ function OrderRow({ order, onOpen }) {
         <StatusBadge status={order.status || "pending"} />
       </div>
       <p className="text-sm font-bold text-[#111111] sm:w-20 sm:text-right">{money(order.total, order.currency)}</p>
-      <button type="button" onClick={onOpen} className="shrink-0 rounded-full border border-[#111111]/15 px-4 py-2 text-xs font-bold text-[#111111] transition hover:bg-[#F4F4F4]">
+      <button type="button" onClick={onOpen} className="shrink-0 rounded-full border border-[#111111]/15 px-4 py-2 text-xs font-bold text-[#111111] transition hover:bg-cream">
         View Order
       </button>
     </div>
@@ -606,7 +606,7 @@ function RequestRow({ request, onOpen }) {
         <p className="text-[11px] font-bold uppercase tracking-[0.08em] text-[#111111]/45">Status</p>
         <div className="mt-1"><StatusBadge status={designStatusLabel(request.status)} /></div>
       </div>
-      <button type="button" onClick={onOpen} className="shrink-0 rounded-full border border-[#111111]/15 px-4 py-2 text-xs font-bold text-[#111111] transition hover:bg-[#F4F4F4]">
+      <button type="button" onClick={onOpen} className="shrink-0 rounded-full border border-[#111111]/15 px-4 py-2 text-xs font-bold text-[#111111] transition hover:bg-cream">
         View Details
       </button>
     </div>
@@ -631,7 +631,7 @@ function WishlistView({ items, onRemove }) {
                 </Link>
                 <div className="mt-1.5 flex items-center justify-between">
                   <span className="text-sm font-bold text-[#111111]">{item.price ? money(item.price, item.currency) : ""}</span>
-                  <button type="button" onClick={() => onRemove(item.productId || item.id)} className="rounded-full border border-[#111111]/15 px-3 py-1 text-[11px] font-bold text-[#111111] transition hover:bg-[#F4F4F4]">
+                  <button type="button" onClick={() => onRemove(item.productId || item.id)} className="rounded-full border border-[#111111]/15 px-3 py-1 text-[11px] font-bold text-[#111111] transition hover:bg-cream">
                     Remove
                   </button>
                 </div>
@@ -670,7 +670,7 @@ function AddressesView({ addresses }) {
             <div key={a.id} className={`rounded-[10px] border bg-white p-4 ${a.isDefault ? "border-[#111111]/60" : "border-[#111111]/8"}`}>
               <div className="flex items-start justify-between gap-2">
                 <p className="text-sm font-bold text-[#111111]">{a.fullName || a.customerName || "Address"}</p>
-                {a.isDefault && <span className="rounded-full bg-[#E6E6E6] px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-[0.08em] text-[#111111]">Default</span>}
+                {a.isDefault && <span className="rounded-full bg-cream px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-[0.08em] text-[#111111]">Default</span>}
               </div>
               <p className="mt-1 text-xs leading-5 text-[#111111]/65">
                 {[a.address || a.addressLine1, a.area, a.city, a.district, a.phone || a.customerPhone].filter(Boolean).join(", ")}
@@ -678,14 +678,14 @@ function AddressesView({ addresses }) {
               {a.note && <p className="mt-1 text-[11px] italic text-[#111111]/45">Note: {a.note}</p>}
               <div className="mt-3 flex flex-wrap gap-2">
                 {!a.isDefault && (
-                  <button type="button" onClick={() => setDefaultAddress(a.id)} className="rounded-full border border-[#111111]/15 px-3 py-1.5 text-[11px] font-bold text-[#111111] transition hover:bg-[#F4F4F4]">
+                  <button type="button" onClick={() => setDefaultAddress(a.id)} className="rounded-full border border-[#111111]/15 px-3 py-1.5 text-[11px] font-bold text-[#111111] transition hover:bg-cream">
                     Set Default
                   </button>
                 )}
-                <button type="button" onClick={() => setEditing(a)} className="rounded-full border border-[#111111]/15 px-3 py-1.5 text-[11px] font-bold text-[#111111] transition hover:bg-[#F4F4F4]">
+                <button type="button" onClick={() => setEditing(a)} className="rounded-full border border-[#111111]/15 px-3 py-1.5 text-[11px] font-bold text-[#111111] transition hover:bg-cream">
                   Edit
                 </button>
-                <button type="button" onClick={() => removeCustomerAddress(a.id)} className="rounded-full border border-[#111111]/15 px-3 py-1.5 text-[11px] font-bold text-[#111111] transition hover:bg-[#F4F4F4]">
+                <button type="button" onClick={() => removeCustomerAddress(a.id)} className="rounded-full border border-[#111111]/15 px-3 py-1.5 text-[11px] font-bold text-[#111111] transition hover:bg-cream">
                   Delete
                 </button>
               </div>
@@ -747,7 +747,7 @@ function AddressForm({ initial, onCancel, onSaved }) {
         <button type="submit" className="rounded-full bg-[#111111] px-6 py-3 text-sm font-bold text-white transition hover:bg-black/85">
           {initial.id ? "Update Address" : "Save Address"}
         </button>
-        <button type="button" onClick={onCancel} className="rounded-full border border-[#111111]/15 px-6 py-3 text-sm font-bold text-[#111111] transition hover:bg-[#F4F4F4]">
+        <button type="button" onClick={onCancel} className="rounded-full border border-[#111111]/15 px-6 py-3 text-sm font-bold text-[#111111] transition hover:bg-cream">
           Cancel
         </button>
       </div>
@@ -768,7 +768,7 @@ function HistoryView({ orders, loading, error, onOpen }) {
         <ol className="relative ml-2 border-l border-[#111111]/12">
           {orders.map((o) => (
             <li key={o.id} className="relative py-4 pl-6">
-              <span className="absolute -left-[6px] top-6 h-[11px] w-[11px] rounded-full border-2 border-white bg-[#111111]" />
+              <span className="absolute -left-[6px] top-6 h-[11px] w-[11px] rounded-full border border-white bg-[#111111]" />
               <div className="flex flex-col gap-3 rounded-[12px] border border-[#111111]/8 bg-white p-3 sm:flex-row sm:items-center sm:gap-4">
                 <img src={orderImage(o)} alt="" className="h-12 w-12 shrink-0 rounded-[10px] object-cover" />
                 <div className="min-w-0 flex-1">
@@ -780,7 +780,7 @@ function HistoryView({ orders, loading, error, onOpen }) {
                   <StatusBadge status={o.status || "pending"} />
                 </div>
                 <p className="text-sm font-bold text-[#111111] sm:w-20 sm:text-right">{money(o.total, o.currency)}</p>
-                <button type="button" onClick={() => onOpen(o)} className="shrink-0 rounded-full border border-[#111111]/15 px-4 py-2 text-xs font-bold text-[#111111] transition hover:bg-[#F4F4F4]">
+                <button type="button" onClick={() => onOpen(o)} className="shrink-0 rounded-full border border-[#111111]/15 px-4 py-2 text-xs font-bold text-[#111111] transition hover:bg-cream">
                   View Order
                 </button>
               </div>
@@ -850,7 +850,7 @@ function ProfileView({ profile, setProfile, addresses }) {
     <Panel title="Profile Settings">
       <div className="flex items-center gap-4">
         <Avatar profile={{ ...profile, photoURL: form.photoURL }} size="h-16 w-16 text-xl" />
-        <label className="cursor-pointer rounded-full border border-[#111111]/15 px-4 py-2 text-xs font-bold text-[#111111] transition hover:bg-[#F4F4F4]">
+        <label className="cursor-pointer rounded-full border border-[#111111]/15 px-4 py-2 text-xs font-bold text-[#111111] transition hover:bg-cream">
           Change Photo
           <input type="file" accept="image/*" onChange={onPickPhoto} className="hidden" />
         </label>
@@ -864,7 +864,7 @@ function ProfileView({ profile, setProfile, addresses }) {
       </div>
 
       {defaultAddress && (
-        <p className="mt-4 rounded-[10px] bg-[#F4F4F4] px-4 py-3 text-xs text-[#111111]/60">
+        <p className="mt-4 rounded-[10px] bg-cream px-4 py-3 text-xs text-[#111111]/60">
           Default address: {[defaultAddress.fullName || defaultAddress.customerName, defaultAddress.address || defaultAddress.addressLine1, defaultAddress.city].filter(Boolean).join(", ")}
         </p>
       )}
@@ -897,7 +897,7 @@ function OrderDetailModal({ order, onClose }) {
           <span className="text-xs text-[#111111]/50">Placed {shortDate(order.createdAt)}</span>
         </div>
 
-        <div className="rounded-[10px] bg-[#F4F4F4] p-4">
+        <div className="rounded-[10px] bg-cream p-4">
           <p className="text-xs font-bold uppercase tracking-[0.08em] text-[#111111]/45">Customer</p>
           <p className="mt-1 font-bold text-[#111111]">{order.customerName || "Customer"}</p>
           <p className="text-xs text-[#111111]/60">{order.customerEmail}</p>
@@ -909,7 +909,7 @@ function OrderDetailModal({ order, onClose }) {
           <div className="space-y-2">
             {items.map((item, i) => (
               <div key={item.id || i} className="flex items-center gap-3">
-                <ServerCustomizationImage customizationId={item.customizationId} outputPageId={item.mockupOutputRef?.pageId} fallbackSrc={item.image || orderImage(order)} alt={item.title || item.productTitle || "Personalized product"} containerClassName="relative h-12 w-12 shrink-0 overflow-hidden rounded-[10px] bg-[#F8F6F1]" />
+                <ServerCustomizationImage customizationId={item.customizationId} outputPageId={item.mockupOutputRef?.pageId} fallbackSrc={item.image || orderImage(order)} alt={item.title || item.productTitle || "Personalized product"} containerClassName="relative h-12 w-12 shrink-0 overflow-hidden rounded-[10px] bg-cream" />
                 <div className="min-w-0 flex-1">
                   <p className="truncate font-semibold text-[#111111]">{item.title || item.productTitle}</p>
                   <p className="text-xs text-[#111111]/55">Qty {item.quantity || 1}</p>
@@ -929,7 +929,7 @@ function OrderDetailModal({ order, onClose }) {
         </div>
 
         {(addr.addressLine1 || addr.city) && (
-          <div className="rounded-[10px] bg-[#F4F4F4] p-4">
+          <div className="rounded-[10px] bg-cream p-4">
             <p className="text-xs font-bold uppercase tracking-[0.08em] text-[#111111]/45">Delivery Address</p>
             <p className="mt-1 text-xs leading-5 text-[#111111]/70">
               {[addr.addressLine1, addr.addressLine2, addr.area, addr.city, addr.postalCode, addr.country].filter(Boolean).join(", ")}
@@ -953,7 +953,7 @@ function OrderDetailModal({ order, onClose }) {
             <p className="mb-2 text-xs font-bold uppercase tracking-[0.08em] text-[#111111]/45">Uploaded Files</p>
             <div className="flex flex-wrap gap-2">
               {files.map((f, i) => (
-                <a key={i} href={f.url} target="_blank" rel="noreferrer" className="rounded-[10px] border border-[#111111]/15 px-3 py-1.5 text-xs font-bold text-[#111111] hover:bg-[#F4F4F4]">
+                <a key={i} href={f.url} target="_blank" rel="noreferrer" className="rounded-[10px] border border-[#111111]/15 px-3 py-1.5 text-xs font-bold text-[#111111] hover:bg-cream">
                   {f.name || `File ${i + 1}`}
                 </a>
               ))}
@@ -1025,7 +1025,7 @@ function RequestDetailModal({ request, onClose }) {
             <p className="mb-2 text-xs font-bold uppercase tracking-[0.08em] text-[#111111]/45">Your Files</p>
             <div className="flex flex-wrap gap-2">
               {files.map((f, i) => (
-                <a key={i} href={f.url} target="_blank" rel="noreferrer" className="rounded-[10px] border border-[#111111]/15 px-3 py-1.5 text-xs font-bold text-[#111111] hover:bg-[#F4F4F4]">{f.name || `File ${i + 1}`}</a>
+                <a key={i} href={f.url} target="_blank" rel="noreferrer" className="rounded-[10px] border border-[#111111]/15 px-3 py-1.5 text-xs font-bold text-[#111111] hover:bg-cream">{f.name || `File ${i + 1}`}</a>
               ))}
             </div>
           </div>
@@ -1035,7 +1035,7 @@ function RequestDetailModal({ request, onClose }) {
           {editHref && (
             <Link href={editHref} className="rounded-[10px] bg-[#111111] px-5 py-2.5 text-xs font-bold text-white transition hover:bg-black/85">Continue Editing</Link>
           )}
-          <Link href="/contact" className="rounded-[10px] border border-[#111111]/15 px-5 py-2.5 text-xs font-bold text-[#111111] transition hover:bg-[#F4F4F4]">Request help</Link>
+          <Link href="/contact" className="rounded-[10px] border border-[#111111]/15 px-5 py-2.5 text-xs font-bold text-[#111111] transition hover:bg-cream">Request help</Link>
         </div>
       </div>
     </Modal>
@@ -1056,7 +1056,7 @@ function Modal({ title, onClose, children }) {
       <div className="flex max-h-[92vh] w-full max-w-[560px] flex-col rounded-t-[20px] bg-white shadow-[0_30px_80px_rgba(17,17,17,0.24)] sm:rounded-[20px]">
         <div className="flex items-center justify-between border-b border-[#111111]/10 px-6 py-4">
           <h3 className="text-base font-bold text-[#111111]">{title}</h3>
-          <button type="button" onClick={onClose} aria-label="Close" className="grid h-9 w-9 place-items-center rounded-full text-[#111111]/60 transition hover:bg-[#F4F4F4]">
+          <button type="button" onClick={onClose} aria-label="Close" className="grid h-9 w-9 place-items-center rounded-full text-[#111111]/60 transition hover:bg-cream">
             <Icon name="close" className="h-5 w-5" />
           </button>
         </div>
@@ -1072,7 +1072,7 @@ function Panel({ title, actionLabel, onAction, children }: any) {
       <div className="mb-3 flex items-center justify-between gap-3">
         <h2 className="text-lg font-bold text-[#111111]">{title}</h2>
         {actionLabel && onAction && (
-          <button type="button" onClick={onAction} className="group inline-flex items-center gap-1 rounded-[8px] px-2 py-1 text-[12px] font-bold text-[#111111] transition hover:bg-[#F4F4F4]">
+          <button type="button" onClick={onAction} className="group inline-flex items-center gap-1 rounded-[8px] px-2 py-1 text-[12px] font-bold text-[#111111] transition hover:bg-cream">
             {actionLabel} <Arrow />
           </button>
         )}
@@ -1095,7 +1095,7 @@ function Field({ label, value, onChange, error, required, readOnly, placeholder,
         placeholder={placeholder}
         className={`h-11 w-full rounded-[10px] border bg-white px-3.5 text-sm font-medium text-[#111111] outline-none transition placeholder:font-normal placeholder:text-[#111111]/35 focus:border-[#111111]/45 ${
           error ? "border-red-300" : "border-[#111111]/12 hover:border-[#111111]/25"
-        } ${readOnly ? "cursor-not-allowed bg-[#F4F4F4]" : ""}`}
+        } ${readOnly ? "cursor-not-allowed bg-cream" : ""}`}
       />
       {error && <span className="mt-1 block text-[11px] font-semibold text-red-500">{error}</span>}
     </label>
@@ -1115,7 +1115,7 @@ function Avatar({ profile, size }) {
   if (profile.photoURL) {
     return <img src={profile.photoURL} alt={profile.name || "User"} referrerPolicy="no-referrer" className={`${size} rounded-full object-cover`} />;
   }
-  return <span className={`${size} grid place-items-center rounded-full bg-[#E6E6E6] font-bold text-[#111111]`}>{initials(profile.name || profile.email)}</span>;
+  return <span className={`${size} grid place-items-center rounded-full bg-cream font-bold text-[#111111]`}>{initials(profile.name || profile.email)}</span>;
 }
 
 function LoadingRows() {
@@ -1123,10 +1123,10 @@ function LoadingRows() {
     <div className="space-y-3 py-2">
       {[0, 1, 2].map((i) => (
         <div key={i} className="flex items-center gap-3">
-          <div className="h-14 w-14 shrink-0 animate-pulse rounded-[12px] bg-[#F4F4F4]" />
+          <div className="h-14 w-14 shrink-0 animate-pulse rounded-[12px] bg-cream" />
           <div className="flex-1 space-y-2">
-            <div className="h-3 w-1/2 animate-pulse rounded bg-[#F4F4F4]" />
-            <div className="h-3 w-1/3 animate-pulse rounded bg-[#F4F4F4]" />
+            <div className="h-3 w-1/2 animate-pulse rounded bg-cream" />
+            <div className="h-3 w-1/3 animate-pulse rounded bg-cream" />
           </div>
         </div>
       ))}
@@ -1153,7 +1153,7 @@ function EmptyState({ icon = "folder", title, text, cta, linkLabel, linkHref, ac
         </Link>
       )}
       {action && (
-        <button type="button" onClick={action.onClick} className="mt-4 inline-flex h-11 items-center justify-center rounded-[10px] border border-[#111111]/15 px-6 text-xs font-bold text-[#111111] transition hover:bg-[#F4F4F4]">
+        <button type="button" onClick={action.onClick} className="mt-4 inline-flex h-11 items-center justify-center rounded-[10px] border border-[#111111]/15 px-6 text-xs font-bold text-[#111111] transition hover:bg-cream">
           {action.label}
         </button>
       )}
@@ -1166,7 +1166,7 @@ function ErrorState({ text }) {
 }
 
 function Spinner({ small }: any) {
-  return <span className={`inline-block animate-spin rounded-full border-2 border-current border-t-transparent ${small ? "h-4 w-4" : "h-5 w-5"}`} aria-hidden="true" />;
+  return <span className={`inline-block animate-spin rounded-full border border-current border-t-transparent ${small ? "h-4 w-4" : "h-5 w-5"}`} aria-hidden="true" />;
 }
 
 function Arrow() {
@@ -1189,7 +1189,7 @@ function StatusBadge({ status }) {
   let tone = "bg-[#F1F1F1] text-[#111111]";
   if (["paid", "completed", "delivered", "approved", "active", "customer approved"].includes(s)) tone = "bg-[#111111] text-white";
   else if (["cancelled", "refunded"].includes(s)) tone = "border border-[#111111]/20 bg-white text-[#111111]";
-  else if (["pending", "processing", "unpaid", "printing", "new", "ready for delivery", "in design review"].some((x) => s.includes(x))) tone = "bg-[#E6E6E6] text-[#111111]";
+  else if (["pending", "processing", "unpaid", "printing", "new", "ready for delivery", "in design review"].some((x) => s.includes(x))) tone = "bg-cream text-[#111111]";
   return <span className={`inline-flex items-center rounded-full px-3 py-1 text-[11px] font-bold capitalize ${tone}`}>{String(status || "pending").replaceAll("-", " ")}</span>;
 }
 

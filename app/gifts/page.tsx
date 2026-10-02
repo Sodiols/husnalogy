@@ -6,7 +6,7 @@ export const dynamic = "force-dynamic";
 
 export const metadata = {
   title: "Gifts",
-  description: "Browse Husnalogy gifts with page specific filters.",
+  description: "Personalized gifts from Husnalogy for birthdays, weddings and every meaningful occasion.",
 };
 
 export default async function GiftsPage({ searchParams }) {
@@ -18,14 +18,14 @@ export default async function GiftsPage({ searchParams }) {
     <ProductListingPage
       title="Gifts"
       eyebrow="Personalized gifting"
-      description="Browse only gift products. The filter options change automatically based on the gifts currently available in the store."
+      description="Personalized gifts for birthdays, weddings and the people who matter to you."
       products={products}
       options={getFilterOptions(scopeProducts)}
       params={params || {}}
       clearHref="/gifts"
       basePath="/gifts"
-      emptyTitle="No gift products found."
-      emptyDescription="Add an active gift product in the admin dashboard and it will appear here automatically."
+      emptyTitle="New gifts are coming soon"
+      emptyDescription="Browse our other collections or contact us about a personalized gift."
       filterTitle="Filter gifts"
       searchPlaceholder="Search personalized gifts..."
     />

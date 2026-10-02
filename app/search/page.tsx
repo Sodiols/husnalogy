@@ -32,20 +32,24 @@ export default async function SearchPage({ searchParams }) {
 
   return (
     <ProductListingPage
-      title={query ? `Search results for “${query}”` : "Search Husnalogy"}
-      eyebrow="Search products"
+      title={query ? `Results for “${query}”` : "Search"}
+      eyebrow="Search"
       description={
         query
-          ? "Filter these search results by category, product type, occasion, style, collection, price, and product status."
-          : "Search across Husnalogy products, then refine the results using the left side filter panel."
+          ? "Refine the results with filters, or try a different search above."
+          : "Use the search bar above to find invitations, cards, gifts and stationery."
       }
       products={products}
       options={getFilterOptions(searchScopeProducts)}
       params={params || {}}
       clearHref="/search"
       basePath="/search"
-      emptyTitle="No matching products were found."
-      emptyDescription="Try a simpler search term, check the spelling, or clear the filters."
+      emptyTitle={query ? `No results for “${query}”` : "Start a search"}
+      emptyDescription={
+        query
+          ? "Check the spelling, try a shorter phrase such as “wedding” or “gift”, or browse our collections."
+          : "Search for an occasion, product or style, or browse our collections."
+      }
       filterTitle="Filter search results"
       searchPlaceholder="Search invitation, card, gift..."
     />

@@ -71,7 +71,7 @@ export default function EditableNumericStepper({
   onCancel,
   formatValue,
   className = "h-10 w-full rounded-lg border border-[#303839]/15 bg-white shadow-sm",
-  buttonClassName = "grid h-full min-h-10 place-items-center text-[#303839]/55 transition hover:bg-[#F8F6F1] hover:text-[#303839] focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#D4AF37] disabled:cursor-not-allowed disabled:opacity-25",
+  buttonClassName = "grid h-full min-h-10 place-items-center text-[#303839]/55 transition hover:bg-cream hover:text-[#303839] focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#D4AF37] disabled:cursor-not-allowed disabled:opacity-25",
   inputClassName = "h-full min-w-0 w-full bg-transparent px-1 text-center text-xs font-extrabold tabular-nums text-[#303839] outline-none focus:bg-white focus:ring-2 focus:ring-inset focus:ring-[#D4AF37] disabled:cursor-not-allowed disabled:opacity-40",
   inputStyle,
   showLabel = false,

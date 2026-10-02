@@ -132,7 +132,7 @@ const INTENTS = [
   },
   {
     keywords: ["paper", "material", "quality", "texture", "card stock", "finish", "foil", "matte"],
-    reply: "Husnalogy uses refined papers and finishes that feel premium, including soft matte and elegant foil options on selected designs.",
+    reply: "Paper choices depend on the design. Options include Signature Matte, Premium Linen, Pearl Shimmer and Soft Touch. Open a product to see the papers it offers.",
   },
   {
     keywords: ["size", "dimension", "how big", "measurements"],

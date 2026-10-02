@@ -5,7 +5,7 @@ import { useEffect, useRef, useState } from "react";
 export function ProductToolbar({
   activeCount = 0,
   count = 0,
-  countLabel = "Designs",
+  countLabel = "",
   onFilterClick,
   sortValue = "",
   sortOptions = [],
@@ -13,24 +13,26 @@ export function ProductToolbar({
 }) {
   return (
     <FilterControlBar>
-      <div className="flex min-w-0 flex-none items-center md:flex-1">
+      <div className="flex min-w-0 items-center gap-3">
         <button
           type="button"
           onClick={onFilterClick}
-          className="inline-flex h-10 w-[82px] shrink-0 items-center justify-center gap-1.5 rounded-full bg-[#E6E6E6] text-[12px] font-bold text-[#303839] outline-none transition hover:bg-[#E6E6E6] focus-visible:ring-2 focus-visible:ring-[#303839]/20 sm:h-11 sm:w-auto sm:gap-2 sm:px-5 sm:text-[13px]"
+          aria-haspopup="dialog"
+          className="btn btn-secondary btn-sm shrink-0"
         >
           <FilterIcon />
           <span>Filter</span>
           {activeCount > 0 && (
-            <span className="grid h-5 min-w-5 place-items-center rounded-full bg-[#303839] px-1 text-[10px] font-bold text-[#E6E6E6]">
+            <span className="grid h-5 min-w-5 place-items-center rounded-full bg-ink px-1 text-[11px] font-semibold text-white">
+              <span className="sr-only">Active filters: </span>
               {activeCount}
             </span>
           )}
         </button>
+        <ProductCount count={count} label={countLabel} />
       </div>
 
-      <div className="ml-auto flex min-w-0 flex-1 items-center justify-end gap-2 sm:flex-none sm:gap-3">
-        <ProductCount count={count} label={countLabel} />
+      <div className="ml-auto flex min-w-0 items-center justify-end">
         <SortDropdown value={sortValue} options={sortOptions} onChange={onSortChange} />
       </div>
     </FilterControlBar>
@@ -40,19 +42,19 @@ export function ProductToolbar({
 export function FilterControlBar({ children, className = "" }) {
   return (
     <div
-      className={`relative z-[70] mt-4 max-w-full rounded-none border border-[#303839]/10 bg-white p-2 sm:mt-5 sm:p-3 ${className}`}
+      className={`relative z-[70] mt-8 max-w-full border-y border-line py-3 ${className}`}
     >
       <div className="flex w-full max-w-full items-center gap-2 sm:gap-3">{children}</div>
     </div>
   );
 }
 
-export function ProductCount({ count, label = "Designs" }) {
+export function ProductCount({ count, label = "" }) {
+  const noun = label || (count === 1 ? "design" : "designs");
   return (
-    <span className="hidden h-10 shrink-0 items-center rounded-none bg-[#E6E6E6] px-2.5 text-[11px] font-semibold text-[#303839]/78 md:inline-flex sm:h-11 sm:px-4 sm:text-[13px]">
-      <span className="font-bold text-[#303839]">{count}</span>
-      <span className="ml-1 hidden min-[450px]:inline sm:inline">{label}</span>
-    </span>
+    <p className="shrink-0 text-[14px] text-muted" aria-live="polite">
+      <span className="font-semibold text-ink">{count}</span> {noun}
+    </p>
   );
 }
 
@@ -65,8 +67,8 @@ export function SortDropdown({ value = "", options = [], onChange, disabled = fa
       disabled={disabled}
       label={label}
       compactLabelOnMobile
-      className="w-[82px] sm:w-auto sm:min-w-[178px]"
-      buttonClassName="h-10 px-3 sm:h-11 sm:px-4"
+      className="w-auto sm:min-w-[200px]"
+      buttonClassName="min-h-10 h-10 px-3 sm:px-4"
     />
   );
 }
@@ -114,7 +116,7 @@ export function PillDropdown({
         aria-expanded={open}
         aria-label={`${label}: ${selected?.label || placeholder}`}
         onClick={() => !disabled && setOpen((current) => !current)}
-        className={`inline-flex h-11 w-full items-center justify-between gap-2 rounded-full bg-[#E6E6E6] px-3.5 text-[12px] font-bold text-[#303839] outline-none transition hover:bg-[#E6E6E6] focus-visible:ring-2 focus-visible:ring-[#303839]/20 disabled:cursor-not-allowed disabled:opacity-55 sm:px-4 sm:text-[13px] ${buttonClassName}`}
+        className={`inline-flex h-11 w-full items-center justify-between gap-2 border border-field bg-white px-3.5 text-[14px] font-medium text-ink transition-colors hover:border-ink/50 disabled:cursor-not-allowed disabled:opacity-50 sm:px-4 ${buttonClassName}`}
       >
         {compactLabelOnMobile ? (
           <>
@@ -126,13 +128,13 @@ export function PillDropdown({
         ) : (
           <span className="truncate">{selected?.label || placeholder}</span>
         )}
-        <ChevronIcon className={`h-4 w-4 shrink-0 text-[#303839]/55 transition ${open ? "rotate-180" : ""}`} />
+        <ChevronIcon className={`h-4 w-4 shrink-0 text-ink transition ${open ? "rotate-180" : ""}`} />
       </button>
 
       {open && (
         <div
           role="listbox"
-          className="absolute right-0 z-[130] mt-2 w-56 max-w-[calc(100vw-2rem)] rounded-none border border-[#303839]/10 bg-white p-1.5 text-[#303839] shadow-[0_24px_60px_rgba(48,56,57,0.16)]"
+          className="absolute right-0 z-[130] mt-2 w-56 max-w-[calc(100vw-2rem)] rounded-[10px] border border-line bg-white p-1.5 text-ink shadow-[var(--shadow-overlay)]"
         >
           {items.map((item) => {
             const active = item.value === String(value ?? "");
@@ -146,8 +148,8 @@ export function PillDropdown({
                   onChange?.(item.value);
                   setOpen(false);
                 }}
-                className={`flex w-full items-center justify-between gap-3 rounded-none px-3.5 py-2.5 text-left text-sm font-semibold transition ${
-                  active ? "bg-[#303839] text-[#E6E6E6]" : "text-[#303839]/78 hover:bg-[#E6E6E6] hover:text-[#303839]"
+                className={`flex min-h-11 w-full items-center justify-between gap-3 px-3.5 py-2 text-left text-[14px] transition-colors ${
+                  active ? "bg-cream font-semibold text-ink" : "font-medium text-ink hover:bg-cream"
                 }`}
               >
                 <span className="truncate">{item.label}</span>

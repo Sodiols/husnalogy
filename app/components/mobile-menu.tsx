@@ -45,7 +45,7 @@ export default function MobileMenu({
               type="button"
               onClick={() => setOpen(false)}
               data-shape="round"
-              className="grid h-11 w-11 shrink-0 place-items-center rounded-full text-black transition hover:bg-[#E6E6E6] active:bg-[#E6E6E6]"
+              className="grid h-11 w-11 shrink-0 place-items-center rounded-full text-black transition hover:bg-cream active:bg-cream"
               aria-label="Close menu"
             >
               <MenuIcon name="close" />
@@ -64,7 +64,7 @@ export default function MobileMenu({
                     onClick={() => {
                       setOpenSection(isSectionOpen ? null : item.label);
                     }}
-                    className="flex w-full items-center gap-3 rounded-[12px] px-4 py-4 text-left transition hover:bg-[#E6E6E6] active:bg-[#E6E6E6]"
+                    className="flex w-full items-center gap-3 rounded-[12px] px-4 py-4 text-left transition hover:bg-cream active:bg-cream"
                     aria-expanded={isSectionOpen}
                     aria-controls={sectionId}
                   >
@@ -91,7 +91,7 @@ export default function MobileMenu({
                             setOpenSection(null);
                             setOpen(false);
                           }}
-                          className="flex items-center justify-between rounded-[10px] px-3.5 py-3 text-[13px] font-semibold text-[#303839] transition hover:bg-[#E6E6E6] active:bg-[#E6E6E6]"
+                          className="flex items-center justify-between rounded-[10px] px-3.5 py-3 text-[13px] font-semibold text-[#303839] transition hover:bg-cream active:bg-cream"
                         >
                           <span>Shop All {item.label}</span>
                           <MenuIcon name="arrow" />
@@ -100,7 +100,7 @@ export default function MobileMenu({
                         {item.children.map((child) => (
                           <a
                             key={`${child.href}-${child.title}`}
-                            className="flex items-center justify-between rounded-[10px] px-3.5 py-3 text-[13px] font-medium text-[#303839]/72 transition hover:bg-[#E6E6E6] hover:text-[#303839] active:bg-[#E6E6E6]"
+                            className="flex items-center justify-between rounded-[10px] px-3.5 py-3 text-[13px] font-medium text-[#303839]/72 transition hover:bg-cream hover:text-[#303839] active:bg-cream"
                             href={child.href}
                             onClick={() => {
                               setOpenSection(null);
@@ -118,7 +118,7 @@ export default function MobileMenu({
               ) : (
                 <a
                   key={item.label}
-                  className="flex items-center gap-3 rounded-[12px] px-4 py-4 text-[#303839] transition hover:bg-[#E6E6E6] active:bg-[#E6E6E6]"
+                  className="flex items-center gap-3 rounded-[12px] px-4 py-4 text-[#303839] transition hover:bg-cream active:bg-cream"
                   href={item.href}
                   onClick={() => {
                     setOpenSection(null);
@@ -138,7 +138,7 @@ export default function MobileMenu({
               <a
                 href="/admin/dashboard"
                 onClick={() => setOpen(false)}
-                className="block w-full rounded-[14px] bg-white px-6 py-4 text-center text-sm font-semibold text-[#303839] shadow-[inset_0_0_0_1px_rgba(48,56,57,0.08)] transition hover:bg-[#E6E6E6] active:bg-[#E6E6E6]"
+                className="block w-full rounded-[14px] bg-white px-6 py-4 text-center text-sm font-semibold text-[#303839] shadow-[inset_0_0_0_1px_rgba(48,56,57,0.08)] transition hover:bg-cream active:bg-cream"
               >
                 Admin Dashboard
               </a>

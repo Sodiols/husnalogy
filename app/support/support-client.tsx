@@ -12,7 +12,7 @@ const TOPICS = [
   { icon: "box", title: "Design Requests", text: "Get help with customization or proofs.", href: "/contact" },
   { icon: "truck", title: "Shipping & Delivery", text: "Find delivery time and shipping details.", href: "/contact" },
   { icon: "file", title: "Digital Products", text: "Download and use your digital files.", href: "/products" },
-  { icon: "printer", title: "Printed Products", text: "Premium printed cards and stationery.", href: "/products" },
+  { icon: "printer", title: "Printed Products", text: "Printed cards and stationery.", href: "/products" },
   { icon: "refresh", title: "Returns & Refunds", text: "Understand return and refund support.", href: "/contact" },
   { icon: "card", title: "Payments", text: "Questions about payment or checkout.", href: "/contact" },
 ];
@@ -73,9 +73,9 @@ export default function SupportClient() {
   return (
     <main className="text-[#303839]">
       {/* Hero */}
-      <section className="bg-gradient-to-b from-[#f8f6f1] to-[#f8f6f1] px-4 py-16 text-center sm:px-6 lg:py-20">
+      <section className="bg-gradient-to-b from-cream to-cream px-4 py-16 text-center sm:px-6 lg:py-20">
         <p className="text-[11px] font-semibold uppercase tracking-[0.3em] text-[#303839]">Customer Support</p>
-        <h1 className="mx-auto mt-4 max-w-[760px] font-display text-[2.4rem] font-medium leading-[1.08] text-[#303839] sm:text-[3.2rem]">
+        <h1 className="heading-page mx-auto mt-4 max-w-[760px]">
           How can we help you today?
         </h1>
         <p className="mx-auto mt-4 max-w-[560px] text-[0.95rem] leading-7 text-[#303839]/65">
@@ -90,7 +90,7 @@ export default function SupportClient() {
             placeholder="Search for help, orders, delivery, returns..."
             className="min-w-0 flex-1 bg-transparent px-2 text-sm text-[#303839] outline-none placeholder:text-[#303839]/45"
           />
-          <button type="submit" className="shrink-0 rounded-full bg-[#303839] px-6 py-3 text-sm font-bold text-white transition hover:bg-[#434c4d]">
+          <button type="submit" className="btn btn-primary shrink-0">
             Search
           </button>
         </form>
@@ -111,7 +111,7 @@ export default function SupportClient() {
                 href={topic.href}
                 className="group flex flex-col rounded-none border border-[#303839]/8 bg-white p-5 text-center shadow-[0_10px_30px_rgba(48,56,57,0.04)] transition hover:-translate-y-1 hover:shadow-[0_18px_45px_rgba(48,56,57,0.1)]"
               >
-                <span className="mx-auto grid h-12 w-12 place-items-center rounded-full bg-[#f8f6f1] text-[#303839]">
+                <span className="mx-auto grid h-12 w-12 place-items-center rounded-full bg-cream text-[#303839]">
                   <SIcon name={topic.icon} className="h-6 w-6" />
                 </span>
                 <p className="mt-4 text-[0.95rem] font-bold text-[#303839]">{topic.title}</p>
@@ -124,7 +124,7 @@ export default function SupportClient() {
       </section>
 
       {/* FAQ */}
-      <section id="faq" className="scroll-mt-28 bg-[#f8f6f1] px-4 py-16 sm:px-6 lg:px-10">
+      <section id="faq" className="scroll-mt-28 bg-cream px-4 py-16 sm:px-6 lg:px-10">
         <div className="mx-auto max-w-[1000px]">
           <header className="text-center">
             <p className="text-[11px] font-semibold uppercase tracking-[0.3em] text-[#303839]">Popular Questions</p>
@@ -170,13 +170,13 @@ export default function SupportClient() {
       {/* Personal help */}
       <section className="bg-white px-4 pt-12 sm:px-6 lg:px-10">
         <div className="mx-auto grid max-w-[1280px] gap-5 lg:grid-cols-2">
-          <div className="relative overflow-hidden rounded-none bg-[#f8f6f1] p-7 sm:p-9">
+          <div className="relative overflow-hidden rounded-none bg-cream p-7 sm:p-9">
             <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-[#303839]">We&rsquo;re here for you</p>
             <h3 className="mt-3 font-display text-[1.9rem] font-medium text-[#303839]">Need personal help?</h3>
             <p className="mt-3 max-w-[320px] text-sm leading-6 text-[#303839]/65">
               Our support team is here to help with your order, design request, or product question.
             </p>
-            <Link href="/contact" className="mt-6 inline-flex h-12 items-center justify-center rounded-none bg-[#303839] px-7 text-sm font-bold text-white transition hover:bg-[#434c4d]">
+            <Link href="/contact" className="btn btn-primary mt-6">
               Contact Us
             </Link>
             <SIcon name="branch" className="pointer-events-none absolute -bottom-3 right-2 h-32 w-32 text-[#303839]/30" />
@@ -185,14 +185,14 @@ export default function SupportClient() {
           <div className="rounded-none border border-[#303839]/8 bg-white p-3 shadow-[0_10px_30px_rgba(48,56,57,0.04)]">
             <ContactRow icon="mail" title="Email Support" detail={BUSINESS_INFO.email} href={`mailto:${BUSINESS_INFO.email}`} />
             <ContactRow icon="phone" title="WhatsApp" detail={BUSINESS_INFO.phone} href={BUSINESS_INFO.whatsappHref} />
-            <ContactRow icon="clock" title="Support Hours" detail="Sun to Thu, 10:00 AM – 8:00 PM" />
+            {BUSINESS_INFO.supportHours && <ContactRow icon="clock" title="Support hours" detail={BUSINESS_INFO.supportHours} />}
           </div>
         </div>
       </section>
 
       {/* Account banner */}
       <section className="bg-white px-4 pt-5 sm:px-6 lg:px-10">
-        <div className="mx-auto flex max-w-[1280px] flex-col gap-5 rounded-none bg-[#f8f6f1] p-6 sm:p-8 lg:flex-row lg:items-center lg:justify-between">
+        <div className="mx-auto flex max-w-[1280px] flex-col gap-5 rounded-none bg-cream p-6 sm:p-8 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex items-center gap-4">
             <span className="grid h-14 w-14 shrink-0 place-items-center rounded-full bg-white text-[#303839]">
               <SIcon name="bag" className="h-7 w-7" />
@@ -203,10 +203,10 @@ export default function SupportClient() {
             </div>
           </div>
           <div className="flex flex-col gap-3 sm:flex-row">
-            <Link href="/profile" className="inline-flex h-12 items-center justify-center rounded-none bg-[#303839] px-7 text-sm font-bold text-white transition hover:bg-[#434c4d]">
+            <Link href="/profile" className="btn btn-primary">
               Go to My Account
             </Link>
-            <Link href="/orders" className="inline-flex h-12 items-center justify-center rounded-none border border-[#303839]/30 px-7 text-sm font-bold text-[#303839] transition hover:bg-white">
+            <Link href="/orders" className="btn btn-secondary">
               Track Order
             </Link>
           </div>
@@ -217,7 +217,7 @@ export default function SupportClient() {
       {LAUNCH_FEATURES.marketingEmail && <section className="bg-white px-4 py-12 sm:px-6 lg:px-10">
         <div className="mx-auto flex max-w-[1280px] flex-col gap-5 rounded-none border border-[#303839]/8 bg-white p-6 shadow-[0_10px_30px_rgba(48,56,57,0.05)] sm:p-8 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex items-center gap-4">
-            <span className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-[#f8f6f1] text-[#303839]">
+            <span className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-cream text-[#303839]">
               <SIcon name="mail" className="h-5 w-5" />
             </span>
             <div>
@@ -234,7 +234,7 @@ export default function SupportClient() {
               placeholder="Enter your email address"
               className="h-12 w-full rounded-none border border-[#303839]/15 bg-white px-5 text-sm outline-none transition focus:border-[#303839]/40 sm:flex-1"
             />
-            <button type="submit" disabled={status.loading} className="h-12 shrink-0 rounded-full bg-[#303839] px-7 text-sm font-bold text-white transition hover:bg-[#434c4d] disabled:opacity-60">
+            <button type="submit" disabled={status.loading} className="btn btn-primary shrink-0">
               {status.loading ? "..." : "Subscribe"}
             </button>
           </form>
@@ -251,8 +251,8 @@ export default function SupportClient() {
 
 function ContactRow({ icon, title, detail, href }: any) {
   const inner = (
-    <div className="flex items-center gap-4 rounded-none px-4 py-4 transition hover:bg-[#E6E6E6]">
-      <span className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-[#f8f6f1] text-[#303839]">
+    <div className="flex items-center gap-4 rounded-none px-4 py-4 transition hover:bg-cream">
+      <span className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-cream text-[#303839]">
         <SIcon name={icon} className="h-5 w-5" />
       </span>
       <div className="min-w-0 flex-1">
