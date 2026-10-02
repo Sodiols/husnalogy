@@ -376,25 +376,25 @@ function buildInitialForm(product) {
 function FieldLabel({ label, required = false, hint = "" }) {
   return (
     <div className="flex flex-wrap items-baseline justify-between gap-2">
-      <span className="text-sm font-bold text-[#111111]">
+      <span className="text-sm font-semibold text-[#303839]">
         {label}
-        {required && <span className="ml-1 text-[#BDBDBD]">*</span>}
+        {required && <span aria-hidden="true" className="ml-0.5 text-red-700">*</span>}
       </span>
-      {hint && <span className="text-xs font-medium text-[#111111]/50">{hint}</span>}
+      {hint && <span className="text-xs font-medium text-[#303839]/70">{hint}</span>}
     </div>
   );
 }
 
 function FieldError({ message }) {
   if (!message) return null;
-  return <p className="mt-1.5 text-xs font-bold text-red-700">{message}</p>;
+  return <p className="mt-1.5 text-xs font-semibold text-red-700">{message}</p>;
 }
 
 function FormSection({ title, description = "", children }: any) {
   return (
-    <section className="border border-[#111111]/10 bg-white p-5 sm:p-6">
-      <h3 className="font-body text-[1.4rem] font-semibold leading-tight text-[#111111]">{title}</h3>
-      {description && <p className="mt-1 max-w-2xl text-sm leading-6 text-[#111111]/60">{description}</p>}
+    <section className="min-w-0 rounded-[12px] border border-[#303839]/10 bg-white p-4 sm:p-6">
+      <h3 className="font-body text-lg font-semibold leading-tight text-[#303839] sm:text-xl">{title}</h3>
+      {description && <p className="mt-1 max-w-2xl text-sm leading-6 text-[#303839]/75">{description}</p>}
       <div className="mt-5">{children}</div>
     </section>
   );
@@ -416,22 +416,22 @@ function ModalShell({ title, onClose, children, footer = null }) {
   if (typeof document === "undefined") return null;
 
   return createPortal(
-    <div className="fixed inset-0 z-[90] flex items-end justify-center bg-[#111111]/45 p-0 sm:items-center sm:p-6" onClick={onClose}>
+    <div className="fixed inset-0 z-[90] flex items-end justify-center bg-[#303839]/45 p-0 sm:items-center sm:p-6" onClick={onClose}>
       <div
         role="dialog"
         aria-modal="true"
         aria-label={title}
         onClick={(event) => event.stopPropagation()}
-        className="flex max-h-[88vh] w-full max-w-xl flex-col bg-white shadow-premium"
+        className="flex max-h-[88dvh] w-full max-w-xl flex-col overflow-hidden rounded-t-[16px] bg-white pb-[env(safe-area-inset-bottom)] font-body shadow-premium sm:rounded-[14px] sm:pb-0"
       >
-        <div className="flex items-center justify-between border-b border-[#111111]/10 px-5 py-4">
-          <h4 className="font-body text-xl font-semibold text-[#111111]">{title}</h4>
-          <button type="button" onClick={onClose} aria-label="Close" className="grid h-9 w-9 place-items-center text-[#111111]/60 transition hover:bg-[#F8F8F8] hover:text-[#111111]">
+        <div className="flex items-center justify-between border-b border-[#303839]/10 px-5 py-4">
+          <h4 className="font-body text-lg font-semibold text-[#303839]">{title}</h4>
+          <button type="button" onClick={onClose} aria-label="Close" className="-mr-2 grid h-10 w-10 place-items-center text-[#303839]/75 transition hover:bg-[#F8F6F1] hover:text-[#303839]">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M18 6 6 18M6 6l12 12" /></svg>
           </button>
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">{children}</div>
-        {footer && <div className="border-t border-[#111111]/10 px-5 py-4">{footer}</div>}
+        {footer && <div className="border-t border-[#303839]/10 px-5 py-4">{footer}</div>}
       </div>
     </div>,
     document.body
@@ -450,10 +450,11 @@ function PillGroup({ value, onChange, options }) {
             key={optionValue}
             type="button"
             onClick={() => onChange(optionValue)}
-            className={`border px-4 py-2 text-sm font-bold transition ${
+            aria-pressed={selected}
+            className={`min-h-10 border px-4 py-2 text-sm font-semibold transition-colors ${
               selected
-                ? "border-[#111111] bg-[#111111] text-white"
-                : "border-[#111111]/15 bg-white text-[#111111] hover:border-[#111111]/40"
+                ? "border-[#303839] bg-[#303839] text-white"
+                : "border-[#303839]/15 bg-white text-[#303839] hover:border-[#303839]/40"
             }`}
           >
             {optionLabel}
@@ -471,21 +472,21 @@ function ToggleRow({ label, helper = "", checked, onChange }) {
       role="switch"
       aria-checked={checked}
       onClick={() => onChange(!checked)}
-      className="flex w-full items-center justify-between gap-4 border border-[#111111]/12 bg-white px-4 py-3 text-left transition hover:border-[#111111]/30"
+      className="flex min-h-14 w-full items-center justify-between gap-4 border border-[#303839]/12 bg-white px-4 py-3 text-left transition-colors hover:border-[#303839]/30"
     >
       <span className="min-w-0">
-        <span className="block text-sm font-bold text-[#111111]">{label}</span>
-        {helper && <span className="mt-0.5 block text-xs font-medium text-[#111111]/55">{helper}</span>}
+        <span className="block text-sm font-semibold text-[#303839]">{label}</span>
+        {helper && <span className="mt-0.5 block text-xs font-medium text-[#303839]/70">{helper}</span>}
       </span>
-      <span className={`relative h-6 w-11 shrink-0 transition ${checked ? "bg-[#111111]" : "bg-[#111111]/15"}`}>
-        <span className={`absolute top-1 h-4 w-4 bg-white transition-all ${checked ? "left-6" : "left-1"}`} />
+      <span aria-hidden="true" className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${checked ? "bg-[#303839]" : "bg-[#303839]/20"}`}>
+        <span className={`absolute left-0.5 top-0.5 h-5 w-5 rounded-full bg-white shadow-[0_1px_3px_rgba(48,56,57,0.3)] transition-transform ${checked ? "translate-x-5" : "translate-x-0"}`} />
       </span>
     </button>
   );
 }
 
 const INPUT_CLASS =
-  "h-11 w-full border border-[#111111]/15 bg-white px-4 text-sm font-medium text-[#111111] outline-none transition placeholder:text-[#111111]/35 focus:border-[#111111]/50 focus:ring-2 focus:ring-[#111111]/10";
+  "h-11 w-full border border-[#303839]/15 bg-white px-3.5 text-base font-medium text-[#303839] outline-none transition-colors placeholder:text-[#303839]/50 hover:border-[#303839]/25 focus:border-[#303839]/50 focus:ring-2 focus:ring-[#303839]/10 sm:text-sm";
 
 /* ------------------------------------------------------------------ */
 /* Department selection                                                 */
@@ -527,14 +528,14 @@ function DepartmentModal({ initialPath, onSelect, onClose }) {
       onClose={onClose}
       footer={
         <div className="flex items-center justify-between gap-3">
-          <p className="min-w-0 truncate text-xs font-bold text-[#111111]/60">
+          <p className="min-w-0 truncate text-xs font-semibold text-[#303839]/75">
             {path.length ? path.join(" > ") : "Choose a department below"}
           </p>
           <button
             type="button"
             disabled={!path.length}
             onClick={() => onSelect(path)}
-            className="shrink-0 bg-[#111111] px-5 py-2.5 text-sm font-extrabold text-white transition hover:bg-[#222222] disabled:opacity-40"
+            className="shrink-0 bg-[#303839] px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-[#434C4D] disabled:opacity-40"
           >
             Use this department
           </button>
@@ -542,17 +543,17 @@ function DepartmentModal({ initialPath, onSelect, onClose }) {
       }
     >
       {path.length > 0 && (
-        <div className="mb-3 flex flex-wrap items-center gap-1.5 text-xs font-bold text-[#111111]/70">
-          <button type="button" onClick={() => setPath([])} className="px-2 py-1 transition hover:bg-[#F8F8F8]">
+        <div className="mb-3 flex flex-wrap items-center gap-1.5 text-xs font-semibold text-[#303839]/70">
+          <button type="button" onClick={() => setPath([])} className="px-2 py-1 transition hover:bg-[#F8F6F1]">
             All Departments
           </button>
           {path.map((segment, index) => (
             <span key={segment} className="flex items-center gap-1.5">
-              <span className="text-[#111111]/35">&gt;</span>
+              <span className="text-[#303839]/70">&gt;</span>
               <button
                 type="button"
                 onClick={() => setPath(path.slice(0, index + 1))}
-                className={`px-2 py-1 transition hover:bg-[#F8F8F8] ${index === path.length - 1 ? "text-[#111111]" : ""}`}
+                className={`px-2 py-1 transition hover:bg-[#F8F6F1] ${index === path.length - 1 ? "text-[#303839]" : ""}`}
               >
                 {segment}
               </button>
@@ -567,18 +568,18 @@ function DepartmentModal({ initialPath, onSelect, onClose }) {
             key={node.name}
             type="button"
             onClick={() => openNode(node)}
-            className="flex items-center justify-between gap-3 border border-[#111111]/10 bg-white px-4 py-3 text-left text-sm font-bold text-[#111111] transition hover:border-[#111111]/35 hover:bg-[#F8F8F8]"
+            className="flex items-center justify-between gap-3 border border-[#303839]/10 bg-white px-4 py-3 text-left text-sm font-semibold text-[#303839] transition hover:border-[#303839]/35 hover:bg-[#F8F6F1]"
           >
             <span>{node.name}</span>
             {node.children?.length ? (
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 text-[#111111]/40"><path d="m9 18 6-6-6-6" /></svg>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 text-[#303839]/70"><path d="m9 18 6-6-6-6" /></svg>
             ) : (
-              <span className="shrink-0 text-[11px] font-extrabold uppercase tracking-wide text-[#BDBDBD]">Select</span>
+              <span className="shrink-0 text-[11px] font-semibold uppercase tracking-wide text-[#BDBDBD]">Select</span>
             )}
           </button>
         ))}
         {!currentLevel.length && (
-          <p className="px-1 py-4 text-sm text-[#111111]/60">This department has no further options. Use the button below to select it.</p>
+          <p className="px-1 py-4 text-sm text-[#303839]/75">This department has no further options. Use the button below to select it.</p>
         )}
       </div>
     </ModalShell>
@@ -598,10 +599,10 @@ function CategoryModal({ title, options, value, onSelect, onClose }) {
             key={option}
             type="button"
             onClick={() => onSelect(option)}
-            className={`flex items-center justify-between gap-3 border px-4 py-3 text-left text-sm font-bold transition ${
+            className={`flex items-center justify-between gap-3 border px-4 py-3 text-left text-sm font-semibold transition ${
               value === option
-                ? "border-[#111111] bg-[#111111] text-white"
-                : "border-[#111111]/10 bg-white text-[#111111] hover:border-[#111111]/35 hover:bg-[#F8F8F8]"
+                ? "border-[#303839] bg-[#303839] text-white"
+                : "border-[#303839]/10 bg-white text-[#303839] hover:border-[#303839]/35 hover:bg-[#F8F6F1]"
             }`}
           >
             <span>{option}</span>
@@ -670,7 +671,7 @@ function CollectionsModal({ collections, selectedIds, onToggle, onTrendingChange
       title="Add to Collection"
       onClose={onClose}
       footer={
-        <button type="button" onClick={onClose} className="w-full bg-[#111111] px-5 py-2.5 text-sm font-extrabold text-white transition hover:bg-[#222222]">
+        <button type="button" onClick={onClose} className="w-full bg-[#303839] px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-[#434C4D]">
           Done
         </button>
       }
@@ -687,23 +688,23 @@ function CollectionsModal({ collections, selectedIds, onToggle, onTrendingChange
                   key={collection.id}
                   type="button"
                   onClick={() => setActiveParentId(collection.id)}
-                  className={`flex items-center justify-between border px-4 py-3 text-left text-sm font-bold transition ${
-                    active ? "border-[#111111] bg-[#111111] text-white" : "border-[#111111]/10 bg-white text-[#111111] hover:border-[#111111]/35"
+                  className={`flex items-center justify-between border px-4 py-3 text-left text-sm font-semibold transition ${
+                    active ? "border-[#303839] bg-[#303839] text-white" : "border-[#303839]/10 bg-white text-[#303839] hover:border-[#303839]/35"
                   }`}
                 >
                   <span>{collection.name}</span>
-                  {collection.isTrendingWedding && <span className={`text-[10px] uppercase tracking-[0.08em] ${active ? "text-white/70" : "text-[#111111]/45"}`}>Wedding</span>}
+                  {collection.isTrendingWedding && <span className={`text-[10px] uppercase tracking-[0.08em] ${active ? "text-white/70" : "text-[#303839]/70"}`}>Wedding</span>}
                 </button>
               );
             })}
             {!parentCollections.length && (
-              <p className="border border-dashed border-[#111111]/20 bg-white px-4 py-4 text-sm font-semibold text-[#111111]/60">
+              <p className="border border-dashed border-[#303839]/20 bg-white px-4 py-4 text-sm font-semibold text-[#303839]/75">
                 Create a parent collection first.
               </p>
             )}
           </div>
 
-          <div className="mt-3 border border-[#111111]/10 bg-[#F8F8F8] p-4">
+          <div className="mt-3 border border-[#303839]/10 bg-[#F8F6F1] p-4">
             <FieldLabel label="New parent collection" />
             <div className="mt-2 flex gap-2">
               <input
@@ -716,7 +717,7 @@ function CollectionsModal({ collections, selectedIds, onToggle, onTrendingChange
                 type="button"
                 onClick={() => createCollection("")}
                 disabled={creating || !parentName.trim()}
-                className="shrink-0 bg-[#111111] px-4 text-xs font-extrabold text-white transition hover:bg-[#222222] disabled:opacity-40"
+                className="shrink-0 bg-[#303839] px-4 text-xs font-semibold text-white transition hover:bg-[#434C4D] disabled:opacity-40"
               >
                 Create
               </button>
@@ -736,17 +737,17 @@ function CollectionsModal({ collections, selectedIds, onToggle, onTrendingChange
                     key={collection.id}
                     className={`border transition ${
                       selected
-                        ? "border-[#111111] bg-[#111111] text-white"
-                        : "border-[#111111]/10 bg-white text-[#111111] hover:border-[#111111]/35 hover:bg-[#F8F8F8]"
+                        ? "border-[#303839] bg-[#303839] text-white"
+                        : "border-[#303839]/10 bg-white text-[#303839] hover:border-[#303839]/35 hover:bg-[#F8F6F1]"
                     }`}
                   >
                     <button
                       type="button"
                       onClick={() => onToggle(collection.id)}
-                      className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left text-sm font-bold"
+                      className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left text-sm font-semibold"
                     >
                       <span className="min-w-0 truncate">{collection.name}</span>
-                      <span className={`grid h-5 w-5 shrink-0 place-items-center border ${selected ? "border-white bg-white text-[#111111]" : "border-[#111111]/30"}`}>
+                      <span className={`grid h-5 w-5 shrink-0 place-items-center border ${selected ? "border-white bg-white text-[#303839]" : "border-[#303839]/30"}`}>
                         {selected && (
                           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="m5 13 4 4L19 7" /></svg>
                         )}
@@ -756,13 +757,13 @@ function CollectionsModal({ collections, selectedIds, onToggle, onTrendingChange
                 );
               })}
               {!childCollections.length && (
-                <p className="border border-dashed border-[#111111]/20 bg-white px-4 py-4 text-sm font-semibold text-[#111111]/60">
+                <p className="border border-dashed border-[#303839]/20 bg-white px-4 py-4 text-sm font-semibold text-[#303839]/75">
                   No child collections yet. Create one for RSVP cards, thank you cards, or another suite piece.
                 </p>
               )}
             </div>
 
-            <div className="mt-3 border border-[#111111]/10 bg-[#F8F8F8] p-4">
+            <div className="mt-3 border border-[#303839]/10 bg-[#F8F6F1] p-4">
               <FieldLabel label="New child collection" />
               <div className="mt-2 flex gap-2">
                 <input
@@ -775,7 +776,7 @@ function CollectionsModal({ collections, selectedIds, onToggle, onTrendingChange
                   type="button"
                   onClick={() => createCollection(activeParent.id)}
                   disabled={creating || !childName.trim()}
-                  className="shrink-0 bg-[#111111] px-4 text-xs font-extrabold text-white transition hover:bg-[#222222] disabled:opacity-40"
+                  className="shrink-0 bg-[#303839] px-4 text-xs font-semibold text-white transition hover:bg-[#434C4D] disabled:opacity-40"
                 >
                   Create
                 </button>
@@ -788,28 +789,28 @@ function CollectionsModal({ collections, selectedIds, onToggle, onTrendingChange
           <section>
             <FieldLabel label={`${activeParent.name} settings`} />
             <div className="mt-2 grid gap-2 sm:grid-cols-2">
-              <label className="flex cursor-pointer items-start justify-between gap-3 border border-[#111111]/10 bg-white px-4 py-3">
+              <label className="flex cursor-pointer items-start justify-between gap-3 border border-[#303839]/10 bg-white px-4 py-3">
                 <span className="min-w-0">
-                  <span className="block text-xs font-extrabold text-[#111111]">Suite</span>
-                  <span className="mt-0.5 block text-[11px] leading-4 text-[#111111]/55">Product pages will say &ldquo;Shop the {activeParent.name} suite&rdquo;.</span>
+                  <span className="block text-xs font-semibold text-[#303839]">Suite</span>
+                  <span className="mt-0.5 block text-[11px] leading-4 text-[#303839]/70">Product pages will say &ldquo;Shop the {activeParent.name} suite&rdquo;.</span>
                 </span>
                 <input
                   type="checkbox"
                   checked={Boolean(activeParent?.isSuite)}
                   onChange={(event) => onSuiteChange(activeParent.id, event.target.checked)}
-                  className="mt-0.5 h-4 w-4 shrink-0 accent-[#111111]"
+                  className="mt-0.5 h-4 w-4 shrink-0 accent-[#303839]"
                 />
               </label>
-              <label className="flex cursor-pointer items-start justify-between gap-3 border border-[#111111]/10 bg-white px-4 py-3">
+              <label className="flex cursor-pointer items-start justify-between gap-3 border border-[#303839]/10 bg-white px-4 py-3">
                 <span className="min-w-0">
-                  <span className="block text-xs font-extrabold text-[#111111]">Wedding page</span>
-                  <span className="mt-0.5 block text-[11px] leading-4 text-[#111111]/55">Show this parent collection in the Wedding page trending row.</span>
+                  <span className="block text-xs font-semibold text-[#303839]">Wedding page</span>
+                  <span className="mt-0.5 block text-[11px] leading-4 text-[#303839]/70">Show this parent collection in the Wedding page trending row.</span>
                 </span>
                 <input
                   type="checkbox"
                   checked={Boolean(activeParent?.isTrendingWedding)}
                   onChange={(event) => onTrendingChange(activeParent.id, event.target.checked)}
-                  className="mt-0.5 h-4 w-4 shrink-0 accent-[#111111]"
+                  className="mt-0.5 h-4 w-4 shrink-0 accent-[#303839]"
                 />
               </label>
             </div>
@@ -843,7 +844,7 @@ function UploadDropzone({ id, multiple = false, onFiles, uploading, progress, ch
         onFiles(Array.from(event.dataTransfer.files || []));
       }}
       className={`flex min-h-[130px] cursor-pointer flex-col items-center justify-center border border-dashed px-4 py-6 text-center transition ${
-        dragActive ? "border-[#111111] bg-[#F8F8F8]" : "border-[#111111]/20 bg-[#F8F8F8]/60 hover:border-[#111111]/45 hover:bg-[#F8F8F8]"
+        dragActive ? "border-[#303839] bg-[#F8F6F1]" : "border-[#303839]/20 bg-[#F8F6F1]/60 hover:border-[#303839]/45 hover:bg-[#F8F6F1]"
       } ${uploading ? "pointer-events-none opacity-70" : ""}`}
     >
       <input
@@ -860,8 +861,8 @@ function UploadDropzone({ id, multiple = false, onFiles, uploading, progress, ch
       />
       {uploading ? (
         <div className="w-full max-w-xs">
-          <p className="text-sm font-extrabold text-[#111111]">Uploading... {progress}%</p>
-          <div className="mt-2 h-1.5 w-full bg-[#111111]/10">
+          <p className="text-sm font-semibold text-[#303839]">Uploading... {progress}%</p>
+          <div className="mt-2 h-1.5 w-full bg-[#303839]/10">
             <div className="h-full bg-[#BDBDBD] transition-all" style={{ width: `${progress}%` }} />
           </div>
         </div>
@@ -901,12 +902,12 @@ function MainImageUploader({ value, onChange, error }) {
       <div className="mt-2">
         {value ? (
           <div className="flex flex-wrap items-start gap-4">
-            <div className="relative h-40 w-40 shrink-0 overflow-hidden border border-[#111111]/10 bg-[#F8F8F8]">
+            <div className="relative h-40 w-40 shrink-0 overflow-hidden border border-[#303839]/10 bg-[#F8F6F1]">
               <img src={value} alt="Main product" className="h-full w-full object-cover" />
-              <span className="absolute left-2 top-2 bg-[#111111] px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wide text-[#BDBDBD]">Main</span>
+              <span className="absolute left-2 top-2 bg-[#303839] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[#BDBDBD]">Main</span>
             </div>
             <div className="grid gap-2">
-              <label className="cursor-pointer border border-[#111111]/15 bg-white px-4 py-2 text-center text-xs font-extrabold text-[#111111] transition hover:bg-[#F8F8F8]">
+              <label className="cursor-pointer border border-[#303839]/15 bg-white px-4 py-2 text-center text-xs font-semibold text-[#303839] transition hover:bg-[#F8F6F1]">
                 Replace image
                 <input
                   type="file"
@@ -919,19 +920,19 @@ function MainImageUploader({ value, onChange, error }) {
                   }}
                 />
               </label>
-              <button type="button" onClick={() => onChange("")} className="border border-red-200 bg-white px-4 py-2 text-xs font-extrabold text-red-700 transition hover:bg-red-50">
+              <button type="button" onClick={() => onChange("")} className="border border-red-200 bg-white px-4 py-2 text-xs font-semibold text-red-700 transition hover:bg-red-50">
                 Remove
               </button>
-              {uploading && <p className="text-xs font-bold text-[#111111]/60">Uploading... {progress}%</p>}
+              {uploading && <p className="text-xs font-semibold text-[#303839]/75">Uploading... {progress}%</p>}
             </div>
           </div>
         ) : (
           <UploadDropzone id="main-image-upload" onFiles={handleFiles} uploading={uploading} progress={progress}>
-            <span className="grid h-11 w-11 place-items-center bg-white text-[#111111]">
+            <span className="grid h-11 w-11 place-items-center bg-white text-[#303839]">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" /><circle cx="9" cy="9" r="2" /><path d="m21 15-3.5-3.5L6 23" /></svg>
             </span>
-            <span className="mt-3 text-sm font-extrabold text-[#111111]">Upload the main product image</span>
-            <span className="mt-1 text-xs font-medium text-[#111111]/55">Drag and drop or click to browse. Up to 15MB.</span>
+            <span className="mt-3 text-sm font-semibold text-[#303839]">Upload the main product image</span>
+            <span className="mt-1 text-xs font-medium text-[#303839]/70">Drag and drop or click to browse. Up to 15MB.</span>
           </UploadDropzone>
         )}
       </div>
@@ -983,17 +984,17 @@ function MockupUploader({ mockups, onChange, onPromoteToMain }) {
   return (
     <div>
       <FieldLabel label="Product mockups" hint={`${mockups.length}/${MAX_MOCKUPS} uploaded`} />
-      <p className="mt-1 text-xs font-medium text-[#111111]/55">
+      <p className="mt-1 text-xs font-medium text-[#303839]/70">
         Upload several mockup views. Drag to reorder, or make one the main product image.
       </p>
 
       <div className="mt-2">
         <UploadDropzone id="mockup-upload" multiple onFiles={handleFiles} uploading={uploading} progress={progress}>
-          <span className="grid h-11 w-11 place-items-center bg-white text-[#111111]">
+          <span className="grid h-11 w-11 place-items-center bg-white text-[#303839]">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M12 5v14M5 12h14" /></svg>
           </span>
-          <span className="mt-3 text-sm font-extrabold text-[#111111]">Add mockup images</span>
-          <span className="mt-1 text-xs font-medium text-[#111111]/55">Drag and drop multiple files or click to browse.</span>
+          <span className="mt-3 text-sm font-semibold text-[#303839]">Add mockup images</span>
+          <span className="mt-1 text-xs font-medium text-[#303839]/70">Drag and drop multiple files or click to browse.</span>
         </UploadDropzone>
       </div>
       <FieldError message={uploadError} />
@@ -1013,20 +1014,20 @@ function MockupUploader({ mockups, onChange, onPromoteToMain }) {
                 reorder(dragIndexRef.current, index);
                 dragIndexRef.current = null;
               }}
-              className="group/mockup cursor-grab border border-[#111111]/10 bg-white active:cursor-grabbing"
+              className="group/mockup cursor-grab border border-[#303839]/10 bg-white active:cursor-grabbing"
             >
-              <div className="relative aspect-square overflow-hidden bg-[#F8F8F8]">
+              <div className="relative aspect-square overflow-hidden bg-[#F8F6F1]">
                 <img src={mockup} alt={`Mockup ${index + 1}`} className="h-full w-full object-cover" />
               </div>
               <div className="grid gap-1 p-2">
                 <button
                   type="button"
                   onClick={() => onPromoteToMain(index)}
-                  className="border border-[#111111]/15 px-2 py-1 text-[11px] font-extrabold text-[#111111] transition hover:border-[#BDBDBD] hover:text-[#BDBDBD]"
+                  className="border border-[#303839]/15 px-2 py-1 text-[11px] font-semibold text-[#303839] transition hover:border-[#BDBDBD] hover:text-[#BDBDBD]"
                 >
                   Make main image
                 </button>
-                <button type="button" onClick={() => removeMockup(index)} className="border border-red-200 px-2 py-1 text-[11px] font-extrabold text-red-700 transition hover:bg-red-50">
+                <button type="button" onClick={() => removeMockup(index)} className="border border-red-200 px-2 py-1 text-[11px] font-semibold text-red-700 transition hover:bg-red-50">
                   Delete
                 </button>
               </div>
@@ -1044,12 +1045,12 @@ function MockupUploader({ mockups, onChange, onPromoteToMain }) {
 
 function PreviewBadge({ children, tone = "dark" }) {
   const tones = {
-    dark: "bg-[#111111] text-white",
-    soft: "bg-[#F8F8F8] text-[#111111]",
+    dark: "bg-[#303839] text-white",
+    soft: "bg-[#F8F6F1] text-[#303839]",
     accent: "border border-[#BDBDBD] bg-white text-[#8a6d1a]",
-    danger: "bg-[#111111]/85 text-white",
+    danger: "bg-[#303839]/85 text-white",
   };
-  return <span className={`px-2 py-1 text-[10px] font-extrabold uppercase tracking-[0.08em] ${tones[tone]}`}>{children}</span>;
+  return <span className={`px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.08em] ${tones[tone]}`}>{children}</span>;
 }
 
 function LivePreview({ form, collections }) {
@@ -1075,14 +1076,14 @@ function LivePreview({ form, collections }) {
   const visibilityLabel = VISIBILITY_OPTIONS.find((option) => option.value === form.visibility)?.label || "Public";
 
   return (
-    <div className="border border-[#111111]/10 bg-white">
-      <div className="border-b border-[#111111]/10 bg-[#F8F8F8] px-4 py-3">
-        <p className="text-[11px] font-extrabold uppercase tracking-[0.16em] text-[#111111]/55">Live preview</p>
-        <p className="mt-0.5 text-xs font-medium text-[#111111]/60">How this product will look to customers</p>
+    <div className="border border-[#303839]/10 bg-white">
+      <div className="border-b border-[#303839]/10 bg-[#F8F6F1] px-4 py-3">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#303839]/70">Live preview</p>
+        <p className="mt-0.5 text-xs font-medium text-[#303839]/75">How this product will look to customers</p>
       </div>
 
       <div className="p-4">
-        <div className="relative aspect-square overflow-hidden bg-[#F8F8F8]">
+        <div className="relative aspect-square overflow-hidden bg-[#F8F6F1]">
           {previewImage ? (
             <img
               src={previewImage}
@@ -1090,9 +1091,9 @@ function LivePreview({ form, collections }) {
               className={`h-full w-full object-cover transition ${form.isStockOut ? "opacity-55" : ""}`}
             />
           ) : (
-            <div className="flex h-full flex-col items-center justify-center gap-2 text-[#111111]/40">
+            <div className="flex h-full flex-col items-center justify-center gap-2 text-[#303839]/70">
               <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" /><circle cx="9" cy="9" r="2" /><path d="m21 15-3.5-3.5L6 23" /></svg>
-              <span className="text-xs font-bold">Main image preview</span>
+              <span className="text-xs font-semibold">Main image preview</span>
             </div>
           )}
 
@@ -1104,23 +1105,23 @@ function LivePreview({ form, collections }) {
           </div>
         </div>
 
-        <h4 className="mt-3 line-clamp-2 text-[15px] font-semibold leading-5 text-[#111111]">
+        <h4 className="mt-3 line-clamp-2 text-[15px] font-semibold leading-5 text-[#303839]">
           {form.title || "Product title appears here"}
         </h4>
 
         {priceLabel && (
           <p className="mt-1.5 flex flex-wrap items-baseline gap-x-2 text-sm">
-            <span className="font-bold text-[#111111]">{priceLabel}</span>
-            {compareLabel && <span className="text-[#111111]/50 line-through">{compareLabel}</span>}
+            <span className="font-semibold text-[#303839]">{priceLabel}</span>
+            {compareLabel && <span className="text-[#303839]/70 line-through">{compareLabel}</span>}
           </p>
         )}
 
         {departmentLabel && (
-          <p className="mt-2 text-xs font-semibold text-[#111111]/70">{form.departmentPath.join(" > ")}</p>
+          <p className="mt-2 text-xs font-semibold text-[#303839]/70">{form.departmentPath.join(" > ")}</p>
         )}
 
         {(form.eventCategory || form.recipientCategory || collectionNames.length > 0) && (
-          <p className="mt-1 text-xs font-medium text-[#111111]/60">
+          <p className="mt-1 text-xs font-medium text-[#303839]/75">
             {[form.eventCategory, form.recipientCategory, ...collectionNames].filter(Boolean).join(" · ")}
           </p>
         )}
@@ -1128,17 +1129,17 @@ function LivePreview({ form, collections }) {
         {!!form.tags.length && (
           <div className="mt-3 flex flex-wrap gap-1.5">
             {form.tags.slice(0, 6).map((tag) => (
-              <span key={tag} className="bg-[#F8F8F8] px-2 py-0.5 text-[11px] font-semibold text-[#111111]/75">
+              <span key={tag} className="bg-[#F8F6F1] px-2 py-0.5 text-[11px] font-semibold text-[#303839]/75">
                 {tag}
               </span>
             ))}
             {form.tags.length > 6 && (
-              <span className="px-1 py-0.5 text-[11px] font-semibold text-[#111111]/50">+{form.tags.length - 6} more</span>
+              <span className="px-1 py-0.5 text-[11px] font-semibold text-[#303839]/70">+{form.tags.length - 6} more</span>
             )}
           </div>
         )}
 
-        <div className="mt-4 flex flex-wrap gap-1.5 border-t border-[#111111]/10 pt-3">
+        <div className="mt-4 flex flex-wrap gap-1.5 border-t border-[#303839]/10 pt-3">
           <PreviewBadge tone="soft">{statusLabel}</PreviewBadge>
           <PreviewBadge tone="soft">{visibilityLabel}</PreviewBadge>
           {form.customizeEnabled && <PreviewBadge tone="soft">Customizable</PreviewBadge>}
@@ -1181,6 +1182,13 @@ export default function ProductUploadForm({
   const formRef = useRef(null);
 
   const editingId = product?.id || null;
+
+  // The form opens above the product list; bring it into view so the admin
+  // sees it immediately, especially on phones where it starts off-screen.
+  useEffect(() => {
+    const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    formRef.current?.scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "start" });
+  }, []);
 
   useEffect(() => {
     setForm(buildInitialForm(product));
@@ -1485,27 +1493,28 @@ export default function ProductUploadForm({
   const previewPanel = <LivePreview form={form} collections={collections} />;
 
   return (
-    <div ref={formRef} className="border border-[#111111]/10 bg-[#F8F8F8]/45 p-4 sm:p-6">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <p className="text-[11px] font-extrabold uppercase tracking-[0.18em] text-[#111111]/50">Husnalogy Admin</p>
-          <h2 className="mt-1 font-body text-[2rem] font-semibold leading-tight text-[#111111]">
-            {editingId ? "Edit product" : "Add a new product"}
+    <div ref={formRef} className="scroll-mt-20 rounded-[14px] border border-[#303839]/10 bg-[#F8F6F1]/60 p-3 sm:p-6">
+      <div className="flex items-start justify-between gap-3 px-1 pt-1 sm:p-0">
+        <div className="min-w-0">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#303839]/70">{editingId ? "Editing" : "New product"}</p>
+          <h2 className="mt-1 truncate font-body text-[1.375rem] font-semibold leading-tight text-[#303839] sm:text-[1.625rem]">
+            {editingId ? product?.title || "Edit product" : "Add a new product"}
           </h2>
         </div>
-        <button type="button" onClick={onClose} className="border border-[#111111]/15 bg-white px-4 py-2 text-xs font-extrabold text-[#111111] transition hover:bg-[#F8F8F8]">
+        <button type="button" onClick={onClose} aria-label="Close product form" className="inline-flex h-10 shrink-0 items-center gap-1.5 border border-[#303839]/15 bg-white px-3.5 text-xs font-semibold text-[#303839] transition-colors hover:bg-[#F3F1EC]">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12" /></svg>
           Close
         </button>
       </div>
 
       {successMessage && (
-        <p className="mt-4 border border-green-200 bg-green-50 px-4 py-3 text-sm font-bold text-green-800">{successMessage}</p>
+        <p role="status" className="mt-4 rounded-[10px] border border-[#1B5E20]/15 bg-[#E6F4EA] px-4 py-3 text-sm font-medium text-[#1B5E20]">{successMessage}</p>
       )}
       {saveError && (
-        <p className="mt-4 border border-red-200 bg-red-50 px-4 py-3 text-sm font-bold text-red-700">{saveError}</p>
+        <p role="alert" className="mt-4 rounded-[10px] border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-800">{saveError}</p>
       )}
 
-      <div className="mt-5 grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_340px]">
+      <div className="mt-4 grid items-start gap-4 sm:mt-5 sm:gap-5 lg:grid-cols-[minmax(0,1fr)_320px] xl:grid-cols-[minmax(0,1fr)_360px]">
         {/* -------------------------------- Left: form ------------------ */}
         <div className="min-w-0 space-y-5">
           <FormSection title="Product information" description="Give the product a clear title and story customers can trust.">
@@ -1531,10 +1540,10 @@ export default function ProductUploadForm({
                         key={path.join(">")}
                         type="button"
                         onClick={() => update("departmentPath", path)}
-                        className={`border px-3 py-2 text-xs font-bold transition ${
+                        className={`border px-3 py-2 text-xs font-semibold transition ${
                           selected
-                            ? "border-[#111111] bg-[#111111] text-white"
-                            : "border-[#111111]/15 bg-white text-[#111111] hover:border-[#111111]/40"
+                            ? "border-[#303839] bg-[#303839] text-white"
+                            : "border-[#303839]/15 bg-white text-[#303839] hover:border-[#303839]/40"
                         }`}
                       >
                         {path[path.length - 1]}
@@ -1545,12 +1554,12 @@ export default function ProductUploadForm({
                 <button
                   type="button"
                   onClick={() => setActiveModal("department")}
-                  className="mt-2.5 text-sm font-extrabold text-[#111111] underline underline-offset-4 transition hover:text-[#BDBDBD]"
+                  className="mt-2.5 text-sm font-semibold text-[#303839] underline underline-offset-4 transition hover:text-[#BDBDBD]"
                 >
                   Browse all departments
                 </button>
                 {!!form.departmentPath.length && (
-                  <p className="mt-2.5 border border-[#111111]/10 bg-white px-3 py-2 text-xs font-bold text-[#111111]/75">
+                  <p className="mt-2.5 border border-[#303839]/10 bg-white px-3 py-2 text-xs font-semibold text-[#303839]/75">
                     {form.departmentPath.join(" > ")}
                   </p>
                 )}
@@ -1564,7 +1573,7 @@ export default function ProductUploadForm({
                   onChange={(event) => update("description", event.target.value)}
                   rows={7}
                   placeholder="Materials, personalization, finish, what is included, and why customers will love it..."
-                  className={`mt-2 w-full border border-[#111111]/15 bg-white px-4 py-3 text-sm font-medium leading-6 text-[#111111] outline-none transition placeholder:text-[#111111]/35 focus:border-[#111111]/50 focus:ring-2 focus:ring-[#111111]/10 ${errors.description ? "border-red-400" : ""}`}
+                  className={`mt-2 w-full border border-[#303839]/15 bg-white px-4 py-3 text-sm font-medium leading-6 text-[#303839] outline-none transition placeholder:text-[#303839]/50 focus:border-[#303839]/50 focus:ring-2 focus:ring-[#303839]/10 ${errors.description ? "border-red-400" : ""}`}
                 />
                 <FieldError message={errors.description} />
               </div>
@@ -1585,9 +1594,9 @@ export default function ProductUploadForm({
               {form.customizeEnabled && (
                 <div className="border-t border-[#303839]/10 pt-6" data-field-error={errors.customizerTemplate ? "" : undefined}>
                   <div className="mb-4 max-w-3xl">
-                    <p className="text-[11px] font-extrabold uppercase tracking-[0.16em] text-[#D4AF37]">Personalization workspace</p>
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#D4AF37]">Personalization workspace</p>
                     <h3 className="mt-1 font-display text-2xl text-[#303839]">Design Studio</h3>
-                    <p className="mt-1 text-sm leading-6 text-[#303839]/60">
+                    <p className="mt-1 text-sm leading-6 text-[#303839]/75">
                       Build the editable product after preparing its customer-facing images and mockups. Configure pages,
                       artwork, customer-editable content, and product options in one workspace.
                     </p>
@@ -1641,25 +1650,25 @@ export default function ProductUploadForm({
             <div className="grid gap-4 sm:grid-cols-3">
               <div>
                 <FieldLabel label="Events & Occasions" />
-                <button type="button" onClick={() => setActiveModal("event")} className="mt-2 w-full border border-[#111111]/15 bg-white px-4 py-2.5 text-sm font-extrabold text-[#111111] transition hover:border-[#111111]/40">
+                <button type="button" onClick={() => setActiveModal("event")} className="mt-2 w-full border border-[#303839]/15 bg-white px-4 py-2.5 text-sm font-semibold text-[#303839] transition hover:border-[#303839]/40">
                   Select
                 </button>
-                {form.eventCategory && <p className="mt-2 text-xs font-bold text-[#111111]/70">{form.eventCategory}</p>}
+                {form.eventCategory && <p className="mt-2 text-xs font-semibold text-[#303839]/70">{form.eventCategory}</p>}
               </div>
               <div>
                 <FieldLabel label="Recipient" />
-                <button type="button" onClick={() => setActiveModal("recipient")} className="mt-2 w-full border border-[#111111]/15 bg-white px-4 py-2.5 text-sm font-extrabold text-[#111111] transition hover:border-[#111111]/40">
+                <button type="button" onClick={() => setActiveModal("recipient")} className="mt-2 w-full border border-[#303839]/15 bg-white px-4 py-2.5 text-sm font-semibold text-[#303839] transition hover:border-[#303839]/40">
                   Select
                 </button>
-                {form.recipientCategory && <p className="mt-2 text-xs font-bold text-[#111111]/70">{form.recipientCategory}</p>}
+                {form.recipientCategory && <p className="mt-2 text-xs font-semibold text-[#303839]/70">{form.recipientCategory}</p>}
               </div>
               <div>
                 <FieldLabel label="Collections" />
-                <button type="button" onClick={() => setActiveModal("collections")} className="mt-2 w-full border border-[#111111]/15 bg-white px-4 py-2.5 text-sm font-extrabold text-[#111111] transition hover:border-[#111111]/40">
+                <button type="button" onClick={() => setActiveModal("collections")} className="mt-2 w-full border border-[#303839]/15 bg-white px-4 py-2.5 text-sm font-semibold text-[#303839] transition hover:border-[#303839]/40">
                   Select
                 </button>
                 {!!form.collectionIds.length && (
-                  <p className="mt-2 text-xs font-bold text-[#111111]/70">
+                  <p className="mt-2 text-xs font-semibold text-[#303839]/70">
                     {collections
                       .filter((item) => form.collectionIds.includes(item.id))
                       .map((item) => item.name)
@@ -1690,7 +1699,7 @@ export default function ProductUploadForm({
                   type="button"
                   onClick={addTag}
                   disabled={!tagInput.trim() || form.tags.length >= MAX_TAGS}
-                  className="shrink-0 bg-[#111111] px-5 text-sm font-extrabold text-white transition hover:bg-[#222222] disabled:opacity-40"
+                  className="shrink-0 bg-[#303839] px-5 text-sm font-semibold text-white transition hover:bg-[#434C4D] disabled:opacity-40"
                 >
                   Add Tag
                 </button>
@@ -1699,9 +1708,9 @@ export default function ProductUploadForm({
               {!!form.tags.length && (
                 <div className="mt-3 flex flex-wrap gap-2">
                   {form.tags.map((tag) => (
-                    <span key={tag} className="flex items-center gap-2 bg-[#F8F8F8] px-3 py-1.5 text-xs font-bold text-[#111111]">
+                    <span key={tag} className="flex items-center gap-2 bg-[#F8F6F1] px-3 py-1.5 text-xs font-semibold text-[#303839]">
                       {tag}
-                      <button type="button" onClick={() => removeTag(tag)} aria-label={`Remove tag ${tag}`} className="text-[#111111]/50 transition hover:text-[#111111]">
+                      <button type="button" onClick={() => removeTag(tag)} aria-label={`Remove tag ${tag}`} className="text-[#303839]/70 transition hover:text-[#303839]">
                         <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round"><path d="M18 6 6 18M6 6l12 12" /></svg>
                       </button>
                     </span>
@@ -1709,7 +1718,7 @@ export default function ProductUploadForm({
                 </div>
               )}
 
-              <div className="mt-3 flex flex-wrap gap-x-6 gap-y-1 text-xs font-bold text-[#111111]/55">
+              <div className="mt-3 flex flex-wrap gap-x-6 gap-y-1 text-xs font-semibold text-[#303839]/70">
                 <span>All Tags {form.tags.length} of {MAX_TAGS} used</span>
                 <span>Characters {tagChars} of {MAX_TAG_CHARS} used</span>
               </div>
@@ -1741,12 +1750,12 @@ export default function ProductUploadForm({
                       onClick={() => update("visibility", option.value)}
                       className={`border px-4 py-3 text-left transition ${
                         form.visibility === option.value
-                          ? "border-[#111111] bg-[#111111] text-white"
-                          : "border-[#111111]/15 bg-white text-[#111111] hover:border-[#111111]/40"
+                          ? "border-[#303839] bg-[#303839] text-white"
+                          : "border-[#303839]/15 bg-white text-[#303839] hover:border-[#303839]/40"
                       }`}
                     >
-                      <span className="block text-sm font-extrabold">{option.label}</span>
-                      <span className={`mt-0.5 block text-xs font-medium ${form.visibility === option.value ? "text-white/70" : "text-[#111111]/55"}`}>
+                      <span className="block text-sm font-semibold">{option.label}</span>
+                      <span className={`mt-0.5 block text-xs font-medium ${form.visibility === option.value ? "text-white/70" : "text-[#303839]/70"}`}>
                         {option.helper}
                       </span>
                     </button>
@@ -1825,12 +1834,12 @@ export default function ProductUploadForm({
                       onClick={() => update("status", option.value)}
                       className={`border px-4 py-3 text-left transition ${
                         form.status === option.value
-                          ? "border-[#111111] bg-[#111111] text-white"
-                          : "border-[#111111]/15 bg-white text-[#111111] hover:border-[#111111]/40"
+                          ? "border-[#303839] bg-[#303839] text-white"
+                          : "border-[#303839]/15 bg-white text-[#303839] hover:border-[#303839]/40"
                       }`}
                     >
-                      <span className="block text-sm font-extrabold">{option.label}</span>
-                      <span className={`mt-0.5 block text-xs font-medium ${form.status === option.value ? "text-white/70" : "text-[#111111]/55"}`}>
+                      <span className="block text-sm font-semibold">{option.label}</span>
+                      <span className={`mt-0.5 block text-xs font-medium ${form.status === option.value ? "text-white/70" : "text-[#303839]/70"}`}>
                         {option.helper}
                       </span>
                     </button>
@@ -1844,7 +1853,7 @@ export default function ProductUploadForm({
                 <ToggleRow label="Best Seller" helper="Best seller sections" checked={form.isBestSeller} onChange={(value) => update("isBestSeller", value)} />
               </div>
 
-              <div className="border border-[#111111]/10 bg-white p-4">
+              <div className="border border-[#303839]/10 bg-white p-4">
                 <ToggleRow
                   label="Stock Out"
                   helper="Fades the product and shows a Stock Out label on the website"
@@ -1877,22 +1886,22 @@ export default function ProductUploadForm({
                   type="checkbox"
                   checked={form.agreementAccepted}
                   onChange={(event) => update("agreementAccepted", event.target.checked)}
-                  className="mt-0.5 h-4 w-4 accent-[#111111]"
+                  className="mt-0.5 h-4 w-4 accent-[#303839]"
                 />
-                <span className="text-sm font-medium leading-6 text-[#111111]">
+                <span className="text-sm font-medium leading-6 text-[#303839]">
                   I confirm that I have the right to publish and sell this product on Husnalogy.
-                  <span className="ml-1 text-[#BDBDBD]">*</span>
+                  <span aria-hidden="true" className="ml-0.5 text-red-700">*</span>
                 </span>
               </label>
               <FieldError message={errors.agreement} />
             </div>
 
-            <div className="mt-5 flex flex-col gap-2 sm:flex-row">
+            <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row">
               <button
                 type="button"
                 onClick={() => save("draft")}
                 disabled={Boolean(saving)}
-                className="border border-[#111111]/20 bg-white px-6 py-3 text-sm font-extrabold text-[#111111] transition hover:bg-[#F8F8F8] disabled:opacity-50"
+                className="min-h-11 border border-[#303839]/20 bg-white px-6 py-3 text-sm font-semibold text-[#303839] transition hover:bg-[#F8F6F1] disabled:opacity-50"
               >
                 {saving === "draft" ? "Saving..." : "Save as Draft"}
               </button>
@@ -1907,7 +1916,7 @@ export default function ProductUploadForm({
                     onSubmitForReview?.(editingId);
                   }}
                   disabled={Boolean(saving)}
-                  className="bg-[#111111] px-6 py-3 text-sm font-extrabold text-white transition hover:bg-[#222222] disabled:opacity-50"
+                  className="bg-[#303839] px-6 py-3 text-sm font-semibold text-white transition hover:bg-[#434C4D] disabled:opacity-50"
                 >
                   {saving ? "Saving..." : "Save & Submit for Review"}
                 </button>
@@ -1916,7 +1925,7 @@ export default function ProductUploadForm({
                   type="button"
                   onClick={() => save("publish")}
                   disabled={Boolean(saving)}
-                  className="bg-[#111111] px-6 py-3 text-sm font-extrabold text-white transition hover:bg-[#222222] disabled:opacity-50"
+                  className="min-h-11 bg-[#303839] px-6 py-3 text-sm font-semibold text-white transition hover:bg-[#434C4D] disabled:opacity-50"
                 >
                   {saving === "publish" ? "Publishing..." : "Publish Product"}
                 </button>
@@ -1929,7 +1938,8 @@ export default function ProductUploadForm({
             <button
               type="button"
               onClick={() => setMobilePreviewOpen((open) => !open)}
-              className="flex w-full items-center justify-between border border-[#111111]/10 bg-white px-4 py-3 text-sm font-extrabold text-[#111111]"
+              aria-expanded={mobilePreviewOpen}
+              className="flex min-h-12 w-full items-center justify-between rounded-[12px] border border-[#303839]/10 bg-white px-4 py-3 text-sm font-semibold text-[#303839]"
             >
               Product preview
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className={`transition ${mobilePreviewOpen ? "rotate-180" : ""}`}><path d="m6 9 6 6 6-6" /></svg>
@@ -1939,7 +1949,7 @@ export default function ProductUploadForm({
         </div>
 
         {/* -------------------------------- Right: sticky preview ------- */}
-        <aside className="sticky top-24 hidden min-w-0 self-start lg:block">{previewPanel}</aside>
+        <aside className="sticky top-20 hidden min-w-0 self-start lg:block">{previewPanel}</aside>
       </div>
 
       {/* -------------------------------- Modals ------------------------ */}

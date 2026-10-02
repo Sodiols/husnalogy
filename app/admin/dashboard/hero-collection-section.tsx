@@ -242,8 +242,8 @@ export default function HeroCollectionSection({ onAction }: { onAction?: (messag
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h2 className="font-body text-[1.5rem] font-semibold leading-none text-[#111111]">Home Hero Collection</h2>
-          <p className="mt-2 max-w-2xl text-sm text-[#1F1F1F]/60">
+          <h2 className="font-body text-[1.5rem] font-semibold leading-none text-[#303839]">Home Hero Collection</h2>
+          <p className="mt-2 max-w-2xl text-sm text-[#303839]/75">
             The homepage shows the collection that is both <strong>Active</strong> and <strong>Featured</strong>. Featuring
             a collection automatically unfeatures the previous one. Images, product links, item count and buttons are
             generated from the linked collection.
@@ -253,7 +253,7 @@ export default function HeroCollectionSection({ onAction }: { onAction?: (messag
           <button
             type="button"
             onClick={openCreate}
-            className="inline-flex items-center justify-center rounded-full bg-[#111111] px-5 py-3 text-sm font-bold text-white transition hover:bg-black"
+            className="inline-flex h-11 items-center justify-center bg-[#303839] px-5 text-sm font-semibold text-white transition-colors hover:bg-[#434C4D]"
           >
             Add Collection
           </button>
@@ -261,24 +261,24 @@ export default function HeroCollectionSection({ onAction }: { onAction?: (messag
       </div>
 
       {loadError && (
-        <p className="rounded-none border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">{loadError}</p>
+        <p className="rounded-[10px] border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">{loadError}</p>
       )}
 
       {formOpen && (
-        <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(0,0.9fr)]">
+        <div className="grid items-start gap-4 sm:gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(0,0.9fr)]">
           {/* FORM */}
-          <div className="rounded-none border border-[#111111]/10 bg-white p-5 shadow-[0_18px_60px_-52px_rgba(0,0,0,0.7)] sm:p-6">
-            <div className="mb-5 flex items-center justify-between border-b border-[#111111]/8 pb-4">
-              <h3 className="font-body text-lg font-semibold text-[#111111]">
+          <div className="rounded-[12px] border border-[#303839]/10 bg-white p-4 shadow-[0_1px_2px_rgba(48,56,57,0.04)] sm:p-6">
+            <div className="mb-5 flex items-center justify-between border-b border-[#303839]/8 pb-4">
+              <h3 className="font-body text-lg font-semibold text-[#303839]">
                 {editingId ? "Edit collection" : "New collection"}
               </h3>
-              <button type="button" onClick={closeForm} className="text-sm font-bold text-[#1F1F1F]/60 hover:text-[#1F1F1F]">
+              <button type="button" onClick={closeForm} className="text-sm font-semibold text-[#303839]/75 hover:text-[#303839]">
                 Cancel
               </button>
             </div>
 
             {error && (
-              <p className="mb-4 rounded-none border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
+              <p className="mb-4 rounded-[10px] border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
                 {error}
               </p>
             )}
@@ -286,12 +286,12 @@ export default function HeroCollectionSection({ onAction }: { onAction?: (messag
             <div className="space-y-5">
               {/* Source collection — drives all imagery */}
               <div>
-                <label className="block text-sm font-semibold text-[#1F1F1F]">
-                  <span className="text-xs font-bold uppercase tracking-[0.1em] text-[#1F1F1F]/55">Source collection</span>
+                <label className="block text-sm font-semibold text-[#303839]">
+                  <span className="text-xs font-semibold uppercase tracking-[0.1em] text-[#303839]/70">Source collection</span>
                   <select
                     value={form.sourceCollectionId || ""}
                     onChange={(event) => setField("sourceCollectionId", event.target.value)}
-                    className="mt-1.5 h-11 w-full border border-[#1F1F1F]/12 bg-white px-3 text-sm font-semibold text-[#1F1F1F] outline-none transition hover:border-[#1F1F1F]/20 focus:border-[#1F1F1F]/40 focus:ring-2 focus:ring-[#1F1F1F]/10"
+                    className="mt-1.5 h-11 w-full border border-[#303839]/15 bg-white px-3 text-base font-medium sm:text-sm text-[#303839] outline-none transition hover:border-[#303839]/20 focus:border-[#303839]/40 focus:ring-2 focus:ring-[#303839]/10"
                   >
                     <option value="">Select a collection…</option>
                     {productCollections.map((collection) => (
@@ -305,26 +305,26 @@ export default function HeroCollectionSection({ onAction }: { onAction?: (messag
                 {fieldErrors.sourceCollectionId && (
                   <p className="mt-1 text-xs font-semibold text-red-700">{fieldErrors.sourceCollectionId}</p>
                 )}
-                <p className="mt-1.5 text-xs text-[#1F1F1F]/55">
+                <p className="mt-1.5 text-xs text-[#303839]/70">
                   The main image comes from this collection&apos;s 1st child collection, and the three thumbnails from
                   the 2nd, 3rd and 4th. Each image opens the exact product shown.
                 </p>
 
                 {form.sourceCollectionId && (
-                  <div className="mt-3 rounded-none border border-[#1F1F1F]/10 bg-[#F8F8F8] p-3">
+                  <div className="mt-3 rounded-[10px] border border-[#303839]/10 bg-[#F8F6F1] p-3">
                     {resolving ? (
-                      <p className="text-xs font-semibold text-[#1F1F1F]/55">Loading collection images…</p>
+                      <p className="text-xs font-semibold text-[#303839]/70">Loading collection images…</p>
                     ) : resolved?.mainImage ? (
                       <>
                         <div className="flex items-stretch gap-2">
                           {/* eslint-disable @next/next/no-img-element */}
-                          <img src={resolved.mainImage} alt="Main" className="h-20 w-20 shrink-0 border border-[#1F1F1F]/10 object-cover" />
-                          <img src={resolved.thumbnailOne} alt="" className="h-20 w-16 border border-[#1F1F1F]/10 object-cover" />
-                          <img src={resolved.thumbnailTwo} alt="" className="h-20 w-16 border border-[#1F1F1F]/10 object-cover" />
-                          <img src={resolved.thumbnailThree} alt="" className="h-20 w-16 border border-[#1F1F1F]/10 object-cover" />
+                          <img src={resolved.mainImage} alt="Main" className="h-20 w-20 shrink-0 border border-[#303839]/10 object-cover" />
+                          <img src={resolved.thumbnailOne} alt="" className="h-20 w-16 border border-[#303839]/10 object-cover" />
+                          <img src={resolved.thumbnailTwo} alt="" className="h-20 w-16 border border-[#303839]/10 object-cover" />
+                          <img src={resolved.thumbnailThree} alt="" className="h-20 w-16 border border-[#303839]/10 object-cover" />
                           {/* eslint-enable @next/next/no-img-element */}
                         </div>
-                        <p className="mt-2 text-xs text-[#1F1F1F]/55">
+                        <p className="mt-2 text-xs text-[#303839]/70">
                           {resolved.childCount} child collection{resolved.childCount === 1 ? "" : "s"} ·{" "}
                           {resolved.productCount} product{resolved.productCount === 1 ? "" : "s"}
                           {" · "}{resolved.itemCount} item{resolved.itemCount === 1 ? "" : "s"} in the badge
@@ -352,9 +352,9 @@ export default function HeroCollectionSection({ onAction }: { onAction?: (messag
 
               <TextAreaField label="Description" value={form.description} onChange={(v) => setField("description", v)} />
 
-              <div className="border border-[#1F1F1F]/10 bg-[#F8F8F8] px-4 py-3 text-xs leading-5 text-[#1F1F1F]/60">
-                Buttons are automatic: <strong className="text-[#1F1F1F]">Browse all collections</strong> opens the
-                collections index, and <strong className="text-[#1F1F1F]">Buy this collection</strong> opens the selected collection.
+              <div className="border border-[#303839]/10 bg-[#F8F6F1] px-4 py-3 text-xs leading-5 text-[#303839]/75">
+                Buttons are automatic: <strong className="text-[#303839]">Browse all collections</strong> opens the
+                collections index, and <strong className="text-[#303839]">Buy this collection</strong> opens the selected collection.
               </div>
 
               <div className="grid gap-3 sm:grid-cols-2">
@@ -363,22 +363,22 @@ export default function HeroCollectionSection({ onAction }: { onAction?: (messag
               </div>
               {fieldErrors.title && <p className="text-xs font-semibold text-red-700">{fieldErrors.title}</p>}
 
-              <div className="flex flex-wrap items-center gap-3 border-t border-[#111111]/8 pt-5">
+              <div className="flex flex-wrap items-center gap-3 border-t border-[#303839]/8 pt-5">
                 <button
                   type="button"
                   onClick={submit}
                   disabled={saving}
-                  className="inline-flex items-center justify-center rounded-full bg-[#111111] px-5 py-3 text-sm font-bold text-white transition hover:bg-black disabled:opacity-60"
+                  className="inline-flex h-11 items-center justify-center bg-[#303839] px-5 text-sm font-semibold text-white transition-colors hover:bg-[#434C4D] disabled:opacity-60"
                 >
                   {saving ? "Saving..." : editingId ? "Save changes" : "Create collection"}
                 </button>
-                <button type="button" onClick={closeForm} className="text-sm font-bold text-[#1F1F1F]/60 hover:text-[#1F1F1F]">
+                <button type="button" onClick={closeForm} className="text-sm font-semibold text-[#303839]/75 hover:text-[#303839]">
                   Cancel
                 </button>
                 <button
                   type="button"
                   onClick={() => setShowPreview((v) => !v)}
-                  className="ml-auto text-sm font-bold text-[#1F1F1F]/60 hover:text-[#1F1F1F] xl:hidden"
+                  className="ml-auto text-sm font-semibold text-[#303839]/75 hover:text-[#303839] xl:hidden"
                 >
                   {showPreview ? "Hide preview" : "Show preview"}
                 </button>
@@ -388,14 +388,14 @@ export default function HeroCollectionSection({ onAction }: { onAction?: (messag
 
           {/* LIVE PREVIEW — renders the exact homepage component */}
           {showPreview && (
-            <div className="rounded-none border border-[#111111]/10 bg-white p-4 shadow-[0_18px_60px_-52px_rgba(0,0,0,0.7)]">
-              <p className="mb-3 text-xs font-bold uppercase tracking-[0.14em] text-[#1F1F1F]/55">Live preview</p>
+            <div className="rounded-[12px] border border-[#303839]/10 bg-white p-4 shadow-[0_1px_2px_rgba(48,56,57,0.04)]">
+              <p className="mb-3 text-xs font-semibold uppercase tracking-[0.14em] text-[#303839]/70">Live preview</p>
               {previewReady ? (
-                <div className="overflow-hidden rounded-none border border-[#111111]/8">
+                <div className="overflow-hidden rounded-[10px] border border-[#303839]/8">
                   <Hero collection={previewCollection} />
                 </div>
               ) : (
-                <div className="grid h-64 place-items-center rounded-none border border-dashed border-[#111111]/15 bg-[#F8F6F1] px-6 text-center text-sm font-semibold text-[#1F1F1F]/50">
+                <div className="grid h-64 place-items-center rounded-[10px] border border-dashed border-[#303839]/15 bg-[#F8F6F1] px-6 text-center text-sm font-semibold text-[#303839]/70">
                   Select a source collection that has child collections or product images to preview the section.
                 </div>
               )}
@@ -408,13 +408,13 @@ export default function HeroCollectionSection({ onAction }: { onAction?: (messag
       {loading ? (
         <div className="space-y-3">
           {[0, 1].map((i) => (
-            <div key={i} className="h-24 animate-pulse rounded-none border border-[#111111]/10 bg-[#F4F4F4]" />
+            <div key={i} className="h-24 animate-pulse rounded-[10px] border border-[#303839]/10 bg-[#F3F1EC]" />
           ))}
         </div>
       ) : collections.length === 0 && !formOpen ? (
-        <div className="rounded-none border border-dashed border-[#111111]/15 bg-[#F8F8F8] p-8 text-center">
-          <p className="text-sm font-semibold text-[#1F1F1F]/70">No hero collections yet.</p>
-          <p className="mt-1 text-sm text-[#1F1F1F]/50">Create one, link a collection, and mark it Active + Featured to show it on the homepage.</p>
+        <div className="rounded-[10px] border border-dashed border-[#303839]/15 bg-[#F8F6F1] p-8 text-center">
+          <p className="text-sm font-semibold text-[#303839]/70">No hero collections yet.</p>
+          <p className="mt-1 text-sm text-[#303839]/70">Create one, link a collection, and mark it Active + Featured to show it on the homepage.</p>
         </div>
       ) : (
         <div className="space-y-3">
@@ -423,16 +423,16 @@ export default function HeroCollectionSection({ onAction }: { onAction?: (messag
             return (
               <div
                 key={collection.id}
-                className={`flex flex-wrap items-center gap-4 rounded-none border p-4 ${live ? "border-[#111111]/30 bg-white" : "border-[#111111]/10 bg-[#F8F8F8]"}`}
+                className={`flex flex-wrap items-center gap-3 rounded-[12px] border p-4 sm:gap-4 ${live ? "border-[#303839]/30 bg-white" : "border-[#303839]/10 bg-[#F8F6F1]"}`}
               >
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
-                    <p className="truncate font-bold text-[#1F1F1F]">{collection.title || "Untitled"}</p>
+                    <p className="truncate font-semibold text-[#303839]">{collection.title || "Untitled"}</p>
                     <Badge active={collection.isActive}>{collection.isActive ? "Active" : "Draft"}</Badge>
                     {collection.isFeatured && <Badge active>Featured</Badge>}
                     {live && <Badge active>On homepage</Badge>}
                   </div>
-                  <p className="mt-1 text-xs text-[#1F1F1F]/55">
+                  <p className="mt-1 text-xs text-[#303839]/70">
                     {collectionName(collection.sourceCollectionId) ? `From: ${collectionName(collection.sourceCollectionId)}` : "No source collection"}
                   </p>
                 </div>
@@ -458,7 +458,7 @@ export default function HeroCollectionSection({ onAction }: { onAction?: (messag
 function FieldGroup({ label, children }: any) {
   return (
     <div>
-      <p className="mb-2 text-sm font-bold text-[#1F1F1F]">{label}</p>
+      <p className="mb-2 text-sm font-semibold text-[#303839]">{label}</p>
       <div className="grid gap-3 sm:grid-cols-2">{children}</div>
     </div>
   );
@@ -466,29 +466,29 @@ function FieldGroup({ label, children }: any) {
 
 function Field({ label, value, onChange, type = "text", placeholder = "", helper = "", error = "" }: any) {
   return (
-    <label className="block text-sm font-semibold text-[#1F1F1F]">
-      <span className="text-xs font-bold uppercase tracking-[0.1em] text-[#1F1F1F]/55">{label}</span>
+    <label className="block text-sm font-semibold text-[#303839]">
+      <span className="text-xs font-semibold uppercase tracking-[0.1em] text-[#303839]/70">{label}</span>
       <input
         type={type}
         value={value ?? ""}
         onChange={(event) => onChange(type === "number" ? Number(event.target.value) : event.target.value)}
         placeholder={placeholder}
-        className="mt-1.5 h-11 w-full rounded-none border border-[#1F1F1F]/12 bg-white px-3 text-sm font-semibold text-[#1F1F1F] outline-none transition hover:border-[#1F1F1F]/20 focus:border-[#1F1F1F]/40 focus:ring-2 focus:ring-[#1F1F1F]/10"
+        className="mt-1.5 h-11 w-full border border-[#303839]/15 bg-white px-3 text-base font-medium sm:text-sm text-[#303839] outline-none transition hover:border-[#303839]/20 focus:border-[#303839]/40 focus:ring-2 focus:ring-[#303839]/10"
       />
       {error && <span className="mt-1 block text-xs font-semibold text-red-700">{error}</span>}
-      {helper && !error && <span className="mt-1 block text-xs font-normal text-[#1F1F1F]/50">{helper}</span>}
+      {helper && !error && <span className="mt-1 block text-xs font-normal text-[#303839]/70">{helper}</span>}
     </label>
   );
 }
 
 function TextAreaField({ label, value, onChange }: any) {
   return (
-    <label className="block text-sm font-semibold text-[#1F1F1F]">
-      <span className="text-xs font-bold uppercase tracking-[0.1em] text-[#1F1F1F]/55">{label}</span>
+    <label className="block text-sm font-semibold text-[#303839]">
+      <span className="text-xs font-semibold uppercase tracking-[0.1em] text-[#303839]/70">{label}</span>
       <textarea
         value={value ?? ""}
         onChange={(event) => onChange(event.target.value)}
-        className="mt-1.5 min-h-24 w-full rounded-none border border-[#1F1F1F]/12 bg-white p-3 text-sm font-medium leading-6 text-[#1F1F1F] outline-none transition hover:border-[#1F1F1F]/20 focus:border-[#1F1F1F]/40 focus:ring-2 focus:ring-[#1F1F1F]/10"
+        className="mt-1.5 min-h-24 w-full border border-[#303839]/15 bg-white p-3 text-base font-medium sm:text-sm leading-6 text-[#303839] outline-none transition hover:border-[#303839]/20 focus:border-[#303839]/40 focus:ring-2 focus:ring-[#303839]/10"
       />
     </label>
   );
@@ -496,25 +496,28 @@ function TextAreaField({ label, value, onChange }: any) {
 
 function Toggle({ label, checked, onChange }: any) {
   return (
-    <div className="flex items-center justify-between gap-4 rounded-none border border-[#1F1F1F]/10 bg-[#F8F8F8] px-4 py-3 text-sm">
-      <span className="font-bold text-[#1F1F1F]">{label}</span>
+    <label className="flex min-h-14 cursor-pointer items-center justify-between gap-4 rounded-[10px] border border-[#303839]/10 bg-[#F8F6F1] px-4 py-3 text-sm">
+      <span className="font-semibold text-[#303839]">{label}</span>
       <button
         type="button"
-        aria-pressed={checked}
+        role="switch"
+        aria-checked={Boolean(checked)}
+        aria-label={label}
+        data-shape="round"
         onClick={() => onChange(!checked)}
-        className={`h-7 w-12 shrink-0 rounded-none p-1 transition ${checked ? "bg-[#111111]" : "bg-[#1F1F1F]/14"}`}
+        className={`relative h-6 w-11 shrink-0 rounded-full transition-colors duration-200 ${checked ? "bg-[#303839]" : "bg-[#303839]/20"}`}
       >
-        <span className={`block h-5 w-5 rounded-none bg-white transition ${checked ? "translate-x-5" : ""}`} />
+        <span aria-hidden="true" className={`absolute left-0.5 top-0.5 h-5 w-5 rounded-full bg-white shadow-[0_1px_3px_rgba(48,56,57,0.3)] transition-transform duration-200 ${checked ? "translate-x-5" : "translate-x-0"}`} />
       </button>
-    </div>
+    </label>
   );
 }
 
 function Badge({ active, children }: any) {
   return (
     <span
-      className={`rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-[0.1em] ${
-        active ? "bg-[#111111] text-white" : "bg-[#1F1F1F]/10 text-[#1F1F1F]/70"
+      className={`inline-flex h-6 items-center rounded-full px-2.5 text-[10px] font-semibold uppercase tracking-[0.1em] ${
+        active ? "bg-[#303839] text-white" : "bg-[#303839]/10 text-[#303839]/70"
       }`}
     >
       {children}
@@ -527,10 +530,10 @@ function SmallButton({ children, onClick, danger = false }: any) {
     <button
       type="button"
       onClick={onClick}
-      className={`rounded-full border px-3 py-1.5 text-xs font-bold transition ${
+      className={`inline-flex h-9 items-center justify-center border bg-white px-3 text-xs font-semibold transition-colors [@media(pointer:coarse)]:h-10 ${
         danger
           ? "border-red-200 text-red-700 hover:bg-red-50"
-          : "border-[#1F1F1F]/15 text-[#1F1F1F] hover:bg-[#E6E6E6]"
+          : "border-[#303839]/12 text-[#303839] hover:border-[#303839]/25 hover:bg-[#F8F6F1]"
       }`}
     >
       {children}

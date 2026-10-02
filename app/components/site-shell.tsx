@@ -19,7 +19,10 @@ const AskLogy = dynamic(() => import("./logy"), { ssr: false });
 
 export default function SiteShell({ children, initialUser, initialSettings = null }) {
   const pathname = usePathname();
-  const isAdminRoute = pathname?.startsWith("/admin");
+  // The admin-dashboard fixture mounts the REAL dashboard client, so it gets the
+  // same chrome-free treatment as /admin (see isCustomizerRoute below).
+  const isAdminRoute =
+    pathname?.startsWith("/admin") || /^\/__e2e\/admin-dashboard\/?$/.test(pathname || "");
   // The internal fixture route mounts the SAME customizer, so it has to get the
   // same chrome treatment. If it kept the storefront header the editor would be
   // laid out differently there than in production, and the interaction tests

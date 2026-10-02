@@ -352,3 +352,69 @@ header nav a {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* ---------------------------------------------------------------------------
+   Admin workspace. Scoped to [data-admin-shell] so the storefront keeps its
+   squared house style. One control radius, a visible keyboard focus ring and
+   touch-friendly defaults for every admin surface.
+--------------------------------------------------------------------------- */
+[data-admin-shell] {
+  --admin-ink: #303839;
+  --admin-canvas: #faf9f6;
+  --admin-focus: 0 0 0 3px rgba(48, 56, 57, 0.12);
+  color-scheme: light;
+  -webkit-tap-highlight-color: transparent;
+}
+
+[data-admin-shell] :is(button, a, [role="button"], label, summary) {
+  touch-action: manipulation;
+}
+
+[data-admin-shell] input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+[data-admin-shell] textarea,
+[data-admin-shell] select {
+  border-radius: var(--radius-sm) !important;
+}
+
+[data-admin-shell] input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):focus,
+[data-admin-shell] textarea:focus,
+[data-admin-shell] select:focus {
+  border-color: rgba(48, 56, 57, 0.45) !important;
+  box-shadow: var(--admin-focus) !important;
+}
+
+/* Underline-style fields (the header search) keep a flat focus. */
+[data-admin-shell] input.admin-field-flat:focus {
+  box-shadow: none !important;
+}
+
+[data-admin-shell] :is(button, a, [role="button"], [tabindex="0"]):focus-visible {
+  outline: 2px solid rgba(48, 56, 57, 0.6);
+  outline-offset: 2px;
+}
+
+[data-admin-shell] ::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+[data-admin-shell] ::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background: rgba(48, 56, 57, 0.2);
+  background-clip: padding-box;
+}
+
+[data-admin-shell] ::selection {
+  background: #ece9e1;
+  color: #303839;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-admin-shell] * {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
