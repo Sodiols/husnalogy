@@ -110,8 +110,8 @@ const sectionTips = {
     "New orders and messages also appear under the bell icon in the top bar, so you never miss them.",
   ],
   Products: [
-    "Click \"Add Product\" in the top-right corner to create a new product. Products saved as Draft stay hidden from customers until you publish them.",
-    "On each product card: the pencil edits, the two squares make a copy, the eye opens the product on your website, and the red bin deletes it.",
+    "Click \"Add product\" to create a new product. The form shows what is still needed before you can publish, and drafts stay hidden from customers.",
+    "Use the tabs to see published products, drafts or hidden ones. On each card, Edit opens the form; the other buttons copy the product, open it on your website, or delete it.",
     "Deleted products are never lost right away — they move to Recently Deleted, where you can restore them.",
   ],
   "Product Reviews": [
@@ -264,6 +264,8 @@ export default function AdminDashboardClient({ basePath = "/admin/dashboard" }: 
       product.slug,
       product.sku,
       product.id,
+      product.category,
+      ...(Array.isArray(product.tags) ? product.tags : []),
     ]
       .join(" ")
       .toLowerCase();
@@ -1267,7 +1269,12 @@ export default function AdminDashboardClient({ basePath = "/admin/dashboard" }: 
                   <ProductsSection
                     allProducts={products}
                     products={filteredProducts}
+                    query={productQuery}
                     setQuery={setProductQuery}
+                    onAdd={() => {
+                      setEditingProduct(null);
+                      setProductFormOpen(true);
+                    }}
                     statusFilter={productStatusFilter}
                     setStatusFilter={setProductStatusFilter}
                     totalProducts={products.length}
@@ -2750,7 +2757,7 @@ function StyledNativeSelect({ value, onChange, options, size = "md", ariaLabel, 
   );
 }
 
-function ProductsSection({ allProducts = [], products, setQuery, statusFilter, setStatusFilter, totalProducts, editingProduct, formOpen, onSaved, onCloseForm, onEdit, onDuplicate, onDelete }) {
+function ProductsSection({ allProducts = [], products, query = "", setQuery, onAdd, statusFilter, setStatusFilter, totalProducts, editingProduct, formOpen, onSaved, onCloseForm, onEdit, onDuplicate, onDelete }: any) {
   const [categoryFilter, setCategoryFilter] = useState("");
   const [typeFilter, setTypeFilter] = useState("");
   const [personalizationFilter, setPersonalizationFilter] = useState("");
@@ -2759,6 +2766,20 @@ function ProductsSection({ allProducts = [], products, setQuery, statusFilter, s
   const filterSource = allProducts.length ? allProducts : products;
   const categories = [...new Set(filterSource.map((product) => product.category).filter(Boolean))];
   const productTypes = [...new Set(filterSource.map((product) => product.productType).filter(Boolean))];
+  const statusCounts = filterSource.reduce(
+    (counts, product) => {
+      const key = product.status || "draft";
+      counts[key] = (counts[key] || 0) + 1;
+      return counts;
+    },
+    {} as Record<string, number>
+  );
+  const statusTabs = [
+    { value: "", label: "All", count: filterSource.length },
+    { value: "active", label: "Published", count: statusCounts.active || 0 },
+    { value: "draft", label: "Drafts", count: statusCounts.draft || 0 },
+    { value: "hidden", label: "Hidden", count: statusCounts.hidden || 0 },
+  ];
   const visibleProducts = products
     .filter((product) => !categoryFilter || product.category === categoryFilter)
     .filter((product) => !typeFilter || product.productType === typeFilter)
@@ -2771,14 +2792,22 @@ function ProductsSection({ allProducts = [], products, setQuery, statusFilter, s
       if (sortBy === "oldest") return new Date(a.createdAt || 0).getTime() - new Date(b.createdAt || 0).getTime();
       if (sortBy === "price-high") return Number(b.salePrice ?? b.price ?? 0) - Number(a.salePrice ?? a.price ?? 0);
       if (sortBy === "price-low") return Number(a.salePrice ?? a.price ?? 0) - Number(b.salePrice ?? b.price ?? 0);
+      if (sortBy === "name") return String(a.title || "").localeCompare(String(b.title || ""));
       return new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime();
     });
+  const filtersActive = Boolean(query || categoryFilter || statusFilter || typeFilter || personalizationFilter || sortBy !== "newest");
   const productCountText =
-    visibleProducts.length === 0
-      ? "Showing 0 products"
-      : visibleProducts.length === totalProducts
-      ? `Showing ${visibleProducts.length} product${visibleProducts.length === 1 ? "" : "s"}`
-      : `Showing ${visibleProducts.length} of ${totalProducts} products`;
+    visibleProducts.length === totalProducts
+      ? `${visibleProducts.length} product${visibleProducts.length === 1 ? "" : "s"}`
+      : `${visibleProducts.length} of ${totalProducts} products`;
+  const resetFilters = () => {
+    setQuery("");
+    setCategoryFilter("");
+    setStatusFilter("");
+    setTypeFilter("");
+    setPersonalizationFilter("");
+    setSortBy("newest");
+  };
 
   return (
     <div className="space-y-6">
@@ -2791,11 +2820,64 @@ function ProductsSection({ allProducts = [], products, setQuery, statusFilter, s
         />
       )}
 
-      <section className={`${CARD} p-4 sm:p-6`}>
-        <div className="flex flex-col gap-3 border-b border-[#303839]/8 pb-4 sm:pb-5 2xl:flex-row 2xl:items-center 2xl:justify-between">
-          <p className="text-sm font-semibold text-[#303839]/80" aria-live="polite">{productCountText}</p>
+      <section className={`${CARD} overflow-hidden`} aria-label="Product list">
+        {/* Search + add */}
+        <div className="flex flex-col gap-3 border-b border-[#303839]/8 p-4 sm:flex-row sm:items-center sm:p-5">
+          <label className="relative min-w-0 flex-1">
+            <span className="sr-only">Search products</span>
+            <svg aria-hidden="true" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-[#303839]/60">
+              <circle cx="11" cy="11" r="7" />
+              <path d="m20 20-3.5-3.5" />
+            </svg>
+            <input
+              type="search"
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="Search by name, category, tag or SKU"
+              className="h-11 w-full border border-[#303839]/15 bg-white pl-10 pr-3 text-sm text-[#303839] outline-none transition-colors placeholder:text-[#303839]/55 focus:border-[#303839]/50 focus:ring-2 focus:ring-[#303839]/10"
+            />
+          </label>
+          <button type="button" onClick={onAdd} className={`${BUTTON_PRIMARY} shrink-0`}>
+            <Icon name="plus" className="h-4 w-4" />
+            Add product
+          </button>
+        </div>
 
-          <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center 2xl:justify-end">
+        {/* Status tabs */}
+        <div className="flex gap-1 overflow-x-auto border-b border-[#303839]/8 px-4 sm:px-5" role="tablist" aria-label="Filter by status">
+          {statusTabs.map((tab) => {
+            const selected = (statusFilter || "") === tab.value;
+            return (
+              <button
+                key={tab.value || "all"}
+                type="button"
+                role="tab"
+                aria-selected={selected}
+                onClick={() => setStatusFilter(tab.value)}
+                className={`relative -mb-px inline-flex min-h-11 shrink-0 items-center gap-2 border-b-2 px-3 text-sm font-semibold transition-colors ${
+                  selected ? "border-[#303839] text-[#303839]" : "border-transparent text-[#303839]/65 hover:text-[#303839]"
+                }`}
+              >
+                {tab.label}
+                <span className={`inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[11px] tabular-nums ${selected ? "bg-[#303839] text-white" : "bg-[#F3F1EC] text-[#303839]/80"}`}>
+                  {tab.count}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Secondary filters */}
+        <div className="flex flex-col gap-3 p-4 sm:p-5 xl:flex-row xl:items-center xl:justify-between">
+          <p className="text-sm text-[#303839]/75" aria-live="polite">
+            <span className="font-semibold text-[#303839]">{productCountText}</span>
+            {filtersActive && (
+              <button type="button" onClick={resetFilters} className="ml-3 text-sm font-semibold text-[#303839] underline underline-offset-4">
+                Clear filters
+              </button>
+            )}
+          </p>
+          <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center xl:justify-end">
             <SelectMenu
               value={categoryFilter}
               onChange={setCategoryFilter}
@@ -2803,14 +2885,6 @@ function ProductsSection({ allProducts = [], products, setQuery, statusFilter, s
               ariaLabel="Filter by category"
               className="min-w-0 sm:w-[168px]"
               options={[{ value: "", label: "All categories" }, ...categories]}
-            />
-            <SelectMenu
-              value={statusFilter}
-              onChange={setStatusFilter}
-              size="sm"
-              ariaLabel="Filter by status"
-              className="min-w-0 sm:w-[148px]"
-              options={[{ value: "", label: "All statuses" }, ...productStatuses]}
             />
             <SelectMenu
               value={typeFilter}
@@ -2827,7 +2901,7 @@ function ProductsSection({ allProducts = [], products, setQuery, statusFilter, s
               ariaLabel="Filter by personalization"
               className="min-w-0 sm:w-[176px]"
               options={[
-                { value: "", label: "All personalization" },
+                { value: "", label: "Any personalization" },
                 { value: "yes", label: "Personalized" },
                 { value: "no", label: "Not personalized" },
               ]}
@@ -2837,38 +2911,24 @@ function ProductsSection({ allProducts = [], products, setQuery, statusFilter, s
               onChange={setSortBy}
               size="sm"
               ariaLabel="Sort products"
-              className="min-w-0 sm:w-[148px]"
+              className="min-w-0 sm:w-[160px]"
               options={[
                 { value: "newest", label: "Newest first" },
                 { value: "oldest", label: "Oldest first" },
+                { value: "name", label: "Name A–Z" },
                 { value: "price-high", label: "Price: high to low" },
                 { value: "price-low", label: "Price: low to high" },
               ]}
             />
-            <button
-              type="button"
-              onClick={() => {
-                setQuery("");
-                setCategoryFilter("");
-                setStatusFilter("");
-                setTypeFilter("");
-                setPersonalizationFilter("");
-                setSortBy("newest");
-              }}
-              title="Clear the header search and every filter"
-              className={`${BUTTON_SM_SECONDARY} h-10 px-4`}
-            >
-              <Icon name="close" className="h-3.5 w-3.5" />
-              Reset
-            </button>
           </div>
         </div>
 
-        <div className="grid gap-3 pt-4 sm:gap-4 sm:pt-5 md:grid-cols-2 2xl:grid-cols-3">
+        <div className="grid gap-3 px-4 pb-4 sm:gap-4 sm:px-5 sm:pb-5 md:grid-cols-2 2xl:grid-cols-3">
           {visibleProducts.map((product) => {
             const hasPersonalization = hasProductPersonalization(product);
-            const statusLabel = product.status === "active" ? "Published" : product.status || "Draft";
+            const statusLabel = product.status === "active" ? "Published" : product.status === "hidden" ? "Hidden" : "Draft";
             const priceValue = product.salePrice ?? product.price;
+            const hasPrice = priceValue !== null && priceValue !== undefined && priceValue !== "";
             const hasOldPrice = product.oldPrice !== null && product.oldPrice !== undefined && product.oldPrice !== "";
             const flags = [
               (product.featured || product.isFeatured) && "Featured",
@@ -2877,28 +2937,34 @@ function ProductsSection({ allProducts = [], products, setQuery, statusFilter, s
               hasPersonalization && "Personalized",
             ].filter(Boolean);
             return (
-              <article key={product.id} className="flex min-w-0 flex-col rounded-[12px] border border-[#303839]/10 bg-white transition-colors hover:border-[#303839]/20">
+              <article key={product.id} className="flex min-w-0 flex-col rounded-[12px] border border-[#303839]/10 bg-white transition-colors hover:border-[#303839]/25">
                 <div className="flex gap-3 p-3.5 sm:p-4">
-                  <img src={getProductImage(product)} alt="" loading="lazy" className="h-[72px] w-[72px] shrink-0 rounded-[8px] border border-[#303839]/8 bg-[#F8F6F1] object-cover sm:h-20 sm:w-20" />
+                  <button type="button" onClick={() => onEdit(product)} className="shrink-0" aria-label={`Edit ${product.title || "product"}`} tabIndex={-1}>
+                    <img src={getProductImage(product)} alt="" loading="lazy" className="h-[76px] w-[76px] rounded-[8px] border border-[#303839]/8 bg-[#F8F6F1] object-cover sm:h-20 sm:w-20" />
+                  </button>
                   <div className="min-w-0 flex-1">
                     <div className="flex items-start justify-between gap-3">
                       <h3 className="line-clamp-2 text-sm font-semibold leading-5 text-[#303839]">{product.title || "Untitled product"}</h3>
                       <div className="shrink-0 text-right">
-                        <p className="text-sm font-semibold tabular-nums text-[#303839]">{priceValue !== null && priceValue !== undefined ? formatProductPrice(priceValue, product.currency) : "-"}</p>
+                        {hasPrice ? (
+                          <p className="text-sm font-semibold tabular-nums text-[#303839]">{formatProductPrice(priceValue, product.currency)}</p>
+                        ) : (
+                          <p className="text-xs font-semibold text-amber-800">No price set</p>
+                        )}
                         {hasOldPrice ? <p className="text-xs tabular-nums text-[#303839]/70 line-through">{formatProductPrice(product.oldPrice, product.currency)}</p> : null}
                       </div>
                     </div>
                     <p className="mt-1 truncate text-xs text-[#303839]/70">
-                      {product.category || "Uncategorized"} · SKU {product.sku || product.slug || product.id}
+                      {product.category || "No department"} · SKU {product.sku || product.slug || product.id}
                     </p>
                     <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
                       <StatusBadge status={product.status || "draft"} label={statusLabel} />
                       {product.isStockOut ? (
-                        <StatusBadge status="flagged" label={`Stock out${product.comingInDays ? ` · ${product.comingInDays}d` : ""}`} />
+                        <StatusBadge status="flagged" label={`Out of stock${product.comingInDays ? ` · back in ${product.comingInDays}d` : ""}`} />
                       ) : null}
-                      <span className="inline-flex h-6 items-center rounded-full border border-[#303839]/12 bg-white px-2.5 text-[11px] font-semibold capitalize text-[#303839]/80">
-                        {product.visibility === "direct" ? "Direct only" : product.visibility || "Public"}
-                      </span>
+                      {product.visibility === "direct" && (
+                        <span className="inline-flex h-6 items-center rounded-full border border-[#303839]/12 bg-white px-2.5 text-[11px] font-semibold text-[#303839]/80">Direct link only</span>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -2906,7 +2972,7 @@ function ProductsSection({ allProducts = [], products, setQuery, statusFilter, s
                 {flags.length > 0 && (
                   <div className="flex flex-wrap gap-1.5 px-3.5 pb-3 sm:px-4">
                     {flags.map((flag) => (
-                      <span key={flag} className={`inline-flex h-6 items-center rounded-full px-2.5 text-[11px] font-semibold ${flag === "Best seller" ? "bg-[#303839] text-white" : "bg-[#F3F1EC] text-[#303839]/80"}`}>
+                      <span key={flag} className="inline-flex h-6 items-center rounded-full bg-[#F3F1EC] px-2.5 text-[11px] font-semibold text-[#303839]/80">
                         {flag}
                       </span>
                     ))}
@@ -2914,12 +2980,15 @@ function ProductsSection({ allProducts = [], products, setQuery, statusFilter, s
                 )}
 
                 <div className="mt-auto flex items-center justify-between gap-2 border-t border-[#303839]/8 px-3.5 py-2.5 sm:px-4">
-                  <span className="text-xs text-[#303839]/70">Added {formatDate(product.createdAt)}</span>
-                  <div className="flex gap-1.5">
-                    <button type="button" onClick={() => onEdit(product)} title="Edit this product" className={ICON_BUTTON} aria-label={`Edit ${product.title || "product"}`}><Icon name="pencil" className="h-4 w-4" /></button>
-                    <button type="button" onClick={() => onDuplicate(product)} title="Make a copy of this product" className={ICON_BUTTON} aria-label={`Duplicate ${product.title || "product"}`}><Icon name="copy" className="h-4 w-4" /></button>
-                    <a href={`/products/${product.slug}`} target="_blank" rel="noreferrer" title="See this product on your website" className={`${ICON_BUTTON} rounded-[8px]`} aria-label={`View ${product.title || "product"} on the store`}><Icon name="eye" className="h-4 w-4" /></a>
-                    <button type="button" onClick={() => onDelete(product.id)} title="Move this product to Recently Deleted" className={`${ICON_BUTTON} hover:border-red-200 hover:bg-red-50 hover:text-red-700`} aria-label={`Delete ${product.title || "product"}`}><Icon name="trash" className="h-4 w-4" /></button>
+                  <span className="truncate text-xs text-[#303839]/70">Added {formatDate(product.createdAt)}</span>
+                  <div className="flex shrink-0 gap-1.5">
+                    <button type="button" onClick={() => onEdit(product)} className={`${BUTTON_SM_SECONDARY}`} aria-label={`Edit ${product.title || "product"}`}>
+                      <Icon name="pencil" className="h-3.5 w-3.5" />
+                      Edit
+                    </button>
+                    <button type="button" onClick={() => onDuplicate(product)} title="Duplicate" className={ICON_BUTTON} aria-label={`Duplicate ${product.title || "product"}`}><Icon name="copy" className="h-4 w-4" /></button>
+                    <a href={`/products/${product.slug}`} target="_blank" rel="noreferrer" title="View on the website" className={ICON_BUTTON} aria-label={`View ${product.title || "product"} on the website`}><Icon name="eye" className="h-4 w-4" /></a>
+                    <button type="button" onClick={() => onDelete(product.id)} title="Move to Recently Deleted" className={`${ICON_BUTTON} hover:border-red-200 hover:bg-red-50 hover:text-red-700`} aria-label={`Delete ${product.title || "product"}`}><Icon name="trash" className="h-4 w-4" /></button>
                   </div>
                 </div>
               </article>
@@ -2930,10 +2999,13 @@ function ProductsSection({ allProducts = [], products, setQuery, statusFilter, s
               <EmptyState
                 icon="box"
                 title={totalProducts ? "No products match your search or filters" : "You have no products yet"}
-                hint={
-                  totalProducts
-                    ? "Use Reset above to see all of your products again."
-                    : "Use Add Product in the top bar to create your first product."
+                hint={totalProducts ? "Clear the filters to see all of your products again." : "Add your first product to start selling."}
+                action={
+                  totalProducts ? (
+                    <button type="button" onClick={resetFilters} className={BUTTON_SM_SECONDARY}>Clear filters</button>
+                  ) : (
+                    <button type="button" onClick={onAdd} className={BUTTON_PRIMARY}>Add product</button>
+                  )
                 }
               />
             </div>

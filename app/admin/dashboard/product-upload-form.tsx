@@ -387,16 +387,84 @@ function FieldLabel({ label, required = false, hint = "" }) {
 
 function FieldError({ message }) {
   if (!message) return null;
-  return <p className="mt-1.5 text-xs font-semibold text-red-700">{message}</p>;
+  return (
+    <p role="alert" className="mt-1.5 flex items-start gap-1.5 text-xs font-semibold text-red-700">
+      <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className="mt-px shrink-0"><circle cx="12" cy="12" r="9" /><path d="M12 8v5" /><path d="M12 16h.01" /></svg>
+      {message}
+    </p>
+  );
 }
 
-function FormSection({ title, description = "", children }: any) {
+function FormSection({ id = undefined, step = undefined, complete = false, title, description = "", children }: any) {
   return (
-    <section className="min-w-0 rounded-[12px] border border-[#303839]/10 bg-white p-4 sm:p-6">
-      <h3 className="font-body text-lg font-semibold leading-tight text-[#303839] sm:text-xl">{title}</h3>
-      {description && <p className="mt-1 max-w-2xl text-sm leading-6 text-[#303839]/75">{description}</p>}
+    <section id={id} aria-labelledby={id ? `${id}-title` : undefined} className="min-w-0 scroll-mt-24 rounded-[12px] border border-[#303839]/10 bg-white p-4 sm:p-6">
+      <div className="flex items-start gap-3">
+        {step !== undefined && (
+          <span
+            aria-hidden="true"
+            className={`mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-full text-xs font-semibold ${
+              complete ? "bg-[#303839] text-white" : "border border-[#303839]/25 text-[#303839]"
+            }`}
+          >
+            {complete ? (
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round"><path d="m5 12 4 4 10-10" /></svg>
+            ) : (
+              step
+            )}
+          </span>
+        )}
+        <div className="min-w-0">
+          <h3 id={id ? `${id}-title` : undefined} className="font-body text-lg font-semibold leading-tight text-[#303839] sm:text-xl">
+            {title}
+            {complete && <span className="sr-only"> (complete)</span>}
+          </h3>
+          {description && <p className="mt-1 max-w-2xl text-sm leading-6 text-[#303839]/75">{description}</p>}
+        </div>
+      </div>
       <div className="mt-5">{children}</div>
     </section>
+  );
+}
+
+/** What still blocks publishing, mirroring validate("active"). */
+function PublishChecklist({ items, onJump }: { items: { key: string; label: string; done: boolean; target: string; optional?: boolean }[]; onJump: (target: string) => void }) {
+  const required = items.filter((item) => !item.optional);
+  const doneCount = required.filter((item) => item.done).length;
+  return (
+    <div className="rounded-[12px] border border-[#303839]/10 bg-white p-4">
+      <div className="flex items-baseline justify-between gap-3">
+        <p className="text-sm font-semibold text-[#303839]">Ready to publish</p>
+        <p className="text-xs font-semibold tabular-nums text-[#303839]/70">
+          {doneCount} of {required.length}
+        </p>
+      </div>
+      <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-[#F3F1EC]" role="progressbar" aria-label="Publishing checklist" aria-valuemin={0} aria-valuemax={required.length} aria-valuenow={doneCount}>
+        <div className="h-full rounded-full bg-[#303839] transition-all" style={{ width: `${(doneCount / Math.max(1, required.length)) * 100}%` }} />
+      </div>
+      <ul className="mt-3 space-y-0.5">
+        {items.map((item) => (
+          <li key={item.key}>
+            <button
+              type="button"
+              onClick={() => onJump(item.target)}
+              className="flex min-h-9 w-full items-center gap-2.5 px-1 text-left text-sm text-[#303839] transition-colors hover:bg-[#F8F6F1]"
+            >
+              <span
+                aria-hidden="true"
+                className={`grid h-5 w-5 shrink-0 place-items-center rounded-full ${item.done ? "bg-[#303839] text-white" : "border border-[#303839]/30"}`}
+              >
+                {item.done && (
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="m5 12 4 4 10-10" /></svg>
+                )}
+              </span>
+              <span className={item.done ? "text-[#303839]/70" : "font-medium"}>{item.label}</span>
+              {item.optional && <span className="ml-auto text-xs text-[#303839]/60">Recommended</span>}
+              <span className="sr-only">{item.done ? "done" : "to do"}</span>
+            </button>
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }
 
@@ -482,6 +550,49 @@ function ToggleRow({ label, helper = "", checked, onChange }) {
         <span className={`absolute left-0.5 top-0.5 h-5 w-5 rounded-full bg-white shadow-[0_1px_3px_rgba(48,56,57,0.3)] transition-transform ${checked ? "translate-x-5" : "translate-x-0"}`} />
       </span>
     </button>
+  );
+}
+
+function PickerButton({ value, placeholder, onClick }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="mt-2 flex min-h-11 w-full items-center justify-between gap-2 border border-[#303839]/15 bg-white px-3.5 py-2 text-left text-sm transition hover:border-[#303839]/40"
+    >
+      <span className={`min-w-0 truncate ${value ? "font-semibold text-[#303839]" : "text-[#303839]/60"}`}>{value || placeholder}</span>
+      <span className="shrink-0 text-xs font-semibold text-[#303839] underline underline-offset-4">{value ? "Change" : "Choose"}</span>
+    </button>
+  );
+}
+
+/** Explains what the customer will actually pay, using the same rule as buildPayload. */
+function PriceSummary({ regularPrice, salePrice, currency }) {
+  const regular = regularPrice === "" ? null : Number(regularPrice);
+  const sale = salePrice === "" ? null : Number(salePrice);
+  let tone = "neutral";
+  let text = "No price yet. Customers will see the product without a price.";
+  if (regular !== null && sale !== null && sale < regular) {
+    const percent = regular > 0 ? Math.round(((regular - sale) / regular) * 100) : 0;
+    text = `Customers pay ${formatMoney(sale, currency)} instead of ${formatMoney(regular, currency)} (save ${percent}%).`;
+  } else if (regular !== null && sale !== null && sale >= regular) {
+    tone = "warn";
+    text = `The sale price is not lower than the regular price, so no discount is shown. Customers pay ${formatMoney(regular, currency)}.`;
+  } else if (regular !== null) {
+    text = `Customers pay ${formatMoney(regular, currency)}.`;
+  } else if (sale !== null) {
+    tone = "warn";
+    text = "Add a regular price as well. A sale price on its own is not used.";
+  }
+  return (
+    <p
+      aria-live="polite"
+      className={`mt-4 rounded-[10px] border px-4 py-3 text-sm ${
+        tone === "warn" ? "border-amber-200 bg-amber-50 text-amber-900" : "border-[#303839]/10 bg-[#F8F6F1] text-[#303839]"
+      }`}
+    >
+      {text}
+    </p>
   );
 }
 
@@ -1352,15 +1463,15 @@ export default function ProductUploadForm({
       ? normalizeCustomizerTemplate(prepareCustomizerTemplateForSave(form.customizerTemplate))
       : null;
 
-    if (!form.title.trim()) nextErrors.title = "Title is required.";
+    if (!form.title.trim()) nextErrors.title = "Enter a product name.";
 
     if (statusToSave !== "draft") {
-      if (!form.departmentPath.length) nextErrors.departmentPath = "Marketplace Department is required.";
-      if (!form.description.trim()) nextErrors.description = "Description is required.";
-      if (!form.mainImage && !form.mockups.length) nextErrors.mainImage = "A main product image is required.";
+      if (!form.departmentPath.length) nextErrors.departmentPath = "Choose a department.";
+      if (!form.description.trim()) nextErrors.description = "Add a description.";
+      if (!form.mainImage && !form.mockups.length) nextErrors.mainImage = "Add a main photo.";
       if (!form.tags.length) nextErrors.tags = "Add at least one tag.";
-      if (!form.suitableAudience) nextErrors.suitableAudience = "Suitable Audience is required.";
-      if (!form.visibility) nextErrors.visibility = "Product Visibility is required.";
+      if (!form.suitableAudience) nextErrors.suitableAudience = "Choose an audience.";
+      if (!form.visibility) nextErrors.visibility = "Choose who can find this product.";
       if (!form.agreementAccepted) nextErrors.agreement = "Please confirm you have the right to publish this product.";
 
       // Customizer products must have a valid, complete design template.
@@ -1451,7 +1562,7 @@ export default function ProductUploadForm({
 
     const validationErrors = validate(statusToSave);
     if (Object.keys(validationErrors).length) {
-      setSaveError("Please fix the highlighted fields before continuing.");
+      setSaveError("Some required details are missing. They are marked below and in the checklist.");
       const firstField = formRef.current?.querySelector("[data-field-error]");
       firstField?.scrollIntoView({ behavior: "smooth", block: "center" });
       return;
@@ -1492,11 +1603,44 @@ export default function ProductUploadForm({
 
   const previewPanel = <LivePreview form={form} collections={collections} />;
 
+  // Mirrors the publish rules in validate(); only what blocks publishing is
+  // required, price is recommended.
+  const hasImage = Boolean(form.mainImage || form.mockups.length);
+  const checklist = [
+    { key: "title", label: "Product name", done: Boolean(form.title.trim()), target: "pf-basics" },
+    { key: "description", label: "Description", done: Boolean(form.description.trim()), target: "pf-basics" },
+    { key: "image", label: "Main photo", done: hasImage, target: "pf-media" },
+    { key: "price", label: "Price", done: form.regularPrice !== "", target: "pf-price", optional: true },
+    { key: "department", label: "Department", done: form.departmentPath.length > 0, target: "pf-organize" },
+    { key: "tags", label: "At least one tag", done: form.tags.length > 0, target: "pf-organize" },
+    { key: "audience", label: "Audience", done: Boolean(form.suitableAudience), target: "pf-organize" },
+    { key: "visibility", label: "Who can find it", done: Boolean(form.visibility), target: "pf-visibility" },
+    { key: "agreement", label: "Publishing confirmation", done: Boolean(form.agreementAccepted), target: "pf-publish" },
+  ];
+  const missingCount = checklist.filter((item) => !item.optional && !item.done).length;
+  const readyToPublish = missingCount === 0;
+  const steps = {
+    basics: Boolean(form.title.trim() && form.description.trim()),
+    media: hasImage,
+    price: form.regularPrice !== "",
+    organize: Boolean(form.departmentPath.length && form.tags.length && form.suitableAudience),
+    visibility: Boolean(form.visibility),
+    publish: Boolean(form.agreementAccepted),
+  };
+  const jumpTo = (target) => {
+    const node = document.getElementById(target);
+    if (!node) return;
+    const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    node.scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "start" });
+    node.querySelector<HTMLElement>("input, textarea, button")?.focus({ preventScroll: true });
+  };
+  const checklistPanel = <PublishChecklist items={checklist} onJump={jumpTo} />;
+
   return (
     <div ref={formRef} className="scroll-mt-20 rounded-[14px] border border-[#303839]/10 bg-[#F8F6F1]/60 p-3 sm:p-6">
       <div className="flex items-start justify-between gap-3 px-1 pt-1 sm:p-0">
         <div className="min-w-0">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#303839]/70">{editingId ? "Editing" : "New product"}</p>
+          <p className="text-xs font-semibold text-[#303839]/70">{editingId ? "Edit product" : "New product"}</p>
           <h2 className="mt-1 truncate font-body text-[1.375rem] font-semibold leading-tight text-[#303839] sm:text-[1.625rem]">
             {editingId ? product?.title || "Edit product" : "Add a new product"}
           </h2>
@@ -1517,10 +1661,10 @@ export default function ProductUploadForm({
       <div className="mt-4 grid items-start gap-4 sm:mt-5 sm:gap-5 lg:grid-cols-[minmax(0,1fr)_320px] xl:grid-cols-[minmax(0,1fr)_360px]">
         {/* -------------------------------- Left: form ------------------ */}
         <div className="min-w-0 space-y-5">
-          <FormSection title="Product information" description="Give the product a clear title and story customers can trust.">
+          <FormSection id="pf-basics" step={1} complete={steps.basics} title="Basics" description="The name and description customers read first.">
             <div className="grid gap-5">
               <div data-field-error={errors.title ? "" : undefined}>
-                <FieldLabel label="Title" required />
+                <FieldLabel label="Product name" required />
                 <input
                   value={form.title}
                   onChange={(event) => update("title", event.target.value)}
@@ -1530,44 +1674,8 @@ export default function ProductUploadForm({
                 <FieldError message={errors.title} />
               </div>
 
-              <div data-field-error={errors.departmentPath ? "" : undefined}>
-                <FieldLabel label="Marketplace Department" required />
-                <div className="mt-2 flex flex-wrap gap-2">
-                  {SUGGESTED_DEPARTMENTS.map((path) => {
-                    const selected = form.departmentPath.join(">") === path.join(">");
-                    return (
-                      <button
-                        key={path.join(">")}
-                        type="button"
-                        onClick={() => update("departmentPath", path)}
-                        className={`border px-3 py-2 text-xs font-semibold transition ${
-                          selected
-                            ? "border-[#303839] bg-[#303839] text-white"
-                            : "border-[#303839]/15 bg-white text-[#303839] hover:border-[#303839]/40"
-                        }`}
-                      >
-                        {path[path.length - 1]}
-                      </button>
-                    );
-                  })}
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setActiveModal("department")}
-                  className="mt-2.5 text-sm font-semibold text-[#303839] underline underline-offset-4 transition hover:text-[#BDBDBD]"
-                >
-                  Browse all departments
-                </button>
-                {!!form.departmentPath.length && (
-                  <p className="mt-2.5 border border-[#303839]/10 bg-white px-3 py-2 text-xs font-semibold text-[#303839]/75">
-                    {form.departmentPath.join(" > ")}
-                  </p>
-                )}
-                <FieldError message={errors.departmentPath} />
-              </div>
-
               <div data-field-error={errors.description ? "" : undefined}>
-                <FieldLabel label="Description" required hint="Tell the product story and explain why it is special" />
+                <FieldLabel label="Description" required hint="What it is, what is included and how it can be personalized" />
                 <textarea
                   value={form.description}
                   onChange={(event) => update("description", event.target.value)}
@@ -1580,7 +1688,15 @@ export default function ProductUploadForm({
             </div>
           </FormSection>
 
-          <FormSection title="Images & mockups" description="Uploads are stored in Supabase Storage and shown on the customer website after publishing.">
+          <FormSection id="pf-media" step={2} complete={steps.media} title="Photos and personalization" description="The first photo is the main image on the shop. Add mockups to show the product in use.">
+            <div className="mb-6">
+              <ToggleRow
+                label="Customers can personalize this product"
+                helper="Shows the Personalize button on the product page and opens the Design Studio below"
+                checked={form.customizeEnabled}
+                onChange={(value) => update("customizeEnabled", value)}
+              />
+            </div>
             <div className="grid gap-6">
               <div data-field-error={errors.mainImage ? "" : undefined}>
                 <MainImageUploader value={form.mainImage} onChange={(value) => update("mainImage", value)} error={errors.mainImage} />
@@ -1646,142 +1762,7 @@ export default function ProductUploadForm({
             </div>
           </FormSection>
 
-          <FormSection title="Categories" description="Help customers find this product by occasion, recipient, and collection.">
-            <div className="grid gap-4 sm:grid-cols-3">
-              <div>
-                <FieldLabel label="Events & Occasions" />
-                <button type="button" onClick={() => setActiveModal("event")} className="mt-2 w-full border border-[#303839]/15 bg-white px-4 py-2.5 text-sm font-semibold text-[#303839] transition hover:border-[#303839]/40">
-                  Select
-                </button>
-                {form.eventCategory && <p className="mt-2 text-xs font-semibold text-[#303839]/70">{form.eventCategory}</p>}
-              </div>
-              <div>
-                <FieldLabel label="Recipient" />
-                <button type="button" onClick={() => setActiveModal("recipient")} className="mt-2 w-full border border-[#303839]/15 bg-white px-4 py-2.5 text-sm font-semibold text-[#303839] transition hover:border-[#303839]/40">
-                  Select
-                </button>
-                {form.recipientCategory && <p className="mt-2 text-xs font-semibold text-[#303839]/70">{form.recipientCategory}</p>}
-              </div>
-              <div>
-                <FieldLabel label="Collections" />
-                <button type="button" onClick={() => setActiveModal("collections")} className="mt-2 w-full border border-[#303839]/15 bg-white px-4 py-2.5 text-sm font-semibold text-[#303839] transition hover:border-[#303839]/40">
-                  Select
-                </button>
-                {!!form.collectionIds.length && (
-                  <p className="mt-2 text-xs font-semibold text-[#303839]/70">
-                    {collections
-                      .filter((item) => form.collectionIds.includes(item.id))
-                      .map((item) => item.name)
-                      .join(", ") || `${form.collectionIds.length} selected`}
-                  </p>
-                )}
-              </div>
-            </div>
-          </FormSection>
-
-          <FormSection title="Tags" description="Use descriptive words related to the subject, theme, color, style, and product type. Aim for 5 to 10 tags per product. Do not spam tags.">
-            <div data-field-error={errors.tags ? "" : undefined}>
-              <div className="flex gap-2">
-                <input
-                  value={tagInput}
-                  onChange={(event) => setTagInput(event.target.value)}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter") {
-                      event.preventDefault();
-                      addTag();
-                    }
-                  }}
-                  placeholder="minimal, wedding, sage green..."
-                  disabled={form.tags.length >= MAX_TAGS}
-                  className={`${INPUT_CLASS} ${errors.tags ? "border-red-400" : ""}`}
-                />
-                <button
-                  type="button"
-                  onClick={addTag}
-                  disabled={!tagInput.trim() || form.tags.length >= MAX_TAGS}
-                  className="shrink-0 bg-[#303839] px-5 text-sm font-semibold text-white transition hover:bg-[#434C4D] disabled:opacity-40"
-                >
-                  Add Tag
-                </button>
-              </div>
-
-              {!!form.tags.length && (
-                <div className="mt-3 flex flex-wrap gap-2">
-                  {form.tags.map((tag) => (
-                    <span key={tag} className="flex items-center gap-2 bg-[#F8F6F1] px-3 py-1.5 text-xs font-semibold text-[#303839]">
-                      {tag}
-                      <button type="button" onClick={() => removeTag(tag)} aria-label={`Remove tag ${tag}`} className="text-[#303839]/70 transition hover:text-[#303839]">
-                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round"><path d="M18 6 6 18M6 6l12 12" /></svg>
-                      </button>
-                    </span>
-                  ))}
-                </div>
-              )}
-
-              <div className="mt-3 flex flex-wrap gap-x-6 gap-y-1 text-xs font-semibold text-[#303839]/70">
-                <span>All Tags {form.tags.length} of {MAX_TAGS} used</span>
-                <span>Characters {tagChars} of {MAX_TAG_CHARS} used</span>
-              </div>
-              <FieldError message={errors.tags} />
-            </div>
-          </FormSection>
-
-          <FormSection title="Additional information">
-            <div className="grid gap-6">
-              <div data-field-error={errors.suitableAudience ? "" : undefined}>
-                <FieldLabel label="Suitable Audience" required />
-                <div className="mt-2">
-                  <PillGroup
-                    value={form.suitableAudience}
-                    onChange={(value) => update("suitableAudience", value)}
-                    options={AUDIENCE_OPTIONS}
-                  />
-                </div>
-                <FieldError message={errors.suitableAudience} />
-              </div>
-
-              <div data-field-error={errors.visibility ? "" : undefined}>
-                <FieldLabel label="Product Visibility" required />
-                <div className="mt-2 grid gap-2 sm:grid-cols-3">
-                  {VISIBILITY_OPTIONS.map((option) => (
-                    <button
-                      key={option.value}
-                      type="button"
-                      onClick={() => update("visibility", option.value)}
-                      className={`border px-4 py-3 text-left transition ${
-                        form.visibility === option.value
-                          ? "border-[#303839] bg-[#303839] text-white"
-                          : "border-[#303839]/15 bg-white text-[#303839] hover:border-[#303839]/40"
-                      }`}
-                    >
-                      <span className="block text-sm font-semibold">{option.label}</span>
-                      <span className={`mt-0.5 block text-xs font-medium ${form.visibility === option.value ? "text-white/70" : "text-[#303839]/70"}`}>
-                        {option.helper}
-                      </span>
-                    </button>
-                  ))}
-                </div>
-                <FieldError message={errors.visibility} />
-              </div>
-
-              <div>
-                <FieldLabel label="Show Customize It button" required hint="Whether customers can personalize this product" />
-                <div className="mt-2">
-                  <PillGroup
-                    value={form.customizeEnabled ? "yes" : "no"}
-                    onChange={(value) => update("customizeEnabled", value === "yes")}
-                    options={[
-                      { value: "yes", label: "Yes" },
-                      { value: "no", label: "No" },
-                    ]}
-                  />
-                </div>
-              </div>
-
-            </div>
-          </FormSection>
-
-          <FormSection title="Pricing">
+          <FormSection id="pf-price" step={3} complete={steps.price} title="Price" description="Add a sale price only when you want to show a discount.">
             <div className="grid gap-4 sm:grid-cols-3">
               <div>
                 <FieldLabel label="Regular price" />
@@ -1820,12 +1801,171 @@ export default function ProductUploadForm({
                 </select>
               </div>
             </div>
+            <PriceSummary regularPrice={form.regularPrice} salePrice={form.salePrice} currency={form.currency} />
           </FormSection>
 
-          <FormSection title="Status & display" description="Control where and how this product appears on the website.">
+          <FormSection id="pf-organize" step={4} complete={steps.organize} title="Organize" description="Help customers find this product in the shop and in search.">
+            <div className="grid gap-6">
+              <div data-field-error={errors.departmentPath ? "" : undefined}>
+                <FieldLabel label="Department" required hint="Where the product sits in the shop" />
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {SUGGESTED_DEPARTMENTS.map((path) => {
+                    const selected = form.departmentPath.join(">") === path.join(">");
+                    return (
+                      <button
+                        key={path.join(">")}
+                        type="button"
+                        onClick={() => update("departmentPath", path)}
+                        className={`border px-3 py-2 text-xs font-semibold transition ${
+                          selected
+                            ? "border-[#303839] bg-[#303839] text-white"
+                            : "border-[#303839]/15 bg-white text-[#303839] hover:border-[#303839]/40"
+                        }`}
+                      >
+                        {path[path.length - 1]}
+                      </button>
+                    );
+                  })}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setActiveModal("department")}
+                  className="mt-2.5 text-sm font-semibold text-[#303839] underline underline-offset-4 transition hover:text-[#303839]/70"
+                >
+                  Browse all departments
+                </button>
+                {!!form.departmentPath.length && (
+                  <p className="mt-2.5 border border-[#303839]/10 bg-white px-3 py-2 text-xs font-semibold text-[#303839]/75">
+                    {form.departmentPath.join(" > ")}
+                  </p>
+                )}
+                <FieldError message={errors.departmentPath} />
+              </div>
+
+              <div className="border-t border-[#303839]/8 pt-6">
+            <div className="grid gap-4 sm:grid-cols-3">
+              <div>
+                <FieldLabel label="Occasion" hint="Optional" />
+                <PickerButton value={form.eventCategory} placeholder="Choose an occasion" onClick={() => setActiveModal("event")} />
+              </div>
+              <div>
+                <FieldLabel label="Recipient" hint="Optional" />
+                <PickerButton value={form.recipientCategory} placeholder="Choose a recipient" onClick={() => setActiveModal("recipient")} />
+              </div>
+              <div>
+                <FieldLabel label="Collections" hint="Optional" />
+                <PickerButton
+                  value={
+                    form.collectionIds.length
+                      ? collections
+                          .filter((item) => form.collectionIds.includes(item.id))
+                          .map((item) => item.name)
+                          .join(", ") || `${form.collectionIds.length} selected`
+                      : ""
+                  }
+                  placeholder="Add to collections"
+                  onClick={() => setActiveModal("collections")}
+                />
+              </div>
+            </div>
+              </div>
+
+              <div className="border-t border-[#303839]/8 pt-6">
+                <FieldLabel label="Tags" required hint="5 to 10 words about subject, theme, colour and style" />
+                <div className="mt-2">
+            <div data-field-error={errors.tags ? "" : undefined}>
+              <div className="flex gap-2">
+                <input
+                  value={tagInput}
+                  onChange={(event) => setTagInput(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                      event.preventDefault();
+                      addTag();
+                    }
+                  }}
+                  placeholder="minimal, wedding, sage green..."
+                  disabled={form.tags.length >= MAX_TAGS}
+                  className={`${INPUT_CLASS} ${errors.tags ? "border-red-400" : ""}`}
+                />
+                <button
+                  type="button"
+                  onClick={addTag}
+                  disabled={!tagInput.trim() || form.tags.length >= MAX_TAGS}
+                  className="shrink-0 bg-[#303839] px-5 text-sm font-semibold text-white transition hover:bg-[#434C4D] disabled:opacity-40"
+                >
+                  Add tag
+                </button>
+              </div>
+
+              {!!form.tags.length && (
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {form.tags.map((tag) => (
+                    <span key={tag} className="flex items-center gap-2 bg-[#F8F6F1] px-3 py-1.5 text-xs font-semibold text-[#303839]">
+                      {tag}
+                      <button type="button" onClick={() => removeTag(tag)} aria-label={`Remove tag ${tag}`} className="text-[#303839]/70 transition hover:text-[#303839]">
+                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round"><path d="M18 6 6 18M6 6l12 12" /></svg>
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              )}
+
+              <div className="mt-3 flex flex-wrap gap-x-6 gap-y-1 text-xs font-semibold text-[#303839]/70">
+                <span>{form.tags.length} of {MAX_TAGS} tags</span>
+                <span>{tagChars} of {MAX_TAG_CHARS} characters</span>
+              </div>
+              <FieldError message={errors.tags} />
+            </div>
+                </div>
+              </div>
+
+              <div className="border-t border-[#303839]/8 pt-6">
+              <div data-field-error={errors.suitableAudience ? "" : undefined}>
+                <FieldLabel label="Audience" required />
+                <div className="mt-2">
+                  <PillGroup
+                    value={form.suitableAudience}
+                    onChange={(value) => update("suitableAudience", value)}
+                    options={AUDIENCE_OPTIONS}
+                  />
+                </div>
+                <FieldError message={errors.suitableAudience} />
+              </div>
+
+              </div>
+            </div>
+          </FormSection>
+
+          <FormSection id="pf-visibility" step={5} complete={steps.visibility} title="Visibility" description="Choose who can find the product and where it is highlighted.">
+            <div className="grid gap-6">
+              <div data-field-error={errors.visibility ? "" : undefined}>
+                <FieldLabel label="Who can find it" required />
+                <div className="mt-2 grid gap-2 sm:grid-cols-3">
+                  {VISIBILITY_OPTIONS.map((option) => (
+                    <button
+                      key={option.value}
+                      type="button"
+                      onClick={() => update("visibility", option.value)}
+                      className={`border px-4 py-3 text-left transition ${
+                        form.visibility === option.value
+                          ? "border-[#303839] bg-[#303839] text-white"
+                          : "border-[#303839]/15 bg-white text-[#303839] hover:border-[#303839]/40"
+                      }`}
+                    >
+                      <span className="block text-sm font-semibold">{option.label}</span>
+                      <span className={`mt-0.5 block text-xs font-medium ${form.visibility === option.value ? "text-white/70" : "text-[#303839]/70"}`}>
+                        {option.helper}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+                <FieldError message={errors.visibility} />
+              </div>
+
             <div className="grid gap-6">
               <div>
-                <FieldLabel label="Product Status" required />
+                <FieldLabel label="Status when published" required />
                 <div className="mt-2 grid gap-2 sm:grid-cols-2">
                   {STATUS_OPTIONS.map((option) => (
                     <button
@@ -1849,20 +1989,20 @@ export default function ProductUploadForm({
 
               <div className="grid gap-2 sm:grid-cols-3">
                 <ToggleRow label="Featured" helper="Homepage featured sections" checked={form.featured} onChange={(value) => update("featured", value)} />
-                <ToggleRow label="New Arrival" helper="New arrival sections" checked={form.isNewArrival} onChange={(value) => update("isNewArrival", value)} />
-                <ToggleRow label="Best Seller" helper="Best seller sections" checked={form.isBestSeller} onChange={(value) => update("isBestSeller", value)} />
+                <ToggleRow label="New arrival" helper="New arrival sections" checked={form.isNewArrival} onChange={(value) => update("isNewArrival", value)} />
+                <ToggleRow label="Best seller" helper="Best seller sections" checked={form.isBestSeller} onChange={(value) => update("isBestSeller", value)} />
               </div>
 
               <div className="border border-[#303839]/10 bg-white p-4">
                 <ToggleRow
-                  label="Stock Out"
-                  helper="Fades the product and shows a Stock Out label on the website"
+                  label="Out of stock"
+                  helper="Fades the product and shows an out-of-stock label on the website"
                   checked={form.isStockOut}
                   onChange={(value) => update("isStockOut", value)}
                 />
                 {form.isStockOut && (
                   <div className="mt-3" data-field-error={errors.comingInDays ? "" : undefined}>
-                    <FieldLabel label="Coming in days" hint="Optional — customers will see 'Coming in X days'" />
+                    <FieldLabel label="Back in stock in (days)" hint="Optional" />
                     <input
                       type="number"
                       min="1"
@@ -1877,9 +2017,10 @@ export default function ProductUploadForm({
                 )}
               </div>
             </div>
+            </div>
           </FormSection>
 
-          <FormSection title="Agreement & publish">
+          <FormSection id="pf-publish" step={6} complete={steps.publish} title="Confirm and publish">
             <div data-field-error={errors.agreement ? "" : undefined}>
               <label className="flex cursor-pointer items-start gap-3">
                 <input
@@ -1896,14 +2037,28 @@ export default function ProductUploadForm({
               <FieldError message={errors.agreement} />
             </div>
 
-            <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row">
+          </FormSection>
+
+          {/* Sticky actions: always reachable, whatever step you are on. */}
+          <div className="sticky bottom-0 z-20 -mx-3 border-t border-[#303839]/10 bg-white/95 px-4 py-3 backdrop-blur sm:-mx-6 sm:px-6">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-sm text-[#303839]/75">
+                {readyToPublish ? (
+                  <span className="font-semibold text-[#303839]">Everything needed to publish is filled in.</span>
+                ) : (
+                  <>
+                    <span className="font-semibold text-[#303839]">{missingCount} {missingCount === 1 ? "item" : "items"}</span> left before you can publish. Drafts can be saved any time.
+                  </>
+                )}
+              </p>
+            <div className="flex flex-col-reverse gap-2 sm:flex-row">
               <button
                 type="button"
                 onClick={() => save("draft")}
                 disabled={Boolean(saving)}
                 className="min-h-11 border border-[#303839]/20 bg-white px-6 py-3 text-sm font-semibold text-[#303839] transition hover:bg-[#F8F6F1] disabled:opacity-50"
               >
-                {saving === "draft" ? "Saving..." : "Save as Draft"}
+                {saving === "draft" ? "Saving…" : "Save draft"}
               </button>
               {/* Publishing is an administrator's decision. A designer hands the
                   work over for review instead; the server refuses the publish
@@ -1918,7 +2073,7 @@ export default function ProductUploadForm({
                   disabled={Boolean(saving)}
                   className="bg-[#303839] px-6 py-3 text-sm font-semibold text-white transition hover:bg-[#434C4D] disabled:opacity-50"
                 >
-                  {saving ? "Saving..." : "Save & Submit for Review"}
+                  {saving ? "Saving…" : "Save and submit for review"}
                 </button>
               ) : (
                 <button
@@ -1927,14 +2082,16 @@ export default function ProductUploadForm({
                   disabled={Boolean(saving)}
                   className="min-h-11 bg-[#303839] px-6 py-3 text-sm font-semibold text-white transition hover:bg-[#434C4D] disabled:opacity-50"
                 >
-                  {saving === "publish" ? "Publishing..." : "Publish Product"}
+                  {saving === "publish" ? "Publishing…" : form.status === "hidden" ? "Save as hidden" : editingId && product?.status === "active" ? "Update product" : "Publish product"}
                 </button>
               )}
             </div>
-          </FormSection>
+            </div>
+          </div>
 
-          {/* Mobile preview: collapsible, below the form */}
-          <div className="lg:hidden">
+          {/* Mobile: checklist and preview, collapsible, below the form */}
+          <div className="space-y-2 lg:hidden">
+            {checklistPanel}
             <button
               type="button"
               onClick={() => setMobilePreviewOpen((open) => !open)}
@@ -1948,8 +2105,11 @@ export default function ProductUploadForm({
           </div>
         </div>
 
-        {/* -------------------------------- Right: sticky preview ------- */}
-        <aside className="sticky top-20 hidden min-w-0 self-start lg:block">{previewPanel}</aside>
+        {/* -------------------------------- Right: checklist + preview ---- */}
+        <aside className="sticky top-20 hidden min-w-0 space-y-4 self-start lg:block">
+          {checklistPanel}
+          {previewPanel}
+        </aside>
       </div>
 
       {/* -------------------------------- Modals ------------------------ */}
