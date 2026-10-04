@@ -931,18 +931,20 @@ export default function AdminDesignBuilder({
     return (
       <button
         type="button"
+        role="switch"
+        aria-checked={false}
         onClick={() => onChange({ ...t, enabled: true })}
-        className="group flex w-full items-center justify-between gap-4 border border-[#303839]/12 bg-[#F8F6F1] p-5 text-left shadow-[0_12px_32px_rgba(48,56,57,0.05)] transition hover:border-[#D4AF37]/60 hover:bg-[#F8F6F1]/45 sm:p-6"
+        className="group flex w-full items-center justify-between gap-4 rounded-[10px] border border-[#303839]/12 bg-[#F8F6F1] p-5 text-left transition hover:border-[#303839]/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white sm:p-6"
       >
         <span className="min-w-0">
-          <span className="block text-[10px] font-extrabold uppercase tracking-[0.16em] text-[#D4AF37]">Husnalogy Design Studio</span>
+          <span className="block text-[10px] font-extrabold uppercase tracking-[0.16em] text-[#303839]/70">Husnalogy Design Studio</span>
           <span className="mt-1 block text-base font-bold text-[#303839]">Enable product customizer</span>
           <span className="mt-1 block max-w-2xl text-xs leading-5 text-[#303839]/55">
             Turn on to design an editable template in the Design Studio. When off, this product works normally.
           </span>
         </span>
-        <span className="relative h-7 w-12 shrink-0 rounded-full bg-[#303839] shadow-inner transition group-hover:bg-[#434c4d]">
-          <span className="absolute left-1 top-1 h-5 w-5 rounded-full bg-[#D4AF37] shadow-sm" />
+        <span aria-hidden="true" className="relative h-7 w-12 shrink-0 rounded-full border border-[#303839]/20 bg-[#303839]/15 transition group-hover:bg-[#303839]/25">
+          <span className="absolute left-0.5 top-0.5 h-5 w-5 rounded-full bg-white shadow-[0_1px_3px_rgba(48,56,57,0.3)]" />
         </span>
       </button>
     );
@@ -1048,7 +1050,7 @@ export default function AdminDesignBuilder({
       <div className="grid gap-5 overflow-hidden border border-[#303839]/12 bg-[#F8F6F1] p-5 shadow-[0_18px_45px_rgba(48,56,57,0.08)] sm:p-6 xl:grid-cols-[minmax(0,1fr)_auto] xl:items-center xl:p-7">
         <div className="flex flex-wrap items-center justify-between gap-4 xl:col-span-2">
           <div className="min-w-0">
-            <p className="text-[11px] font-extrabold uppercase tracking-[0.16em] text-[#D4AF37]">Husnalogy Design Studio</p>
+            <p className="text-[11px] font-extrabold uppercase tracking-[0.16em] text-[#303839]/70">Husnalogy Design Studio</p>
             <p className="mt-1 font-display text-2xl text-[#303839]">{settings.templateName || productName || "Product template"}</p>
             <p className="mt-1 text-xs font-semibold text-[#303839]/55">
               {enabledPages.length} page{enabledPages.length === 1 ? "" : "s"} · {layerCount} layer{layerCount === 1 ? "" : "s"} · {fieldCount} customer field{fieldCount === 1 ? "" : "s"} · V{currentDisplayVersion}
@@ -1202,7 +1204,7 @@ export default function AdminDesignBuilder({
               </div>
             </aside>
 
-            <main className="relative min-h-0 min-w-[420px] flex-1 bg-[#F0EDED]">
+            <main className="relative min-h-0 min-w-[420px] flex-1 bg-[#F3F1EC]">
               {/* Page position, mirroring the customer editor's canvas label. */}
               {selectedLayerIds.length === 0 && (
                 <p className="pointer-events-none absolute inset-x-0 top-3 z-20 text-center text-[11px] font-semibold text-[#303839]/40">
@@ -1299,7 +1301,7 @@ export default function AdminDesignBuilder({
                       type="button"
                       aria-pressed={snapEnabled}
                       onClick={() => setSnapEnabled((v) => !v)}
-                      className={`min-h-9 rounded-full px-3.5 text-[11px] font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] ${
+                      className={`min-h-9 rounded-full px-3.5 text-[11px] font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white ${
                         snapEnabled ? "bg-[#303839] text-white" : "text-[#303839]/50 hover:bg-[#F8F6F1] hover:text-[#303839]"
                       }`}
                     >
@@ -1309,7 +1311,7 @@ export default function AdminDesignBuilder({
                       type="button"
                       aria-pressed={Boolean(settings.showSafeArea)}
                       onClick={() => commit({ ...t, settings: { ...settings, showSafeArea: !settings.showSafeArea } })}
-                      className={`min-h-9 rounded-full px-3.5 text-[11px] font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] ${
+                      className={`min-h-9 rounded-full px-3.5 text-[11px] font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white ${
                         settings.showSafeArea ? "bg-[#303839] text-white" : "text-[#303839]/50 hover:bg-[#F8F6F1] hover:text-[#303839]"
                       }`}
                     >
@@ -1319,7 +1321,7 @@ export default function AdminDesignBuilder({
                       type="button"
                       aria-pressed={Boolean(settings.showBleed)}
                       onClick={() => commit({ ...t, settings: { ...settings, showBleed: !settings.showBleed } })}
-                      className={`min-h-9 rounded-full px-3.5 text-[11px] font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] ${
+                      className={`min-h-9 rounded-full px-3.5 text-[11px] font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white ${
                         settings.showBleed ? "bg-[#303839] text-white" : "text-[#303839]/50 hover:bg-[#F8F6F1] hover:text-[#303839]"
                       }`}
                     >
@@ -1535,7 +1537,7 @@ export default function AdminDesignBuilder({
                 )}
                 <label className="mt-1 text-xs font-bold text-[#303839]/70">
                   Update Notes <span className="font-normal">(optional)</span>
-                  <textarea value={updateNotes} onChange={(event) => setUpdateNotes(event.target.value.slice(0, 2000))} rows={3} className="mt-1 w-full rounded-md border border-[#303839]/15 px-3 py-2 text-sm font-normal text-[#303839] outline-none focus:border-[#D4AF37]" placeholder="What changed in this update?" />
+                  <textarea value={updateNotes} onChange={(event) => setUpdateNotes(event.target.value.slice(0, 2000))} rows={3} className="mt-1 w-full rounded-md border border-[#303839]/15 px-3 py-2 text-sm font-normal text-[#303839] outline-none focus:border-[#303839]/60" placeholder="What changed in this update?" />
                 </label>
               </div>
             )}

@@ -45,7 +45,7 @@ function Icon({ path }: { path: string }) {
 }
 
 const BUTTON =
-  "flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-lg border border-[#303839]/15 bg-white px-2.5 text-[12.5px] font-semibold text-[#303839] transition-colors hover:border-[#303839]/30 hover:bg-[#F4ECEC] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] disabled:cursor-not-allowed disabled:border-[#303839]/10 disabled:bg-[#F4ECEC]/50 disabled:text-[#303839]/35";
+  "flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-lg border border-[#303839]/15 bg-white px-2.5 text-[12.5px] font-semibold text-[#303839] transition-colors hover:border-[#303839]/30 hover:bg-[#F8F6F1] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white disabled:cursor-not-allowed disabled:border-[#303839]/10 disabled:bg-[#F8F6F1]/50 disabled:text-[#303839]/35";
 
 export default function CustomerGroupToolbar({
   selectionCount,
@@ -74,7 +74,7 @@ export default function CustomerGroupToolbar({
       className="pointer-events-auto flex max-w-full items-center gap-1 rounded-xl border border-[#303839]/12 bg-white p-1.5 shadow-[0_6px_20px_rgba(48,56,57,0.10)]"
     >
       {selectionCount > 1 && !compact && (
-        <span className="shrink-0 rounded-full bg-[#F4ECEC] px-2.5 py-1 text-[10px] font-bold text-[#303839]/70">
+        <span className="shrink-0 rounded-full bg-[#F8F6F1] px-2.5 py-1 text-[10px] font-bold text-[#303839]/70">
           {selectionCount} selected
         </span>
       )}

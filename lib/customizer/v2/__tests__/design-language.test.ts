@@ -38,18 +38,24 @@ describe("design tokens", () => {
     expect(CONTROL_HEIGHT_PX).toBe(44);
   });
 
-  it("carries the Husnalogy palette", () => {
+  it("carries the Husnalogy palette (the storefront's cream behind the canvas)", () => {
     expect(HUSNALOGY_COLORS).toMatchObject({
       charcoal: "#303839",
-      soft: "#F4ECEC",
+      soft: "#F8F6F1",
       gold: "#D4AF37",
     });
   });
 
   it("uses focus-visible rather than focus, so a mouse click paints no ring", () => {
     expect(FOCUS_RING).toContain("focus-visible:ring-2");
-    expect(FOCUS_RING).toContain(HUSNALOGY_COLORS.gold);
     expect(FOCUS_RING).not.toMatch(/(?<!-)\bfocus:ring/);
+  });
+
+  it("draws focus in charcoal with a white gap, not gold (gold on white is ~2:1, below WCAG 1.4.11's 3:1)", () => {
+    expect(FOCUS_RING).toContain(`focus-visible:ring-[${HUSNALOGY_COLORS.charcoal}]`);
+    expect(FOCUS_RING).toContain("focus-visible:ring-offset-2");
+    expect(FOCUS_RING).toContain("focus-visible:ring-offset-white");
+    expect(FOCUS_RING).not.toContain(HUSNALOGY_COLORS.gold);
   });
 
   it("keeps elevation restrained and uncoloured", () => {

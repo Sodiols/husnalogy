@@ -75,7 +75,7 @@ export default function CustomizerZoomControls({
           onZoomChange(stepped / 100);
         }}
         className="h-10 w-36 rounded-full bg-white"
-        buttonClassName="grid h-full min-h-10 place-items-center rounded-full text-[#303839] transition hover:bg-cream focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] disabled:opacity-30"
+        buttonClassName="grid h-full min-h-10 place-items-center rounded-full text-[#303839] transition hover:bg-cream focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white disabled:opacity-30"
       />
       <button
         type="button"
@@ -83,7 +83,7 @@ export default function CustomizerZoomControls({
         aria-pressed={atActualSize}
         title={actualPercent !== null ? `Actual size — the printed page at true scale (${actualPercent}%)` : "Actual size"}
         onClick={() => (onActualSize ? onActualSize() : onZoomChange(1))}
-        className={`h-10 rounded-full px-2 text-[10px] font-extrabold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] ${
+        className={`h-10 rounded-full px-2 text-[10px] font-extrabold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white ${
           atActualSize ? "bg-[#303839] text-white" : "text-[#303839]/60 hover:bg-cream hover:text-[#303839]"
         }`}
       >
@@ -95,7 +95,7 @@ export default function CustomizerZoomControls({
         aria-pressed={atFit}
         title={fitPercent !== null ? `Fit the whole page and recentre (${fitPercent}%)` : "Fit the whole page"}
         onClick={() => (onFit ? onFit() : onZoomChange(1))}
-        className={`min-h-10 rounded-full px-3 text-[11px] font-bold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] ${
+        className={`min-h-10 rounded-full px-3 text-[11px] font-bold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white ${
           atFit ? "bg-[#303839] text-white" : "text-[#303839]/70 hover:bg-cream hover:text-[#303839]"
         }`}
       >

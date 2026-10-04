@@ -15,16 +15,18 @@
 // selected/disabled/focus states. Components import from here so the answer to
 // "how tall is a control?" has exactly one source.
 //
-// Palette (spec §8): charcoal is the ink, soft rose the page behind the canvas,
-// gold ONLY an accent for focus and selection — never a fill for large areas,
-// never a glow, never a gradient.
+// Palette (spec §8, aligned with the storefront brand system): charcoal is the
+// ink, warm cream the page behind the canvas, gold ONLY an accent for selection
+// and active markers — never a fill for large areas, never a glow, never a
+// gradient, and never a focus ring (gold on white is about 2:1, below the 3:1
+// WCAG 1.4.11 minimum for UI indicators).
 
 export const HUSNALOGY_COLORS = {
   /** Primary ink and solid button fill. */
   charcoal: "#303839",
-  /** Soft background behind the workspace. */
-  soft: "#F4ECEC",
-  /** Accent only: focus rings, selection outlines, active markers. */
+  /** Soft background behind the workspace (the storefront's cream). */
+  soft: "#F8F6F1",
+  /** Accent only: selection outlines and active markers. */
   gold: "#D4AF37",
   /** Application surfaces are white and used generously. */
   surface: "#ffffff",
@@ -53,9 +55,12 @@ export const RADIUS = {
 /**
  * One focus treatment everywhere. `focus-visible` (not `focus`) so a pointer
  * click never paints a ring, while keyboard traversal always does.
+ *
+ * A charcoal ring separated by a 2px white gap reads on every surface the
+ * customizer uses: white panels, charcoal buttons and the dark studio chrome.
  */
 export const FOCUS_RING =
-  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37]";
+  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white";
 
 /** Focus treatment for a control sitting on a dark/charcoal surface. */
 export const FOCUS_RING_ON_DARK =

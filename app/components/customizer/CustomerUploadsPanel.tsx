@@ -213,7 +213,7 @@ function PhotoLibrary({
                   }}
                   title={`Use ${asset.fileName}${asset.width ? ` (${asset.width}×${asset.height}px${quality.label ? ` · ${quality.label}` : ""})` : ""}`}
                   aria-label={`Use photo ${asset.fileName}`}
-                  className="block aspect-square w-full overflow-hidden rounded-md border border-[#303839]/10 bg-white transition hover:border-[#D4AF37] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#D4AF37]"
+                  className="block aspect-square w-full overflow-hidden rounded-md border border-[#303839]/10 bg-white transition hover:border-[#303839]/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#303839]"
                 >
                   <img src={asset.thumbnailUrl || asset.url} alt={asset.fileName} loading="lazy" draggable={false} className="h-full w-full object-cover" />
                 </button>
@@ -292,7 +292,7 @@ function PhotoCard({ field, layer, value, error, busyGlobal, onChange, onUploadP
     >
       <p className="text-sm font-semibold text-[#303839]">
         {field.label}
-        {field.required && <span className="text-[#D4AF37]"> *</span>}
+        {field.required && <span className="text-[#303839]"> *</span>}
       </p>
 
       {!url ? (

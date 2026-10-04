@@ -40,7 +40,7 @@ export default function GoogleFontMultiSelect({ value, onChange }: Props) {
           <button
             type="button"
             onClick={() => onChange([])}
-            className="shrink-0 rounded-lg border border-[#303839]/15 px-2.5 py-2 text-[11px] font-bold text-[#303839] transition-colors hover:bg-[#F4ECEC] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37]"
+            className="shrink-0 rounded-lg border border-[#303839]/15 px-2.5 py-2 text-[11px] font-bold text-[#303839] transition-colors hover:bg-[#F8F6F1] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white"
           >
             Allow all
           </button>
@@ -62,7 +62,7 @@ export default function GoogleFontMultiSelect({ value, onChange }: Props) {
                   type="button"
                   onClick={() => remove(family)}
                   aria-label={`Remove ${family}`}
-                  className="grid h-5 w-5 place-items-center rounded-full text-[#303839]/50 transition-colors hover:bg-[#303839]/8 hover:text-[#303839] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37]"
+                  className="grid h-5 w-5 place-items-center rounded-full text-[#303839]/50 transition-colors hover:bg-[#303839]/8 hover:text-[#303839] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white"
                 >
                   <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" aria-hidden>
                     <path d="M6 6l12 12M18 6L6 18" />

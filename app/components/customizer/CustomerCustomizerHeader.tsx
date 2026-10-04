@@ -27,7 +27,7 @@ function IconButton({ label, onClick, disabled, children }: any) {
       title={label}
       onClick={onClick}
       disabled={disabled}
-      className="grid h-10 w-10 place-items-center rounded-lg text-[#303839]/70 transition-colors hover:bg-[#303839]/5 hover:text-[#303839] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] disabled:opacity-30 disabled:hover:bg-transparent"
+      className="grid h-10 w-10 place-items-center rounded-lg text-[#303839]/70 transition-colors hover:bg-[#303839]/5 hover:text-[#303839] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white disabled:opacity-30 disabled:hover:bg-transparent"
     >
       {children}
     </button>
@@ -99,7 +99,7 @@ function MoreMenu({ items }: { items: Array<{ label: string; onSelect: () => voi
         aria-haspopup="menu"
         aria-expanded={open}
         onClick={() => setOpen((current) => !current)}
-        className="grid h-11 w-11 place-items-center rounded-lg text-[#303839]/70 transition-colors hover:bg-[#303839]/5 hover:text-[#303839] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37]"
+        className="grid h-11 w-11 place-items-center rounded-lg text-[#303839]/70 transition-colors hover:bg-[#303839]/5 hover:text-[#303839] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white"
       >
         {MoreIcon}
       </button>
@@ -195,7 +195,7 @@ export default function CustomerCustomizerHeader({
           type="button"
           onClick={onSaveExit}
           disabled={savingDraft || !restoreReady}
-          className="hidden h-10 shrink-0 items-center whitespace-nowrap rounded-lg px-3 text-xs font-semibold text-[#303839]/70 transition-colors hover:bg-[#303839]/5 hover:text-[#303839] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] disabled:opacity-40 md:flex"
+          className="hidden h-10 shrink-0 items-center whitespace-nowrap rounded-lg px-3 text-xs font-semibold text-[#303839]/70 transition-colors hover:bg-[#303839]/5 hover:text-[#303839] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white disabled:opacity-40 md:flex"
         >
           {savingDraft ? "Saving…" : "Save & Exit"}
         </button>
@@ -231,7 +231,7 @@ export default function CustomerCustomizerHeader({
       {/* Centre: segmented step control. Hidden below sm — it gets its own
           full-width row there so the main row never overflows a 320px phone. */}
       <nav
-        className="hidden shrink-0 items-center gap-0.5 rounded-full bg-[#F0EDED] p-1 sm:flex"
+        className="hidden shrink-0 items-center gap-0.5 rounded-full bg-[#F3F1EC] p-1 sm:flex"
         aria-label="Customizer steps"
       >
         {STEPS.map((s) => {
@@ -243,7 +243,7 @@ export default function CustomerCustomizerHeader({
               type="button"
               onClick={() => onStepChange(s.id)}
               aria-current={active ? "step" : undefined}
-              className={`rounded-full px-3.5 py-1.5 text-[13px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] sm:px-5 ${
+              className={`rounded-full px-3.5 py-1.5 text-[13px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white sm:px-5 ${
                 active
                   ? "bg-white font-bold text-[#303839] shadow-[0_1px_3px_rgba(48,56,57,0.10)]"
                   : locked
@@ -289,7 +289,7 @@ export default function CustomerCustomizerHeader({
           type="button"
           onClick={onTogglePreview}
           aria-pressed={previewMode}
-          className={`hidden h-10 items-center gap-1.5 rounded-lg px-3 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] sm:flex ${
+          className={`hidden h-10 items-center gap-1.5 rounded-lg px-3 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white sm:flex ${
             previewMode
               ? "bg-[#303839] text-white hover:bg-[#414b4c]"
               : "text-[#303839]/70 hover:bg-[#303839]/5 hover:text-[#303839]"
@@ -322,7 +322,7 @@ export default function CustomerCustomizerHeader({
     {/* Mobile secondary bar: the step progression gets the full width, and the
         occasional actions move into a More menu so the row fits at 320px. */}
     <div className="relative z-40 flex h-14 shrink-0 items-center gap-2 border-b border-[#303839]/8 bg-white px-2 sm:hidden">
-      <nav className="flex min-w-0 flex-1 items-center gap-0.5 rounded-full bg-[#F0EDED] p-1" aria-label="Customizer steps">
+      <nav className="flex min-w-0 flex-1 items-center gap-0.5 rounded-full bg-[#F3F1EC] p-1" aria-label="Customizer steps">
         {STEPS.map((s) => {
           const active = step === s.id;
           const locked = s.id === "review" && !canEnterReview && !active;
@@ -333,7 +333,7 @@ export default function CustomerCustomizerHeader({
               onClick={() => onStepChange(s.id)}
               aria-current={active ? "step" : undefined}
               // 44px minimum touch target (spec §22).
-              className={`min-h-11 min-w-0 flex-1 truncate rounded-full px-2 text-[12px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] ${
+              className={`min-h-11 min-w-0 flex-1 truncate rounded-full px-2 text-[12px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white ${
                 active
                   ? "bg-white font-bold text-[#303839] shadow-[0_1px_3px_rgba(48,56,57,0.10)]"
                   : locked

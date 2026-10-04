@@ -200,7 +200,7 @@ export default function CustomizerReviewStep({
           </div>
         </ReviewCard>
 
-        <div className="rounded-xl border border-[#303839]/8 bg-[#F0EDED] p-5">
+        <div className="rounded-xl border border-[#303839]/8 bg-[#F3F1EC] p-5">
           <div className="grid gap-1.5 text-sm tabular-nums">
             <div className="flex justify-between text-[#303839]/60">
               <span>Base price</span>
@@ -216,7 +216,7 @@ export default function CustomizerReviewStep({
             </div>
             <div className="mt-2 flex items-baseline justify-between border-t border-[#303839]/10 pt-3">
               <span className="text-sm font-semibold text-[#303839]">Total ({quantity})</span>
-              <span className="font-display text-[26px] leading-none text-[#303839]">{formatCurrency(lineTotal, currency)}</span>
+              <span className="text-[22px] font-semibold leading-none tabular-nums text-[#303839]">{formatCurrency(lineTotal, currency)}</span>
             </div>
           </div>
         </div>

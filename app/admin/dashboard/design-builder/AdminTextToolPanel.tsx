@@ -20,7 +20,7 @@ const PRESETS: Array<{
 
 export default function AdminTextToolPanel({ preset, onSelectPreset }: Props) {
   return (
-    <div className="h-full bg-[#F4ECEC] p-4">
+    <div className="h-full bg-[#F8F6F1] p-4">
       <div className="rounded-2xl border border-[#303839]/8 bg-white p-4 shadow-[0_10px_30px_rgba(48,56,57,0.07)]">
         <p className="text-[10px] font-extrabold uppercase tracking-[0.16em] text-[#303839]/45">Add text</p>
         <h2 className="mt-1 font-display text-[24px] leading-tight text-[#303839]">Place text naturally</h2>
@@ -37,10 +37,10 @@ export default function AdminTextToolPanel({ preset, onSelectPreset }: Props) {
                 type="button"
                 aria-pressed={active}
                 onClick={() => onSelectPreset(item.id)}
-                className={`min-h-16 cursor-pointer rounded-xl border px-3 py-2.5 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] ${
+                className={`min-h-16 cursor-pointer rounded-xl border px-3 py-2.5 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white ${
                   active
                     ? "border-[#D4AF37] bg-[#D4AF37]/8"
-                    : "border-[#303839]/10 bg-white hover:border-[#D4AF37]/60 hover:bg-[#F8F6F1]"
+                    : "border-[#303839]/10 bg-white hover:border-[#303839]/40 hover:bg-[#F8F6F1]"
                 }`}
               >
                 <span className="flex items-start justify-between gap-3">

@@ -212,7 +212,7 @@ export default function AdminLayersPanel({
                     if (e.key === "Escape") setRenamingId(null);
                   }}
                   onClick={(e) => e.stopPropagation()}
-                  className="w-full rounded border border-white/20 bg-white/10 px-1 py-0.5 text-xs text-white outline-none focus:border-[#D4AF37]"
+                  className="w-full rounded border border-white/20 bg-white/10 px-1 py-0.5 text-xs text-white outline-none focus:border-[#303839]/60"
                   aria-label="Layer name"
                 />
               ) : (

@@ -50,8 +50,8 @@ function RailButton({ id, label, active = false, onClick, disabled = false, disa
       onClick={onClick}
       disabled={disabled}
       title={disabled && disabledHint ? disabledHint : label}
-      className={`mx-1.5 flex min-h-[52px] cursor-pointer flex-col items-center justify-center gap-1 rounded-lg px-1 py-2 text-[9.5px] font-semibold leading-none transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] ${
-        active ? "bg-[#D4AF37] text-[#303839]" : "text-white/60 hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-25"
+      className={`mx-1.5 flex min-h-[52px] cursor-pointer flex-col items-center justify-center gap-1 rounded-lg px-1 py-2 text-[9.5px] font-semibold leading-none transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white ${
+        active ? "bg-white/15 text-white shadow-[inset_3px_0_0_#D4AF37]" : "text-white/60 hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-25"
       }`}
     >
       {ICONS[id]}
@@ -112,13 +112,13 @@ export default function AdminToolRail(props: Props) {
                 key={shape}
                 type="button"
                 onClick={() => closeAnd(() => (shape === "line" ? props.onAddLine() : props.onAddShape(shape)))}
-                className="min-h-11 cursor-pointer rounded-lg border border-[#303839]/10 px-2 text-xs font-bold capitalize transition-colors hover:border-[#D4AF37] hover:bg-[#F8F6F1] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37]"
+                className="min-h-11 cursor-pointer rounded-lg border border-[#303839]/10 px-2 text-xs font-bold capitalize transition-colors hover:border-[#303839]/40 hover:bg-[#F8F6F1] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white"
               >
                 {shape.replace("-", " ")}
               </button>
             ))}
             {menu === "guide" && (["horizontal", "vertical"] as const).map((axis) => (
-              <button key={axis} type="button" onClick={() => closeAnd(() => props.onAddGuide(axis))} className="min-h-11 cursor-pointer rounded-lg border border-[#303839]/10 px-2 text-xs font-bold capitalize transition-colors hover:border-[#D4AF37] hover:bg-[#F8F6F1] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37]">
+              <button key={axis} type="button" onClick={() => closeAnd(() => props.onAddGuide(axis))} className="min-h-11 cursor-pointer rounded-lg border border-[#303839]/10 px-2 text-xs font-bold capitalize transition-colors hover:border-[#303839]/40 hover:bg-[#F8F6F1] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white">
                 {axis}
               </button>
             ))}

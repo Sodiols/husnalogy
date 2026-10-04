@@ -114,7 +114,7 @@ export default function TextAlignmentDropdown({
                   title={option.label}
                   disabled={!canHorizontal}
                   onClick={() => select("horizontal", option.value)}
-                  className={`grid h-11 cursor-pointer place-items-center rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] disabled:cursor-not-allowed disabled:opacity-30 ${
+                  className={`grid h-11 cursor-pointer place-items-center rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white disabled:cursor-not-allowed disabled:opacity-30 ${
                     active ? "bg-cream text-[#303839] ring-1 ring-[#D4AF37]/45" : "text-[#303839]/60 hover:bg-cream"
                   }`}
                 >
@@ -134,7 +134,7 @@ export default function TextAlignmentDropdown({
                   title={option.label}
                   disabled={!canVertical}
                   onClick={() => select("vertical", option.value)}
-                  className={`grid h-11 cursor-pointer place-items-center rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] disabled:cursor-not-allowed disabled:opacity-30 ${
+                  className={`grid h-11 cursor-pointer place-items-center rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white disabled:cursor-not-allowed disabled:opacity-30 ${
                     active ? "bg-cream text-[#303839] ring-1 ring-[#D4AF37]/45" : "text-[#303839]/60 hover:bg-cream"
                   }`}
                 >
@@ -160,7 +160,7 @@ export default function TextAlignmentDropdown({
         aria-controls={open ? menuId : undefined}
         disabled={!canHorizontal && !canVertical}
         onClick={() => setOpen((current) => !current)}
-        className={`flex h-10 min-w-12 shrink-0 cursor-pointer items-center justify-center gap-1 rounded-lg text-[#303839]/70 transition-colors hover:bg-cream hover:text-[#303839] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] disabled:cursor-not-allowed disabled:opacity-30 ${className}`}
+        className={`flex h-10 min-w-12 shrink-0 cursor-pointer items-center justify-center gap-1 rounded-lg text-[#303839]/70 transition-colors hover:bg-cream hover:text-[#303839] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white disabled:cursor-not-allowed disabled:opacity-30 ${className}`}
       >
         <AlignIcon path={currentIcon.path} />
         {mixed && <span className="h-1.5 w-1.5 rounded-full bg-[#D4AF37]" aria-hidden />}

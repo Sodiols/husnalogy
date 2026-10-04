@@ -14,7 +14,7 @@ import {
   resolveTextEditorKeyAction,
 } from "@/lib/customizer/v2/text-editing";
 
-const controlClass = "h-11 w-full rounded-xl border border-[#303839]/12 bg-white px-3 text-sm text-[#303839] outline-none transition-colors hover:border-[#303839]/25 focus:border-[#D4AF37] focus:ring-2 focus:ring-[#D4AF37]/20";
+const controlClass = "h-11 w-full rounded-xl border border-[#303839]/12 bg-white px-3 text-sm text-[#303839] outline-none transition-colors hover:border-[#303839]/25 focus:border-[#303839]/60 focus:ring-2 focus:ring-[#303839]/15";
 
 function Lbl({ children }: any) {
   return <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-[0.1em] text-[#303839]/55">{children}</span>;
@@ -155,7 +155,7 @@ function GridSlotEditor({ slot, index, layer, onLayerPatch }: any) {
       </div>
       <div className="flex items-center gap-2">
         {slot.src ? <img src={slot.src} alt="" className="h-10 w-10 rounded-lg border border-[#303839]/10 object-cover" /> : null}
-        <button type="button" disabled={busy} onClick={() => inputRef.current?.click()} className="min-h-10 rounded-lg border border-[#303839]/12 bg-white px-3 text-xs font-bold hover:border-[#D4AF37] disabled:opacity-50">
+        <button type="button" disabled={busy} onClick={() => inputRef.current?.click()} className="min-h-10 rounded-lg border border-[#303839]/12 bg-white px-3 text-xs font-bold hover:border-[#303839]/40 disabled:opacity-50">
           {busy ? "Uploading…" : slot.src ? "Replace default" : "Add default photo"}
         </button>
         {slot.src ? <button type="button" onClick={() => patchSlot({ src: "", assetId: "", bucket: undefined, path: undefined })} className="min-h-10 rounded-lg px-2 text-xs font-bold text-red-700 hover:bg-red-50">Clear</button> : null}
@@ -308,7 +308,7 @@ export default function AdminPropertiesPanel({
               type="button"
               onClick={() => setInspectorTab(entry.id)}
               aria-current={active ? "true" : undefined}
-              className={`relative px-3 pb-2.5 text-[11px] font-bold uppercase tracking-[0.1em] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] ${
+              className={`relative px-3 pb-2.5 text-[11px] font-bold uppercase tracking-[0.1em] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white ${
                 active ? "text-[#303839]" : "text-[#303839]/40 hover:text-[#303839]/70"
               }`}
             >
@@ -378,7 +378,7 @@ export default function AdminPropertiesPanel({
                 });
               }}
               title="Enter adds a line. Ctrl/Cmd + Enter finishes editing."
-              className="min-h-11 w-full resize-y rounded-xl border border-[#303839]/12 bg-white p-3 text-sm leading-relaxed text-[#303839] outline-none transition-colors focus:border-[#D4AF37] focus:ring-2 focus:ring-[#D4AF37]/20"
+              className="min-h-11 w-full resize-y rounded-xl border border-[#303839]/12 bg-white p-3 text-sm leading-relaxed text-[#303839] outline-none transition-colors focus:border-[#303839]/60 focus:ring-2 focus:ring-[#303839]/15"
             />
           </div>
           <div>

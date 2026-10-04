@@ -748,7 +748,7 @@ describe("admin text toolbar — structure and accessibility", () => {
     expect(toolbarSource).toContain('title={disabled && hint ? `${label} — ${hint}` : hint || label}');
     // Disabled controls read as a filled, dimmed control — not the old 25%
     // opacity wash that made the icon unrecognisable.
-    expect(toolbarSource).toContain('const ICON_BUTTON_DISABLED = "border-[#303839]/10 bg-[#F4ECEC]/50 text-[#303839]/35"');
+    expect(toolbarSource).toContain('const ICON_BUTTON_DISABLED = "border-[#303839]/10 bg-[#F8F6F1]/50 text-[#303839]/35"');
     expect(toolbarSource).not.toContain("disabled:opacity-25");
   });
 

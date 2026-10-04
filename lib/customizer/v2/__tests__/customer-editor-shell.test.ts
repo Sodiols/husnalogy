@@ -62,7 +62,7 @@ describe("Fit is measured, never hardcoded (spec §9)", () => {
 
 describe("mobile header fits a 320px phone (spec §8, DoD 6)", () => {
   it("moves the step nav out of the crowded main row", () => {
-    expect(header).toContain('className="hidden shrink-0 items-center gap-0.5 rounded-full bg-[#F0EDED] p-1 sm:flex"');
+    expect(header).toContain('className="hidden shrink-0 items-center gap-0.5 rounded-full bg-[#F3F1EC] p-1 sm:flex"');
   });
 
   it("gives the overflow actions a menu instead of a fifth icon button", () => {

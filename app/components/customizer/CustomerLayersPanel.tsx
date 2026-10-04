@@ -147,7 +147,7 @@ export default function CustomerLayersPanel({ layers, selectedIds, selectedGridS
               aria-hidden
             >⋮⋮</span>
             {expandable ? (
-              <button type="button" aria-label={`${isCollapsed ? "Expand" : "Collapse"} ${layer.name || layer.type}`} aria-expanded={!isCollapsed} onClick={() => toggleCollapsed(layer.id)} className={`grid h-11 w-8 shrink-0 place-items-center rounded-lg text-sm font-black focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] ${quietButton}`}>
+              <button type="button" aria-label={`${isCollapsed ? "Expand" : "Collapse"} ${layer.name || layer.type}`} aria-expanded={!isCollapsed} onClick={() => toggleCollapsed(layer.id)} className={`grid h-11 w-8 shrink-0 place-items-center rounded-lg text-sm font-black focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white ${quietButton}`}>
                 {isCollapsed ? "+" : "-"}
               </button>
             ) : <span className="w-2 shrink-0" />}
@@ -166,7 +166,7 @@ export default function CustomerLayersPanel({ layers, selectedIds, selectedGridS
                   setName(layer.name || "");
                 }
               }}
-              className="flex min-h-11 min-w-0 flex-1 items-center gap-2 rounded-lg text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37]"
+              className="flex min-h-11 min-w-0 flex-1 items-center gap-2 rounded-lg text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white"
             >
               <span className={`grid h-9 w-9 shrink-0 place-items-center rounded-lg text-[8px] font-black ${selected ? "bg-white/12" : "bg-white"}`}>{typeLabel[layer.type] || "OB"}</span>
               <span className="min-w-0 flex-1">
@@ -180,13 +180,13 @@ export default function CustomerLayersPanel({ layers, selectedIds, selectedGridS
             </button>
           </div>
           <div className={`grid grid-cols-3 gap-1 border-t pt-1 ${selected ? "border-white/10" : "border-[#303839]/8"}`}>
-            {canHide ? <button type="button" aria-label={layer.hidden ? "Show layer" : "Hide layer"} onClick={() => onToggleVisibility(layer.id, !layer.hidden)} className={`min-h-11 rounded-lg px-1 text-[9px] font-bold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] ${quietButton}`}>{layer.hidden ? "Show" : "Hide"}</button> : <span />}
-            {layer.isUserLayer ? <button type="button" aria-label={locked ? "Unlock layer" : "Lock layer"} onClick={() => onToggleLock(layer.id, !locked)} className={`min-h-11 rounded-lg px-1 text-[9px] font-bold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] ${quietButton}`}>{locked ? "Unlock" : "Lock"}</button> : <span />}
-            {canDuplicate ? <button type="button" aria-label="Duplicate layer" onClick={() => onDuplicate(layer.id)} className={`min-h-11 rounded-lg px-1 text-[9px] font-bold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] ${quietButton}`}>Copy</button> : <span />}
+            {canHide ? <button type="button" aria-label={layer.hidden ? "Show layer" : "Hide layer"} onClick={() => onToggleVisibility(layer.id, !layer.hidden)} className={`min-h-11 rounded-lg px-1 text-[9px] font-bold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white ${quietButton}`}>{layer.hidden ? "Show" : "Hide"}</button> : <span />}
+            {layer.isUserLayer ? <button type="button" aria-label={locked ? "Unlock layer" : "Lock layer"} onClick={() => onToggleLock(layer.id, !locked)} className={`min-h-11 rounded-lg px-1 text-[9px] font-bold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white ${quietButton}`}>{locked ? "Unlock" : "Lock"}</button> : <span />}
+            {canDuplicate ? <button type="button" aria-label="Duplicate layer" onClick={() => onDuplicate(layer.id)} className={`min-h-11 rounded-lg px-1 text-[9px] font-bold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white ${quietButton}`}>Copy</button> : <span />}
           </div>
         </article>
         {!isCollapsed && layer.type === "grid" && (layer.slots || []).map((slot: any, index: number) => (
-          <button key={slot.id} type="button" aria-pressed={selectedGridSlotId === slot.id} onClick={() => { onSelectionChange(layer.id, false); onGridSlotSelect?.(layer.id, slot.id); }} className={`ml-7 flex min-h-11 items-center gap-2 rounded-lg border px-3 text-left text-[10px] font-bold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] ${selectedGridSlotId === slot.id ? "border-[#D4AF37] bg-white text-[#303839]" : "border-[#303839]/8 bg-white text-[#303839]/60"}`} style={{ marginLeft: 28 + depth * 14 }}>
+          <button key={slot.id} type="button" aria-pressed={selectedGridSlotId === slot.id} onClick={() => { onSelectionChange(layer.id, false); onGridSlotSelect?.(layer.id, slot.id); }} className={`ml-7 flex min-h-11 items-center gap-2 rounded-lg border px-3 text-left text-[10px] font-bold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white ${selectedGridSlotId === slot.id ? "border-[#D4AF37] bg-white text-[#303839]" : "border-[#303839]/8 bg-white text-[#303839]/60"}`} style={{ marginLeft: 28 + depth * 14 }}>
             <span className="grid h-7 w-7 place-items-center rounded-md bg-white">{index + 1}</span>
             <span>{slot.src || slot.assetId ? `Photo slot ${index + 1}` : `Empty slot ${index + 1}`}</span>
           </button>
@@ -203,7 +203,7 @@ export default function CustomerLayersPanel({ layers, selectedIds, selectedGridS
         <label htmlFor="customer-layer-search" className="mb-1.5 block text-[10px] font-extrabold uppercase tracking-[0.12em] text-[#303839]/50">Find a layer</label>
         <div className="relative">
           <svg className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[#303839]/40" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden><circle cx="11" cy="11" r="7" /><path d="m20 20-3.4-3.4" /></svg>
-          <input id="customer-layer-search" type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search name or type" className="h-11 w-full border border-[#303839]/12 bg-white pl-9 pr-12 text-xs font-semibold text-[#303839] outline-none transition placeholder:text-[#303839]/35 focus:border-[#D4AF37] focus:ring-2 focus:ring-[#D4AF37]/15" />
+          <input id="customer-layer-search" type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search name or type" className="h-11 w-full border border-[#303839]/12 bg-white pl-9 pr-12 text-xs font-semibold text-[#303839] outline-none transition placeholder:text-[#303839]/35 focus:border-[#303839]/60 focus:ring-2 focus:ring-[#303839]/15" />
           <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[9px] font-extrabold text-[#303839]/40">{visibleLayers.length}</span>
         </div>
       </div>

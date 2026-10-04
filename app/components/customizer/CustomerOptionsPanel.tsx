@@ -67,7 +67,7 @@ function OptionButton({ option, active, onClick, currency, showImage = false, co
       type="button"
       onClick={onClick}
       aria-pressed={active}
-      className={`flex w-full items-center gap-3 rounded-lg border px-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] ${compact ? "py-2" : "py-2.5"} ${
+      className={`flex w-full items-center gap-3 rounded-lg border px-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white ${compact ? "py-2" : "py-2.5"} ${
         active
           ? "border-[#303839] bg-[#303839] text-white"
           : "border-[#303839]/10 bg-white text-[#303839] hover:border-[#303839]/25 hover:bg-[#303839]/5"
@@ -128,7 +128,7 @@ function OptionGroup({ title, options, value, onChange, currency, showImage = fa
               type="button"
               onClick={() => onChange(localizedCartValue(option, currency))}
               aria-pressed={isActive(option)}
-              className={`flex flex-col items-center gap-1.5 rounded-lg border px-2 py-2.5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] ${
+              className={`flex flex-col items-center gap-1.5 rounded-lg border px-2 py-2.5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white ${
                 isActive(option)
                   ? "border-[#303839] bg-[#303839] text-white"
                   : "border-[#303839]/10 bg-white text-[#303839] hover:border-[#303839]/25 hover:bg-[#303839]/5"
@@ -225,7 +225,7 @@ export default function CustomerOptionsPanel({
                 type="button"
                 aria-pressed={active}
                 onClick={() => onQuantityChange(Number(q) || 1)}
-                className={`min-w-[56px] rounded-lg border px-3 py-2 text-sm font-bold tabular-nums transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] ${
+                className={`min-w-[56px] rounded-lg border px-3 py-2 text-sm font-bold tabular-nums transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white ${
                   active
                     ? "border-[#303839] bg-[#303839] text-white"
                     : "border-[#303839]/10 bg-white text-[#303839] hover:border-[#303839]/25 hover:bg-[#303839]/5"
@@ -245,7 +245,7 @@ export default function CustomerOptionsPanel({
           role="switch"
           aria-checked={Boolean(options.logo)}
           onClick={() => onOptionChange("logo", !options.logo)}
-          className={`flex w-full items-center justify-between gap-3 rounded-lg border px-3 py-3 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] ${
+          className={`flex w-full items-center justify-between gap-3 rounded-lg border px-3 py-3 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white ${
             options.logo ? "border-[#303839] bg-[#303839] text-white" : "border-[#303839]/10 bg-white text-[#303839] hover:border-[#303839]/25 hover:bg-[#303839]/5"
           }`}
         >

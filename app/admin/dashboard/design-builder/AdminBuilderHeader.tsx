@@ -19,7 +19,7 @@ function IconButton({ label, onClick, disabled, children }: any) {
       title={label}
       onClick={onClick}
       disabled={disabled}
-      className="grid h-9 w-9 place-items-center rounded-lg text-white/65 transition-colors hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] disabled:opacity-25 disabled:hover:bg-transparent"
+      className="grid h-9 w-9 place-items-center rounded-lg text-white/65 transition-colors hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white disabled:opacity-25 disabled:hover:bg-transparent"
     >
       {children}
     </button>
@@ -71,7 +71,7 @@ export default function AdminBuilderHeader({
           type="button"
           onClick={onBack}
           aria-label="Back to Product"
-          className="grid h-9 w-9 shrink-0 place-items-center rounded-lg text-white/65 transition-colors hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37]"
+          className="grid h-9 w-9 shrink-0 place-items-center rounded-lg text-white/65 transition-colors hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white"
         >
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
             <path d="m15 18-6-6 6-6" />
@@ -123,7 +123,7 @@ export default function AdminBuilderHeader({
               type="button"
               onClick={() => onTabChange(t.id)}
               aria-current={active ? "page" : undefined}
-              className={`whitespace-nowrap rounded-md px-3 py-1.5 text-[12.5px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] lg:px-3.5 ${
+              className={`whitespace-nowrap rounded-md px-3 py-1.5 text-[12.5px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white lg:px-3.5 ${
                 active
                   ? "bg-white/[0.14] font-bold text-white"
                   : "font-semibold text-white/50 hover:text-white/85"
@@ -155,7 +155,7 @@ export default function AdminBuilderHeader({
             type="button"
             onClick={onSaveDraft}
             disabled={saving}
-            className="hidden h-9 items-center rounded-lg px-3 text-xs font-semibold text-white/70 transition-colors hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] disabled:opacity-40 sm:flex"
+            className="hidden h-9 items-center rounded-lg px-3 text-xs font-semibold text-white/70 transition-colors hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white disabled:opacity-40 sm:flex"
           >
             {saving ? "Saving…" : "Save Draft"}
           </button>
@@ -163,7 +163,7 @@ export default function AdminBuilderHeader({
         <button
           type="button"
           onClick={() => onTabChange("preview")}
-          className="hidden h-9 items-center gap-1.5 rounded-lg px-3 text-xs font-semibold text-white/70 transition-colors hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] md:flex"
+          className="hidden h-9 items-center gap-1.5 rounded-lg px-3 text-xs font-semibold text-white/70 transition-colors hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white md:flex"
         >
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
             <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z" />
@@ -176,7 +176,7 @@ export default function AdminBuilderHeader({
             type="button"
             onClick={onPublish}
             disabled={saving}
-            className="flex h-9 shrink-0 items-center rounded-lg bg-[#D4AF37] px-4 text-xs font-bold text-[#303839] transition-colors hover:bg-[#e0c15d] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70 disabled:opacity-40"
+            className="flex h-9 shrink-0 items-center rounded-lg bg-white px-4 text-xs font-bold text-[#303839] transition-colors hover:bg-[#F8F6F1] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] focus-visible:ring-offset-2 focus-visible:ring-offset-[#303839] disabled:opacity-40"
           >
             {saving ? "Working…" : publishLabel}
           </button>

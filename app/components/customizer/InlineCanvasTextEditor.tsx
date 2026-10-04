@@ -370,7 +370,7 @@ export default function InlineCanvasTextEditor({
             });
           }
         }}
-        className="block min-h-11 w-full resize-none rounded-xl border border-[#303839]/16 bg-white px-3 py-2 text-[#303839] caret-[#303839] outline-none transition-[border-color,box-shadow] selection:bg-[#D4AF37]/25 focus:border-[#D4AF37] focus:ring-4 focus:ring-[#D4AF37]/15"
+        className="block min-h-11 w-full resize-none rounded-xl border border-[#303839]/16 bg-white px-3 py-2 text-[#303839] caret-[#303839] outline-none transition-[border-color,box-shadow] selection:bg-[#D4AF37]/25 focus:border-[#303839]/60 focus:ring-4 focus:ring-[#303839]/15"
         style={editorStyle}
       />
       <div className="mt-2 flex min-h-11 items-center justify-between gap-3">

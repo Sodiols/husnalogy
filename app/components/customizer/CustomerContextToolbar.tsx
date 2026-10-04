@@ -104,9 +104,9 @@ export default function CustomerContextToolbar({
   const divider = <span className="mx-1 h-6 w-px shrink-0 bg-[#303839]/10" aria-hidden />;
   // Shared compact field styling. Numeric fields stay fully keyboard editable.
   const numericInput =
-    "h-7 w-full rounded-md border border-[#303839]/10 bg-[#F0EDED] px-2 text-center text-xs font-bold tabular-nums text-[#303839] outline-none transition-colors hover:border-[#303839]/20 focus:border-[#D4AF37] focus:bg-white focus:ring-2 focus:ring-[#D4AF37]/20";
+    "h-7 w-full rounded-md border border-[#303839]/10 bg-[#F3F1EC] px-2 text-center text-xs font-bold tabular-nums text-[#303839] outline-none transition-colors hover:border-[#303839]/20 focus:border-[#303839]/60 focus:bg-white focus:ring-2 focus:ring-[#303839]/15";
   const iconButton =
-    "grid h-9 w-9 shrink-0 cursor-pointer place-items-center rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37]";
+    "grid h-9 w-9 shrink-0 cursor-pointer place-items-center rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white";
 
   return (
     <div
@@ -128,7 +128,7 @@ export default function CustomerContextToolbar({
           <button
             type="button"
             onClick={onEditText}
-            className="flex h-9 shrink-0 cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-lg bg-[#303839] px-3 text-xs font-bold text-white transition-colors hover:bg-[#414b4c] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37]"
+            className="flex h-9 shrink-0 cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-lg bg-[#303839] px-3 text-xs font-bold text-white transition-colors hover:bg-[#414b4c] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white"
           >
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
               <path d="M12 20h9" />
@@ -187,8 +187,8 @@ export default function CustomerContextToolbar({
       )}
 
       {canColor && allowedColors.length > 0 && (
-        <span className="flex shrink-0 items-center gap-1 rounded-lg bg-[#F0EDED] p-1" aria-label="Allowed text colours">
-          {allowedColors.map((color) => <button key={color} type="button" aria-label={`Set text colour ${color}`} aria-pressed={(style.color || "").toLowerCase() === color.toLowerCase()} onClick={() => onStyleChange({ color }, "color")} className={`h-7 w-7 rounded-md border-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] ${String(style.color).toLowerCase() === color.toLowerCase() ? "border-[#303839]" : "border-white"}`} style={{ backgroundColor: color }} />)}
+        <span className="flex shrink-0 items-center gap-1 rounded-lg bg-[#F3F1EC] p-1" aria-label="Allowed text colours">
+          {allowedColors.map((color) => <button key={color} type="button" aria-label={`Set text colour ${color}`} aria-pressed={(style.color || "").toLowerCase() === color.toLowerCase()} onClick={() => onStyleChange({ color }, "color")} className={`h-7 w-7 rounded-md border-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white ${String(style.color).toLowerCase() === color.toLowerCase() ? "border-[#303839]" : "border-white"}`} style={{ backgroundColor: color }} />)}
         </span>
       )}
 

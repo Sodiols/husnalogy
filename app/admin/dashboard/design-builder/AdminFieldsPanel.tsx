@@ -27,7 +27,7 @@ export default function AdminFieldsPanel({
     (layer: any) => layer.customerEditable && (!layer.fieldId || !fields.some((f: any) => f.id === layer.fieldId)),
   );
 
-  const input = "h-10 w-full rounded-lg border border-[#303839]/15 bg-white px-3 text-sm text-[#303839] shadow-sm outline-none transition focus:border-[#D4AF37] focus:ring-2 focus:ring-[#D4AF37]/20";
+  const input = "h-10 w-full rounded-lg border border-[#303839]/15 bg-white px-3 text-sm text-[#303839] shadow-sm outline-none transition focus:border-[#303839]/60 focus:ring-2 focus:ring-[#303839]/15";
 
   return (
     <div className="mx-auto grid w-full max-w-7xl gap-5 p-4 md:p-6 2xl:p-8">
@@ -43,7 +43,7 @@ export default function AdminFieldsPanel({
         <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700" role="alert">
           <p className="font-bold">These editable layers have no field yet (fixed automatically on save):</p>
           {editableWithoutField.map((layer: any) => (
-            <button key={layer.id} type="button" onClick={() => onSelectLayer(layer.id)} className="mt-1 block rounded underline underline-offset-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37]">
+            <button key={layer.id} type="button" onClick={() => onSelectLayer(layer.id)} className="mt-1 block rounded underline underline-offset-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white">
               {layer.name} · {layer.page}
             </button>
           ))}
@@ -98,7 +98,7 @@ export default function AdminFieldsPanel({
                   <button
                     type="button"
                     onClick={() => onSelectLayer(layer.id)}
-                    className="min-h-11 rounded-full border border-[#303839]/15 px-3 py-1 text-xs font-bold text-[#303839] hover:bg-[#F8F6F1] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37]"
+                    className="min-h-11 rounded-full border border-[#303839]/15 px-3 py-1 text-xs font-bold text-[#303839] hover:bg-[#F8F6F1] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white"
                   >
                     Open layer →
                   </button>

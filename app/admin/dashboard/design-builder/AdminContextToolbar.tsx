@@ -118,14 +118,14 @@ const ICONS = {
  */
 const CONTROL_BASE =
   "flex shrink-0 items-center justify-center rounded-lg border text-[12.5px] font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] focus-visible:ring-offset-1 focus-visible:ring-offset-white disabled:cursor-not-allowed";
-const CONTROL_IDLE = "border-[#303839]/15 bg-white text-[#303839] hover:border-[#303839]/30 hover:bg-[#F4ECEC]";
+const CONTROL_IDLE = "border-[#303839]/15 bg-white text-[#303839] hover:border-[#303839]/30 hover:bg-[#F8F6F1]";
 const CONTROL_ACTIVE = "border-[#303839] bg-[#303839] text-white hover:bg-[#3D4647]";
-const CONTROL_MIXED = "border-[#D4AF37] bg-[#F4ECEC] text-[#303839]";
+const CONTROL_MIXED = "border-[#D4AF37] bg-[#F8F6F1] text-[#303839]";
 // Disabled controls stay legible (spec §26): dimmed, never invisible.
-const ICON_BUTTON_DISABLED = "border-[#303839]/10 bg-[#F4ECEC]/50 text-[#303839]/35";
+const ICON_BUTTON_DISABLED = "border-[#303839]/10 bg-[#F8F6F1]/50 text-[#303839]/35";
 /** Same shell without a display utility, for controls that own their layout
  *  (the numeric stepper is a grid). Literal classes so Tailwind emits them. */
-const CONTROL_SHELL = "rounded-lg border border-[#303839]/15 bg-white transition-colors focus-within:border-[#D4AF37]";
+const CONTROL_SHELL = "rounded-lg border border-[#303839]/15 bg-white transition-colors focus-within:border-[#303839]/60";
 const CONTROL_HEIGHT_CLASS: Record<ToolbarDensity, string> = {
   comfortable: "h-[36px]",
   condensed: "h-[34px]",
@@ -184,7 +184,7 @@ function ToolbarItem({
             onClick={onReset}
             title={resetLabel}
             aria-label={resetLabel}
-            className={`${captionClass} cursor-pointer rounded transition-colors hover:text-[#D4AF37] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[#D4AF37]`}
+            className={`${captionClass} cursor-pointer rounded transition-colors hover:text-[#303839]/70 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white`}
           >
             {caption}
           </button>
@@ -313,8 +313,8 @@ function ToolbarNumberField({
         // value column — never a value squeezed under a stepper button.
         stepButtonWidth={STEPPER_BUTTON_WIDTH[density]}
         className={`${CONTROL_SHELL} ${CONTROL_HEIGHT_CLASS[density]} w-full overflow-hidden`}
-        buttonClassName="grid h-full place-items-center text-[#303839]/60 transition-colors hover:bg-[#F4ECEC] hover:text-[#303839] focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#D4AF37] disabled:cursor-not-allowed disabled:text-[#303839]/25"
-        inputClassName="h-full min-w-0 w-full bg-transparent text-center text-[12.5px] font-bold tabular-nums text-[#303839] outline-none placeholder:text-[9.5px] placeholder:font-bold placeholder:uppercase placeholder:tracking-wide placeholder:text-[#303839]/40 focus:bg-[#F4ECEC]/60"
+        buttonClassName="grid h-full place-items-center text-[#303839]/60 transition-colors hover:bg-[#F8F6F1] hover:text-[#303839] focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#303839] disabled:cursor-not-allowed disabled:text-[#303839]/25"
+        inputClassName="h-full min-w-0 w-full bg-transparent text-center text-[12.5px] font-bold tabular-nums text-[#303839] outline-none placeholder:text-[9.5px] placeholder:font-bold placeholder:uppercase placeholder:tracking-wide placeholder:text-[#303839]/40 focus:bg-[#F8F6F1]/60"
         // The value column is exactly as wide as the planner budgeted, so the
         // site-wide input padding must not reclaim any of it.
         inputStyle={{ paddingLeft: 0, paddingRight: 0 }}
@@ -395,7 +395,7 @@ function TextColorControl({
                     onCommit(swatch);
                     close();
                   }}
-                  className={`h-6 w-6 rounded-md border transition-transform hover:scale-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] ${
+                  className={`h-6 w-6 rounded-md border transition-transform hover:scale-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white ${
                     selected ? "border-[#303839] ring-2 ring-[#D4AF37]" : "border-[#303839]/15"
                   }`}
                   style={{ backgroundColor: swatch }}
@@ -429,7 +429,7 @@ function TextColorControl({
                   if (hex) onCommit(hex);
                   else setDraft(value);
                 }}
-                className="h-9 min-w-0 flex-1 rounded-lg border border-[#303839]/15 bg-white px-2 text-[13px] font-bold uppercase tabular-nums text-[#303839] outline-none focus:border-[#D4AF37] focus-visible:ring-2 focus-visible:ring-[#D4AF37]/25"
+                className="h-9 min-w-0 flex-1 rounded-lg border border-[#303839]/15 bg-white px-2 text-[13px] font-bold uppercase tabular-nums text-[#303839] outline-none focus:border-[#303839]/60 focus-visible:ring-2 focus-visible:ring-[#303839]/25"
               />
               <input
                 type="color"
@@ -508,9 +508,9 @@ function HorizontalAlignControl({
                 aria-label={option.label}
                 title={hint ? `${option.label} — ${hint}` : option.label}
                 onClick={() => onChange(option.value)}
-                className={`grid h-full w-full place-items-center transition-colors focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#D4AF37] ${
+                className={`grid h-full w-full place-items-center transition-colors focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#303839] ${
                   index > 0 ? "border-l border-[#303839]/10" : ""
-                } ${active ? "bg-[#303839] text-white" : "text-[#303839]/65 hover:bg-[#F4ECEC] hover:text-[#303839]"}`}
+                } ${active ? "bg-[#303839] text-white" : "text-[#303839]/65 hover:bg-[#F8F6F1] hover:text-[#303839]"}`}
               >
                 <Icon path={option.path} size={iconSize(density)} />
               </button>
@@ -1253,7 +1253,7 @@ export default function AdminContextToolbar(props: Props) {
         ))}
 
         {props.selectionCount > 1 && (
-          <span className="ml-1 shrink-0 rounded-full bg-[#F4ECEC] px-2 py-1 text-[10px] font-bold text-[#303839]/70">
+          <span className="ml-1 shrink-0 rounded-full bg-[#F8F6F1] px-2 py-1 text-[10px] font-bold text-[#303839]/70">
             {props.selectionCount} selected
           </span>
         )}

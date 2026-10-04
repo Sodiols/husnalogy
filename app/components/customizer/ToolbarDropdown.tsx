@@ -185,7 +185,7 @@ export default function ToolbarDropdown({
                   event.preventDefault();
                   menuRef.current?.querySelector<HTMLElement>('[role="option"]:not([disabled])')?.focus();
                 }}
-                className="mb-2 h-9 w-full rounded-lg border border-[#303839]/12 bg-cream/60 px-2.5 text-[13px] font-semibold text-[#303839] outline-none placeholder:text-[#303839]/35 focus:border-[#D4AF37] focus:bg-white focus-visible:ring-2 focus-visible:ring-[#D4AF37]/25"
+                className="mb-2 h-9 w-full rounded-lg border border-[#303839]/12 bg-cream/60 px-2.5 text-[13px] font-semibold text-[#303839] outline-none placeholder:text-[#303839]/35 focus:border-[#303839]/60 focus:bg-white focus-visible:ring-2 focus-visible:ring-[#303839]/25"
               />
             )}
             <div className="grid gap-1">
@@ -205,7 +205,7 @@ export default function ToolbarDropdown({
                       setOpen(false);
                       triggerRef.current?.focus();
                     }}
-                    className={`flex min-h-11 w-full items-center justify-between gap-3 rounded-xl px-3 py-2 text-left text-[13px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] ${
+                    className={`flex min-h-11 w-full items-center justify-between gap-3 rounded-xl px-3 py-2 text-left text-[13px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white ${
                       option.disabled
                         ? "cursor-not-allowed text-[#303839]/35"
                         : isSelected
@@ -222,7 +222,7 @@ export default function ToolbarDropdown({
                       </span>
                     ) : isSelected ? (
                       <svg
-                        className="shrink-0 text-[#D4AF37]"
+                        className="shrink-0 text-[#303839]"
                         width="15"
                         height="15"
                         viewBox="0 0 24 24"
@@ -280,7 +280,7 @@ export default function ToolbarDropdown({
         }}
         className={
           triggerClassName ??
-          "flex h-7 min-w-0 cursor-pointer items-center justify-between gap-2 rounded-md px-1 text-left text-[13px] font-bold leading-7 text-[#303839] outline-none transition-colors hover:bg-cream focus-visible:ring-2 focus-visible:ring-[#D4AF37] disabled:cursor-not-allowed disabled:opacity-40"
+          "flex h-7 min-w-0 cursor-pointer items-center justify-between gap-2 rounded-md px-1 text-left text-[13px] font-bold leading-7 text-[#303839] outline-none transition-colors hover:bg-cream focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white disabled:cursor-not-allowed disabled:opacity-40"
         }
       >
         <span

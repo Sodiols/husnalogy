@@ -113,7 +113,7 @@ function FontRow({
       aria-selected={selected}
       onClick={onPick}
       className={`flex w-full items-center justify-between gap-3 px-3 py-2 text-left transition-colors ${
-        active ? "bg-[#F4ECEC]" : "hover:bg-cream"
+        active ? "bg-[#F8F6F1]" : "hover:bg-cream"
       } ${selected ? "font-bold" : ""}`}
     >
       <span
@@ -124,7 +124,7 @@ function FontRow({
         {entry.family}
       </span>
       {selected && (
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 text-[#D4AF37]" aria-hidden>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 text-[#303839]" aria-hidden>
           <path d="m5 12 5 5 9-11" />
         </svg>
       )}
@@ -251,7 +251,7 @@ export default function GoogleFontSelector({
         aria-expanded={open}
         aria-label={label}
         onClick={toggleOpen}
-        className={`flex w-full items-center justify-between gap-2 rounded-lg border border-[#303839]/12 bg-white text-left text-[#303839] transition-colors hover:border-[#303839]/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] disabled:cursor-not-allowed disabled:opacity-45 ${
+        className={`flex w-full items-center justify-between gap-2 rounded-lg border border-[#303839]/12 bg-white text-left text-[#303839] transition-colors hover:border-[#303839]/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white disabled:cursor-not-allowed disabled:opacity-45 ${
           compact ? "h-9 px-2.5 text-xs" : "h-10 px-3 text-sm"
         }`}
       >
@@ -278,7 +278,7 @@ export default function GoogleFontSelector({
               onKeyDown={onKeyDown}
               placeholder="Search Google Fonts…"
               aria-label="Search Google Fonts"
-              className="h-9 w-full rounded-lg border border-[#303839]/12 bg-cream px-3 text-sm text-[#303839] outline-none focus:border-[#D4AF37] focus:bg-white focus:ring-2 focus:ring-[#D4AF37]/20"
+              className="h-9 w-full rounded-lg border border-[#303839]/12 bg-cream px-3 text-sm text-[#303839] outline-none focus:border-[#303839]/60 focus:bg-white focus:ring-2 focus:ring-[#303839]/15"
             />
             {!loading && !error && (
               <p className="px-1 pt-1.5 text-[10px] font-semibold text-[#303839]/45">
@@ -298,7 +298,7 @@ export default function GoogleFontSelector({
                 <button
                   type="button"
                   onClick={retry}
-                  className="mt-3 rounded-lg border border-[#303839]/15 px-3 py-1.5 text-xs font-bold text-[#303839] hover:bg-cream focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37]"
+                  className="mt-3 rounded-lg border border-[#303839]/15 px-3 py-1.5 text-xs font-bold text-[#303839] hover:bg-cream focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white"
                 >
                   Retry
                 </button>

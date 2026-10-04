@@ -3231,7 +3231,7 @@ export default function PersonalizeClient({ product, template }: { product: any;
   ) : null;
 
   return (
-    <div data-customizer-root className="fixed inset-0 z-[100] flex flex-col bg-[#F0EDED] text-[#303839]">
+    <div data-customizer-root className="fixed inset-0 z-[100] flex flex-col bg-[#F3F1EC] text-[#303839]">
       <CustomerCustomizerHeader
         productTitle={product.title}
         activePageLabel={(template.pages || []).find((page: any) => page.id === activePage)?.label || activePage}
@@ -3341,7 +3341,7 @@ export default function PersonalizeClient({ product, template }: { product: any;
             )}
 
             {/* Central workspace */}
-            <main className="relative flex min-h-0 min-w-0 flex-1 flex-col bg-[#F0EDED]" data-customizer-protected>
+            <main className="relative flex min-h-0 min-w-0 flex-1 flex-col bg-[#F3F1EC]" data-customizer-protected>
               {(showTextToolbar || showElementToolbar || showImageToolbar || showGridToolbar || showGroupToolbar) && (
                 <div
                   data-customer-toolbar-dock
@@ -3479,9 +3479,9 @@ export default function PersonalizeClient({ product, template }: { product: any;
                 <div className="pointer-events-auto flex max-w-full items-center gap-2 overflow-x-auto rounded-full no-scrollbar">
                   {enabledPages.length > 1 && (
                     <div className="flex min-h-11 items-center rounded-full border border-[#303839]/8 bg-white px-1 shadow-[0_2px_12px_rgba(48,56,57,0.08)]" role="group" aria-label="Page navigation">
-                      <button type="button" aria-label="Previous page" disabled={pageIndex <= 0} onClick={() => onActivePageChange(enabledPages[Math.max(0, pageIndex - 1)].id)} className="grid h-9 w-9 place-items-center rounded-full text-[#303839]/70 transition-colors hover:bg-[#303839]/5 hover:text-[#303839] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] disabled:opacity-25">‹</button>
+                      <button type="button" aria-label="Previous page" disabled={pageIndex <= 0} onClick={() => onActivePageChange(enabledPages[Math.max(0, pageIndex - 1)].id)} className="grid h-9 w-9 place-items-center rounded-full text-[#303839]/70 transition-colors hover:bg-[#303839]/5 hover:text-[#303839] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white disabled:opacity-25">‹</button>
                       <span className="min-w-14 text-center text-[11px] font-bold tabular-nums text-[#303839]/50">{pageIndex + 1} / {enabledPages.length}</span>
-                      <button type="button" aria-label="Next page" disabled={pageIndex >= enabledPages.length - 1} onClick={() => onActivePageChange(enabledPages[Math.min(enabledPages.length - 1, pageIndex + 1)].id)} className="grid h-9 w-9 place-items-center rounded-full text-[#303839]/70 transition-colors hover:bg-[#303839]/5 hover:text-[#303839] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] disabled:opacity-25">›</button>
+                      <button type="button" aria-label="Next page" disabled={pageIndex >= enabledPages.length - 1} onClick={() => onActivePageChange(enabledPages[Math.min(enabledPages.length - 1, pageIndex + 1)].id)} className="grid h-9 w-9 place-items-center rounded-full text-[#303839]/70 transition-colors hover:bg-[#303839]/5 hover:text-[#303839] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white disabled:opacity-25">›</button>
                     </div>
                   )}
                   <CustomizerZoomControls
@@ -3494,7 +3494,7 @@ export default function PersonalizeClient({ product, template }: { product: any;
                   {(productPreviewEditingEnabled || splitViewEnabled) && !previewMode && (
                     <div className="hidden min-h-11 items-center gap-0.5 rounded-full border border-[#303839]/8 bg-white p-1 shadow-[0_2px_12px_rgba(48,56,57,0.08)] xl:flex" role="group" aria-label="Canvas view">
                       {(["print", ...(productPreviewEditingEnabled ? ["product"] : []), ...(splitViewEnabled ? ["split"] : [])] as string[]).map((mode) => (
-                        <button key={mode} type="button" aria-pressed={workspaceMode === mode} onClick={() => setWorkspaceMode(mode as any)} className={`min-h-9 rounded-full px-3.5 text-[11px] font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] ${workspaceMode === mode ? "bg-[#303839] text-white" : "text-[#303839]/50 hover:bg-[#303839]/5 hover:text-[#303839]"}`}>{mode === "print" ? "Print Canvas" : mode === "product" ? "Product Preview" : "Split View"}</button>
+                        <button key={mode} type="button" aria-pressed={workspaceMode === mode} onClick={() => setWorkspaceMode(mode as any)} className={`min-h-9 rounded-full px-3.5 text-[11px] font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white ${workspaceMode === mode ? "bg-[#303839] text-white" : "text-[#303839]/50 hover:bg-[#303839]/5 hover:text-[#303839]"}`}>{mode === "print" ? "Print Canvas" : mode === "product" ? "Product Preview" : "Split View"}</button>
                       ))}
                     </div>
                   )}
@@ -3597,7 +3597,7 @@ export default function PersonalizeClient({ product, template }: { product: any;
                     type="button"
                     aria-label="Close panel"
                     onClick={() => setMobilePanelOpen(false)}
-                    className="grid h-9 w-9 shrink-0 place-items-center rounded-lg text-[#303839]/50 transition-colors hover:bg-[#303839]/5 hover:text-[#303839] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37]"
+                    className="grid h-9 w-9 shrink-0 place-items-center rounded-lg text-[#303839]/50 transition-colors hover:bg-[#303839]/5 hover:text-[#303839] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white"
                   >
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden>
                       <path d="M18 6 6 18M6 6l12 12" />

@@ -280,7 +280,7 @@ export default function AdminUploadsPanel({ onInsertAsset, currentAssetIds = [] 
         <label className="relative mt-3 block">
           <span className="pointer-events-none absolute inset-y-0 right-3 grid place-items-center text-[#303839]/45"><SearchIcon /></span>
           <span className="sr-only">Search previously uploaded images</span>
-          <input type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search uploads" className="min-h-11 w-full rounded-xl border border-[#303839]/12 bg-[#F8F6F1] pl-3 pr-10 text-sm font-semibold text-[#303839] outline-none transition-colors placeholder:text-[#303839]/40 focus:border-[#D4AF37] focus:bg-white focus:ring-2 focus:ring-[#D4AF37]/20" />
+          <input type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search uploads" className="min-h-11 w-full rounded-xl border border-[#303839]/12 bg-[#F8F6F1] pl-3 pr-10 text-sm font-semibold text-[#303839] outline-none transition-colors placeholder:text-[#303839]/40 focus:border-[#303839]/60 focus:bg-white focus:ring-2 focus:ring-[#303839]/15" />
         </label>
       </div>
 
@@ -316,8 +316,8 @@ export default function AdminUploadsPanel({ onInsertAsset, currentAssetIds = [] 
         ) : (
           <div className="mt-3 grid grid-cols-2 gap-2 2xl:gap-3">
             {assets.map((asset) => (
-              <article key={asset.id} className="group relative min-w-0 overflow-hidden rounded-xl border border-[#303839]/10 bg-white transition-colors duration-200 hover:border-[#D4AF37]/70">
-                <button type="button" onClick={() => onInsertAsset(asset)} className="block w-full cursor-pointer text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#D4AF37]" aria-label={`Add ${asset.title} to the current page`}>
+              <article key={asset.id} className="group relative min-w-0 overflow-hidden rounded-xl border border-[#303839]/10 bg-white transition-colors duration-200 hover:border-[#303839]/40">
+                <button type="button" onClick={() => onInsertAsset(asset)} className="block w-full cursor-pointer text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#303839]" aria-label={`Add ${asset.title} to the current page`}>
                   <span className="grid aspect-square place-items-center overflow-hidden bg-[#F8F6F1] p-2"><img src={asset.thumbnailUrl || asset.editorUrl || asset.url} alt="" loading="lazy" draggable={false} className="max-h-full max-w-full object-contain" /></span>
                   <span className="block p-2 pr-10">
                     <span className="block truncate text-xs font-extrabold text-[#303839]" title={asset.title}>{asset.displayName || asset.title}</span>
@@ -335,7 +335,7 @@ export default function AdminUploadsPanel({ onInsertAsset, currentAssetIds = [] 
         )}
 
         {hasMore && !loading && (
-          <button type="button" onClick={loadMore} disabled={loadingMore} className="mt-4 min-h-11 w-full rounded-xl border border-[#303839]/15 bg-white text-xs font-extrabold text-[#303839] transition-colors hover:bg-[#F8F6F1] disabled:cursor-wait disabled:opacity-55 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37]">{loadingMore ? "Loading…" : "Load more"}</button>
+          <button type="button" onClick={loadMore} disabled={loadingMore} className="mt-4 min-h-11 w-full rounded-xl border border-[#303839]/15 bg-white text-xs font-extrabold text-[#303839] transition-colors hover:bg-[#F8F6F1] disabled:cursor-wait disabled:opacity-55 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white">{loadingMore ? "Loading…" : "Load more"}</button>
         )}
       </div>
     </div>

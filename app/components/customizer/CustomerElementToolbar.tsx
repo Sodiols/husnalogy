@@ -26,7 +26,7 @@ export default function CustomerElementToolbar({ layer, onPatch, onDuplicate, on
 
       {layer.tintColor !== undefined && layer.tintColor !== "" && (
         <label
-          className="relative grid h-11 w-11 shrink-0 cursor-pointer place-items-center rounded-lg border border-[#303839]/12 hover:bg-[#303839]/5 focus-within:ring-2 focus-within:ring-[#D4AF37]"
+          className="relative grid h-11 w-11 shrink-0 cursor-pointer place-items-center rounded-lg border border-[#303839]/12 hover:bg-[#303839]/5 focus-within:ring-2 focus-within:ring-[#303839]"
           title="Element colour"
         >
           <span className="sr-only">Element colour</span>
@@ -48,7 +48,7 @@ export default function CustomerElementToolbar({ layer, onPatch, onDuplicate, on
         aria-label="Flip horizontally"
         aria-pressed={Boolean(layer.flipX)}
         onClick={() => onPatch({ flipX: !layer.flipX })}
-        className={`grid h-11 w-11 shrink-0 place-items-center rounded-lg transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] ${
+        className={`grid h-11 w-11 shrink-0 place-items-center rounded-lg transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white ${
           layer.flipX ? "bg-[#303839] text-white" : "text-[#303839] hover:bg-[#303839]/5"
         }`}
       >
@@ -61,7 +61,7 @@ export default function CustomerElementToolbar({ layer, onPatch, onDuplicate, on
         aria-label="Flip vertically"
         aria-pressed={Boolean(layer.flipY)}
         onClick={() => onPatch({ flipY: !layer.flipY })}
-        className={`grid h-11 w-11 shrink-0 place-items-center rounded-lg transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] ${
+        className={`grid h-11 w-11 shrink-0 place-items-center rounded-lg transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white ${
           layer.flipY ? "bg-[#303839] text-white" : "text-[#303839] hover:bg-[#303839]/5"
         }`}
       >
@@ -76,7 +76,7 @@ export default function CustomerElementToolbar({ layer, onPatch, onDuplicate, on
         type="button"
         aria-label="Duplicate element"
         onClick={onDuplicate}
-        className="grid h-11 w-11 shrink-0 place-items-center rounded-lg text-[#303839] hover:bg-[#303839]/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37]"
+        className="grid h-11 w-11 shrink-0 place-items-center rounded-lg text-[#303839] hover:bg-[#303839]/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white"
       >
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" aria-hidden>
           <rect x="9" y="9" width="12" height="12" rx="2" />

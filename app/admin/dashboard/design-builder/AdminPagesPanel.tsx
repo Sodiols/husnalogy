@@ -77,7 +77,7 @@ export default function AdminPagesPanel({
                     if (e.key === "Escape") setRenamingId(null);
                   }}
                   list="cz-page-label-presets"
-                  className="w-full rounded border border-white/20 bg-white/10 px-1 py-0.5 text-xs text-white outline-none focus:border-[#D4AF37]"
+                  className="w-full rounded border border-white/20 bg-white/10 px-1 py-0.5 text-xs text-white outline-none focus:border-[#303839]/60"
                   aria-label="Page name"
                 />
               ) : (
@@ -98,21 +98,21 @@ export default function AdminPagesPanel({
 
             {menuFor === page.id && (
               <div className="absolute right-0 top-full z-30 mt-1 grid w-44 gap-0.5 rounded-lg border border-[#303839]/12 bg-white p-1 shadow-xl">
-                <button type="button" className="rounded px-2 py-1.5 text-left text-xs font-bold hover:bg-[#F8F6F1] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37]" onClick={() => { setRenamingId(page.id); setRenameValue(page.label); setMenuFor(null); }}>
+                <button type="button" className="rounded px-2 py-1.5 text-left text-xs font-bold hover:bg-[#F8F6F1] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white" onClick={() => { setRenamingId(page.id); setRenameValue(page.label); setMenuFor(null); }}>
                   Rename
                 </button>
-                <button type="button" className="rounded px-2 py-1.5 text-left text-xs font-bold hover:bg-[#F8F6F1] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37]" onClick={() => { onDuplicatePage(page.id); setMenuFor(null); }}>
+                <button type="button" className="rounded px-2 py-1.5 text-left text-xs font-bold hover:bg-[#F8F6F1] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white" onClick={() => { onDuplicatePage(page.id); setMenuFor(null); }}>
                   Duplicate
                 </button>
                 <button
                   type="button"
-                  className="rounded px-2 py-1.5 text-left text-xs font-bold hover:bg-[#F8F6F1] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37]"
+                  className="rounded px-2 py-1.5 text-left text-xs font-bold hover:bg-[#F8F6F1] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white"
                   onClick={() => { bgTarget.current = page.id; bgInput.current?.click(); setMenuFor(null); }}
                 >
                   Set background image
                 </button>
                 {page.backgroundImage && (
-                  <button type="button" className="rounded px-2 py-1.5 text-left text-xs font-bold hover:bg-[#F8F6F1] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37]" onClick={() => { onPatchPage(page.id, { backgroundImage: "" }); setMenuFor(null); }}>
+                  <button type="button" className="rounded px-2 py-1.5 text-left text-xs font-bold hover:bg-[#F8F6F1] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white" onClick={() => { onPatchPage(page.id, { backgroundImage: "" }); setMenuFor(null); }}>
                     Remove background image
                   </button>
                 )}
@@ -145,17 +145,17 @@ export default function AdminPagesPanel({
                   Allow customer text
                 </label>
                 <div className="flex gap-0.5 border-t border-[#303839]/8 pt-0.5">
-                  <button type="button" disabled={index === 0} className="flex-1 rounded px-2 py-1.5 text-xs font-bold hover:bg-[#F8F6F1] disabled:opacity-30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37]" onClick={() => onMovePage(page.id, "up")}>
+                  <button type="button" disabled={index === 0} className="flex-1 rounded px-2 py-1.5 text-xs font-bold hover:bg-[#F8F6F1] disabled:opacity-30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white" onClick={() => onMovePage(page.id, "up")}>
                     ↑ Move
                   </button>
-                  <button type="button" disabled={index === pages.length - 1} className="flex-1 rounded px-2 py-1.5 text-xs font-bold hover:bg-[#F8F6F1] disabled:opacity-30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37]" onClick={() => onMovePage(page.id, "down")}>
+                  <button type="button" disabled={index === pages.length - 1} className="flex-1 rounded px-2 py-1.5 text-xs font-bold hover:bg-[#F8F6F1] disabled:opacity-30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white" onClick={() => onMovePage(page.id, "down")}>
                     ↓ Move
                   </button>
                 </div>
                 <button
                   type="button"
                   disabled={pages.length <= 1}
-                  className="rounded px-2 py-1.5 text-left text-xs font-bold text-red-700 hover:bg-red-50 disabled:opacity-30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37]"
+                  className="rounded px-2 py-1.5 text-left text-xs font-bold text-red-700 hover:bg-red-50 disabled:opacity-30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white"
                   onClick={() => {
                     setMenuFor(null);
                     onDeletePage(page.id);

@@ -84,7 +84,7 @@ function OptionEditor({ initial, supportsImage, onSave, onCancel }: any) {
   const [draft, setDraft] = useState<RichProductOption>(initial);
   const [busy, setBusy] = useState(false);
   const imageInput = useRef<HTMLInputElement>(null);
-  const input = "h-10 w-full rounded-lg border border-[#303839]/15 bg-white px-3 text-sm text-[#303839] shadow-sm outline-none transition focus:border-[#D4AF37] focus:ring-2 focus:ring-[#D4AF37]/20";
+  const input = "h-10 w-full rounded-lg border border-[#303839]/15 bg-white px-3 text-sm text-[#303839] shadow-sm outline-none transition focus:border-[#303839]/60 focus:ring-2 focus:ring-[#303839]/15";
   const patch = (updates: Partial<RichProductOption>) => setDraft((current) => ({ ...current, ...updates }));
 
   const uploadImage = async (file?: File) => {
@@ -180,7 +180,7 @@ function OptionEditor({ initial, supportsImage, onSave, onCancel }: any) {
       </div>
 
       <div className="flex justify-end gap-2">
-        <button type="button" onClick={onCancel} className="rounded-full border border-[#303839]/15 px-4 py-1.5 text-xs font-bold text-[#303839] hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37]">
+        <button type="button" onClick={onCancel} className="rounded-full border border-[#303839]/15 px-4 py-1.5 text-xs font-bold text-[#303839] hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white">
           Cancel
         </button>
         <button
@@ -326,7 +326,7 @@ export default function AdminProductOptionsPanel({
         <h4 className="font-display text-xl text-[#303839]">Quantity</h4>
         <p className="mb-2 text-xs text-[#303839]/50">Quantities customers can order, comma separated (e.g. 1, 10, 20, 50, 100).</p>
         <input
-          className="h-10 w-full rounded-lg border border-[#303839]/15 bg-white px-3 text-sm text-[#303839] shadow-sm outline-none transition focus:border-[#D4AF37] focus:ring-2 focus:ring-[#D4AF37]/20"
+          className="h-10 w-full rounded-lg border border-[#303839]/15 bg-white px-3 text-sm text-[#303839] shadow-sm outline-none transition focus:border-[#303839]/60 focus:ring-2 focus:ring-[#303839]/15"
           value={(quantityOptions || []).map((entry: any) => (typeof entry === "object" ? entry?.label : entry)).join(", ")}
           onChange={(e) =>
             onQuantityOptionsChange(

@@ -168,14 +168,14 @@ export default function CustomerImageToolbar({
         <button
           type="button"
           onClick={onCancelCrop}
-          className="min-h-11 whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-bold text-[#303839]/70 hover:bg-[#303839]/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37]"
+          className="min-h-11 whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-bold text-[#303839]/70 hover:bg-[#303839]/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white"
         >
           Cancel
         </button>
         <button
           type="button"
           onClick={onConfirmCrop}
-          className="min-h-11 whitespace-nowrap rounded-full bg-[#303839] px-4 py-1.5 text-xs font-bold text-white hover:bg-[#1f2526] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37]"
+          className="min-h-11 whitespace-nowrap rounded-full bg-[#303839] px-4 py-1.5 text-xs font-bold text-white hover:bg-[#1f2526] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white"
         >
           Done
         </button>
@@ -193,7 +193,7 @@ export default function CustomerImageToolbar({
         <button
           type="button"
           onClick={onReplace}
-          className="min-h-11 whitespace-nowrap rounded-full bg-white px-3 py-1.5 text-xs font-bold text-[#303839] hover:bg-cream focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37]"
+          className="min-h-11 whitespace-nowrap rounded-full bg-white px-3 py-1.5 text-xs font-bold text-[#303839] hover:bg-cream focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white"
         >
           {hasImage ? "Replace Photo" : "Add Photo"}
         </button>
@@ -203,7 +203,7 @@ export default function CustomerImageToolbar({
         <button
           type="button"
           onClick={onEnterCrop}
-          className="flex min-h-11 items-center gap-1.5 whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-bold text-[#303839] hover:bg-[#303839]/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37]"
+          className="flex min-h-11 items-center gap-1.5 whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-bold text-[#303839] hover:bg-[#303839]/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white"
         >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden>
             <path d="M6 2v16a2 2 0 0 0 2 2h14" />

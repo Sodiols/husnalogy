@@ -11,7 +11,7 @@ export default function CustomerInsertPanel({ tool, onAddGrid, onSetBackground, 
   useEffect(() => {
     if (allowedColors.length && !allowedColors.includes(background)) setBackground(allowedColors[0]);
   }, [allowedColors, background]);
-  const button = "min-h-12 rounded-lg border border-[#303839]/10 bg-white px-3 text-left text-xs font-semibold capitalize text-[#303839] transition-colors hover:border-[#303839]/25 hover:bg-[#303839]/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37]";
+  const button = "min-h-12 rounded-lg border border-[#303839]/10 bg-white px-3 text-left text-xs font-semibold capitalize text-[#303839] transition-colors hover:border-[#303839]/25 hover:bg-[#303839]/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white";
 
   const permit = (values: string[], value: string) => !values.length || values.includes(value);
   if (tool === "grids") return <div className="grid grid-cols-2 gap-2 p-4">{GRID_PRESETS.filter((preset) => permit(allowedGridPresets, preset.id)).map((preset) => <button key={preset.id} type="button" onClick={() => onAddGrid(preset.id)} className={button}><span className="block">{preset.label}</span><span className="mt-1 block text-[10px] text-[#303839]/45">{preset.photoCount} slots</span></button>)}</div>;

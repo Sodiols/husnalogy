@@ -390,7 +390,7 @@ export default function CustomerElementsPanel({
           onClick={() => insert(element)}
           title={`Insert ${element.title}`}
           aria-label={`Insert ${element.title}`}
-          className="h-full w-full overflow-hidden rounded-lg border border-[#303839]/10 bg-white p-2 transition hover:border-[#D4AF37] hover:bg-[#303839]/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#D4AF37]"
+          className="h-full w-full overflow-hidden rounded-lg border border-[#303839]/10 bg-white p-2 transition hover:border-[#303839]/40 hover:bg-[#303839]/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#303839]"
         >
           <img src={element.url} alt={element.title} loading="lazy" draggable={false} className="h-full w-full object-contain transition group-hover:scale-105" />
         </button>
@@ -399,7 +399,7 @@ export default function CustomerElementsPanel({
           aria-label={`${favourite ? "Remove" : "Add"} ${element.title} ${favourite ? "from" : "to"} favourites`}
           aria-pressed={favourite}
           onClick={() => toggleFavourite(element.id)}
-          className={`absolute right-1 top-1 grid h-9 w-9 place-items-center rounded-full border border-[#303839]/10 shadow-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#D4AF37] ${favourite ? "bg-[#D4AF37] text-[#303839]" : "bg-white text-[#303839]/55 hover:text-[#D4AF37]"}`}
+          className={`absolute right-1 top-1 grid h-9 w-9 place-items-center rounded-full border border-[#303839]/10 shadow-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#303839] ${favourite ? "bg-[#D4AF37] text-[#303839]" : "bg-white text-[#303839]/55 hover:text-[#D4AF37]"}`}
         >
           <span aria-hidden>{favourite ? "★" : "☆"}</span>
         </button>
@@ -420,7 +420,7 @@ export default function CustomerElementsPanel({
           title={`Add ${graphic.title}`}
           aria-label={`Add ${graphic.title}${graphic.collectionName ? ` from ${graphic.collectionName}` : ""}`}
           aria-busy={busy}
-          className="h-full w-full overflow-hidden rounded-lg border border-[#303839]/10 bg-white p-2 transition hover:border-[#D4AF37] hover:bg-[#303839]/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#D4AF37] disabled:cursor-progress"
+          className="h-full w-full overflow-hidden rounded-lg border border-[#303839]/10 bg-white p-2 transition hover:border-[#303839]/40 hover:bg-[#303839]/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#303839] disabled:cursor-progress"
         >
           {busy ? (
             <span className="grid h-full w-full place-items-center text-[10px] font-bold text-[#303839]/55">Adding…</span>
@@ -440,7 +440,7 @@ export default function CustomerElementsPanel({
           aria-label={`${favourite ? "Remove" : "Add"} ${graphic.title} ${favourite ? "from" : "to"} favourites`}
           aria-pressed={favourite}
           onClick={() => toggleFavourite(identity)}
-          className={`absolute right-1 top-1 grid h-9 w-9 place-items-center rounded-full border border-[#303839]/10 shadow-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#D4AF37] ${favourite ? "bg-[#D4AF37] text-[#303839]" : "bg-white text-[#303839]/55 hover:text-[#D4AF37]"}`}
+          className={`absolute right-1 top-1 grid h-9 w-9 place-items-center rounded-full border border-[#303839]/10 shadow-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#303839] ${favourite ? "bg-[#D4AF37] text-[#303839]" : "bg-white text-[#303839]/55 hover:text-[#D4AF37]"}`}
         >
           <span aria-hidden>{favourite ? "★" : "☆"}</span>
         </button>
@@ -458,7 +458,7 @@ export default function CustomerElementsPanel({
         type="button"
         onClick={() => toggle(!open)}
         aria-expanded={open}
-        className="rounded px-1 py-0.5 text-[11px] font-semibold text-[#303839]/60 underline underline-offset-2 transition hover:text-[#303839] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#D4AF37]"
+        className="rounded px-1 py-0.5 text-[11px] font-semibold text-[#303839]/60 underline underline-offset-2 transition hover:text-[#303839] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#303839]"
       >
         {open ? "See less" : "See more"}
       </button>
@@ -470,7 +470,7 @@ export default function CustomerElementsPanel({
       type="button"
       onClick={() => setView(target)}
       aria-label={`See more ${target}`}
-      className="rounded px-1 py-0.5 text-[11px] font-semibold text-[#303839]/60 underline underline-offset-2 transition hover:text-[#303839] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#D4AF37]"
+      className="rounded px-1 py-0.5 text-[11px] font-semibold text-[#303839]/60 underline underline-offset-2 transition hover:text-[#303839] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#303839]"
     >
       See more
     </button>
@@ -519,7 +519,7 @@ export default function CustomerElementsPanel({
               type="button"
               onClick={() => setView("home")}
               aria-label="Back to Elements"
-              className="-ml-1 grid h-8 w-8 shrink-0 place-items-center rounded-lg text-[#303839]/60 transition hover:bg-[#303839]/5 hover:text-[#303839] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#D4AF37]"
+              className="-ml-1 grid h-8 w-8 shrink-0 place-items-center rounded-lg text-[#303839]/60 transition hover:bg-[#303839]/5 hover:text-[#303839] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#303839]"
             >
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="m15 18-6-6 6-6" /></svg>
             </button>
@@ -530,7 +530,7 @@ export default function CustomerElementsPanel({
               type="button"
               onClick={onClose}
               aria-label="Close Elements"
-              className="-mr-1 grid h-8 w-8 shrink-0 place-items-center rounded-lg text-[#303839]/55 transition hover:bg-[#303839]/5 hover:text-[#303839] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#D4AF37]"
+              className="-mr-1 grid h-8 w-8 shrink-0 place-items-center rounded-lg text-[#303839]/55 transition hover:bg-[#303839]/5 hover:text-[#303839] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#303839]"
             >
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden><path d="M6 6l12 12M18 6 6 18" /></svg>
             </button>
@@ -589,7 +589,7 @@ export default function CustomerElementsPanel({
                 onClick={() => onAddShape(shape.id)}
                 aria-label={`Add ${shape.label}`}
                 title={`Add ${shape.label}`}
-                className="grid aspect-square place-items-center rounded-lg bg-cream text-[#B9B9B9] transition hover:bg-[#DCDCDC] hover:text-[#A9A9A9] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#D4AF37]"
+                className="grid aspect-square place-items-center rounded-lg bg-cream text-[#B9B9B9] transition hover:bg-[#DCDCDC] hover:text-[#A9A9A9] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#303839]"
               >
                 <svg width="34" height="34" viewBox="0 0 24 24" fill="currentColor" aria-hidden>{shape.render}</svg>
               </button>
@@ -611,7 +611,7 @@ export default function CustomerElementsPanel({
                 type="button"
                 role="listitem"
                 onClick={() => setSearch(entry.query)}
-                className="shrink-0 rounded-full bg-white px-3 py-1 text-xs font-bold text-[#303839] transition hover:bg-cream focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#D4AF37]"
+                className="shrink-0 rounded-full bg-white px-3 py-1 text-xs font-bold text-[#303839] transition hover:bg-cream focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#303839]"
               >
                 {entry.label}
               </button>
@@ -686,7 +686,7 @@ export default function CustomerElementsPanel({
                 type="button"
                 onClick={() => onAddTextPreset(preset.id, preset.text)}
                 aria-label={`Add text: ${preset.label}`}
-                className="rounded-lg border border-[#303839]/10 bg-white px-3 py-2 text-left text-sm font-semibold text-[#303839] transition hover:border-[#D4AF37] hover:bg-[#303839]/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#D4AF37]"
+                className="rounded-lg border border-[#303839]/10 bg-white px-3 py-2 text-left text-sm font-semibold text-[#303839] transition hover:border-[#303839]/40 hover:bg-[#303839]/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#303839]"
               >
                 {preset.label}
               </button>
@@ -705,7 +705,7 @@ export default function CustomerElementsPanel({
                 type="button"
                 onClick={() => onAddLine(line.id)}
                 aria-label={`Add ${line.label}`}
-                className="flex items-center rounded-lg border border-[#303839]/10 bg-white px-3 py-2.5 transition hover:border-[#D4AF37] hover:bg-[#303839]/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#D4AF37]"
+                className="flex items-center rounded-lg border border-[#303839]/10 bg-white px-3 py-2.5 transition hover:border-[#303839]/40 hover:bg-[#303839]/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#303839]"
               >
                 <svg viewBox="0 0 100 4" className="h-1 w-full" aria-hidden preserveAspectRatio="none">
                   <line x1="0" y1="2" x2="100" y2="2" stroke="#303839" strokeWidth="2" strokeDasharray={line.dash || undefined} strokeLinecap="round" />
@@ -727,7 +727,7 @@ export default function CustomerElementsPanel({
                 onClick={() => onAddShape(shape.id)}
                 aria-label={`Add ${shape.label}`}
                 title={`Add ${shape.label}`}
-                className="grid aspect-square place-items-center rounded-lg bg-cream text-[#B9B9B9] transition hover:bg-[#DCDCDC] hover:text-[#A9A9A9] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#D4AF37]"
+                className="grid aspect-square place-items-center rounded-lg bg-cream text-[#B9B9B9] transition hover:bg-[#DCDCDC] hover:text-[#A9A9A9] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#303839]"
               >
                 <svg width="34" height="34" viewBox="0 0 24 24" fill="currentColor" aria-hidden>{shape.render}</svg>
               </button>
@@ -749,7 +749,7 @@ export default function CustomerElementsPanel({
                   onClick={() => onAddFrame(frame.id)}
                   aria-label={`Add ${frame.label}`}
                   title={`Add ${frame.label}`}
-                  className="aspect-square overflow-hidden rounded-lg transition hover:opacity-85 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#D4AF37]"
+                  className="aspect-square overflow-hidden rounded-lg transition hover:opacity-85 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#303839]"
                 >
                   {/* A photo-shaped swatch in the frame's own mask, so the
                       customer sees the actual crop the frame will apply. */}
@@ -782,7 +782,7 @@ export default function CustomerElementsPanel({
                   placeholder="https://example.com"
                   aria-label="QR code destination URL"
                   aria-invalid={Boolean(qrValue) && !qrValid}
-                  className="h-11 rounded-lg border border-[#303839]/15 px-3 text-sm font-medium outline-none focus:border-[#D4AF37] focus:ring-2 focus:ring-[#D4AF37]/20"
+                  className="h-11 rounded-lg border border-[#303839]/15 px-3 text-sm font-medium outline-none focus:border-[#303839]/60 focus:ring-2 focus:ring-[#303839]/15"
                 />
               </label>
               {Boolean(qrValue) && !qrValid && (
@@ -810,7 +810,7 @@ export default function CustomerElementsPanel({
             <button
               type="button"
               onClick={() => setQrOpen(true)}
-              className="flex min-h-12 w-full items-center justify-center gap-2 rounded-full border border-[#303839]/20 bg-white text-sm font-bold text-[#303839] transition hover:border-[#D4AF37] hover:bg-[#303839]/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#D4AF37]"
+              className="flex min-h-12 w-full items-center justify-center gap-2 rounded-full border border-[#303839]/20 bg-white text-sm font-bold text-[#303839] transition hover:border-[#303839]/40 hover:bg-[#303839]/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#303839]"
             >
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden>
                 <rect x="3" y="3" width="7" height="7" /><rect x="14" y="3" width="7" height="7" /><rect x="3" y="14" width="7" height="7" />
@@ -857,7 +857,7 @@ export default function CustomerElementsPanel({
               type="button"
               onClick={() => onAddTextPreset(preset.id, preset.text)}
               aria-label={`Add text: ${preset.label}`}
-              className="rounded-lg border border-[#303839]/10 bg-white px-3 py-2.5 text-left text-sm font-semibold text-[#303839] transition hover:border-[#D4AF37] hover:bg-[#303839]/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#D4AF37]"
+              className="rounded-lg border border-[#303839]/10 bg-white px-3 py-2.5 text-left text-sm font-semibold text-[#303839] transition hover:border-[#303839]/40 hover:bg-[#303839]/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#303839]"
             >
               {preset.label}
             </button>
@@ -873,7 +873,7 @@ export default function CustomerElementsPanel({
               type="button"
               onClick={() => onAddLine(line.id)}
               aria-label={`Add ${line.label}`}
-              className="flex items-center rounded-lg border border-[#303839]/10 bg-white px-3 py-3 transition hover:border-[#D4AF37] hover:bg-[#303839]/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#D4AF37]"
+              className="flex items-center rounded-lg border border-[#303839]/10 bg-white px-3 py-3 transition hover:border-[#303839]/40 hover:bg-[#303839]/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#303839]"
             >
               <svg viewBox="0 0 100 4" className="h-1 w-full" aria-hidden preserveAspectRatio="none">
                 <line x1="0" y1="2" x2="100" y2="2" stroke="#303839" strokeWidth="2" strokeDasharray={line.dash || undefined} strokeLinecap="round" />
@@ -885,7 +885,7 @@ export default function CustomerElementsPanel({
             <button
               type="button"
               onClick={() => { setSearch("divider"); }}
-              className="mt-1 rounded-lg border border-dashed border-[#303839]/20 px-3 py-2.5 text-xs font-semibold text-[#303839]/70 transition hover:border-[#D4AF37] hover:text-[#303839] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#D4AF37]"
+              className="mt-1 rounded-lg border border-dashed border-[#303839]/20 px-3 py-2.5 text-xs font-semibold text-[#303839]/70 transition hover:border-[#303839]/40 hover:text-[#303839] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#303839]"
             >
               Browse decorative dividers &amp; ornaments
             </button>
@@ -902,7 +902,7 @@ export default function CustomerElementsPanel({
               onClick={() => onAddShape(shape.id)}
               aria-label={`Add ${shape.label}`}
               title={`Add ${shape.label}`}
-              className="grid aspect-square place-items-center rounded-lg bg-cream text-[#B9B9B9] transition hover:bg-[#DCDCDC] hover:text-[#A9A9A9] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#D4AF37]"
+              className="grid aspect-square place-items-center rounded-lg bg-cream text-[#B9B9B9] transition hover:bg-[#DCDCDC] hover:text-[#A9A9A9] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#303839]"
             >
               <svg width="34" height="34" viewBox="0 0 24 24" fill="currentColor" aria-hidden>{shape.render}</svg>
             </button>
@@ -921,7 +921,7 @@ export default function CustomerElementsPanel({
                 onClick={() => onAddFrame(frame.id)}
                 aria-label={`Add ${frame.label}`}
                 title={`Add ${frame.label}`}
-                className="aspect-square overflow-hidden rounded-lg transition hover:opacity-85 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#D4AF37]"
+                className="aspect-square overflow-hidden rounded-lg transition hover:opacity-85 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#303839]"
               >
                 <svg viewBox="0 0 48 48" className="h-full w-full" aria-hidden>
                   <defs><clipPath id={clipId}>{frame.clip}</clipPath></defs>

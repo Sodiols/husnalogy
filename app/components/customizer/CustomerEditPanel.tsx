@@ -19,7 +19,7 @@ import { resolveTextEditorKeyAction } from "@/lib/customizer/v2/text-editing";
 // finishes editing this field (and never inserts a line break), while a plain
 // Enter in a multiline field stays a real line break.
 const inputClass =
-  "w-full rounded-md border border-[#303839]/15 bg-white px-3 py-2.5 text-sm text-[#303839] outline-none transition focus:border-[#D4AF37]";
+  "w-full rounded-md border border-[#303839]/15 bg-white px-3 py-2.5 text-sm text-[#303839] outline-none transition focus:border-[#303839]/60";
 
 // Fields shown here are the ones connected to a visible, customer-editable
 // layer on an enabled page. Image fields are summarized with a link to the
@@ -132,7 +132,7 @@ function TextField({
         <label htmlFor={`cz-field-${field.id}`} className="block text-sm font-semibold text-[#303839]">
           {field.label}
           {field.required && (
-            <span className="text-[#D4AF37]" aria-label="required">
+            <span className="text-[#303839]" aria-label="required">
               {" "}*
             </span>
           )}
@@ -277,7 +277,7 @@ export default function CustomerEditPanel({
                 <button
                   type="button"
                   onClick={() => onFocusPage?.(page.id)}
-                  className="rounded-md px-1 text-xs font-bold text-[#303839]/50 underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37]"
+                  className="rounded-md px-1 text-xs font-bold text-[#303839]/50 underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white"
                 >
                   View page
                 </button>
@@ -303,7 +303,7 @@ export default function CustomerEditPanel({
                     >
                       <p className="text-sm font-semibold text-[#303839]">
                         {field.label}
-                        {field.required && <span className="text-[#D4AF37]"> *</span>}
+                        {field.required && <span className="text-[#303839]"> *</span>}
                       </p>
                       <div className="mt-1.5 flex items-center justify-between gap-2">
                         <span className="text-xs text-[#303839]/55">{hasPhoto ? "Photo added" : "No photo yet"}</span>
@@ -313,7 +313,7 @@ export default function CustomerEditPanel({
                             onSelectLayer?.(layer.id);
                             onOpenUploads?.();
                           }}
-                          className="min-h-11 rounded-full border border-[#303839]/15 px-3 py-1 text-xs font-bold text-[#303839] hover:bg-[#303839]/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37]"
+                          className="min-h-11 rounded-full border border-[#303839]/15 px-3 py-1 text-xs font-bold text-[#303839] hover:bg-[#303839]/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white"
                         >
                           {hasPhoto ? "Edit photo" : "Upload photo"}
                         </button>

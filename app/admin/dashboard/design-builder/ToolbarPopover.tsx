@@ -216,14 +216,14 @@ export function ToolbarMenuItem({
       aria-disabled={disabled}
       disabled={disabled}
       onClick={onSelect}
-      className={`flex min-h-10 w-full items-center gap-2.5 rounded-lg px-2.5 text-left text-[13px] font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] ${
+      className={`flex min-h-10 w-full items-center gap-2.5 rounded-lg px-2.5 text-left text-[13px] font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white ${
         disabled
           ? "cursor-not-allowed text-[#303839]/35"
           : danger
             ? "text-red-600 hover:bg-red-50"
             : active
               ? "bg-[#303839] text-white"
-              : "text-[#303839] hover:bg-[#F4ECEC]"
+              : "text-[#303839] hover:bg-[#F8F6F1]"
       }`}
     >
       {icon ? <span className="grid h-5 w-5 shrink-0 place-items-center">{icon}</span> : null}

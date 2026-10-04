@@ -22,7 +22,7 @@ const VIEW_PRESETS = [
 ] as const;
 
 const CORNERS = ["topLeft", "topRight", "bottomRight", "bottomLeft"] as const;
-const selectClass = "h-11 w-full appearance-none rounded-xl border border-[#303839]/12 bg-white px-3 text-sm font-semibold text-[#303839] outline-none transition focus:border-[#D4AF37] focus:ring-2 focus:ring-[#D4AF37]/20";
+const selectClass = "h-11 w-full appearance-none rounded-xl border border-[#303839]/12 bg-white px-3 text-sm font-semibold text-[#303839] outline-none transition focus:border-[#303839]/60 focus:ring-2 focus:ring-[#303839]/15";
 
 function Stepper({ label, value, step = 1, minimum, maximum, onChange }: { label: string; value: number; step?: number; minimum?: number; maximum?: number; onChange: (value: number) => void }) {
   return (
@@ -46,7 +46,7 @@ function MockupOverlayEditor({ overlay, onPatch, onRemove, onMove }: any) {
         </select>
         <button type="button" onClick={onRemove} className="min-h-10 rounded-lg px-2 text-xs font-bold text-red-700 hover:bg-red-50">Remove</button>
       </div>
-      <input value={overlay.src || ""} placeholder="Overlay image URL" onChange={(event) => onPatch({ src: event.target.value })} className="h-11 rounded-xl border border-[#303839]/12 bg-white px-3 text-xs outline-none focus:border-[#D4AF37]" />
+      <input value={overlay.src || ""} placeholder="Overlay image URL" onChange={(event) => onPatch({ src: event.target.value })} className="h-11 rounded-xl border border-[#303839]/12 bg-white px-3 text-xs outline-none focus:border-[#303839]/60" />
       <div className="grid grid-cols-2 gap-2">
         <Stepper label="Opacity" value={overlay.opacity ?? 1} minimum={0} maximum={1} step={0.05} onChange={(opacity) => onPatch({ opacity })} />
         <label><span className="mb-1 block text-[10px] font-extrabold uppercase tracking-[0.12em] text-[#303839]/45">Blend</span><select value={overlay.blendMode || "over"} onChange={(event) => onPatch({ blendMode: event.target.value })} className={selectClass}>{["over", "multiply", "screen", "overlay", "soft-light"].map((blend) => <option key={blend} value={blend}>{blend}</option>)}</select></label>
@@ -222,9 +222,9 @@ export default function AdminMockupEditor({ template, product, onChange }: any) 
       <div className="mx-auto grid max-w-[1680px] gap-4 xl:grid-cols-[minmax(0,1fr)_420px]">
         <section className="overflow-hidden rounded-3xl border border-[#303839]/10 bg-white shadow-[0_22px_60px_rgba(48,56,57,0.09)]">
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#303839]/10 px-4 py-3 md:px-5">
-            <div><p className="text-[10px] font-extrabold uppercase tracking-[0.16em] text-[#D4AF37]">Production mockup scene</p><h2 className="font-display text-2xl text-[#303839]">{view.name}</h2></div>
+            <div><p className="text-[10px] font-extrabold uppercase tracking-[0.16em] text-[#303839]/70">Production mockup scene</p><h2 className="font-display text-2xl text-[#303839]">{view.name}</h2></div>
             <div className="flex max-w-full gap-1 overflow-x-auto pb-1">
-              {active.views.map((item) => <button key={item.id} type="button" onClick={() => { setViewId(item.id); setAreaId(item.artworkAreas?.[0]?.id || ""); }} className={`min-h-11 whitespace-nowrap rounded-full px-4 text-xs font-bold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] ${item.id === view.id ? "bg-[#303839] text-white" : "border border-[#303839]/12 bg-white"}`}>{item.name}</button>)}
+              {active.views.map((item) => <button key={item.id} type="button" onClick={() => { setViewId(item.id); setAreaId(item.artworkAreas?.[0]?.id || ""); }} className={`min-h-11 whitespace-nowrap rounded-full px-4 text-xs font-bold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white ${item.id === view.id ? "bg-[#303839] text-white" : "border border-[#303839]/12 bg-white"}`}>{item.name}</button>)}
             </div>
           </div>
           <div className="grid min-h-[560px] place-items-center overflow-auto bg-[radial-gradient(circle_at_center,#ffffff_0,#F8F6F1_72%)] p-4 md:p-8">
@@ -264,7 +264,7 @@ export default function AdminMockupEditor({ template, product, onChange }: any) 
 
           <section className="rounded-2xl border border-[#303839]/10 bg-white p-4 shadow-sm">
             <h3 className="text-sm font-extrabold">View base</h3>
-            <input value={view.baseImageUrl || ""} placeholder="Base image URL" onChange={(event) => patchView({ baseImageUrl: event.target.value })} className="mt-3 h-11 w-full rounded-xl border border-[#303839]/12 px-3 text-sm outline-none focus:border-[#D4AF37] focus:ring-2 focus:ring-[#D4AF37]/20" />
+            <input value={view.baseImageUrl || ""} placeholder="Base image URL" onChange={(event) => patchView({ baseImageUrl: event.target.value })} className="mt-3 h-11 w-full rounded-xl border border-[#303839]/12 px-3 text-sm outline-none focus:border-[#303839]/60 focus:ring-2 focus:ring-[#303839]/15" />
             <div className="mt-2 grid grid-cols-2 gap-2"><button type="button" disabled={uploading} onClick={() => uploadRef.current?.click()} className="min-h-11 rounded-xl bg-[#303839] px-4 text-xs font-bold text-white disabled:opacity-50">{uploading ? "Uploading…" : "Upload base"}</button><button type="button" onClick={() => patchView({ requiresTransparency: !view.requiresTransparency })} className="min-h-11 rounded-xl border border-[#303839]/12 px-3 text-xs font-bold">{view.requiresTransparency ? "PNG transparency" : "WebP output"}</button></div>
             {!!product?.mockups?.length && <div className="mt-3 grid grid-cols-4 gap-2">{product.mockups.map((url: string) => <button key={url} type="button" onClick={() => patchView({ baseImageUrl: url })} className="aspect-square overflow-hidden rounded-lg border border-[#303839]/10"><img src={url} alt="Product mockup option" className="h-full w-full object-cover" /></button>)}</div>}
           </section>
@@ -280,7 +280,7 @@ export default function AdminMockupEditor({ template, product, onChange }: any) 
             </div>
             <label className="mt-3 flex min-h-11 items-center justify-between rounded-xl border border-[#303839]/12 px-3 text-xs font-extrabold"><span>Four-corner perspective</span><input type="checkbox" checked={area.warpType === "perspective"} onChange={(event) => setPerspective(event.target.checked)} className="h-5 w-5 accent-[#303839]" /></label>
             {area.warpType === "perspective" && <div className="mt-3 grid gap-2 rounded-xl bg-[#F8F6F1] p-3"><p className="text-[11px] font-semibold text-[#303839]/55">Drag the numbered handles on the canvas, or fine-tune each coordinate.</p>{CORNERS.map((corner, index) => <div key={corner} className="grid grid-cols-[52px_1fr_1fr] items-end gap-2"><span className="pb-3 text-xs font-extrabold text-[#303839]">{index + 1}. {corner.replace(/[A-Z]/g, (letter) => ` ${letter.toLowerCase()}`).split(" ")[0]}</span><Stepper label="X" value={points[corner].x} onChange={(x) => updateCorner(corner, { x })} /><Stepper label="Y" value={points[corner].y} onChange={(y) => updateCorner(corner, { y })} /></div>)}</div>}
-            <input value={area.clipPath || ""} placeholder="Optional SVG/CSS clipping path" onChange={(event) => patchArea({ clipPath: event.target.value })} className="mt-3 h-11 w-full rounded-xl border border-[#303839]/12 px-3 text-xs outline-none focus:border-[#D4AF37]" />
+            <input value={area.clipPath || ""} placeholder="Optional SVG/CSS clipping path" onChange={(event) => patchArea({ clipPath: event.target.value })} className="mt-3 h-11 w-full rounded-xl border border-[#303839]/12 px-3 text-xs outline-none focus:border-[#303839]/60" />
             <div className="mt-3 grid grid-cols-4 gap-2"><button type="button" onClick={() => patchView({ artworkAreas: moveInList(view.artworkAreas, area.id, -1) })} className="min-h-10 rounded-lg border text-xs font-bold">Back</button><button type="button" onClick={() => patchView({ artworkAreas: moveInList(view.artworkAreas, area.id, 1) })} className="min-h-10 rounded-lg border text-xs font-bold">Front</button><button type="button" onClick={() => patchArea({ visible: area.visible === false })} className="min-h-10 rounded-lg border text-xs font-bold">{area.visible === false ? "Show" : "Hide"}</button><button type="button" disabled={view.artworkAreas.length <= 1} onClick={() => { const next = view.artworkAreas.filter((item) => item.id !== area.id); patchView({ artworkAreas: next }); setAreaId(next[0]?.id || ""); }} className="min-h-10 rounded-lg border text-xs font-bold text-red-700 disabled:opacity-30">Remove</button></div>
           </section>
 
@@ -289,7 +289,7 @@ export default function AdminMockupEditor({ template, product, onChange }: any) 
             <div className="mt-3 grid gap-2">{(view.overlays || []).map((overlay: any) => <MockupOverlayEditor key={overlay.id} overlay={overlay} onPatch={(patch: any) => patchView({ overlays: view.overlays.map((item: any) => item.id === overlay.id ? { ...item, ...patch } : item) })} onMove={(direction: number) => patchView({ overlays: moveInList(view.overlays, overlay.id, direction) })} onRemove={() => patchView({ overlays: view.overlays.filter((item: any) => item.id !== overlay.id) })} />)}{!view.overlays.length && <p className="text-xs text-[#303839]/45">Optional shadows, highlights, textures, or foreground PNGs.</p>}</div>
           </section>
 
-          <section className="rounded-2xl border border-[#303839]/10 bg-white p-4 shadow-sm"><h3 className="text-sm font-extrabold">Add product view</h3><div className="mt-3 grid grid-cols-2 gap-2">{VIEW_PRESETS.map((preset) => <button key={preset[0]} type="button" onClick={() => addView(preset)} className="min-h-11 rounded-xl border border-[#303839]/12 px-2 text-xs font-bold transition hover:border-[#D4AF37] hover:bg-[#F8F6F1]">{preset[1]}</button>)}</div></section>
+          <section className="rounded-2xl border border-[#303839]/10 bg-white p-4 shadow-sm"><h3 className="text-sm font-extrabold">Add product view</h3><div className="mt-3 grid grid-cols-2 gap-2">{VIEW_PRESETS.map((preset) => <button key={preset[0]} type="button" onClick={() => addView(preset)} className="min-h-11 rounded-xl border border-[#303839]/12 px-2 text-xs font-bold transition hover:border-[#303839]/40 hover:bg-[#F8F6F1]">{preset[1]}</button>)}</div></section>
         </aside>
       </div>
       <input ref={uploadRef} type="file" accept="image/jpeg,image/png,image/webp" className="sr-only" onChange={async (event) => { const file = event.target.files?.[0]; if (!file) return; setUploading(true); try { const asset = await uploadBuilderImage(file, "mockup"); if (asset.url) patchView({ baseImageAssetId: asset.id, baseImageUrl: asset.editorUrl || asset.url }); } finally { setUploading(false); event.target.value = ""; } }} />
