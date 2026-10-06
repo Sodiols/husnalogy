@@ -131,10 +131,29 @@ function buildStore() {
     notifications: { newOrders: true, newMessages: true, lowStockProducts: true, newsletterSubscribers: false },
   };
 
-  return { products, deletedProducts, collections, orders, messages, subscribers: [] as any[], settings };
+  return { products, deletedProducts, collections, orders, messages, subscribers: [] as any[], settings, fontFavourites: new Set<string>() };
 }
 
 type Store = ReturnType<typeof buildStore>;
+
+/**
+ * The mock server's saved products and published versions outlive a page
+ * reload in the same tab — as a real backend's would — so a spec can save,
+ * reload and reopen a design. Each Playwright test gets a fresh context, so
+ * nothing leaks between tests.
+ */
+const DURABLE_KEY = "__adminFixtureDurable";
+
+function readDurable(): { products: any[]; versions: Record<string, any[]> } | null {
+  const raw = window.sessionStorage.getItem(DURABLE_KEY);
+  if (!raw) return null;
+  const parsed = JSON.parse(raw);
+  return Array.isArray(parsed?.products) ? { products: parsed.products, versions: parsed.versions || {} } : null;
+}
+
+function writeDurable(store: Store, versions: Record<string, any[]>) {
+  window.sessionStorage.setItem(DURABLE_KEY, JSON.stringify({ products: store.products, versions }));
+}
 
 function json(body: unknown, status = 200) {
   return Promise.resolve(new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } }));
@@ -148,8 +167,36 @@ async function readBody(init?: RequestInit) {
   }
 }
 
+/**
+ * Test controls for the Design Studio save/publish contract, exposed as
+ * `window.__adminFixture`. Specs inject failures and latency here and read the
+ * request log to prove, for example, that publication is never requested after
+ * a failed draft save.
+ */
+type FixtureControls = {
+  requests: Array<{ method: string; path: string; body: any; at: number }>;
+  productSaveDelayMs: number;
+  failNextProductSave: string;
+  failNextPublish: string;
+  versions: Record<string, any[]>;
+  /** The admin element library the studio's Elements panel lists. */
+  assets: any[];
+};
+
+function fixtureControls(): FixtureControls {
+  const target = window as any;
+  if (!target.__adminFixture) {
+    target.__adminFixture = { requests: [], productSaveDelayMs: 0, failNextProductSave: "", failNextPublish: "", versions: {}, assets: [] };
+  }
+  return target.__adminFixture;
+}
+
 function installMock(store: Store) {
   const realFetch = window.fetch.bind(window);
+  const controls = fixtureControls();
+  (controls as any).store = store;
+  let createdProducts = 0;
+  let templateRevision = 0;
 
   window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = new URL(typeof input === "string" ? input : input instanceof URL ? input.href : input.url, window.location.origin);
@@ -160,6 +207,58 @@ function installMock(store: Store) {
     await new Promise((resolve) => setTimeout(resolve, 150));
     const body = await readBody(init);
     const parts = path.split("/").filter(Boolean); // api, admin, resource, id, action
+    if (method !== "GET") controls.requests.push({ method, path, body, at: Date.now() });
+
+    // Product create / update. The saved template gets a fresh updatedAt per
+    // save, like the database trigger, so publication can pin a revision.
+    const productSave = (path === "/api/admin/products" && method === "POST") || (parts[2] === "products" && parts[3] && !parts[4] && method === "PUT");
+    if (productSave) {
+      if (controls.productSaveDelayMs) await new Promise((resolve) => setTimeout(resolve, controls.productSaveDelayMs));
+      if (controls.failNextProductSave) {
+        const error = controls.failNextProductSave;
+        controls.failNextProductSave = "";
+        return json({ ok: false, error }, 500);
+      }
+      const existing: any = method === "PUT" ? store.products.find((product) => product.id === parts[3]) : null;
+      const id = existing?.id || `prod-new-${(createdProducts += 1)}`;
+      templateRevision += 1;
+      const saved: any = {
+        ...(existing || { createdAt: new Date().toISOString(), reviews: [], images: [] }),
+        ...body,
+        id,
+        // Like the server: an omitted status keeps the stored one.
+        status: body.status || existing?.status || "draft",
+        ...(body.customizerTemplate
+          ? { customizerTemplate: { ...body.customizerTemplate, id: `tpl-${id}`, updatedAt: `2026-10-04T08:00:00.${String(templateRevision).padStart(6, "0")}+00:00` } }
+          : {}),
+      };
+      store.products = existing ? store.products.map((product: any) => (product.id === id ? saved : product)) : [saved, ...store.products];
+      writeDurable(store, controls.versions);
+      return json({ ok: true, product: saved });
+    }
+
+    // Template publication: refuses anything but the stored draft revision.
+    if (parts[2] === "customizer" && parts[3] === "templates" && parts[5] === "publish" && method === "POST") {
+      if (controls.failNextPublish) {
+        const error = controls.failNextPublish;
+        controls.failNextPublish = "";
+        return json({ ok: false, errors: [error] }, 422);
+      }
+      const product: any = store.products.find((entry) => entry.id === parts[4]);
+      if (!product?.customizerTemplate) return json({ ok: false, errors: ["This product has no customizer template."] }, 422);
+      if (body.expectedDraftUpdatedAt && body.expectedDraftUpdatedAt !== product.customizerTemplate.updatedAt) {
+        return json({ ok: false, conflict: true, errors: ["The draft changed after it was saved. Save again, then publish."] }, 409);
+      }
+      const list = (controls.versions[parts[4]] ||= []);
+      // The version freezes the exact draft it was published from.
+      const version = { id: `ver-${list.length + 1}`, version: list.length + 1, major: 2, revision: list.length + 1, display: `2.${String(list.length + 1).padStart(3, "0")}`, createdAt: new Date().toISOString(), template: product.customizerTemplate };
+      list.unshift(version);
+      writeDurable(store, controls.versions);
+      return json({ ok: true, version, warnings: [] });
+    }
+    if (parts[2] === "customizer" && parts[3] === "templates" && parts[5] === "versions") {
+      return json({ ok: true, versions: controls.versions[parts[4]] || [] });
+    }
 
     if (path === "/api/admin/products" && method === "GET") return json({ products: store.products });
     if (path === "/api/admin/products/deleted") return json({ products: store.deletedProducts });
@@ -234,7 +333,13 @@ function installMock(store: Store) {
 
     if (path === "/api/admin/hero-collections") return json({ collections: [] });
     if (path === "/api/admin/hero-collections/resolve") return json({ resolved: null });
-    if (path === "/api/admin/customizer/assets") return json({ ok: true, assets: [], categories: [], folders: [] });
+    if (path === "/api/admin/customizer/assets") return json({ ok: true, assets: controls.assets, total: controls.assets.length, categories: [], folders: [] });
+    if (path === "/api/admin/customizer/fonts/favourites" && method === "PUT") {
+      const family = String(body?.family || "");
+      if (body?.favourite) store.fontFavourites.add(family);
+      else store.fontFavourites.delete(family);
+      return json({ ok: true, favourites: [...store.fontFavourites].sort() });
+    }
     if (path === "/api/admin/logout") return json({ ok: true });
 
     return json({ ok: true });
@@ -249,7 +354,13 @@ export default function AdminDashboardFixture() {
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
-    const restore = installMock(buildStore());
+    const store = buildStore();
+    const durable = readDurable();
+    if (durable) {
+      store.products = durable.products;
+      fixtureControls().versions = durable.versions;
+    }
+    const restore = installMock(store);
     setReady(true);
     return restore;
   }, []);

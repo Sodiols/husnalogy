@@ -7,6 +7,7 @@
 import { useEffect } from "react";
 import EditableNumericStepper from "./EditableNumericStepper";
 import TextAlignmentDropdown from "./TextAlignmentDropdown";
+import { effectiveTextGrowth } from "@/lib/customizer/v2/text-layout";
 import ToolbarDropdown, { type ToolbarDropdownOption } from "./ToolbarDropdown";
 import GoogleFontSelector from "./GoogleFontSelector";
 import {
@@ -30,8 +31,6 @@ type Props = {
   editingText?: boolean;
   onStyleChange: (patch: any, group?: string) => void;
   onEditText: () => void;
-  onDuplicate?: () => void;
-  onDelete?: () => void;
   allowedFonts?: string[];
   allowedColors?: string[];
 };
@@ -43,8 +42,6 @@ export default function CustomerContextToolbar({
   editingText = false,
   onStyleChange,
   onEditText,
-  onDuplicate,
-  onDelete,
   allowedFonts = [],
   allowedColors = [],
 }: Props) {
@@ -59,8 +56,6 @@ export default function CustomerContextToolbar({
   const canStyle = allow("editStyle");
   const canLineHeight = isUserLayer || Boolean(permissions.changeLineHeight || permissions.editStyle);
   const canVerticalAlign = isUserLayer || Boolean(permissions.changeAlignment || permissions.editStyle);
-  const canDuplicate = isUserLayer || Boolean(permissions.duplicate);
-  const canDelete = isUserLayer || Boolean(permissions.delete);
   const canEditContent = isUserLayer || Boolean(permissions.editContent);
 
   const fontSize = Number(style.fontSize ?? 48);
@@ -227,6 +222,9 @@ export default function CustomerContextToolbar({
           canVertical={canVerticalAlign}
           onHorizontalChange={(textAlign) => onStyleChange({ textAlign }, "alignment")}
           onVerticalChange={(verticalAlign) => onStyleChange({ verticalAlign }, "vertical-alignment")}
+          growth={effectiveTextGrowth(style, layer?.text)}
+          canGrowth={canVerticalAlign}
+          onGrowthChange={(growthDirection) => onStyleChange({ growthDirection }, "text-growth")}
         />
       )}
 
@@ -238,36 +236,6 @@ export default function CustomerContextToolbar({
         <EditableNumericStepper label="Line height" value={lineHeight} minimum={LINE_HEIGHT_RULES.minimum} maximum={LINE_HEIGHT_RULES.maximum} step={LINE_HEIGHT_RULES.step} largeStep={LINE_HEIGHT_RULES.largeStep} allowNegative={false} allowDecimal onCommit={(lineHeight) => onStyleChange({ lineHeight }, "line-height")} showLabel showStepButtons={false} className="h-10 w-[76px] shrink-0 px-1" inputClassName={numericInput} />
       )}
 
-      {!editingText && (canDuplicate || canDelete) && divider}
-
-      {!editingText && canDuplicate && onDuplicate && (
-        <button
-          type="button"
-          aria-label="Duplicate text"
-          onClick={onDuplicate}
-          title="Duplicate"
-          className={`${iconButton} text-[#303839]/70 hover:bg-[#303839]/5 hover:text-[#303839]`}
-        >
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" aria-hidden>
-            <rect x="9" y="9" width="12" height="12" rx="2" />
-            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-          </svg>
-        </button>
-      )}
-
-      {!editingText && canDelete && onDelete && (
-        <button
-          type="button"
-          aria-label="Delete text"
-          onClick={onDelete}
-          title="Delete"
-          className={`${iconButton} text-red-600 hover:bg-red-50`}
-        >
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-            <path d="M3 6h18M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
-          </svg>
-        </button>
-      )}
     </div>
   );
 }

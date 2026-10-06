@@ -1,7 +1,12 @@
 "use client";
 
+import { assetIdentityOf } from "@/lib/customizer/v2/asset-identity";
 import { DEFAULT_FONT_FAMILY } from "@/lib/customizer/v2/google-fonts";
-import { customerEditablePermissionBundle } from "@/lib/customizer";
+import {
+  customerEditablePermissionBundle,
+  customerFieldKindForLayer,
+  isFieldCompatibleWithLayer,
+} from "@/lib/customizer";
 import {
   ADMIN_REORDER_POLICY,
   isValidLayerDrop,
@@ -12,6 +17,7 @@ import { clonedIdsFor, expandCloneSelection, relinkClones } from "@/lib/customiz
 import { marqueeSelectedLayerIds, type SelectionRect } from "@/lib/customizer/v2/selection-geometry";
 import { getTextPlacementStyle, type TextPlacementPreset } from "@/lib/customizer/v2/text-editing";
 import { DEFAULT_LETTER_SPACING, DEFAULT_LINE_HEIGHT } from "@/lib/customizer/v2/text-layout";
+import { scaleLayerContent } from "@/lib/customizer/v2/artboard";
 
 // Shared helpers for the admin visual Design Builder. Pure functions that take a
 // template and return a new template — the builder owns undo/redo on top.
@@ -124,6 +130,9 @@ export function newTextLayer(
       lineHeight: placed ? preset.lineHeight : DEFAULT_LINE_HEIGHT,
       textAlign: placed ? preset.textAlign : "center",
       verticalAlign: "middle",
+      // Paragraphs grow downward, single lines from the centre — what they
+      // did before the property existed, now explicit and rotation-aware.
+      growthDirection: placed && preset.multiline ? "down" : "center",
       uppercase: false,
       multiline: placed ? preset.multiline : false,
       autoSizeMode: placed ? (preset.multiline ? "height" : "width") : "fixed",
@@ -210,6 +219,7 @@ export function newElementLayer(template: any, pageId: string, element: any) {
     editorPath: element?.editorPath || "",
     thumbnailPath: element?.thumbnailPath || "",
     originalFilename: element?.originalFilename || "",
+    mimeType: element?.mimeType || "",
     src: element?.editorUrl || element?.url || element?.src || "",
     tintColor: element?.tintable ? element?.defaultColor || "" : "",
     x: Math.round(canvasW / 2),
@@ -320,6 +330,30 @@ export function updateLayerStyle(template: any, layerId: string, stylePatch: any
  * builder applies once: one history step, one dirty transition. Groups move
  * their members through `updateLayer`.
  */
+/**
+ * True when applying `patches` would change at least one value. A click that
+ * lands without moving, or a gesture that snaps back to where it started,
+ * produces patches equal to the current geometry; those must not create an
+ * undo step or mark the document unsaved.
+ */
+export function canvasPatchesChangeTemplate(template: any, patches: Record<string, any>): boolean {
+  for (const [id, patch] of Object.entries(patches || {})) {
+    const layer = getLayer(template, id);
+    if (!layer) continue;
+    const { textStyle, ...geometry } = patch || {};
+    for (const [key, value] of Object.entries(geometry)) {
+      if (!Object.is(layer[key], value)) return true;
+    }
+    if (textStyle && typeof textStyle === "object") {
+      const current = layer.textStyle || {};
+      for (const [key, value] of Object.entries(textStyle)) {
+        if (!Object.is(current[key], value)) return true;
+      }
+    }
+  }
+  return false;
+}
+
 export function applyCanvasLayerPatches(template: any, patches: Record<string, any>) {
   let next = template;
   for (const [id, patch] of Object.entries(patches || {})) {
@@ -330,14 +364,25 @@ export function applyCanvasLayerPatches(template: any, patches: Record<string, a
   return next;
 }
 
+/**
+ * Drop field definitions that the removed layers referenced, but ONLY when no
+ * remaining layer still binds them. A linked field (the couple's names on
+ * Front and Back) must outlive the deletion of one of its layers.
+ */
+function pruneFieldsAfterRemoval(template: any, removedLayers: any[], remainingLayers: any[]) {
+  const removedFieldIds = new Set(removedLayers.map((item: any) => item.fieldId).filter(Boolean));
+  if (!removedFieldIds.size) return template.fields || [];
+  const stillUsed = new Set(remainingLayers.map((item: any) => item.fieldId).filter(Boolean));
+  return (template.fields || []).filter((field: any) => !removedFieldIds.has(field.id) || stillUsed.has(field.id));
+}
+
 export function removeLayer(template: any, layerId: string) {
   const layer = getLayer(template, layerId);
-  let fields = template.fields || [];
-  if (layer?.fieldId) fields = fields.filter((f: any) => f.id !== layer.fieldId);
-  const removeIds = new Set([layerId, ...(layer?.type === "group" ? getDescendantIds(template.layers || [], layerId) : [])]);
-  const removedFieldIds = new Set((template.layers || []).filter((item: any) => removeIds.has(item.id)).map((item: any) => item.fieldId).filter(Boolean));
-  fields = fields.filter((field: any) => !removedFieldIds.has(field.id));
-  return { ...template, fields, layers: (template.layers || []).filter((l: any) => !removeIds.has(l.id)) };
+  if (!layer) return template;
+  const removeIds = new Set([layerId, ...(layer.type === "group" ? getDescendantIds(template.layers || [], layerId) : [])]);
+  const removed = (template.layers || []).filter((item: any) => removeIds.has(item.id));
+  const layers = (template.layers || []).filter((item: any) => !removeIds.has(item.id));
+  return { ...template, fields: pruneFieldsAfterRemoval(template, removed, layers), layers };
 }
 
 /* ---------------------------------------------------- clone / clipboard ----
@@ -407,6 +452,7 @@ function cloneLayersInto(
     // hand someone as the result of a paste.
     fieldId: "",
     customerEditable: false,
+    customerPermissions: customerEditablePermissionBundle(false),
     locked: false,
   }));
 
@@ -492,6 +538,7 @@ export function duplicateLayer(template: any, layerId: string) {
         childIds: Array.isArray(item.childIds) ? item.childIds.map((id: string) => idMap.get(id) || id) : item.childIds,
         fieldId: "",
         customerEditable: false,
+        customerPermissions: customerEditablePermissionBundle(false),
       }));
     const newId = idMap.get(layerId) || null;
     return { template: { ...template, layers: [...(template.layers || []), ...copies] }, newId };
@@ -503,9 +550,11 @@ export function duplicateLayer(template: any, layerId: string) {
     x: layer.x + 40,
     y: layer.y + 40,
     zIndex: nextZIndex(template, layer.page),
-    // A duplicate should not double-bind to the same customer field.
+    // A duplicate should not double-bind to the same customer field; linking
+    // is an explicit action (linkLayerToField).
     fieldId: "",
     customerEditable: false,
+    customerPermissions: customerEditablePermissionBundle(false),
   };
   // A copy made inside a group stays in that group (`groupId` is the authority
   // for membership). `childIds` is a derived mirror of the same relationship,
@@ -586,6 +635,18 @@ export function setCustomerEditable(template: any, layerId: string, editable: bo
     };
   }
 
+  // Only text and photo layers carry a customer field. Grids, groups, shapes,
+  // elements, QR codes and backgrounds are edited on the canvas through their
+  // permissions alone.
+  if (!customerFieldKindForLayer(layer)) {
+    return {
+      ...template,
+      layers: (template.layers || []).map((l: any) =>
+        l.id === layerId ? { ...l, customerEditable: true, customerPermissions } : l,
+      ),
+    };
+  }
+
   // Create a field if one is not already linked.
   let fields = template.fields || [];
   let fieldId = layer.fieldId;
@@ -619,9 +680,23 @@ export function setCustomerEditable(template: any, layerId: string, editable: bo
   };
 }
 
-// Update the connected field's props from the right panel. Changing the key
-// cleans it, prevents duplicate ids, updates the layer's fieldId, and re-points
-// any other layer that shared the old id — so no layer is ever left dangling.
+/** Every layer bound to `fieldId` (a shared/linked field has several). */
+export function layersForField(template: any, fieldId: string): any[] {
+  if (!fieldId) return [];
+  return (template?.layers || []).filter((layer: any) => layer.fieldId === fieldId);
+}
+
+// Update the connected field's props from the right panel.
+//
+// The field is ONE definition even when several layers share it, so every
+// property patch (label, type, required, placeholder, helper text, choices,
+// visibility, max length) applies to all linked layers at once.
+//
+// Changing the key (`patch.key`) RENAMES the shared field: the id is cleaned,
+// suffixed only if it would collide with a DIFFERENT field, and every layer
+// that used the old id is re-pointed to the new one — the link is kept and no
+// layer is left dangling. Renaming never links to another field; that is
+// `linkLayerToField`, and leaving a link is `unlinkLayerFromField`.
 export function updateConnectedField(template: any, layerId: string, patch: any) {
   let working = template;
   let layer = getLayer(working, layerId);
@@ -640,6 +715,7 @@ export function updateConnectedField(template: any, layerId: string, patch: any)
   let nextFieldId = currentId;
   const fieldPatch = { ...patch };
   delete fieldPatch.key;
+  delete fieldPatch.id;
 
   if (patch.key !== undefined) {
     const otherIds = new Set((working.fields || []).filter((f: any) => f.id !== currentId).map((f: any) => f.id));
@@ -652,32 +728,12 @@ export function updateConnectedField(template: any, layerId: string, patch: any)
     nextFieldId = desired;
   }
 
-  const sharedWithOtherLayer = (working.layers || []).some((l: any) => l.id !== layerId && l.fieldId === currentId);
-
-  if (patch.key !== undefined && nextFieldId !== currentId && sharedWithOtherLayer) {
-    const fields = [
-      ...(working.fields || []),
-      {
-        ...currentField,
-        ...fieldPatch,
-        id: nextFieldId,
-      },
-    ];
-    const layers = (working.layers || []).map((l: any) => (l.id === layerId ? { ...l, fieldId: nextFieldId } : l));
-    return { ...working, fields, layers };
-  }
-
   const fields = (working.fields || []).map((f: any) =>
-    f.id === currentId
-      ? {
-          ...f,
-          ...fieldPatch,
-          id: nextFieldId,
-        }
-      : f,
+    f.id === currentId ? { ...f, ...fieldPatch, id: nextFieldId } : f,
   );
-
-  const layers = (working.layers || []).map((l: any) => (l.id === layerId ? { ...l, fieldId: nextFieldId } : l));
+  const layers = nextFieldId === currentId
+    ? working.layers || []
+    : (working.layers || []).map((l: any) => (l.fieldId === currentId ? { ...l, fieldId: nextFieldId } : l));
   return { ...working, fields, layers };
 }
 
@@ -689,12 +745,18 @@ export function updateConnectedField(template: any, layerId: string, patch: any)
 // the admin an explicit, safe way to create that link (typing an existing
 // key into "Field key" only renames-with-collision-suffix; it can never
 // point a layer at another layer's field).
+//
+// Only COMPATIBLE layers may share a field: text layers share text fields and
+// photo layers (image/frame) share image fields. An incompatible request is
+// refused (the template is returned unchanged) rather than silently changing
+// the shared field's type under its other layers.
 export function linkLayerToField(template: any, layerId: string, targetFieldId: string) {
   const layer = getLayer(template, layerId);
   if (!layer || !targetFieldId) return template;
   if (layer.fieldId === targetFieldId) return template;
   const targetField = (template.fields || []).find((f: any) => f.id === targetFieldId);
   if (!targetField) return template;
+  if (!isFieldCompatibleWithLayer(targetField, layer)) return template;
 
   const previousFieldId = layer.fieldId;
   const customerPermissions = customerEditablePermissionBundle(true);
@@ -710,6 +772,41 @@ export function linkLayerToField(template: any, layerId: string, targetFieldId: 
     : (template.fields || []).filter((f: any) => f.id !== previousFieldId);
 
   return { ...template, fields, layers };
+}
+
+/**
+ * Leave a shared field: the layer gets its OWN field, initialised from the
+ * shared definition (label, type, required, placeholder, helper text, choices,
+ * visibility), while every other linked layer keeps the shared field. A layer
+ * that is the field's only user is already unlinked, so nothing changes.
+ */
+export function unlinkLayerFromField(template: any, layerId: string) {
+  const layer = getLayer(template, layerId);
+  if (!layer?.fieldId) return template;
+  const shared = (template.fields || []).find((f: any) => f.id === layer.fieldId);
+  if (!shared || layersForField(template, layer.fieldId).length < 2) return template;
+  const taken = new Set((template.fields || []).map((f: any) => f.id));
+  let id = keyify(layer.name) || `${shared.id}_copy`;
+  if (taken.has(id)) {
+    let i = 2;
+    while (taken.has(`${id}_${i}`)) i += 1;
+    id = `${id}_${i}`;
+  }
+  const own = {
+    ...shared,
+    id,
+    label: layer.name && layer.name !== shared.label ? layer.name : shared.label,
+    options: Array.isArray(shared.options) ? shared.options.slice() : [],
+  };
+  // The new field sits right after the shared one in the customer's list.
+  const index = (template.fields || []).findIndex((f: any) => f.id === shared.id);
+  const fields = (template.fields || []).slice();
+  fields.splice(index + 1, 0, own);
+  return {
+    ...template,
+    fields,
+    layers: (template.layers || []).map((l: any) => (l.id === layerId ? { ...l, fieldId: id } : l)),
+  };
 }
 
 // Reorder a field within `template.fields` (spec §5 "Display order in Easy
@@ -783,7 +880,14 @@ const CARD_ONLY_MODES = new Set<AlignMode>(["centerOnCardHorizontal", "centerOnC
 // how many objects are selected - not to be confused with the single-layer
 // "align to canvas" behaviour above, which aligns objects to EACH OTHER's
 // combined bounds (or the canvas, only as a degenerate single-object case).
-export function alignLayers(template: any, layerIds: string[], mode: AlignMode, geometryLayers?: any[]) {
+/**
+ * Where an alignment measures from: the selection's combined bounds, or the
+ * artboard. Without one, a single object aligns to the artboard and several
+ * align to each other — the long-standing behaviour.
+ */
+export type AlignTarget = "selection" | "artboard";
+
+export function alignLayers(template: any, layerIds: string[], mode: AlignMode, geometryLayers?: any[], target?: AlignTarget) {
   const geometryById = new Map((geometryLayers || []).map((layer: any) => [layer.id, layer]));
   const layers = layerIds
     .map((id) => geometryById.get(id) || getLayer(template, id))
@@ -812,7 +916,10 @@ export function alignLayers(template: any, layerIds: string[], mode: AlignMode, 
   }
 
   let left: number, right: number, top: number, bottom: number;
-  if (layers.length === 1) {
+  // Artboard: every object aligns to the card on its own. Selection: to the
+  // selection's combined (rotation-aware) bounds — meaningless for one object.
+  const toArtboard = target ? target === "artboard" || layers.length === 1 : layers.length === 1;
+  if (toArtboard) {
     left = 0;
     right = canvasW;
     top = 0;
@@ -868,11 +975,13 @@ export function distributeLayers(
   axis: "horizontal" | "vertical",
   mode: DistributionMode = "spacing",
   geometryLayers?: any[],
+  target: AlignTarget = "selection",
 ) {
   const geometryById = new Map((geometryLayers || []).map((layer: any) => [layer.id, layer]));
   const layers = layerIds
     .map((id) => geometryById.get(id) || getLayer(template, id))
     .filter(Boolean);
+  if (target === "artboard") return distributeAcrossArtboard(template, layers, axis);
   if (layers.length < 3) return template;
 
   const key = axis === "horizontal" ? "x" : "y";
@@ -1010,11 +1119,27 @@ export function duplicatePage(template: any, pageId: string) {
   const copy = { ...source, id: pageIdFromLabel(template, `${source.label} copy`), label: `${source.label} copy` };
   const nextPages = [...pages.slice(0, index + 1), copy, ...pages.slice(index + 1)];
 
-  // Copy the page's layers too. Duplicated editable layers lose their field
-  // binding so field keys stay unique (admin reconnects what they need).
-  const copiedLayers = (template.layers || [])
-    .filter((l: any) => l.page === pageId)
-    .map((l: any) => ({ ...l, id: genId(l.type), page: copy.id, fieldId: "", customerEditable: false }));
+  // Copy the page's layers too, with fresh ids. Every internal relationship
+  // (a child's groupId, a group's childIds) is rewritten to point at the
+  // COPIES, so a duplicated group owns its duplicated children instead of the
+  // originals on the source page. Duplicated editable layers lose their field
+  // binding so field keys stay unique (admin reconnects or links what they
+  // need).
+  const sources = (template.layers || []).filter((l: any) => l.page === pageId);
+  const taken = new Set<string>();
+  const idMap = new Map<string, string>(sources.map((l: any) => [l.id, freshId(template, l.type, taken)]));
+  const copiedLayers = sources.map((l: any) => ({
+    ...l,
+    id: idMap.get(l.id),
+    page: copy.id,
+    groupId: l.groupId && idMap.has(l.groupId) ? idMap.get(l.groupId) : "",
+    ...(Array.isArray(l.childIds)
+      ? { childIds: l.childIds.map((id: string) => idMap.get(id)).filter(Boolean) }
+      : {}),
+    fieldId: "",
+    customerEditable: false,
+    customerPermissions: customerEditablePermissionBundle(false),
+  }));
 
   return {
     template: { ...template, pages: nextPages, layers: [...(template.layers || []), ...copiedLayers] },
@@ -1104,10 +1229,27 @@ export function newImageLayerFromAdminAsset(template: any, pageId: string, asset
   // Canvas source priority: editor variant, then the full-quality original.
   // Never the thumbnail — a 480px tile stretched across the artboard is the
   // blur this ordering exists to prevent.
-  const previewUrl = asset.editorUrl || asset.originalUrl || asset.url;
+  const { src, ...source } = imageSourcePatch(asset);
   return {
-    ...newImageLayer(template, pageId, previewUrl),
+    ...newImageLayer(template, pageId, src),
     name: asset.title || asset.originalFilename || "Uploaded image",
+    ...source,
+    width: Math.max(24, Math.round(width)),
+    height: Math.max(24, Math.round(height)),
+  };
+}
+
+/**
+ * The layer fields an uploaded picture sets — its canvas source and its durable
+ * storage identity. Shared by Add, the inspector's Replace and the toolbar's
+ * Change image, so every route records the same thing.
+ */
+export function imageSourcePatch(asset: BuilderAsset) {
+  // Canvas source priority: editor variant, then the full-quality original.
+  // Never the thumbnail — a 480px tile stretched across the artboard is the
+  // blur this ordering exists to prevent.
+  return {
+    src: asset.editorUrl || asset.originalUrl || asset.url,
     assetId: asset.id,
     bucket: asset.bucket,
     path: asset.originalPath,
@@ -1115,11 +1257,39 @@ export function newImageLayerFromAdminAsset(template: any, pageId: string, asset
     editorPath: asset.editorPath || asset.originalPath,
     thumbnailPath: asset.thumbnailPath || asset.editorPath || asset.originalPath,
     originalFilename: asset.originalFilename || "",
-    sourceWidth,
-    sourceHeight,
+    sourceWidth: Math.max(0, Number(asset.width) || 0),
+    sourceHeight: Math.max(0, Number(asset.height) || 0),
     mimeType: asset.mimeType || "",
-    width: Math.max(24, Math.round(width)),
-    height: Math.max(24, Math.round(height)),
+  };
+}
+
+/**
+ * Put a new picture in an existing photo layer. The layer's box, rotation,
+ * mask, frame paint, flips and fit mode are kept — a masked or framed photo
+ * stays masked — while the pan, zoom, crop rectangle and eraser marks, which
+ * described the OLD picture, start fresh.
+ */
+export function replaceLayerImage(template: any, layerId: string, asset: BuilderAsset) {
+  const layer = getLayer(template, layerId);
+  if (!layer || (layer.type !== "image" && layer.type !== "frame")) return template;
+  const transform = layer.imageTransform && typeof layer.imageTransform === "object" ? layer.imageTransform : {};
+  const kept = Object.fromEntries(Object.entries(transform).filter(([key]) => ["flipX", "flipY", "fitMode"].includes(key)));
+  const next = updateLayer(template, layerId, {
+    ...imageSourcePatch(asset),
+    imageTransform: { ...kept, zoom: 1, offsetX: 0, offsetY: 0 },
+  });
+  return removeLayerKeys(next, layerId, ["eraseMask"]);
+}
+
+function removeLayerKeys(template: any, layerId: string, keys: string[]) {
+  return {
+    ...template,
+    layers: (template.layers || []).map((layer: any) => {
+      if (layer.id !== layerId || !keys.some((key) => key in layer)) return layer;
+      const copy = { ...layer };
+      for (const key of keys) delete copy[key];
+      return copy;
+    }),
   };
 }
 
@@ -1161,4 +1331,274 @@ export async function uploadBuilderImage(
     duplicate: Boolean(data.duplicate),
     message: String(data.message || ""),
   } as BuilderAsset;
+}
+
+/**
+ * Whether the studio can crop this layer: one photo (image or frame) that
+ * actually shows a picture and that the builder may edit. The canvas
+ * (double-click), the selection toolbar's Crop button and the object menu all
+ * ask this one question, so they can never disagree.
+ */
+export function isAdminCroppableLayer(layer: any): boolean {
+  return Boolean(
+    layer &&
+      (layer.type === "image" || layer.type === "frame") &&
+      layerHasPicture(layer) &&
+      !layer.locked &&
+      layer.adminEditable !== false,
+  );
+}
+
+/**
+ * Whether a photo layer shows a picture of its own: a URL, or a durable asset
+ * identity the canvas resolver signs a URL from (a recovered design stores no
+ * URLs, only identities).
+ */
+export function layerHasPicture(layer: any): boolean {
+  return Boolean(layer?.src || assetIdentityOf(layer));
+}
+
+/* ---------- selection transforms: distribute to artboard, scale, flip, rotate, fit ---------- */
+// Every command below is ONE pure template change — the caller commits it as
+// one undo step — and treats a group as its container plus everything inside.
+
+const round2 = (value: number) => Math.round(value * 100) / 100;
+
+/** Equal gaps between the objects AND the artboard edges along one axis (2+ objects). */
+function distributeAcrossArtboard(template: any, layers: any[], axis: "horizontal" | "vertical") {
+  if (layers.length < 2) return template;
+  const key = axis === "horizontal" ? "x" : "y";
+  const span = axis === "horizontal" ? Number(template.canvasWidthPx) || 1500 : Number(template.canvasHeightPx) || 2100;
+  const extent = (layer: any) => {
+    const { halfW, halfH } = rotatedAxisHalfExtents(layer);
+    return axis === "horizontal" ? halfW * 2 : halfH * 2;
+  };
+  const sorted = layers.slice().sort((a: any, b: any) => Number(a[key] || 0) - Number(b[key] || 0));
+  const gap = (span - sorted.reduce((total: number, layer: any) => total + extent(layer), 0)) / (sorted.length + 1);
+  let cursor = gap;
+  let next = template;
+  for (const layer of sorted) {
+    const centre = cursor + extent(layer) / 2;
+    cursor += extent(layer) + gap;
+    const actual = getLayer(template, layer.id);
+    if (!actual) continue;
+    next = updateLayer(next, layer.id, { [key]: Math.round(Number(actual[key] || 0) + centre - Number(layer[key] || 0)) });
+  }
+  return next;
+}
+
+/** The selected ids plus everything inside any selected group, each once. */
+function withDescendants(template: any, layerIds: readonly string[]): string[] {
+  const ids = new Set<string>();
+  for (const id of layerIds) {
+    ids.add(id);
+    if (getLayer(template, id)?.type === "group") getDescendantIds(template.layers || [], id).forEach((child) => ids.add(child));
+  }
+  return [...ids];
+}
+
+/** Centre of the selection's rotation-aware bounds, from the geometry the canvas shows. */
+function selectionCentre(layers: any[]): { x: number; y: number } {
+  const left = Math.min(...layers.map((l: any) => l.x - rotatedAxisHalfExtents(l).halfW));
+  const right = Math.max(...layers.map((l: any) => l.x + rotatedAxisHalfExtents(l).halfW));
+  const top = Math.min(...layers.map((l: any) => l.y - rotatedAxisHalfExtents(l).halfH));
+  const bottom = Math.max(...layers.map((l: any) => l.y + rotatedAxisHalfExtents(l).halfH));
+  return { x: (left + right) / 2, y: (top + bottom) / 2 };
+}
+
+function geometryLookup(template: any, geometryLayers?: any[]) {
+  const byId = new Map((geometryLayers || []).map((layer: any) => [layer.id, layer]));
+  return (id: string) => byId.get(id) || getLayer(template, id);
+}
+
+/** Patch layers directly — callers already include every descendant, so no group propagation. */
+function replaceLayers(template: any, patches: Map<string, Record<string, unknown>>) {
+  if (!patches.size) return template;
+  return {
+    ...template,
+    layers: (template.layers || []).map((layer: any) => (patches.has(layer.id) ? { ...layer, ...patches.get(layer.id) } : layer)),
+  };
+}
+
+const MIN_SCALED_SIZE = 4;
+const MAX_SCALED_SIZE = 50000;
+
+/**
+ * Scale a selection as ONE composition about its combined centre: positions,
+ * box sizes and size-bearing content (font size, letter spacing, strokes, radii,
+ * in-frame pan) all scale by `factor`, so relative layout, rotation and aspect
+ * ratios are preserved. Refused (template unchanged) if any object would become
+ * smaller than a few pixels or absurdly large.
+ */
+export function scaleLayerSelection(template: any, layerIds: string[], factor: number, geometryLayers?: any[]) {
+  if (!layerIds.length || !(factor > 0) || factor === 1) return template;
+  const geometry = geometryLookup(template, geometryLayers);
+  const roots = layerIds.map(geometry).filter(Boolean);
+  if (!roots.length) return template;
+  const centre = selectionCentre(roots);
+  const patches = new Map<string, Record<string, unknown>>();
+  for (const id of withDescendants(template, layerIds)) {
+    const actual = getLayer(template, id);
+    if (!actual || actual.type === "background") continue;
+    const seen = geometry(id) || actual;
+    const width = Number(actual.width) * factor;
+    const height = Number(actual.height) * factor;
+    const isLine = actual.type === "shape" && actual.shape === "line";
+    if (width < MIN_SCALED_SIZE || (!isLine && height < MIN_SCALED_SIZE) || width > MAX_SCALED_SIZE || height > MAX_SCALED_SIZE) return template;
+    const movedX = centre.x + (Number(seen.x) - centre.x) * factor;
+    const movedY = centre.y + (Number(seen.y) - centre.y) * factor;
+    patches.set(id, {
+      ...scaleLayerContent(actual, factor),
+      x: round2(Number(actual.x) + movedX - Number(seen.x)),
+      y: round2(Number(actual.y) + movedY - Number(seen.y)),
+      width: round2(width),
+      // A line's box height is its hit area, not its look; its weight scales.
+      height: round2(isLine ? Number(actual.height) : height),
+    });
+  }
+  return replaceLayers(template, patches);
+}
+
+const FLIPPABLE_ARTWORK = new Set(["text", "shape", "element"]);
+
+/** Whether flipping mirrors this layer's own artwork (positions always mirror). */
+export function canFlipLayer(layer: any): boolean {
+  if (!layer) return false;
+  if (FLIPPABLE_ARTWORK.has(layer.type) || layer.type === "group") return true;
+  return (layer.type === "image" || layer.type === "frame") && Boolean(layerHasPicture(layer) || layer.fieldId);
+}
+
+function mirrorMask(mask: any, axis: "horizontal" | "vertical") {
+  if (!mask || typeof mask !== "object") return mask;
+  if (mask.kind === "polygon" && Array.isArray(mask.points)) {
+    return {
+      ...mask,
+      points: mask.points.map((point: any) =>
+        axis === "horizontal" ? { x: round2(1 - Number(point.x)), y: Number(point.y) } : { x: Number(point.x), y: round2(1 - Number(point.y)) },
+      ),
+    };
+  }
+  if (axis === "vertical" && (mask.kind === "arch-top" || mask.kind === "arch-bottom")) {
+    return { ...mask, kind: mask.kind === "arch-top" ? "arch-bottom" : "arch-top" };
+  }
+  return mask;
+}
+
+/**
+ * Flip a selection as a mirror in WORLD space across its own centre line:
+ * positions mirror across the selection's centre, each object's rotation is
+ * negated, and its artwork is mirrored in its own frame — text and shapes by
+ * their flip flags, decorative elements by theirs, photos by their in-frame
+ * flip with their mask mirrored alongside (crop is kept). QR codes and photo
+ * grids move but are never mirrored: a mirrored QR code no longer scans.
+ */
+export function flipLayerSelection(template: any, layerIds: string[], axis: "horizontal" | "vertical", geometryLayers?: any[]) {
+  if (!layerIds.length) return template;
+  const geometry = geometryLookup(template, geometryLayers);
+  const roots = layerIds.map(geometry).filter(Boolean);
+  if (!roots.length) return template;
+  const centre = selectionCentre(roots);
+  const flag = axis === "horizontal" ? "flipX" : "flipY";
+  const patches = new Map<string, Record<string, unknown>>();
+  for (const id of withDescendants(template, layerIds)) {
+    const actual = getLayer(template, id);
+    if (!actual || actual.type === "background") continue;
+    const seen = geometry(id) || actual;
+    const patch: Record<string, unknown> = {};
+    if (axis === "horizontal") patch.x = round2(Number(actual.x) + 2 * (centre.x - Number(seen.x)));
+    else patch.y = round2(Number(actual.y) + 2 * (centre.y - Number(seen.y)));
+    if (canFlipLayer(actual)) {
+      patch.rotation = normalizeDegrees(-(Number(actual.rotation) || 0));
+      if (FLIPPABLE_ARTWORK.has(actual.type)) patch[flag] = !actual[flag];
+      if (actual.type === "image" || actual.type === "frame") {
+        const transform = actual.imageTransform && typeof actual.imageTransform === "object" ? actual.imageTransform : {};
+        patch.imageTransform = { ...transform, [flag]: !transform[flag] };
+        if (actual.mask) patch.mask = mirrorMask(actual.mask, axis);
+        if (axis === "vertical" && ["arch", "arch-top", "arch-bottom"].includes(actual.maskShape)) {
+          patch.maskShape = actual.maskShape === "arch-bottom" ? "arch" : "arch-bottom";
+        }
+      }
+    }
+    patches.set(id, patch);
+  }
+  return replaceLayers(template, patches);
+}
+
+/** Degrees in (-180, 180], to 0.01°. */
+export function normalizeDegrees(degrees: number): number {
+  let value = (((Number(degrees) || 0) % 360) + 360) % 360;
+  if (value > 180) value -= 360;
+  return round2(value) + 0;
+}
+
+/**
+ * Rotate a selection rigidly by `degrees` about its combined centre: every
+ * object's centre turns about that point and its own rotation grows by the same
+ * amount, so the arrangement turns as one piece. One object turns in place.
+ */
+export function rotateLayerSelection(template: any, layerIds: string[], degrees: number, geometryLayers?: any[]) {
+  if (!layerIds.length || !Number.isFinite(degrees) || degrees % 360 === 0) return template;
+  const geometry = geometryLookup(template, geometryLayers);
+  const roots = layerIds.map(geometry).filter(Boolean);
+  if (!roots.length) return template;
+  const centre = selectionCentre(roots);
+  const radians = (degrees * Math.PI) / 180;
+  const cos = Math.cos(radians);
+  const sin = Math.sin(radians);
+  const patches = new Map<string, Record<string, unknown>>();
+  for (const id of withDescendants(template, layerIds)) {
+    const actual = getLayer(template, id);
+    if (!actual || actual.type === "background") continue;
+    const seen = geometry(id) || actual;
+    const dx = Number(seen.x) - centre.x;
+    const dy = Number(seen.y) - centre.y;
+    patches.set(id, {
+      x: round2(Number(actual.x) + centre.x + dx * cos - dy * sin - Number(seen.x)),
+      y: round2(Number(actual.y) + centre.y + dx * sin + dy * cos - Number(seen.y)),
+      rotation: normalizeDegrees((Number(actual.rotation) || 0) + degrees),
+    });
+  }
+  return replaceLayers(template, patches);
+}
+
+/**
+ * Size an object to the artboard, keeping its proportions: "fit" makes the
+ * whole (rotation-aware) object fit inside the card, "fill" makes it cover the
+ * card. It is centred on the card either way. Nothing is stretched.
+ */
+export function fitLayerToArtboard(template: any, layerId: string, mode: "fit" | "fill", geometryLayers?: any[]) {
+  const geometry = geometryLookup(template, geometryLayers);
+  const seen = geometry(layerId);
+  if (!seen) return template;
+  const { halfW, halfH } = rotatedAxisHalfExtents(seen);
+  if (!(halfW > 0) || !(halfH > 0)) return template;
+  const canvasW = Number(template.canvasWidthPx) || 1500;
+  const canvasH = Number(template.canvasHeightPx) || 2100;
+  const ratios = [canvasW / (halfW * 2), canvasH / (halfH * 2)];
+  const factor = mode === "fit" ? Math.min(...ratios) : Math.max(...ratios);
+  const unchangedSize = Math.abs(factor - 1) < 1e-9;
+  const scaled = unchangedSize ? template : scaleLayerSelection(template, [layerId], factor, geometryLayers);
+  if (!unchangedSize && scaled === template) return template;
+  const actual = getLayer(scaled, layerId);
+  // Scaling about the object's own centre leaves that centre in place, so the
+  // offset that centres the seen geometry also centres the stored one.
+  return updateLayer(scaled, layerId, {
+    x: round2(Number(actual.x) + canvasW / 2 - Number(seen.x)),
+    y: round2(Number(actual.y) + canvasH / 2 - Number(seen.y)),
+  });
+}
+
+/**
+ * A photo's framing inside its own box: "fit" shows the whole picture
+ * (letterboxed where the proportions differ), "fill" covers the box (cropping
+ * the overflow). The pan, zoom and crop rectangle start fresh; flips, in-frame
+ * rotation, the box, the mask and any eraser marks are kept.
+ */
+export function setImageFitMode(template: any, layerId: string, mode: "fit" | "fill") {
+  const layer = getLayer(template, layerId);
+  if (!layer || (layer.type !== "image" && layer.type !== "frame")) return template;
+  const transform = layer.imageTransform && typeof layer.imageTransform === "object" ? layer.imageTransform : {};
+  const kept = Object.fromEntries(Object.entries(transform).filter(([key]) => !["cropX", "cropY", "cropWidth", "cropHeight"].includes(key)));
+  const fitMode = mode === "fit" ? "contain" : "cover";
+  return updateLayer(template, layerId, { fitMode, imageTransform: { ...kept, zoom: 1, offsetX: 0, offsetY: 0, fitMode } });
 }

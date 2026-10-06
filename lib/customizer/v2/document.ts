@@ -6,12 +6,16 @@
 // V1 rows via migrateCustomizerDocument, and are persisted directly in
 // customizer_template_versions snapshots and order_design_snapshots.
 
+import { normalizeEraseMask } from "./erase-mask";
+import { TRANSPARENT_PAINT, canonicalPaint, isExplicitTransparentPaint } from "./paint";
 import { DEFAULT_FONT_FAMILY, normalizeAllowedCustomerFonts } from "./google-fonts";
 import {
   CUSTOMIZER_ENGINE_VERSION,
   CUSTOMIZER_SCHEMA_VERSION,
   ALL_PERMISSION_KEYS,
   type AssetReference,
+  type PlaceholderAssetReference,
+  type StorageProvenance,
   type CanvasDefinition,
   type CustomerEditorState,
   type CustomerPermissions,
@@ -26,11 +30,13 @@ import {
   type TextLayer,
   type TextStyle,
 } from "./types";
-import { maskShapeFromLegacy } from "./masks";
+import { maskShapeFromLegacy, normalizeMaskShape } from "./masks";
+import { normalizeTextGrowthDirection } from "./text-growth";
 import { mergeGridSlotOverrides, normalizeGridSlot } from "./grids";
 import { normalizeImageFilters } from "./image-filters";
 import { normalizeQRCodeStyle } from "./qr";
 import { normalizeCanonicalText, promoteTextStyleForValue } from "./text-editing";
+import { normalizeStoredCustomerPermissions } from "./permissions";
 
 /* ----------------------------------------------------------------- helpers */
 
@@ -77,12 +83,15 @@ function edgeInsets(value: unknown, fallback: EdgeInsets): EdgeInsets {
 
 import { DEFAULT_LETTER_SPACING, DEFAULT_LINE_HEIGHT } from "./text-layout";
 
+// Same stored model as the flat template (lib/customizer/v2/permissions.ts):
+// explicit restrictions survive publication, missing keys take the documented
+// compatibility defaults, and customerEditable false denies everything.
 export function normalizePermissionsV2(
-  _input: unknown,
+  input: unknown,
   layer: { type?: string; customerEditable?: boolean; allowZoom?: boolean; allowReposition?: boolean } = {},
 ): CustomerPermissions {
-  const editable = Boolean(layer.customerEditable);
-  return Object.fromEntries(ALL_PERMISSION_KEYS.map((key) => [key, editable])) as CustomerPermissions;
+  const stored = normalizeStoredCustomerPermissions(input, layer);
+  return Object.fromEntries(ALL_PERMISSION_KEYS.map((key) => [key, Boolean(stored[key])])) as CustomerPermissions;
 }
 
 /* ------------------------------------------------------------------- style */
@@ -105,10 +114,48 @@ export function normalizeTextStyleV2(input: unknown): TextStyle {
     lineHeight: num(s.lineHeight, DEFAULT_LINE_HEIGHT) || DEFAULT_LINE_HEIGHT,
     textAlign: align === "left" || align === "right" ? (align as "left" | "right") : "center",
     verticalAlign: vAlign === "top" || vAlign === "bottom" ? (vAlign as "top" | "bottom") : "middle",
+    ...(normalizeTextGrowthDirection(s.growthDirection) ? { growthDirection: normalizeTextGrowthDirection(s.growthDirection) } : {}),
     uppercase: bool(s.uppercase),
     multiline: bool(s.multiline),
     fitMode: str(s.fitMode) === "shrink" ? "shrink" : str(s.fitMode) === "auto-height" ? "auto-height" : "fixed",
+    // Only an explicit, valid mode is carried. Absent stays absent so a
+    // document published before this field existed keeps its stored box.
+    ...(TEXT_AUTO_SIZE_MODES.has(str(s.autoSizeMode)) ? { autoSizeMode: str(s.autoSizeMode) as TextStyle["autoSizeMode"] } : {}),
   };
+}
+
+const TEXT_AUTO_SIZE_MODES = new Set(["fixed", "width", "height", "shrink"]);
+
+// Durable storage identity (see StorageProvenance in ./types). Copied only
+// when present so documents stay compact and older ones round-trip unchanged.
+function storageProvenance(raw: Record<string, any>): StorageProvenance {
+  const out: Record<string, unknown> = {};
+  for (const key of ["bucket", "path", "originalPath", "editorPath", "thumbnailPath", "originalFilename", "mimeType"]) {
+    const value = str(raw[key]);
+    if (value) out[key] = value;
+  }
+  for (const key of ["sourceWidth", "sourceHeight"]) {
+    const value = num(raw[key], 0);
+    if (value > 0) out[key] = value;
+  }
+  return out as StorageProvenance;
+}
+
+function placeholderAssetReference(raw: Record<string, any>): PlaceholderAssetReference {
+  const out: Record<string, string> = {};
+  for (const key of ["placeholderAssetId", "placeholderAssetBucket", "placeholderAssetPath", "placeholderAssetEditorPath", "placeholderAssetThumbnailPath"]) {
+    const value = str(raw[key]);
+    if (value) out[key] = value;
+  }
+  return out as PlaceholderAssetReference;
+}
+
+// The builder and flat template store crop state as `imageTransform`; a V2
+// document stores it as `transform`. Read either, preferring the editor's.
+function rawImageTransform(raw: Record<string, any>): Record<string, any> | null {
+  if (raw.imageTransform && typeof raw.imageTransform === "object") return raw.imageTransform;
+  if (raw.transform && typeof raw.transform === "object" && !Array.isArray(raw.transform)) return raw.transform;
+  return null;
 }
 
 export function normalizeImageTransformV2(input: unknown, assetId = ""): ImageTransform {
@@ -161,23 +208,35 @@ function migrateLayerV1(raw: Record<string, any>, pageIdFallback: string): Custo
   };
 
   if (type === "image" || type === "frame") {
+    const crop = rawImageTransform(raw);
+    // The layer-level fit choice is the admin control; the crop object's own
+    // fitMode only decides when the layer carries none.
+    const fitSource = raw.fitMode === "cover" || raw.fitMode === "contain" ? raw.fitMode : crop?.fitMode;
+    const transform = normalizeImageTransformV2(crop, str(raw.assetId));
+    transform.fitMode = str(fitSource) === "contain" ? "contain" : "cover";
     const layer: any = {
       ...base,
+      ...storageProvenance(raw),
+      ...placeholderAssetReference(raw),
       type: type === "frame" ? "frame" : "image",
       src: str(raw.src || raw.imageSrc),
       assetId: str(raw.assetId),
       placeholderImage: str(raw.placeholderImage),
       mask:
         raw.mask && typeof raw.mask === "object" && raw.mask.kind
-          ? raw.mask
+          ? normalizeMaskShape(raw.mask)
           : maskShapeFromLegacy(raw.maskShape, base.width, base.height),
-      transform: normalizeImageTransformV2(raw.transform, str(raw.assetId)),
+      transform,
+      fitMode: transform.fitMode,
       filters: normalizeImageFilters(raw.filters || raw.imageFilters),
       borderColor: str(raw.borderColor),
       borderWidth: Math.max(0, num(raw.borderWidth, 0)),
       backgroundColor: str(raw.backgroundColor),
     };
-    if (raw.fitMode && !raw.transform) layer.transform.fitMode = str(raw.fitMode) === "contain" ? "contain" : "cover";
+    if (raw.assetReference && typeof raw.assetReference === "object") layer.assetReference = raw.assetReference;
+    const eraseMask = normalizeEraseMask(raw.eraseMask);
+    if (eraseMask) layer.eraseMask = eraseMask;
+    if (type === "frame") layer.defaultAssetId = str(raw.defaultAssetId);
     return layer as CustomizerLayer;
   }
 
@@ -188,8 +247,8 @@ function migrateLayerV1(raw: Record<string, any>, pageIdFallback: string): Custo
       ...base,
       type: "shape",
       shape: (supported.includes(kind) ? kind : "rectangle") as any,
-      fill: str(raw.fill) || "#F8F6F1",
-      stroke: str(raw.stroke),
+      fill: isExplicitTransparentPaint(raw.fill) ? TRANSPARENT_PAINT : str(raw.fill) || "#F8F6F1",
+      stroke: canonicalPaint(str(raw.stroke)),
       strokeWidth: Math.max(0, num(raw.strokeWidth, 0)),
       borderRadius: Math.max(0, num(raw.borderRadius, 0)),
       points: Array.isArray(raw.points) ? raw.points.map((point: any) => ({ x: num(point?.x), y: num(point?.y) })) : [],
@@ -198,6 +257,8 @@ function migrateLayerV1(raw: Record<string, any>, pageIdFallback: string): Custo
       lineCap: raw.lineCap === "butt" || raw.lineCap === "square" ? raw.lineCap : "round",
       lineStartCap: raw.lineStartCap === "circle" || raw.lineStartCap === "arrow" ? raw.lineStartCap : "none",
       lineEndCap: raw.lineEndCap === "circle" || raw.lineEndCap === "arrow" ? raw.lineEndCap : "none",
+      ...(bool(raw.flipX) ? { flipX: true } : {}),
+      ...(bool(raw.flipY) ? { flipY: true } : {}),
     };
   }
 
@@ -214,7 +275,7 @@ function migrateLayerV1(raw: Record<string, any>, pageIdFallback: string): Custo
                 transform: normalizeImageTransformV2(slot?.transform, str(slot?.assetId)),
                 mask:
                   slot?.mask && typeof slot.mask === "object"
-                    ? slot.mask
+                    ? normalizeMaskShape(slot.mask)
                     : maskShapeFromLegacy(slot?.maskShape, base.width, base.height),
               },
               index,
@@ -251,6 +312,7 @@ function migrateLayerV1(raw: Record<string, any>, pageIdFallback: string): Custo
   if (type === "element") {
     return {
       ...base,
+      ...storageProvenance(raw),
       type: "element",
       assetId: str(raw.assetId),
       src: str(raw.src),
@@ -261,13 +323,18 @@ function migrateLayerV1(raw: Record<string, any>, pageIdFallback: string): Custo
   }
 
   if (type === "background") {
-    return {
+    const background: any = {
       ...base,
+      ...storageProvenance(raw),
       type: "background",
       color: str(raw.color) || "#ffffff",
       assetId: str(raw.assetId),
       src: str(raw.src),
+      fitMode: raw.fitMode === "contain" ? "contain" : "cover",
+      filters: normalizeImageFilters(raw.filters || raw.imageFilters),
     };
+    if (raw.assetReference && typeof raw.assetReference === "object") background.assetReference = raw.assetReference;
+    return background;
   }
 
   // Default: text.
@@ -281,6 +348,8 @@ function migrateLayerV1(raw: Record<string, any>, pageIdFallback: string): Custo
     maxLines: Math.max(0, Math.round(num(raw.maxLines, 0))),
     required: bool(raw.required),
     textStyle: promoteTextStyleForValue(normalizeTextStyleV2(raw.textStyle), text) as TextStyle,
+    ...(bool(raw.flipX) ? { flipX: true } : {}),
+    ...(bool(raw.flipY) ? { flipY: true } : {}),
   };
   return textLayer;
 }
@@ -317,6 +386,11 @@ export function templateToDocument(template: Record<string, any>): { document: C
     backgroundAssetId: str(page?.backgroundAssetId) || undefined,
     backgroundImage: str(page?.backgroundImage) || undefined,
     thumbnail: str(page?.thumbnail) || undefined,
+    // Storage identity of the background, so it re-signs after URLs expire.
+    ...(str(page?.bucket) ? { bucket: str(page.bucket) } : {}),
+    ...(str(page?.originalPath) ? { originalPath: str(page.originalPath) } : {}),
+    ...(str(page?.editorPath) ? { editorPath: str(page.editorPath) } : {}),
+    ...(str(page?.thumbnailPath) ? { thumbnailPath: str(page.thumbnailPath) } : {}),
     safeArea: edgeInsets(page?.safeArea, templateSafe),
     bleed: edgeInsets(page?.bleed, templateBleed),
     allowCustomerText:
@@ -444,6 +518,13 @@ export function templateToDocument(template: Record<string, any>): { document: C
     }
   }
 
+  // The configured opening page, when it names an enabled page.
+  const requestedDefault = str(t.defaultPage || t.defaultPageId);
+  const enabledPages = pages.filter((page) => page.enabled !== false);
+  const defaultPageId = enabledPages.some((page) => page.id === requestedDefault)
+    ? requestedDefault
+    : enabledPages[0]?.id || firstPageId;
+
   const document: CustomizerDocument = {
     schemaVersion: CUSTOMIZER_SCHEMA_VERSION,
     templateId: str(t.id),
@@ -464,6 +545,7 @@ export function templateToDocument(template: Record<string, any>): { document: C
       hidden: bool(guide?.hidden),
       customerVisible: bool(guide?.customerVisible),
     })),
+    defaultPageId,
   };
 
   return { document, warnings };
@@ -507,6 +589,7 @@ export function normalizeDocumentV2(input: Record<string, any>): { document: Cus
     settings: input.settings,
     assets: input.assets,
     guides: input.guides,
+    defaultPage: input.defaultPageId,
     safeArea: input.pages?.[0]?.safeArea,
     bleed: input.pages?.[0]?.bleed,
   };

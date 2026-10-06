@@ -44,6 +44,19 @@ export default async function CustomizerE2EFixturePage({
     snapping: params.snap !== "0",
     // ?stress=200 pads the page for performance runs (spec §22).
     stressLayers: Number(Array.isArray(params.stress) ? params.stress[0] : params.stress) || 0,
+    // ?size=3.5x5 runs the editor on an official non-default card size.
+    cardSize: String((Array.isArray(params.size) ? params.size[0] : params.size) || ""),
+    // ?orientation=landscape turns the card, exactly as the Design Studio does.
+    orientation: String((Array.isArray(params.orientation) ? params.orientation[0] : params.orientation) || ""),
+    // ?fonts=Inter,Caveat restricts the customer's fonts, like a template allowlist.
+    // ?adminClip=1 turns the front photos into Design Studio clipping masks.
+    adminClip: params.adminClip === "1",
+    // ?libraryAsset=8000 makes the croppable photo a library asset whose URL expires in 8s (negative: expired).
+    libraryAssetExpiresInMs: params.libraryAsset !== undefined ? Number(Array.isArray(params.libraryAsset) ? params.libraryAsset[0] : params.libraryAsset) || 0 : undefined,
+    allowedFonts: String((Array.isArray(params.fonts) ? params.fonts[0] : params.fonts) || "")
+      .split(",")
+      .map((family) => family.trim())
+      .filter(Boolean),
   });
 
   return <PersonalizeClient product={product} template={template} />;

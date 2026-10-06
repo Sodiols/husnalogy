@@ -169,3 +169,36 @@ export function constrainCropToAspect(
   const nextY = Math.min(Math.max(0, centerY - size / 2), 1 - size);
   return { x: nextX, y: nextY, width: size, height: size };
 }
+
+/**
+ * A pointer movement on screen, as the change to a photo's in-frame pan
+ * (`offsetX` / `offsetY`), so the photo follows the pointer exactly.
+ *
+ * Both renderers apply the pan INSIDE the layer's rotation, the photo's own
+ * in-frame rotation and its flips, and a crop rectangle scales the pan along
+ * with the photo. A screen-space movement is therefore carried back through
+ * the inverse of all four. Without this a rotated photo slid sideways under a
+ * vertical drag, and a flipped photo moved away from the pointer.
+ */
+export function cropPanDelta(
+  screenDx: number,
+  screenDy: number,
+  frame: {
+    rotation?: number;
+    imageRotation?: number;
+    flipX?: boolean;
+    flipY?: boolean;
+    crop?: CropRect | null;
+  } = {},
+): { x: number; y: number } {
+  const angle = (-(finite(frame.rotation) + finite(frame.imageRotation)) * Math.PI) / 180;
+  const cos = Math.cos(angle);
+  const sin = Math.sin(angle);
+  let x = screenDx * cos - screenDy * sin;
+  let y = screenDx * sin + screenDy * cos;
+  if (frame.flipX) x = -x;
+  if (frame.flipY) y = -y;
+  const crop = frame.crop;
+  const cropScale = crop && crop.width > 0 && crop.height > 0 ? Math.max(1 / crop.width, 1 / crop.height) : 1;
+  return { x: x / cropScale, y: y / cropScale };
+}

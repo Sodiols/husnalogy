@@ -1655,6 +1655,25 @@ create trigger prevent_customizer_version_mutation
 before update or delete on public.customizer_template_versions
 for each row execute function public.prevent_customizer_version_mutation();
 
+-- Favourite Fonts (migration 20261005120000_customizer_font_favourites.sql):
+-- Husnalogy-wide favourite font families an administrator marks in the Design
+-- Studio. A favourite never widens what a template allows.
+create table if not exists public.customizer_font_favourites (
+  family text primary key check (char_length(family) between 1 and 120),
+  created_at timestamp with time zone not null default now(),
+  created_by uuid references public.profiles(id) on delete set null
+);
+
+alter table public.customizer_font_favourites enable row level security;
+
+drop policy if exists "customizer_font_favourites_public_read" on public.customizer_font_favourites;
+create policy "customizer_font_favourites_public_read" on public.customizer_font_favourites
+for select using (true);
+
+drop policy if exists "customizer_font_favourites_admin_manage" on public.customizer_font_favourites;
+create policy "customizer_font_favourites_admin_manage" on public.customizer_font_favourites
+for all using (public.is_admin()) with check (public.is_admin());
+
 /* 17. STORAGE BUCKETS AND POLICIES ============================ */
 insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
 values

@@ -8,7 +8,7 @@
 
 import { createServiceRoleClient } from "@/lib/supabase/server";
 import { getCustomizerTemplateByProductId } from "@/lib/customizer/store";
-import { validateCustomizerTemplateDetailed } from "@/lib/customizer";
+import { resolveLayerImageTransform, validateCustomizerTemplateDetailed } from "@/lib/customizer";
 import { templateToDocument } from "@/lib/customizer/v2/document";
 import { collectFontDependencies } from "@/lib/customizer/v2/google-fonts";
 import { getFontCatalogSafe } from "@/lib/customizer/v2/server/google-fonts-catalog";
@@ -60,20 +60,53 @@ function versionFromRow(row: Partial<TemplateVersionDatabaseRow>): TemplateVersi
   };
 }
 
+/**
+ * True when the stored draft is still the exact revision the caller saved.
+ * Timestamps are compared as instants, so formatting differences between the
+ * database and the JSON response cannot cause a false mismatch.
+ */
+export function draftMatchesExpectedRevision(draftUpdatedAt: unknown, expectedUpdatedAt: unknown): boolean {
+  if (!expectedUpdatedAt) return true;
+  const instant = (value: unknown): string | null => {
+    const text = String(value || "");
+    const ms = Date.parse(text);
+    if (!Number.isFinite(ms)) return null;
+    // Postgres keeps microseconds; Date.parse keeps milliseconds. Compare the
+    // full fraction so two saves inside one millisecond still differ.
+    const fraction = (text.match(/\.(\d+)/)?.[1] || "").padEnd(6, "0").slice(0, 6);
+    return `${Math.floor(ms / 1000)}.${fraction}`;
+  };
+  const draft = instant(draftUpdatedAt);
+  return draft !== null && draft === instant(expectedUpdatedAt);
+}
+
 // Publish the current draft of a product's template as a new immutable
 // version. Runs detailed validation first — blocking errors abort the publish.
+//
+// `expectedDraftUpdatedAt` pins the publish to the draft revision the studio
+// just saved: if anything else wrote the draft in between, the publish is
+// refused (status "conflict") instead of freezing a revision nobody reviewed.
 export async function publishTemplateVersion(
   productId: string,
   publishedBy: string | null = null,
   notes = "",
   updateType: CustomizerUpdateType = "minor",
+  expectedDraftUpdatedAt: string | null = null,
 ): Promise<
   | { ok: true; version: TemplateVersionRow; warnings: string[] }
-  | { ok: false; errors: string[]; warnings: string[] }
+  | { ok: false; errors: string[]; warnings: string[]; conflict?: boolean }
 > {
   const template = await getCustomizerTemplateByProductId(productId);
   if (!template) return { ok: false, errors: ["This product has no customizer template."], warnings: [] };
   if (!template.enabled) return { ok: false, errors: ["Enable the customizer before publishing."], warnings: [] };
+  if (!draftMatchesExpectedRevision(template.updatedAt, expectedDraftUpdatedAt)) {
+    return {
+      ok: false,
+      conflict: true,
+      errors: ["The draft changed after it was saved. Save again, then publish."],
+      warnings: [],
+    };
+  }
 
   const { errors, warnings } = validateCustomizerTemplateDetailed(template);
   if (errors.length) return { ok: false, errors, warnings };
@@ -156,6 +189,15 @@ export async function getTemplateVersion(
 export function templateFromVersionSnapshot(snapshot: TemplateVersionRow | null): any | null {
   if (!snapshot || !snapshot.document || !Object.keys(snapshot.document).length) return null;
   const doc: any = snapshot.document;
+  const pages = Array.isArray(doc.pages) ? doc.pages : [];
+  const enabledPages = pages.filter((page: any) => page?.enabled !== false);
+  // The configured opening page; documents published before it was carried
+  // (and any stale id) fall back to the first enabled page.
+  const defaultPage =
+    enabledPages.find((page: any) => page.id === doc.defaultPageId)?.id ||
+    enabledPages[0]?.id ||
+    pages[0]?.id ||
+    "front";
   return {
     id: snapshot.templateId,
     version: snapshot.version,
@@ -168,8 +210,8 @@ export function templateFromVersionSnapshot(snapshot: TemplateVersionRow | null)
     cardHeightIn: doc.canvas?.heightIn,
     dpi: doc.canvas?.dpi,
     orientation: doc.canvas?.orientation,
-    defaultPage: doc.pages?.[0]?.id || "front",
-    pages: (doc.pages || []).map((page: any) => ({
+    defaultPage,
+    pages: pages.map((page: any) => ({
       id: page.id,
       label: page.name,
       enabled: page.enabled,
@@ -177,14 +219,28 @@ export function templateFromVersionSnapshot(snapshot: TemplateVersionRow | null)
       backgroundColor: page.backgroundColor || "#ffffff",
       thumbnail: page.thumbnail || page.backgroundImage || "",
       allowCustomerText: page.allowCustomerText,
+      // Durable background identity: what re-signs the background (editor
+      // variant for customers, original for production) once URLs expire.
+      ...(page.backgroundAssetId ? { backgroundAssetId: page.backgroundAssetId } : {}),
+      ...(page.bucket ? { bucket: page.bucket } : {}),
+      ...(page.originalPath ? { originalPath: page.originalPath } : {}),
+      ...(page.editorPath ? { editorPath: page.editorPath } : {}),
+      ...(page.thumbnailPath ? { thumbnailPath: page.thumbnailPath } : {}),
     })),
     fields: doc.fields || [],
-    layers: (doc.layers || []).map((layer: any) => ({
-      ...layer,
-      page: layer.pageId || layer.page,
-    })),
+    layers: (doc.layers || []).map((layer: any) => {
+      const flat: any = { ...layer, page: layer.pageId || layer.page };
+      // Renderers read crop state as `imageTransform`; the document stores it
+      // as `transform`. Only the known crop keys are carried across.
+      if ((layer.type === "image" || layer.type === "frame") && !layer.imageTransform) {
+        const crop = resolveLayerImageTransform({ transform: layer.transform });
+        if (crop) flat.imageTransform = crop;
+      }
+      return flat;
+    }),
     safeArea: doc.pages?.[0]?.safeArea || {},
     bleed: doc.pages?.[0]?.bleed || {},
+    guides: Array.isArray(doc.guides) ? doc.guides : [],
     settings: doc.settings || {},
     assets: doc.assets || {},
   };

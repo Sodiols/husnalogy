@@ -35,6 +35,12 @@ export type UseInteractionNodesInput = {
   surface: InteractionSurface;
   /** Effective layers for the active page, overrides already applied. */
   layers: readonly any[];
+  /**
+   * Every layer on the page, when `layers` is already narrowed to the
+   * targetable ones (the Design Studio passes only selectable layers). Used to
+   * find a group's contents, which move with it. Defaults to `layers`.
+   */
+  allLayers?: readonly any[];
   /** Restricts targeting to the objects this surface allows (customer filter). */
   isTargetable?: (layer: any) => boolean;
   /** Resolved display text, used for measuring auto-width objects. */
@@ -52,6 +58,7 @@ export type UseInteractionNodesInput = {
 export function useInteractionNodes({
   surface,
   layers,
+  allLayers,
   isTargetable,
   resolveText,
   measure,
@@ -60,6 +67,25 @@ export function useInteractionNodes({
   metricsRevision = 0,
 }: UseInteractionNodesInput): InteractionNode[] {
   return useMemo(() => {
+    // Every layer's children, from the FULL list (a member need not itself be
+    // a target to move with its group).
+    const childrenOf = new Map<string, string[]>();
+    for (const layer of allLayers ?? layers) {
+      if (!layer?.groupId) continue;
+      const siblings = childrenOf.get(layer.groupId) ?? [];
+      siblings.push(layer.id);
+      childrenOf.set(layer.groupId, siblings);
+    }
+    const descendantsOf = (groupId: string, seen = new Set<string>()): string[] => {
+      const result: string[] = [];
+      for (const childId of childrenOf.get(groupId) ?? []) {
+        if (seen.has(childId)) continue;
+        seen.add(childId);
+        result.push(childId, ...descendantsOf(childId, seen));
+      }
+      return result;
+    };
+
     const targets = layers.filter((layer: any) => {
       if (!layer || layer.hidden) return false;
       if (isTargetable && !isTargetable(layer)) return false;
@@ -121,10 +147,11 @@ export function useInteractionNodes({
         minFontSize: Number(style.minFontSize) || undefined,
         maxFontSize: Number(style.maxFontSize) || undefined,
         slots,
+        ...(layer.type === "group" ? { descendantIds: descendantsOf(layer.id) } : {}),
       };
     });
     // `resolveText` and `measure` are stable per surface; `metricsRevision`
     // stands in for the measurer swapping once fonts load.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [surface, layers, isTargetable, safeBounds, editingGroupId, metricsRevision]);
+  }, [surface, layers, allLayers, isTargetable, safeBounds, editingGroupId, metricsRevision]);
 }

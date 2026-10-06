@@ -148,16 +148,35 @@ describe("server customization validation", () => {
     });
   });
 
-  it("unlocks movement when Customer editable is checked", () => {
-    const result = validateCustomerState(template, {
+  // Customer editable grants the full bundle; an EXPLICIT restriction stored
+  // on the layer (here move:false) survives and is enforced. Previously the
+  // stored object was discarded and every editable layer could move.
+  it("unlocks movement when Customer editable is checked and nothing restricts it", () => {
+    const unrestricted = {
+      ...template,
+      layers: template.layers.map((layer) => (layer.id === "names_layer" ? { ...layer, customerPermissions: {} } : layer)),
+    };
+    const result = validateCustomerState(unrestricted, {
       editorState: { layerOverrides: { names_layer: { transform: { x: 10, y: 10 } } }, userLayers: [] },
     });
     expect(result.violations.some((v) => v.code === "move-not-allowed")).toBe(false);
     expect(result.sanitizedEditorState.layerOverrides.names_layer.transform).toMatchObject({ x: 10, y: 10 });
   });
 
-  it("unlocks every text style control when Customer editable is checked", () => {
+  it("enforces an explicit move restriction on an editable layer", () => {
     const result = validateCustomerState(template, {
+      editorState: { layerOverrides: { names_layer: { transform: { x: 10, y: 10 } } }, userLayers: [] },
+    });
+    expect(result.violations.some((v) => v.code === "move-not-allowed")).toBe(true);
+    expect(result.sanitizedEditorState.layerOverrides.names_layer).toBeUndefined();
+  });
+
+  it("unlocks every text style control when Customer editable is checked and nothing restricts it", () => {
+    const unrestricted = {
+      ...template,
+      layers: template.layers.map((layer) => (layer.id === "names_layer" ? { ...layer, customerPermissions: {} } : layer)),
+    };
+    const result = validateCustomerState(unrestricted, {
       editorState: {
         layerOverrides: {
           names_layer: { textStyle: { fontFamily: "Inter", color: "#ff0000" } },
@@ -168,6 +187,20 @@ describe("server customization validation", () => {
     expect(result.violations.some((v) => v.code === "color-not-allowed")).toBe(false);
     expect(result.sanitizedEditorState.layerOverrides.names_layer.textStyle.fontFamily).toBe("Inter");
     expect(result.sanitizedEditorState.layerOverrides.names_layer.textStyle.color).toBe("#ff0000");
+  });
+
+  it("keeps permitted style changes and rejects an explicitly restricted one", () => {
+    const result = validateCustomerState(template, {
+      editorState: {
+        layerOverrides: {
+          names_layer: { textStyle: { fontFamily: "Inter", color: "#ff0000" } },
+        },
+        userLayers: [],
+      },
+    });
+    expect(result.violations.some((v) => v.code === "color-not-allowed")).toBe(true);
+    expect(result.sanitizedEditorState.layerOverrides.names_layer.textStyle.fontFamily).toBe("Inter");
+    expect(result.sanitizedEditorState.layerOverrides.names_layer.textStyle.color).toBeUndefined();
   });
 
   it("clamps customer font scaling to the administrator configured range", () => {
@@ -241,8 +274,12 @@ describe("server customization validation", () => {
     expect(rejected.violations.some((violation) => violation.code === "visibility-not-allowed")).toBe(true);
   });
 
-  it("unlocks crop and flip controls when Customer editable is checked", () => {
-    const result = validateCustomerState(template, {
+  it("unlocks crop and flip controls when Customer editable is checked and nothing restricts them", () => {
+    const unrestricted = {
+      ...template,
+      layers: template.layers.map((layer) => (layer.id === "photo_layer" ? { ...layer, customerPermissions: {} } : layer)),
+    };
+    const result = validateCustomerState(unrestricted, {
       editorState: {
         layerOverrides: { photo_layer: { imageTransform: { zoom: 2, flipX: true } } },
         userLayers: [],
@@ -251,6 +288,18 @@ describe("server customization validation", () => {
     expect(result.violations.some((v) => v.code === "flip-not-allowed")).toBe(false);
     expect(result.sanitizedEditorState.layerOverrides.photo_layer.imageTransform.zoom).toBe(2);
     expect(result.sanitizedEditorState.layerOverrides.photo_layer.imageTransform.flipX).toBe(true);
+  });
+
+  it("allows crop zoom but rejects a flip the layer explicitly forbids", () => {
+    const result = validateCustomerState(template, {
+      editorState: {
+        layerOverrides: { photo_layer: { imageTransform: { zoom: 2, flipX: true } } },
+        userLayers: [],
+      },
+    });
+    expect(result.violations.some((v) => v.code === "flip-not-allowed")).toBe(true);
+    expect(result.sanitizedEditorState.layerOverrides.photo_layer.imageTransform.zoom).toBe(2);
+    expect(result.sanitizedEditorState.layerOverrides.photo_layer.imageTransform.flipX).toBeUndefined();
   });
 
   it("allows customer text layers on pages that allow them", () => {

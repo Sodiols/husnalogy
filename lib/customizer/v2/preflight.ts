@@ -13,6 +13,7 @@ import { layoutText, fallbackMeasure, type MeasureFn } from "./text-layout";
 import { getGridSlotRect, normalizeGridSlot, validateGridGeometry } from "./grids";
 import { validateGroupRelationships } from "./groups";
 import { isValidQRValue, qrContrastRatio } from "./qr";
+import { isCustomerFieldRequired } from "./field-binding";
 
 export type PreflightOptions = {
   measure?: MeasureFn;
@@ -60,6 +61,16 @@ export function runPreflight(document: CustomizerDocument, options: PreflightOpt
 
   const pageById = new Map(enabledPages.map((page) => [page.id, page]));
   const fieldById = new Map(document.fields.map((field) => [field.id, field]));
+  // A required field only blocks when the customer can actually fill it
+  // (visible, bound to an editable layer on an enabled page) — the same rule
+  // the customer form applies, so a hidden required field can never make an
+  // order impossible to complete.
+  const enabledPageIds = new Set<string>(enabledPages.map((page) => page.id));
+  const effectivelyRequired = new Set<string>(
+    document.fields
+      .filter((field) => isCustomerFieldRequired(field, document.layers as any[], enabledPageIds))
+      .map((field) => field.id),
+  );
   const assetIds = new Set(document.assets.map((asset) => asset.id));
   const supportedLayerTypes = new Set(["text", "image", "frame", "shape", "grid", "group", "element", "background", "qrCode"]);
 
@@ -110,7 +121,7 @@ export function runPreflight(document: CustomizerDocument, options: PreflightOpt
     if (isImageLike(layer)) {
       const field = layer.fieldId ? fieldById.get(layer.fieldId) : null;
       const hasImage = Boolean(layer.src || layer.placeholderImage);
-      if (field?.required && !layer.src) {
+      if (field && effectivelyRequired.has(field.id) && !layer.src) {
         issues.push({
           code: "missing-required-image",
           severity: "error",
@@ -257,7 +268,7 @@ export function runPreflight(document: CustomizerDocument, options: PreflightOpt
 
   // Required text fields with no connected content.
   for (const field of document.fields) {
-    if (!field.required || field.type === "image" || field.type === "file") continue;
+    if (!effectivelyRequired.has(field.id) || field.type === "image" || field.type === "file") continue;
     const connected = document.layers.find(
       (layer) => layer.type === "text" && layer.fieldId === field.id && !layer.hidden,
     ) as TextLayer | undefined;

@@ -97,8 +97,9 @@ describe("single-line text resize canvas contract", () => {
     expect(customerEditor).toContain("recordHistory(historyGroup);");
     expect(customerEditor).toContain("setEditorState((current) => plans.reduce(applyTransformPlan, current));");
     expect(customerEditor).toContain("existing.textStyle");
-    // A gesture that ended where it started writes nothing at all.
-    expect(stage).toContain("if (changes.length) onGestureCommit(changes);");
+    // A gesture that ended where it started writes nothing at all; one that
+    // moved commits once, rendered synchronously for the preview hand-off.
+    expect(stage).toContain("if (changes.length) flushSync(() => onGestureCommit(changes));");
   });
 
   it("requires customer resize and font-size permissions", () => {

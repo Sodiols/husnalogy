@@ -20,6 +20,7 @@ import InteractionStageClient, { type GestureCommit } from "./interaction/Intera
 /** One layer's share of a transform transaction. */
 export type LayerTransformChange = GestureCommit;
 import { useInteractionNodes } from "./interaction/useInteractionNodes";
+import { useSelectOnPressWhileEditing } from "./interaction/useSelectOnPressWhileEditing";
 import { getGridSlotRect, normalizeGridSlot } from "@/lib/customizer/v2/grids";
 import { CustomizerWatermark } from "./CustomizerProtectionOverlay";
 import {
@@ -40,6 +41,7 @@ import {
   type SafeBounds,
 } from "@/lib/customizer/v2/text-layout";
 import { resolveLayerSelectionGeometry } from "@/lib/customizer/v2/selection-geometry";
+import { cropPanDelta, resolveCropRect } from "@/lib/customizer/v2/image-crop";
 import { resolveLayerCapabilities } from "@/lib/customizer/v2/interaction/capabilities";
 import { isEmptyText } from "@/lib/customizer/v2/text-editing";
 import {
@@ -156,6 +158,8 @@ type Props = {
   // Right click on an object (spec §20). The canvas resolves which object was
   // hit and selects it; the parent owns the menu and its permitted actions.
   onLayerContextMenu?: (layerId: string, position: { x: number; y: number }) => void;
+  /** Right click on empty artboard, with the document point under the pointer. */
+  onCanvasContextMenu?: (position: { x: number; y: number }, point: { x: number; y: number }) => void;
 };
 
 export default function CustomizerWorkspace({
@@ -200,6 +204,7 @@ export default function CustomizerWorkspace({
   editingGroupId = null,
   onEnterGroup,
   onLayerContextMenu,
+  onCanvasContextMenu,
 }: Props) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const surfaceRef = useRef<HTMLDivElement>(null);
@@ -834,12 +839,26 @@ export default function CustomizerWorkspace({
             ? beginCropSession("slot", "pan", drag.layerId, drag.slotId)
             : null;
     }
-    const dx = (e.clientX - drag.startClientX) / scale;
-    const dy = (e.clientY - drag.startClientY) / scale;
     if ((drag.mode === "crop-pan" || drag.mode === "grid-crop-pan") && drag.sessionId !== null) {
+      // The pan lives inside the frame's rotation, the photo's own rotation and
+      // flips and its crop scale; the shared mapping carries the pointer
+      // movement through all of them so the photo follows the pointer.
+      const layer = layers.find((candidate: any) => candidate.id === drag.layerId);
+      const stored =
+        drag.mode === "crop-pan"
+          ? layer?.imageTransform || {}
+          : (layer?.slots || []).find((slot: any) => slot?.id === drag.slotId)?.transform || {};
+      const live = { ...stored, ...(cropSessionRef.current?.patch || {}) };
+      const delta = cropPanDelta((e.clientX - drag.startClientX) / scale, (e.clientY - drag.startClientY) / scale, {
+        rotation: Number(layer?.rotation) || 0,
+        imageRotation: Number(live.rotation) || 0,
+        flipX: Boolean(live.flipX),
+        flipY: Boolean(live.flipY),
+        crop: drag.mode === "crop-pan" ? resolveCropRect(live) : null,
+      });
       previewCrop(drag.sessionId, {
-        offsetX: Math.round(drag.startOffsetX + dx),
-        offsetY: Math.round(drag.startOffsetY + dy),
+        offsetX: Math.round(drag.startOffsetX + delta.x),
+        offsetY: Math.round(drag.startOffsetY + delta.y),
       });
     }
   };
@@ -878,6 +897,15 @@ export default function CustomizerWorkspace({
     previewCrop(sessionId, { zoom: Number(next.toFixed(3)) });
     scheduleCropSettle(sessionId);
   };
+
+  useSelectOnPressWhileEditing({
+    surfaceRef,
+    editingTextId,
+    nodes: interactionNodes,
+    editingGroupId,
+    scale,
+    onSelect: applySelection,
+  });
 
   const onGesturePointerDown = (event: React.PointerEvent) => {
     if (event.pointerType !== "touch") return;
@@ -1058,6 +1086,11 @@ export default function CustomizerWorkspace({
             if (previewMode || editingTextId) return;
             if (!activeSelection.includes(layerId)) applySelection([layerId]);
             onLayerContextMenu?.(layerId, position);
+          }}
+          onContextMenuCanvas={(position, point) => {
+            if (previewMode || editingTextId) return;
+            applySelection([]);
+            onCanvasContextMenu?.(position, point);
           }}
           onGridSlotSelect={(layerId, slotId) => onGridSlotSelect?.(layerId, slotId)}
         />

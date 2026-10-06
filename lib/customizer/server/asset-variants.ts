@@ -97,6 +97,30 @@ export async function assertVariantsDecodable(editorBuffer: Buffer, thumbnailBuf
   if (!(await decodeImage(thumbnailBuffer))) throw new Error("The generated thumbnail could not be decoded after generation.");
 }
 
+/**
+ * A generated variant that decodes may still be the wrong SIZE — an editor
+ * image produced at thumbnail size is precisely the legacy blur. Every new
+ * upload's variants are measured against what this source should produce
+ * before anything is stored; a wrong size refuses the upload.
+ */
+export async function assertVariantsSized(editorBuffer: Buffer, thumbnailBuffer: Buffer, sourceWidth: number, sourceHeight: number) {
+  const editor = await inspectVariantBuffer(editorBuffer, "editor", sourceWidth, sourceHeight);
+  if (!editor.ok) {
+    throw new Error(`The optimized editor image is ${editor.width}x${editor.height}; this ${sourceWidth}x${sourceHeight} image needs about ${editor.expectedWidth}x${editor.expectedHeight}.`);
+  }
+  const thumbnail = await inspectVariantBuffer(thumbnailBuffer, "thumbnail", sourceWidth, sourceHeight);
+  if (!thumbnail.ok) throw new Error("The generated thumbnail has the wrong size.");
+}
+
+/**
+ * After storing an editor variant, read it BACK from Storage and judge it:
+ * the object must exist, decode, and be the size this source needs. An upload
+ * is reported ready only after this passes.
+ */
+export async function verifyStoredEditorVariant(options: Omit<StoredVariantOptions, "variant">): Promise<VariantInspection> {
+  return inspectStoredVariant({ ...options, variant: "editor" });
+}
+
 /* ----------------------------------------------------------- generation -- */
 
 export async function buildRasterVariants(source: Buffer): Promise<AssetVariants> {
@@ -117,6 +141,7 @@ export async function buildRasterVariants(source: Buffer): Promise<AssetVariants
     .toBuffer();
 
   await assertVariantsDecodable(editorBuffer, thumbnailBuffer);
+  await assertVariantsSized(editorBuffer, thumbnailBuffer, width, height);
   const editorMeta = (await decodeImage(editorBuffer))!;
   const thumbnailMeta = (await decodeImage(thumbnailBuffer))!;
 

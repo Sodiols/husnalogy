@@ -19,7 +19,9 @@ const patchRoute = readFileSync(
 describe("customization template-version restore", () => {
   it("loads automatic drafts only for the active published template version", () => {
     expect(client).toContain('templateVersion: String(Number(template?.version) || 1)');
-    expect(client).toContain("requireCurrentTemplateVersion: true");
+    // The automatic "latest draft" lookup (no design id in the URL) is held to
+    // the active version; a design opened by id is pinned server-side instead.
+    expect(client).toContain("requireCurrentTemplateVersion: fromLatestDraft");
     expect(route).toContain('url.searchParams.get("templateVersion")');
     expect(route).toContain('query.eq("template_version", templateVersion)');
   });

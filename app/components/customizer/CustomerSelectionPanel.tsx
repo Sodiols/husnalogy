@@ -1,5 +1,7 @@
 "use client";
 
+import PaintControl from "./PaintControl";
+import { isTransparentPaint } from "@/lib/customizer/v2/paint";
 import { createGridSlotsFromPreset, GRID_PRESETS } from "@/lib/customizer/v2/grids";
 import { isValidQRValue, qrContrastRatio } from "@/lib/customizer/v2/qr";
 import EditableNumericStepper from "./EditableNumericStepper";
@@ -158,6 +160,11 @@ function PanelStepper({
   );
 }
 
+/** The colour Transparent switches back to: the template's own, when it has one. */
+function restoreColour(original: unknown, fallback: string): string {
+  return isTransparentPaint(original) ? fallback : String(original);
+}
+
 function ColourControl({ label, value, disabled, onChange }: any) {
   return (
     <label
@@ -235,6 +242,10 @@ export default function CustomerSelectionPanel({
   canGroup = true,
   canUngroup = true,
   canDuplicate = true,
+  /** The template's allowed customer colours; empty = any colour. */
+  palette = [],
+  /** The template's own version of the selected layer, for restoring its colours. */
+  templateLayer = null,
 }: any) {
   if (!layers?.length) return null;
 
@@ -250,6 +261,8 @@ export default function CustomerSelectionPanel({
   const OPACITY_TYPES = new Set(["text", "image", "frame", "shape", "element", "group", "qrCode", "grid", "background"]);
   const opacityApplies = layers.every((item: any) => OPACITY_TYPES.has(String(item?.type)));
   const canStyle = allow("editStyle");
+  const canFill = allow("changeFill");
+  const canLine = allow("changeBorder") || canStyle;
   const layerLabel =
     layers.length > 1
       ? `${layers.length} items`
@@ -295,28 +308,32 @@ export default function CustomerSelectionPanel({
       {layers.length === 1 && layer.type === "shape" && (
         <div className="mt-5 grid gap-3">
           <SectionTitle>Appearance</SectionTitle>
-          <ColourControl
-            label={layer.shape === "line" ? "Colour" : "Fill"}
-            value={layer.shape === "line" ? layer.stroke || "#303839" : layer.fill || "#F8F6F1"}
-            disabled={!canStyle}
-            onChange={(value: string) =>
-              onPatch(layer.shape === "line" ? { stroke: value } : { fill: value })
-            }
-          />
+          {/* The same gates the save validator applies: fill needs changeFill,
+              the line (stroke) needs changeBorder or editStyle. */}
           {layer.shape !== "line" && (
-            <ColourControl
-              label="Border"
-              value={layer.stroke || "#303839"}
-              disabled={!canStyle}
-              onChange={(stroke: string) => onPatch({ stroke })}
+            <PaintControl
+              label="Fill Colour"
+              value={layer.fill}
+              fallbackColour={restoreColour(templateLayer?.fill, "#f8f6f1")}
+              palette={palette}
+              disabled={!canFill}
+              onChange={(fill: string) => onPatch({ fill })}
             />
           )}
+          <PaintControl
+            label="Line Colour"
+            value={layer.shape === "line" ? layer.stroke || layer.fill : layer.stroke}
+            fallbackColour={restoreColour(templateLayer?.stroke, "#303839")}
+            palette={palette}
+            disabled={!canLine}
+            onChange={(stroke: string) => onPatch({ stroke })}
+          />
           <PanelStepper
-            label={layer.shape === "line" ? "Thickness" : "Border width"}
+            label="Line Weight"
             value={layer.strokeWidth || 0}
             minimum={0}
             maximum={40}
-            disabled={!canStyle}
+            disabled={!canLine}
             onCommit={(strokeWidth: number) => onPatch({ strokeWidth })}
           />
           {layer.shape === "line" && (
@@ -327,7 +344,7 @@ export default function CustomerSelectionPanel({
                 onChange={(lineStyle) => onPatch({ lineStyle })}
                 options={lineStyleOptions}
                 width="w-full"
-                disabled={!canStyle}
+                disabled={!canLine}
               />
               <ToolbarDropdown
                 label="Stroke cap"
@@ -335,7 +352,7 @@ export default function CustomerSelectionPanel({
                 onChange={(lineCap) => onPatch({ lineCap })}
                 options={strokeCapOptions}
                 width="w-full"
-                disabled={!canStyle}
+                disabled={!canLine}
               />
               <div className="grid grid-cols-2 gap-2">
                 <ToolbarDropdown
@@ -344,7 +361,7 @@ export default function CustomerSelectionPanel({
                   onChange={(lineStartCap) => onPatch({ lineStartCap })}
                   options={endpointOptions}
                   width="w-full"
-                  disabled={!canStyle}
+                  disabled={!canLine}
                 />
                 <ToolbarDropdown
                   label="End cap"
@@ -352,7 +369,7 @@ export default function CustomerSelectionPanel({
                   onChange={(lineEndCap) => onPatch({ lineEndCap })}
                   options={endpointOptions}
                   width="w-full"
-                  disabled={!canStyle}
+                  disabled={!canLine}
                 />
               </div>
             </>

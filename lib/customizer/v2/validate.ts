@@ -6,11 +6,14 @@
 // rejected with typed violations, and a sanitized editor state (only the
 // permitted changes) is returned for persistence.
 
+import { isTransparentPaint, normalizePaintValue } from "./paint";
+import { normalizeTintColour } from "./element-colour";
 import { z } from "zod";
 import { getLayerPermissions } from "@/app/components/customizer/customizer-utils";
 import { DEFAULT_FONT_FAMILY } from "./google-fonts";
 import { isValidQRValue, normalizeQRCodeStyle } from "./qr";
 import { normalizeImageFilters } from "./image-filters";
+import { frameMaskAllowlistNames, normalizeMaskShape } from "./masks";
 import { resolveImageCropCapabilities } from "./image-permissions";
 import { resolveFontSizeBounds } from "./text-toolbar";
 import { normalizeCanonicalText, promoteTextStyleForValue } from "./text-editing";
@@ -64,6 +67,7 @@ export const textStyleOverrideSchema = z
     lineHeight: finite.min(0.5).max(4).optional(),
     textAlign: z.enum(["left", "center", "right"]).optional(),
     verticalAlign: z.enum(["top", "middle", "bottom"]).optional(),
+    growthDirection: z.enum(["up", "center", "down"]).optional(),
   })
   .strict();
 
@@ -166,6 +170,7 @@ export const userLayerSchema = z
         lineHeight: finite.min(0.5).max(4).optional(),
         textAlign: z.string().max(12).optional(),
         verticalAlign: z.enum(["top", "middle", "bottom"]).optional(),
+        growthDirection: z.enum(["up", "center", "down"]).optional(),
         uppercase: z.boolean().optional(),
         multiline: z.boolean().optional(),
         autoSizeMode: z.enum(["fixed", "width", "height", "shrink"]).optional(),
@@ -319,7 +324,12 @@ export function validateCustomerState(
   const layerById = new Map(layers.map((layer) => [layer.id, layer]));
   const fields: any[] = Array.isArray(template?.fields) ? template.fields : [];
   const fieldById = new Map(fields.map((field) => [field.id, field]));
-  const fieldLayerById = new Map(layers.filter((layer) => layer.fieldId).map((layer) => [layer.fieldId, layer]));
+  // A field may be shared by several layers (linked fields): keep them all.
+  const fieldLayersById = new Map<string, any[]>();
+  for (const layer of layers) {
+    if (!layer.fieldId) continue;
+    fieldLayersById.set(layer.fieldId, [...(fieldLayersById.get(layer.fieldId) || []), layer]);
+  }
   const pageIds = new Set((template?.pages || []).filter((p: any) => p.enabled !== false).map((p: any) => p.id));
 
   /* ---- values ---- */
@@ -331,11 +341,19 @@ export function validateCustomerState(
       violations.push({ code: "unknown-field", fieldId, message: `Field "${fieldId}" does not exist on this template.` });
       continue;
     }
-    const connectedLayer: any = fieldLayerById.get(fieldId);
-    if (connectedLayer?.customerInteractionDisabled || (connectedLayer && !connectedLayer.customerEditable)) {
-      violations.push({ code: "interaction-disabled", fieldId, layerId: connectedLayer.id, message: `Editing "${connectedLayer.name || field.label}" is disabled.` });
+    const connectedLayers: any[] = fieldLayersById.get(fieldId) || [];
+    // The value is accepted when ANY bound layer still lets the customer edit
+    // it; it is refused only when every bound layer is locked or disabled.
+    const editableLayers = connectedLayers.filter((layer) => layer.customerEditable && !layer.customerInteractionDisabled);
+    if (connectedLayers.length && !editableLayers.length) {
+      const blocked = connectedLayers[0];
+      violations.push({ code: "interaction-disabled", fieldId, layerId: blocked.id, message: `Editing "${blocked.name || field.label}" is disabled.` });
       continue;
     }
+    // Limits come from EVERY bound text layer: a shared value is rendered on
+    // all of them, including ones the customer cannot select.
+    const textLayers = connectedLayers.filter((layer) => layer.type === "text");
+    const connectedLayer: any = textLayers[0] || editableLayers[0] || null;
     if (field.type === "image" || field.type === "file") {
       if (raw === null || raw === undefined || raw === "") {
         sanitizedValues[fieldId] = null;
@@ -360,9 +378,9 @@ export function validateCustomerState(
     let text = normalizeCanonicalText(raw === null || raw === undefined ? "" : String(raw));
     // A manual break promotes a text layer at render time. Never flatten the
     // canonical value just because an older template still says single-line.
-    const lineLimit = connectedLayer?.type === "text"
-      ? Math.max(0, Math.floor(Number(connectedLayer.maxLines) || 0))
-      : 0;
+    // Shared text fields obey the tightest limit of every bound text layer.
+    const lineLimits = textLayers.map((layer) => Math.max(0, Math.floor(Number(layer.maxLines) || 0))).filter((limit) => limit > 0);
+    const lineLimit = lineLimits.length ? Math.min(...lineLimits) : 0;
     if (lineLimit > 0 && text.split("\n").length > lineLimit) {
       violations.push({
         code: "too-many-lines",
@@ -374,7 +392,7 @@ export function validateCustomerState(
     }
     const configuredLengths = [
       Number(field.maxLength) || 0,
-      Number(connectedLayer?.maxChars) || 0,
+      ...textLayers.map((layer) => Number(layer.maxChars) || 0),
     ].filter((limit) => limit > 0);
     const maxLength = configuredLengths.length ? Math.min(...configuredLengths) : 2000;
     if (text.length > maxLength) {
@@ -479,7 +497,11 @@ export function validateCustomerState(
       violations.push({ code: "user-frame-not-allowed", message: "Adding frames is not enabled for this design." });
       continue;
     }
-    if (layer.type === "frame" && !settingAllows(template, "allowedCustomerFrameMasks", (layer as any).maskShape || (layer as any).mask?.kind)) {
+    if ((layer.type === "frame" || layer.type === "image") && (layer as any).mask !== undefined) {
+      // Only geometry may reach a renderer (see normalizeMaskShape).
+      (layer as any).mask = normalizeMaskShape((layer as any).mask);
+    }
+    if (layer.type === "frame" && !frameMaskAllowlistNames(layer as any).some((name) => settingAllows(template, "allowedCustomerFrameMasks", name))) {
       violations.push({ code: "user-frame-not-allowed-by-template", message: "This frame shape is not allowed for this design." });
       continue;
     }
@@ -518,6 +540,17 @@ export function validateCustomerState(
       const fallback = settingList(template, "allowedCustomerFonts")[0] || DEFAULT_FONT_FAMILY;
       layer.textStyle = { ...layer.textStyle, fontFamily: fallback };
     }
+    if (layer.type === "element") {
+      // An element's tint is a colour or "" (Original) — never an arbitrary
+      // value inside the renderer's flood-color attribute.
+      const tint = normalizeTintColour((layer as any).tintColor);
+      if (tint === null) {
+        violations.push({ code: "invalid-tint", message: "An element colour was not a valid colour and was reset to the original." });
+        (layer as any).tintColor = "";
+      } else {
+        (layer as any).tintColor = tint;
+      }
+    }
     const colourValues = layer.type === "text"
       ? [layer.textStyle?.color]
       : layer.type === "shape"
@@ -533,7 +566,8 @@ export function validateCustomerState(
             : layer.type === "element"
               ? [(layer as any).tintColor]
               : [];
-    if (colourValues.some((colour) => colour && !settingAllows(template, "allowedCustomerColors", colour))) {
+    // Transparent is the absence of a colour, never a palette violation.
+    if (colourValues.some((colour) => colour && !isTransparentPaint(colour) && !settingAllows(template, "allowedCustomerColors", colour))) {
       violations.push({ code: "color-not-allowed-by-template", message: "A customer object uses a colour that is not allowed for this design." });
       continue;
     }
@@ -651,6 +685,9 @@ export function validateCustomerState(
         gate("letterSpacing", Boolean(permissions.changeLetterSpacing), "letter-spacing-not-allowed");
         gate("lineHeight", Boolean((permissions as any).changeLineHeight ?? permissions.editStyle), "line-height-not-allowed");
         gate("verticalAlign", Boolean(permissions.changeAlignment || permissions.editStyle), "vertical-alignment-not-allowed");
+        // Growth moves the box as the text changes: the same gate as the
+        // vertical alignment it replaces for auto-sized text.
+        gate("growthDirection", Boolean(permissions.changeAlignment || permissions.editStyle), "text-growth-not-allowed");
         gate("fontWeight", Boolean(permissions.editStyle), "style-not-allowed");
         gate("fontStyle", Boolean(permissions.editStyle), "style-not-allowed");
 
@@ -747,8 +784,23 @@ export function validateCustomerState(
               : layer.type === "frame"
                 ? (frameKeys.has(key) && permissions.changeBorder)
               : false;
-        if (allowed) properties[key] = value;
-        else violations.push({ code: "property-not-allowed", layerId, message: `Changing ${key} on "${layer.name || layerId}" is not allowed.` });
+        if (!allowed) {
+          violations.push({ code: "property-not-allowed", layerId, message: `Changing ${key} on "${layer.name || layerId}" is not allowed.` });
+          continue;
+        }
+        if (layer.type === "shape" && (key === "fill" || key === "stroke")) {
+          // A paint is a colour or transparent — never an arbitrary SVG value —
+          // and a colour obeys the template palette exactly as a customer's own
+          // objects do.
+          const paint = normalizePaintValue(value);
+          if (paint === null || (!isTransparentPaint(paint) && !settingAllows(template, "allowedCustomerColors", paint))) {
+            violations.push({ code: "paint-not-allowed", layerId, message: `That ${key === "fill" ? "fill" : "line"} colour is not allowed for this design.` });
+            continue;
+          }
+          properties[key] = paint;
+          continue;
+        }
+        properties[key] = value;
       }
       if (layer.type === "qrCode" && properties.value !== undefined && !isValidQRValue(properties.value)) {
         violations.push({ code: "invalid-qr-url", layerId, message: "The QR code destination is invalid." });

@@ -20,6 +20,16 @@ const MIN_OBJECT_SIZE = 24;
 type Point = { x: number; y: number };
 type Box = { x: number; y: number; width: number; height: number };
 
+
+/**
+ * A desktop viewport. The editor reserves its contextual-toolbar row for the
+ * whole design step (so selecting never re-fits the canvas under the
+ * pointer); at 1280x720 that leaves fx_shape so small on screen that its
+ * transformer anchors overlap, and a press meant for one handle lands on its
+ * neighbour. These specs are about gesture maths, not tiny-screen targeting.
+ */
+test.use({ viewport: { width: 1440, height: 900 } });
+
 /* -------------------------------------------------------------------------- */
 /* Helpers                                                                    */
 /* -------------------------------------------------------------------------- */

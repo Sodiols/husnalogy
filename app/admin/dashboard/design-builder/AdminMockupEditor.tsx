@@ -70,7 +70,7 @@ function MockupOverlayEditor({ overlay, onPatch, onRemove, onMove }: any) {
   );
 }
 
-export default function AdminMockupEditor({ template, product, onChange }: any) {
+export default function AdminMockupEditor({ template, product, onChange, onSyncedChange }: any) {
   const mockups: MockupTemplate[] = Array.isArray(template.mockupTemplates) ? template.mockupTemplates : [];
   const active = mockups[0] || createFlatMockupTemplate(product?.id || "", product?.mockups?.[0] || product?.thumbnail || "");
   const [viewId, setViewId] = useState(active.views[0]?.id || "front-card");
@@ -87,6 +87,24 @@ export default function AdminMockupEditor({ template, product, onChange }: any) 
   const pages = useMemo(() => (template.pages || []).filter((page: any) => page.enabled !== false), [template.pages]);
 
   const commit = (next: MockupTemplate) => onChange({ ...template, mockupTemplates: [next, ...mockups.slice(1)] });
+
+  // The mockup tables are a SEPARATE save path from the template draft. Their
+  // responses arrive asynchronously, so they are applied to the LATEST
+  // template (never the render that started the request, which would revert
+  // every edit made meanwhile), and through `onSyncedChange` so reflecting a
+  // database result does not mark the template draft unsaved.
+  const templateRef = useRef(template);
+  templateRef.current = template;
+  const applySynced = (next: MockupTemplate) => {
+    const latest = templateRef.current || {};
+    const latestMockups: MockupTemplate[] = Array.isArray(latest.mockupTemplates) ? latest.mockupTemplates : [];
+    const updated = { ...latest, mockupTemplates: [next, ...latestMockups.slice(1)] };
+    (onSyncedChange || onChange)(updated);
+  };
+  const latestActive = (): MockupTemplate | undefined => {
+    const latest = templateRef.current || {};
+    return Array.isArray(latest.mockupTemplates) ? latest.mockupTemplates[0] : undefined;
+  };
   const patchView = (patch: any) => commit({ ...active, views: active.views.map((item) => item.id === view.id ? { ...item, ...patch } : item) });
   const patchArea = (patch: Partial<MockupArtworkArea>) => patchView({ artworkAreas: view.artworkAreas.map((item) => item.id === area.id ? { ...item, ...patch } : item) });
 
@@ -99,7 +117,7 @@ export default function AdminMockupEditor({ template, product, onChange }: any) 
         const payload = await response.json().catch(() => ({}));
         if (!response.ok || payload.ok === false) throw new Error(payload.error || "Could not load saved mockups.");
         if (payload.mockup) {
-          onChange({ ...template, mockupTemplates: [payload.mockup, ...mockups.slice(1)] });
+          applySynced(payload.mockup);
           setViewId(payload.mockup.views?.[0]?.id || "");
           setAreaId(payload.mockup.views?.[0]?.artworkAreas?.[0]?.id || "");
         }
@@ -110,14 +128,22 @@ export default function AdminMockupEditor({ template, product, onChange }: any) 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [product?.id]);
 
+  const syncInFlight = useRef(false);
   const persist = async (publish: boolean) => {
     if (!product?.id) { setSyncState("error"); setSyncMessage("Save the product before saving its normalized mockup."); return; }
+    if (syncInFlight.current) return;
+    syncInFlight.current = true;
     setSyncState("saving");
     setSyncMessage("");
+    // The exact mockup object this request sends; if it is still the current
+    // one when the response arrives, the server's copy may replace it.
+    const sent = active;
+    let draftSaved = false;
     try {
-      const saveResponse = await fetch(`/api/admin/customizer/mockups/${encodeURIComponent(product.id)}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ mockup: active }) });
+      const saveResponse = await fetch(`/api/admin/customizer/mockups/${encodeURIComponent(product.id)}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ mockup: sent }) });
       const saved = await saveResponse.json().catch(() => ({}));
       if (!saveResponse.ok || saved.ok === false) throw new Error(saved.error || "Could not save the mockup.");
+      draftSaved = true;
       let next = saved.mockup;
       if (publish) {
         const publishResponse = await fetch(`/api/admin/customizer/mockups/${encodeURIComponent(product.id)}/publish`, { method: "POST" });
@@ -125,17 +151,27 @@ export default function AdminMockupEditor({ template, product, onChange }: any) 
         if (!publishResponse.ok || published.ok === false) throw new Error(published.error || "Could not publish the mockup.");
         next = published.mockup;
       }
-      commit(next);
+      const editedMeanwhile = latestActive() !== undefined && latestActive() !== sent;
+      if (next && !editedMeanwhile) applySynced(next);
       setSyncState("saved");
-      setSyncMessage(publish ? `Published version ${next.version}.` : "Draft saved to normalized mockup tables.");
+      setSyncMessage(
+        (publish ? `Published version ${next?.version}.` : "Draft saved to normalized mockup tables.") +
+          (editedMeanwhile ? " Newer edits made while saving are not saved yet." : ""),
+      );
     } catch (error: any) {
       setSyncState("error");
-      setSyncMessage(String(error?.message || error));
+      const reason = String(error?.message || error);
+      // Never imply a failed step succeeded — or that a successful one failed.
+      setSyncMessage(draftSaved ? `Mockup draft saved, but publishing failed: ${reason}` : `Mockup not saved: ${reason}`);
+    } finally {
+      syncInFlight.current = false;
     }
   };
 
   const importLegacy = async () => {
     if (!product?.id) { setSyncState("error"); setSyncMessage("Save the product before importing legacy mockups."); return; }
+    if (syncInFlight.current) return;
+    syncInFlight.current = true;
     setSyncState("saving");
     setSyncMessage("");
     try {
@@ -147,12 +183,14 @@ export default function AdminMockupEditor({ template, product, onChange }: any) 
       const payload = await response.json().catch(() => ({}));
       if (!response.ok || payload.ok === false) throw new Error(payload.error || "Could not import legacy mockups.");
       const next = payload.templates?.[0];
-      if (next) commit(next);
+      if (next) applySynced(next);
       setSyncState("saved");
       setSyncMessage(`Imported ${payload.imported || 0} legacy mockup configuration.`);
     } catch (error: any) {
       setSyncState("error");
-      setSyncMessage(String(error?.message || error));
+      setSyncMessage(`Legacy mockups not imported: ${String(error?.message || error)}`);
+    } finally {
+      syncInFlight.current = false;
     }
   };
 

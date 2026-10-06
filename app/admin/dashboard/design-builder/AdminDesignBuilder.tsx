@@ -8,6 +8,7 @@
 // Collapsed: a launch card with a live summary. Open: a full-screen
 // professional editor (fixed overlay, no site chrome).
 
+import { configureAssetRuntime } from "@/app/components/customizer/canvas-image-source";
 import { DEFAULT_FONT_FAMILY } from "@/lib/customizer/v2/google-fonts";
 import { ensureDesignFontsLoaded, reportGoogleFontLoadFailure } from "@/app/components/customizer/useGoogleFonts";
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
@@ -24,6 +25,8 @@ import {
 } from "@/lib/customizer/v2/interaction/tool-mode";
 import AdminBuilderHeader from "./AdminBuilderHeader";
 import AdminContextToolbar from "./AdminContextToolbar";
+import AdminAlignmentPanel from "./AdminAlignmentPanel";
+import type { AlignmentTarget } from "@/lib/customizer/v2/admin-toolbar-state";
 import AdminToolRail from "./AdminToolRail";
 import AdminTextToolPanel from "./AdminTextToolPanel";
 import AdminCanvas from "./AdminCanvas";
@@ -38,7 +41,20 @@ import AdminMockupEditor from "./AdminMockupEditor";
 import AdminUploadsPanel, { type AdminUploadAsset } from "./AdminUploadsPanel";
 import CustomerElementsPanel, { type LibraryElement } from "@/app/components/customizer/CustomerElementsPanel";
 import { createGridSlots } from "@/lib/customizer/v2/grids";
-import { evaluateGroupAction, groupLayers, ungroupLayers } from "@/lib/customizer/v2/groups";
+import { evaluateGroupAction, getDescendantIds, groupLayers, ungroupLayers } from "@/lib/customizer/v2/groups";
+import { applyClippingMask, findClipMaskPair } from "@/lib/customizer/v2/clipping-mask";
+import { artboardOf, changeTemplateOrientation, orientationOf } from "@/lib/customizer/v2/artboard";
+import { anchorGrownTextBox, normalizeTextGrowthDirection } from "@/lib/customizer/v2/text-growth";
+import { buildCustomerContextMenu, type ContextMenuActionId } from "@/lib/customizer/v2/context-menu";
+import {
+  clearStudioRecovery,
+  readStudioRecovery,
+  studioRecoveryDiffers,
+  studioRecoveryKey,
+  writeStudioRecovery,
+  type StudioRecoverySnapshot,
+} from "@/lib/customizer/studio-recovery";
+import CustomerCanvasContextMenu from "@/app/components/customizer/CustomerCanvasContextMenu";
 import { DEFAULT_LINE_HEIGHT, createCanvasMeasure, getTextResizeConstraints, isSingleLineAutoSizeText } from "@/lib/customizer/v2/text-layout";
 import { resolveLayerSelectionGeometry } from "@/lib/customizer/v2/selection-geometry";
 import { resolveSelection, sanitizeSelection, selectionsEqual, type SelectionIntent } from "@/lib/customizer/v2/selection";
@@ -48,7 +64,15 @@ import {
 } from "@/lib/customizer/v2/text-editing";
 import { getFieldById, resolveLayerText } from "@/app/components/customizer/customizer-utils";
 import { formatCustomizerVersion, nextCustomizerVersion, type CustomizerUpdateType } from "@/lib/customizer/public-version";
+import {
+  asProductSaveResult,
+  createRevisionTracker,
+  requestTemplatePublication,
+  saveThenPublish,
+  type RevisionTracker,
+} from "@/lib/customizer/studio-save";
 import { applyCanvasLayerPatches,
+  canvasPatchesChangeTemplate,
   addLayer,
   addPage,
   alignLayers,
@@ -71,6 +95,7 @@ import { applyCanvasLayerPatches,
   movePage,
   moveConnectedField,
   moveLayers,
+  isAdminCroppableLayer,
   newImageLayer,
   newBackgroundLayer,
   newElementLayer,
@@ -85,15 +110,56 @@ import { applyCanvasLayerPatches,
   selectableLayersForPage,
   sendLayerToBack,
   setCustomerEditable,
+  unlinkLayerFromField,
   updateConnectedField,
   updateLayer,
   updateLayerStyle,
+  scaleLayerSelection,
+  flipLayerSelection,
+  rotateLayerSelection,
+  fitLayerToArtboard,
+  setImageFitMode,
+  replaceLayerImage,
+  uploadBuilderImage,
   type AlignMode,
-  type DistributionMode,
+  type BuilderAsset,
   type LayerArrangeMode,
 } from "./builder-utils";
 
 const builderTextMeasure = createCanvasMeasure();
+
+// The studio may fall back to a library asset's full-quality original when its
+// editor variant fails; set before any canvas image resolves.
+configureAssetRuntime({ audience: "studio" });
+
+/** How long after a change the studio's local recovery copy is written. */
+const STUDIO_RECOVERY_DELAY_MS = 400;
+/** How long editing must pause before an existing product's draft autosaves. */
+const STUDIO_AUTOSAVE_DELAY_MS = 4000;
+
+/** This browser's storage, or null where the browser blocks it (recovery is then unavailable; editing is not). */
+function studioStorage(): Storage | null {
+  try {
+    return window.localStorage;
+  } catch {
+    return null;
+  }
+}
+
+/** A recovery time the admin can recognise, e.g. "today at 14:05". */
+function formatRecoveryTime(iso: string): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "an earlier session";
+  const time = date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  return date.toDateString() === new Date().toDateString() ? `today at ${time}` : `${date.toLocaleDateString()} at ${time}`;
+}
+
+/** The Rotate field's value: the selection's common angle, or mixed. */
+function sharedRotation(layers: any[]): { value: number; mixed: boolean } {
+  const angles = layers.map((layer) => Number(layer?.rotation) || 0);
+  const value = angles[0] ?? 0;
+  return { value, mixed: angles.some((angle) => Math.abs(angle - value) > 0.005) };
+}
 
 function constrainTextLayerBox(template: any, layerId: string): any {
   const layer = getLayer(template, layerId);
@@ -136,11 +202,19 @@ function constrainTextLayerBox(template: any, layerId: string): any {
       : Math.max(layer.height, constraints.minHeight);
   const nextHeight = Math.ceil(height);
   const nextWidth = Math.ceil(width);
-  const nextY = style.fitMode === "auto-height" || String(layer.text || "").includes("\n")
-    ? layer.y - layer.height / 2 + nextHeight / 2
-    : layer.y;
-  if (nextWidth === layer.width && nextHeight === layer.height && nextY === layer.y) return template;
-  return updateLayer(template, layerId, { width: nextWidth, height: nextHeight, y: nextY });
+  // The growth direction decides which edge holds as the height changes, in
+  // the box's own rotated frame — the same rule every renderer resolves with.
+  const growth = normalizeTextGrowthDirection(style.growthDirection);
+  const anchored = growth
+    ? anchorGrownTextBox({ x: layer.x, y: layer.y, fromHeight: layer.height, toHeight: nextHeight, rotation: layer.rotation, growth })
+    : {
+        x: layer.x,
+        y: style.fitMode === "auto-height" || String(layer.text || "").includes("\n")
+          ? layer.y - layer.height / 2 + nextHeight / 2
+          : layer.y,
+      };
+  if (nextWidth === layer.width && nextHeight === layer.height && anchored.x === layer.x && anchored.y === layer.y) return template;
+  return updateLayer(template, layerId, { width: nextWidth, height: nextHeight, x: anchored.x, y: anchored.y });
 }
 
 export default function AdminDesignBuilder({
@@ -173,10 +247,25 @@ export default function AdminDesignBuilder({
   /** A one-shot insertion finished: hand the canvas back to Select. */
   const finishInsertion = () => dispatchTool({ type: "objectCreated" });
   const [activePanel, setActivePanel] = useState<"properties" | "text" | "uploads" | "elements">("properties");
+  /** The Alignment panel (opened from the toolbar) takes the inspector's place while open. */
+  const [alignmentOpen, setAlignmentOpen] = useState(false);
+  // Choosing another side panel from the tool rail replaces it.
+  useEffect(() => {
+    setAlignmentOpen(false);
+  }, [activePanel]);
   const [textPlacementPreset, setTextPlacementPreset] = useState<TextPlacementPreset>("body");
   const [editingTextLayerId, setEditingTextLayerId] = useState<string | null>(null);
   const [editTextRequest, setEditTextRequest] = useState<{ layerId: string; requestId: number; created: boolean } | null>(null);
   const [tab, setTab] = useState("design");
+  const [croppingLayerId, setCroppingLayerId] = useState<string | null>(null);
+  // The Crop button and the object menu ask the canvas to enter its crop
+  // session (the same one double-clicking enters): one crop source of truth.
+  const [cropRequest, setCropRequest] = useState<{ layerId: string; requestId: number } | null>(null);
+  const requestCrop = (layerId: string) => setCropRequest((current) => ({ layerId, requestId: (current?.requestId || 0) + 1 }));
+  // The eraser follows the same request pattern; while it runs it owns the top bar.
+  const [erasingLayerId, setErasingLayerId] = useState<string | null>(null);
+  const [eraseRequest, setEraseRequest] = useState<{ layerId: string; requestId: number } | null>(null);
+  const requestErase = (layerId: string) => setEraseRequest((current) => ({ layerId, requestId: (current?.requestId || 0) + 1 }));
   const [activePage, setActivePage] = useState(t.defaultPage || "front");
   // Multi-selection (spec §7): the LAST id is the primary layer (shows
   // handles + drives the properties panel).
@@ -221,25 +310,38 @@ export default function AdminDesignBuilder({
   editingGroupIdRef.current = editingGroupId;
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
-  type BuilderHistoryEntry = { template: any; selectedLayerIds: string[]; activePage: string; editingGroupId: string | null };
+  // Revision tokens (lib/customizer/studio-save): every document change takes
+  // a fresh token; undo/redo and cancelled previews restore an earlier one; a
+  // save marks only the token it actually sent as clean.
+  const revisionsRef = useRef<RevisionTracker | null>(null);
+  if (!revisionsRef.current) revisionsRef.current = createRevisionTracker();
+  const revisions = revisionsRef.current;
+  type BuilderHistoryEntry = { template: any; selectedLayerIds: string[]; activePage: string; editingGroupId: string | null; revision: number };
   const undoStack = useRef<BuilderHistoryEntry[]>([]);
   const redoStack = useRef<BuilderHistoryEntry[]>([]);
   const activeTextHistoryIdRef = useRef<string | null>(null);
-  const activeTextDirtyBeforeRef = useRef(false);
+  const activeTextRevisionBeforeRef = useRef(0);
   // Open toolbar interaction (typing in a numeric field, dragging the colour
-  // picker): holds the template to restore on Escape and whether the
-  // interaction already pushed its single undo entry.
-  const textStylePreviewRef = useRef<{ baseline: any; snapshotted: boolean } | null>(null);
+  // picker): holds the template to restore on Escape, whether the interaction
+  // already pushed its single undo entry, and the revision it started from.
+  const textStylePreviewRef = useRef<{ baseline: any; snapshotted: boolean; revision: number } | null>(null);
+  // A canvas gesture's undo entry, captured at pointer-down but only pushed
+  // once the gesture actually changes something (spec §45).
+  const pendingGestureEntryRef = useRef<BuilderHistoryEntry | null>(null);
   const [, forceTick] = useState(0);
   const bump = () => forceTick((x) => x + 1);
 
-  const apply = (next: any) => {
+  const apply = (next: any, restoreRevision?: number) => {
+    // A command that changed nothing must not mark the document unsaved.
+    if (next === tRef.current && restoreRevision === undefined) return;
     // Several editor callbacks intentionally run in the same input event
     // (promote-to-multiline, then publish the exact textarea value). Keep the
     // canonical ref synchronous so the second write cannot overwrite the first
     // with the previous render's template.
     tRef.current = next;
-    setDirtySinceSave(true);
+    if (restoreRevision === undefined) revisions.next();
+    else revisions.restore(restoreRevision);
+    setDirtySinceSave(revisions.isDirty());
     onChangeRef.current(next);
   };
   const historyEntry = (): BuilderHistoryEntry => ({
@@ -247,14 +349,30 @@ export default function AdminDesignBuilder({
     selectedLayerIds: selectedLayerIdsRef.current.slice(),
     activePage: activePageRef.current,
     editingGroupId: editingGroupIdRef.current,
+    revision: revisions.current,
   });
-  const snapshot = () => {
-    undoStack.current.push(historyEntry());
+  const pushHistory = (entry: BuilderHistoryEntry) => {
+    undoStack.current.push(entry);
     if (undoStack.current.length > 60) undoStack.current.shift();
     redoStack.current = [];
     bump();
   };
+  const snapshot = () => {
+    pendingGestureEntryRef.current = null;
+    pushHistory(historyEntry());
+  };
+  const beginGesture = () => {
+    pendingGestureEntryRef.current = historyEntry();
+  };
+  const flushGestureHistory = () => {
+    const entry = pendingGestureEntryRef.current;
+    pendingGestureEntryRef.current = null;
+    if (entry) pushHistory(entry);
+  };
   const commit = (next: any) => {
+    // A refused or no-op command returns the same template: no history entry,
+    // no unsaved indicator.
+    if (next === tRef.current) return;
     snapshot();
     apply(next);
   };
@@ -262,7 +380,7 @@ export default function AdminDesignBuilder({
     if (!undoStack.current.length) return;
     redoStack.current.push(historyEntry());
     const entry = undoStack.current.pop()!;
-    apply(entry.template);
+    apply(entry.template, entry.revision);
     setActivePage(entry.activePage);
     setEditingGroupId(entry.editingGroupId);
     setSelectedLayerIds(entry.selectedLayerIds);
@@ -272,14 +390,22 @@ export default function AdminDesignBuilder({
     if (!redoStack.current.length) return;
     undoStack.current.push(historyEntry());
     const entry = redoStack.current.pop()!;
-    apply(entry.template);
+    apply(entry.template, entry.revision);
     setActivePage(entry.activePage);
     setEditingGroupId(entry.editingGroupId);
     setSelectedLayerIds(entry.selectedLayerIds);
     bump();
   };
+  /**
+   * THE Delete — keyboard, toolbar menu, right-click menu and the layers panel
+   * all end here. Locked layers (and anything marked non-editable) are kept,
+   * the same rule Cut follows, so no route can remove a locked object.
+   */
   const deleteSelectedLayers = (layerIds: string[] = selectedLayerIds) => {
-    const ids = [...new Set(layerIds.filter(Boolean))];
+    const ids = [...new Set(layerIds.filter(Boolean))].filter((id) => {
+      const layer = getLayer(tRef.current, id);
+      return layer && !layer.locked && layer.adminEditable !== false;
+    });
     if (!ids.length) return;
     let next = tRef.current;
     for (const id of ids) next = removeLayer(next, id);
@@ -293,7 +419,7 @@ export default function AdminDesignBuilder({
     if (!studioOpen) return;
     const onKey = (e: KeyboardEvent) => {
       // Same shared typing rule as the customer editor (spec §33).
-      const typing = isTypingTarget(e.target) || isTypingTarget(document.activeElement);
+      const typing = isTypingTarget(e.target, e.key) || isTypingTarget(document.activeElement, e.key);
       const k = String(e.key).toLowerCase();
       if ((e.ctrlKey || e.metaKey) && !typing) {
         if (k === "z" && !e.shiftKey) {
@@ -448,7 +574,7 @@ export default function AdminDesignBuilder({
       text: "",
       preset,
     });
-    activeTextDirtyBeforeRef.current = dirtySinceSave;
+    activeTextRevisionBeforeRef.current = revisions.current;
     snapshot();
     apply(addLayer(current, layer));
     activeTextHistoryIdRef.current = layer.id;
@@ -568,19 +694,14 @@ export default function AdminDesignBuilder({
     if (activeTextHistoryIdRef.current === id) apply(next);
     else commit(next);
   };
-  const onFieldPatch = (id: string, patch: any) => commit(updateConnectedField(t, id, patch));
-  const onFieldReorder = (id: string, direction: "up" | "down") => commit(moveConnectedField(t, id, direction));
-  const onLinkField = (id: string, targetFieldId: string) => commit(linkLayerToField(t, id, targetFieldId));
-  const onToggleCustomerEditable = (id: string, v: boolean) => commit(setCustomerEditable(t, id, v));
-  const onDuplicate = (id: string) => {
-    const { template: nt, newId } = duplicateLayer(t, id);
-    commit(nt);
-    if (newId) setSelectedLayerId(newId);
-  };
-  const onRemove = (id: string) => {
-    commit(removeLayer(t, id));
-    setSelectedLayerId(null);
-  };
+  const onFieldPatch = (id: string, patch: any) => commit(updateConnectedField(tRef.current, id, patch));
+  const onFieldReorder = (id: string, direction: "up" | "down") => commit(moveConnectedField(tRef.current, id, direction));
+  const onLinkField = (id: string, targetFieldId: string) => commit(linkLayerToField(tRef.current, id, targetFieldId));
+  const onUnlinkField = (id: string) => commit(unlinkLayerFromField(tRef.current, id));
+  const onToggleCustomerEditable = (id: string, v: boolean) => commit(setCustomerEditable(tRef.current, id, v));
+  // Layers-panel row actions: the same Duplicate and Delete as every other route.
+  const onDuplicate = (id: string) => duplicateSelectedLayers([id]);
+  const onRemove = (id: string) => deleteSelectedLayers([id]);
   /**
    * Drag reorder from the Layers panel. `reorderLayerToTarget` returns the
    * template unchanged when the drop is refused, so a rejected drag takes no
@@ -592,14 +713,16 @@ export default function AdminDesignBuilder({
     commit(next);
   };
   const onCanvasLayerChange = (id: string, patch: any) => {
+    if (!canvasPatchesChangeTemplate(tRef.current, { [id]: patch })) return;
     const { textStyle, ...layerPatch } = patch || {};
     let next = Object.keys(layerPatch).length ? updateLayer(tRef.current, id, layerPatch) : tRef.current;
     if (textStyle && typeof textStyle === "object") next = updateLayerStyle(next, id, textStyle);
+    flushGestureHistory();
     apply(next);
   };
   const onCanvasTextEditStart = (id: string) => {
     if (activeTextHistoryIdRef.current === id) return;
-    activeTextDirtyBeforeRef.current = dirtySinceSave;
+    activeTextRevisionBeforeRef.current = revisions.current;
     snapshot();
     activeTextHistoryIdRef.current = id;
   };
@@ -672,7 +795,9 @@ export default function AdminDesignBuilder({
       undoStack.current.pop();
       redoStack.current = [];
       activeTextHistoryIdRef.current = null;
-      setDirtySinceSave(activeTextDirtyBeforeRef.current);
+      // The document is back to the revision the session started from.
+      revisions.restore(activeTextRevisionBeforeRef.current);
+      setDirtySinceSave(revisions.isDirty());
       bump();
     }
   };
@@ -682,7 +807,8 @@ export default function AdminDesignBuilder({
     undoStack.current.pop();
     redoStack.current = [];
     activeTextHistoryIdRef.current = null;
-    setDirtySinceSave(activeTextDirtyBeforeRef.current);
+    revisions.restore(activeTextRevisionBeforeRef.current);
+    setDirtySinceSave(revisions.isDirty());
     setSelectedLayerIds([]);
     bump();
   };
@@ -693,6 +819,10 @@ export default function AdminDesignBuilder({
    * rather than sent through a second, separate write.
    */
   const onCanvasLayersChange = (patches: Record<string, any>) => {
+    // A gesture that ends where it started changes nothing: no undo step, no
+    // unsaved indicator.
+    if (!canvasPatchesChangeTemplate(tRef.current, patches)) return;
+    flushGestureHistory();
     apply(applyCanvasLayerPatches(tRef.current, patches));
   };
 
@@ -710,6 +840,20 @@ export default function AdminDesignBuilder({
       setEditingGroupId(null);
     }
     setSelectedLayerIds((current) => resolveSelection(current, id, intent));
+  };
+
+  /**
+   * Canvas selection (click, marquee, empty canvas). Anything outside the
+   * entered group leaves the group first; otherwise the scope filter below
+   * strips the new selection back out and the click selects nothing.
+   */
+  const onCanvasSelectionChange = (ids: string[]) => {
+    const groupId = editingGroupIdRef.current;
+    if (groupId) {
+      const members = new Set(getDescendantIds(tRef.current.layers || [], groupId));
+      if (!ids.length || ids.some((id) => !members.has(id))) setEditingGroupId(null);
+    }
+    setSelectedLayerIds(ids);
   };
 
   const selectAllOnPage = () => {
@@ -759,19 +903,70 @@ export default function AdminDesignBuilder({
     });
   };
 
-  // One object aligns to the card, several align to each other — both are real
-  // behaviours of alignLayers, so a single selection is not blocked (spec §18).
-  const runAlign = (mode: AlignMode) => {
+  /*
+   * Selection commands — THE implementation behind the toolbar, the Alignment
+   * panel and the object menu. Each is one pure template change committed once:
+   * one undo step, one autosave. Geometry is the rotation-aware geometry the
+   * canvas shows (auto-sized text included), not the stored boxes.
+   */
+  // One object aligns to the artboard; several align to their combined bounds
+  // (Selection) or each to the artboard (Artboard).
+  const runAlign = (mode: AlignMode, target?: AlignmentTarget) => {
     if (!canTransformSelection() || selectedLayerIds.length < 1) return;
-    commit(alignLayers(tRef.current, selectedLayerIds, mode, resolvedGeometryForSelection()));
+    commit(alignLayers(tRef.current, selectedLayerIds, mode, resolvedGeometryForSelection(), target));
   };
-  const runDistribute = (axis: "horizontal" | "vertical", mode: DistributionMode = "spacing") => {
-    if (selectedLayerIds.length < 3 || !canTransformSelection()) return;
-    commit(distributeLayers(tRef.current, selectedLayerIds, axis, mode, resolvedGeometryForSelection()));
+  const runDistribute = (axis: "horizontal" | "vertical", target: AlignmentTarget = "selection") => {
+    if (selectedLayerIds.length < (target === "artboard" ? 2 : 3) || !canTransformSelection()) return;
+    commit(distributeLayers(tRef.current, selectedLayerIds, axis, "spacing", resolvedGeometryForSelection(), target));
   };
+  /** Every selected object takes the first-selected object's width, height or both — one undo step. */
   const runMatchSize = (dimension: "width" | "height" | "both") => {
-    if (selectedLayerIds.length < 2) return;
-    commit(matchLayerSize(tRef.current, selectedLayerIds, dimension));
+    if (selectedLayerIds.length < 2 || !canTransformSelection()) return;
+    commitSelectionTransform(matchLayerSize(tRef.current, selectedLayerIds, dimension));
+  };
+  /** Commit a transformed selection, re-fitting every text box inside it to its (possibly resized) type. */
+  const commitSelectionTransform = (next: any) => {
+    if (next === tRef.current) return;
+    let fitted = next;
+    for (const id of selectedLayerIds) {
+      for (const member of [id, ...getDescendantIds(fitted.layers || [], id)]) fitted = constrainTextLayerBox(fitted, member);
+    }
+    commit(fitted);
+  };
+  const runScale = (factor: number) => {
+    if (!selectedLayerIds.length || !canTransformSelection()) return;
+    commitSelectionTransform(scaleLayerSelection(tRef.current, selectedLayerIds, factor, resolvedGeometryForSelection()));
+  };
+  const runFlip = (axis: "horizontal" | "vertical") => {
+    if (!selectedLayerIds.length || !canTransformSelection()) return;
+    commitSelectionTransform(flipLayerSelection(tRef.current, selectedLayerIds, axis, resolvedGeometryForSelection()));
+  };
+  const runRotateBy = (degrees: number) => {
+    if (!selectedLayerIds.length || !canTransformSelection()) return;
+    commitSelectionTransform(rotateLayerSelection(tRef.current, selectedLayerIds, degrees, resolvedGeometryForSelection()));
+  };
+  /** Fit / Fill: a photo frames its picture inside its own box; anything else sizes itself to the artboard. */
+  const runFit = (mode: "fit" | "fill") => {
+    if (selectedLayerIds.length !== 1 || !canTransformSelection()) return;
+    const [id] = selectedLayerIds;
+    const layer = getLayer(tRef.current, id);
+    if (!layer) return;
+    const isPhoto = layer.type === "image" || layer.type === "frame";
+    commitSelectionTransform(isPhoto ? setImageFitMode(tRef.current, id, mode) : fitLayerToArtboard(tRef.current, id, mode, resolvedGeometryForSelection()));
+  };
+  /** One replace for every route (toolbar Change image, inspector Replace): one commit, mask and frame kept. */
+  const replaceImageOnLayer = (id: string, asset: BuilderAsset) => {
+    const next = replaceLayerImage(tRef.current, id, asset);
+    if (next !== tRef.current) commit(next);
+  };
+  const changeSelectedImage = async (file: File) => {
+    // The layer is fixed when the picture is chosen, not when the upload ends.
+    const id = selectedLayerIdsRef.current[0];
+    const layer = id ? getLayer(tRef.current, id) : null;
+    if (!layer) return;
+    const asset = await uploadBuilderImage(file, layer.type === "frame" ? "frame" : "image");
+    if (!asset.url) throw new Error("Upload failed.");
+    replaceImageOnLayer(id, asset);
   };
   // One shared verdict for the toolbar, the Layout menu and Ctrl+G, so a
   // disabled button and a dead shortcut can never disagree.
@@ -807,11 +1002,11 @@ export default function AdminDesignBuilder({
     setEditingGroupId(null);
     setSelectedLayerIds(childIds);
   };
-  const duplicateSelectedLayers = () => {
-    if (!selectedLayerIds.length) return;
+  const duplicateSelectedLayers = (layerIds: string[] = selectedLayerIds) => {
+    if (!layerIds.length) return;
     let next = tRef.current;
     const newIds: string[] = [];
-    for (const id of selectedLayerIds) {
+    for (const id of layerIds) {
       const result = duplicateLayer(next, id);
       next = result.template;
       if (result.newId) newIds.push(result.newId);
@@ -851,9 +1046,32 @@ export default function AdminDesignBuilder({
     setSelectedLayerIds([]);
   };
 
-  const pasteClipboardLayers = () => {
-    const { template: next, newIds } = pasteLayers(tRef.current, clipboardRef.current, activePage);
+  const pasteClipboardLayers = (at?: { x: number; y: number }) => {
+    const before = new Set((tRef.current.layers || []).map((layer: any) => layer.id));
+    const pasted = pasteLayers(tRef.current, clipboardRef.current, activePage);
+    const newIds = pasted.newIds;
     if (!newIds.length) return;
+    let next = pasted.template;
+    if (at) {
+      // "Paste here": centre the pasted selection on the pointer. Every new
+      // layer (group members included) moves by the same amount.
+      const roots = (next.layers || []).filter((layer: any) => newIds.includes(layer.id) && layer.type !== "group");
+      const members = roots.length ? roots : (next.layers || []).filter((layer: any) => !before.has(layer.id) && layer.type !== "group");
+      if (members.length) {
+        const left = Math.min(...members.map((layer: any) => Number(layer.x) - Number(layer.width) / 2));
+        const right = Math.max(...members.map((layer: any) => Number(layer.x) + Number(layer.width) / 2));
+        const top = Math.min(...members.map((layer: any) => Number(layer.y) - Number(layer.height) / 2));
+        const bottom = Math.max(...members.map((layer: any) => Number(layer.y) + Number(layer.height) / 2));
+        const dx = at.x - (left + right) / 2;
+        const dy = at.y - (top + bottom) / 2;
+        next = {
+          ...next,
+          layers: (next.layers || []).map((layer: any) =>
+            before.has(layer.id) ? layer : { ...layer, x: Number(layer.x) + dx, y: Number(layer.y) + dy },
+          ),
+        };
+      }
+    }
     commit(next);
     setEditingGroupId(null);
     setSelectedLayerIds(newIds);
@@ -862,6 +1080,103 @@ export default function AdminDesignBuilder({
   const arrangeSelectedLayers = (action: LayerArrangeMode) => {
     if (!selectedLayerIds.length) return;
     commit(arrangeLayerSelection(tRef.current, selectedLayerIds, action));
+  };
+
+  // Clipping mask: one shape plus one photo the builder may edit. The verdict is
+  // shared by the Layout menu and the action, so they cannot disagree.
+  const clipMaskState = (ids = selectedLayerIds) => {
+    const layers = ids.map((id) => getLayer(tRef.current, id)).filter(Boolean);
+    if (layers.length !== 2) return { enabled: false, reason: "Select one shape and one photo." };
+    if (layers.some((layer: any) => layer.locked || layer.adminEditable === false)) {
+      return { enabled: false, reason: "Unlock both objects first." };
+    }
+    const pair = findClipMaskPair(layers);
+    return pair
+      ? { enabled: true, pair }
+      : { enabled: false, reason: "Select one shape (not a line) and one photo on the same page." };
+  };
+  const clipSelectedLayers = () => {
+    const state = clipMaskState();
+    if (!state.enabled || !state.pair) return;
+    const layers = applyClippingMask(tRef.current.layers || [], state.pair);
+    if (layers === tRef.current.layers) return;
+    // One commit for the whole operation: one undo entry, one autosave.
+    commit({ ...tRef.current, layers });
+    setSelectedLayerIds([state.pair.image.id]);
+  };
+  /* ----- object menu (right click, or More actions on the toolbar) ----- */
+  // Every entry runs the same command as its keyboard shortcut and toolbar
+  // control, so the routes can never disagree.
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; point?: { x: number; y: number }; selectionKey: string } | null>(null);
+  const selectionKey = selectedLayerIds.join("|");
+  const openContextMenu = (position: { x: number; y: number }, point?: { x: number; y: number }, forSelection = selectionKey) =>
+    setContextMenu({ ...position, point, selectionKey: forSelection });
+  // A menu never outlives the selection it was opened for.
+  useEffect(() => {
+    setContextMenu((current) => (current && current.selectionKey !== selectionKey ? null : current));
+  }, [selectionKey]);
+  useEffect(() => {
+    setContextMenu(null);
+  }, [activePage, tab]);
+  const contextMenuGroups = (() => {
+    if (!contextMenu) return [];
+    const canPaste = clipboardRef.current.layers.length > 0;
+    const layers = selectedLayerIds.map((id) => getLayer(tRef.current, id)).filter(Boolean);
+    if (!layers.length) return buildCustomerContextMenu({ selectionCount: 0, canPaste });
+    const single = layers.length === 1 ? layers[0] : null;
+    const editable = (layer: any) => !layer.locked && layer.adminEditable !== false;
+    const groups = groupActionState();
+    return buildCustomerContextMenu({
+      selectionCount: layers.length,
+      primaryType: layers[0].type,
+      canEditText: Boolean(single && single.type === "text" && editable(single)),
+      canCrop: isAdminCroppableLayer(single),
+      canEnterGroup: Boolean(single && single.type === "group"),
+      canCopy: true,
+      canPaste,
+      canDuplicate: true,
+      canDelete: layers.some(editable),
+      canArrange: canTransformSelection(),
+      canGroup: groups.group.enabled && layers.length > 1,
+      canUngroup: groups.ungroup.enabled,
+      canClipMask: clipMaskState().enabled,
+      canMatchSize: layers.length > 1 && canTransformSelection(),
+      canHide: Boolean(single),
+      isHidden: Boolean(single?.hidden),
+      canLock: Boolean(single && single.adminEditable !== false),
+      isLocked: Boolean(single?.locked),
+    });
+  })();
+  const runContextMenuAction = (id: ContextMenuActionId) => {
+    const at = contextMenu?.point;
+    setContextMenu(null);
+    if (id === "paste") {
+      pasteClipboardLayers(selectedLayerIds.length ? undefined : at);
+      return;
+    }
+    const only = selectedLayerIds.length === 1 ? selectedLayerIds[0] : null;
+    switch (id) {
+      case "copy": copySelectedLayers(); break;
+      case "duplicate": duplicateSelectedLayers(); break;
+      case "delete": deleteSelectedLayers(); break;
+      case "bringToFront": arrangeSelectedLayers("bringToFront"); break;
+      case "bringForward": arrangeSelectedLayers("bringForward"); break;
+      case "sendBackward": arrangeSelectedLayers("sendBackward"); break;
+      case "sendToBack": arrangeSelectedLayers("sendToBack"); break;
+      case "group": groupSelectedLayers(); break;
+      case "ungroup": ungroupSelectedLayer(); break;
+      case "clipMask": clipSelectedLayers(); break;
+      case "matchWidth": runMatchSize("width"); break;
+      case "matchHeight": runMatchSize("height"); break;
+      case "matchSize": runMatchSize("both"); break;
+      case "enterGroup": if (only) enterAdminGroup(only); break;
+      case "crop": if (only) requestCrop(only); break;
+      case "editText": if (only) setEditTextRequest((request) => ({ layerId: only, requestId: (request?.requestId || 0) + 1, created: false })); break;
+      case "hide": if (only) onLayerPatch(only, { hidden: true }); break;
+      case "show": if (only) onLayerPatch(only, { hidden: false }); break;
+      case "lock": if (only) onLayerPatch(only, { locked: true }); break;
+      case "unlock": if (only) onLayerPatch(only, { locked: false }); break;
+    }
   };
 
   /* ----- page actions ----- */
@@ -887,12 +1202,135 @@ export default function AdminDesignBuilder({
     setSelectedLayerId(null);
   };
 
+  /* ----- crash-safe recovery and autosave ----- */
+  // Every unsaved change is kept in this browser (lib/customizer/studio-
+  // recovery), so a refresh, a closed tab or a crash never loses it; reopening
+  // the studio offers it back. A product that already exists is also saved to
+  // the server automatically once editing pauses. A new product is never
+  // created by autosave — it is created by Save Draft or Publish.
+  const productId = product?.id ? String(product.id) : "";
+  const recoveryKeyRef = useRef(studioRecoveryKey(productId));
+  if (productId) recoveryKeyRef.current = studioRecoveryKey(productId);
+  const [recoveryOffer, setRecoveryOffer] = useState<StudioRecoverySnapshot | null>(null);
+  const recoveryOfferRef = useRef<StudioRecoverySnapshot | null>(null);
+  recoveryOfferRef.current = recoveryOffer;
+  const recoveryTimerRef = useRef<number | null>(null);
+  const [autosaving, setAutosaving] = useState(false);
+  const autosaveInFlightRef = useRef<Promise<unknown> | null>(null);
+  /** Write (or retire) the local copy now. Suspended while a recovered copy awaits the admin's decision, so it is never overwritten unseen. */
+  const persistRecoveryNow = () => {
+    if (recoveryTimerRef.current !== null) {
+      window.clearTimeout(recoveryTimerRef.current);
+      recoveryTimerRef.current = null;
+    }
+    if (recoveryOfferRef.current) return;
+    if (!revisions.isDirty()) {
+      clearStudioRecovery(studioStorage(), recoveryKeyRef.current);
+      return;
+    }
+    writeStudioRecovery(studioStorage(), recoveryKeyRef.current, { productId, productName: String(productName || ""), template: tRef.current });
+  };
+  const persistRecoveryRef = useRef(persistRecoveryNow);
+  persistRecoveryRef.current = persistRecoveryNow;
+  useEffect(() => {
+    if (!studioOpen) return;
+    if (recoveryTimerRef.current !== null) window.clearTimeout(recoveryTimerRef.current);
+    recoveryTimerRef.current = window.setTimeout(() => persistRecoveryRef.current(), STUDIO_RECOVERY_DELAY_MS);
+    return () => {
+      if (recoveryTimerRef.current !== null) window.clearTimeout(recoveryTimerRef.current);
+      recoveryTimerRef.current = null;
+    };
+  }, [template, dirtySinceSave, studioOpen]);
+  // Leaving or hiding the page writes the newest state at once; leaving with
+  // changes the server has not confirmed asks first.
+  useEffect(() => {
+    if (!studioOpen) return;
+    const flush = () => persistRecoveryRef.current();
+    const onVisibility = () => {
+      if (document.visibilityState === "hidden") flush();
+    };
+    const onBeforeUnload = (event: BeforeUnloadEvent) => {
+      flush();
+      if (!revisions.isDirty()) return;
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("pagehide", flush);
+    window.addEventListener("beforeunload", onBeforeUnload);
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      window.removeEventListener("pagehide", flush);
+      window.removeEventListener("beforeunload", onBeforeUnload);
+      document.removeEventListener("visibilitychange", onVisibility);
+      flush();
+    };
+  }, [studioOpen, revisions]);
+  // Opening the studio: offer back anything a previous session left unsaved.
+  useEffect(() => {
+    if (!studioOpen) return;
+    const snapshot = readStudioRecovery(studioStorage(), recoveryKeyRef.current);
+    if (studioRecoveryDiffers(snapshot, tRef.current)) setRecoveryOffer(snapshot);
+    else if (snapshot && !revisions.isDirty()) clearStudioRecovery(studioStorage(), recoveryKeyRef.current);
+  }, [studioOpen, revisions]);
+  const restoreRecovery = () => {
+    const snapshot = recoveryOfferRef.current;
+    if (!snapshot) return;
+    recoveryOfferRef.current = null;
+    setRecoveryOffer(null);
+    // One undo step back to the design as it was saved.
+    commit(snapshot.template);
+    setSelectedLayerIds([]);
+    setEditingGroupId(null);
+  };
+  const discardRecovery = () => {
+    recoveryOfferRef.current = null;
+    setRecoveryOffer(null);
+    clearStudioRecovery(studioStorage(), recoveryKeyRef.current);
+    persistRecoveryNow();
+  };
+  const autosave = async () => {
+    if (!productId || busyRef.current || autosaveInFlightRef.current || recoveryOfferRef.current) return;
+    if (!revisions.isDirty()) return;
+    setAutosaving(true);
+    const run = saveCurrentRevision();
+    autosaveInFlightRef.current = run;
+    try {
+      await run;
+    } finally {
+      autosaveInFlightRef.current = null;
+      setAutosaving(false);
+    }
+  };
+  const autosaveRef = useRef(autosave);
+  autosaveRef.current = autosave;
+  // Autosave once editing pauses — never in the middle of typing, a toolbar
+  // drag or a canvas gesture, which each end with a change that re-arms it.
+  useEffect(() => {
+    if (!studioOpen || !productId || !dirtySinceSave || recoveryOffer || editingTextLayerId) return;
+    const timer = window.setTimeout(() => {
+      if (textStylePreviewRef.current || pendingGestureEntryRef.current) return;
+      void autosaveRef.current();
+    }, STUDIO_AUTOSAVE_DELAY_MS);
+    return () => window.clearTimeout(timer);
+  }, [template, dirtySinceSave, studioOpen, productId, recoveryOffer, editingTextLayerId]);
+
+  /* ----- artboard orientation ----- */
+  // The canvas bar's Vertical / Horizontal control runs the SAME conversion as
+  // Template Settings (lib/customizer/v2/artboard): the card's dimensions swap
+  // and the whole design is carried across, as one commit — one undo step, one
+  // autosave. The active value is read from the dimensions, never stored apart.
+  const artboardOrientation = orientationOf(artboardOf(t));
+  const setArtboardOrientation = (target: "portrait" | "landscape") => {
+    if (artboardOrientation === target) return;
+    commit(changeTemplateOrientation(tRef.current, target).template);
+  };
+
   /* ----- save / publish ----- */
   const isPublished = productStatus === "active";
   const statusChips = [
     isPublished ? "Published" : "Draft",
     t.enabled ? "Active" : "Inactive",
-    ...(dirtySinceSave ? ["Unsaved"] : []),
+    ...(autosaving ? ["Autosaving"] : dirtySinceSave ? ["Unsaved"] : []),
   ];
 
   const requestPublish = () => {
@@ -902,6 +1340,10 @@ export default function AdminDesignBuilder({
   };
 
   const [publishNotice, setPublishNotice] = useState("");
+  // One save or publish sequence at a time. The ref is the synchronous guard
+  // (two clicks in one frame); the state drives the disabled buttons.
+  const busyRef = useRef(false);
+  const [studioBusy, setStudioBusy] = useState<"" | "saving" | "publishing">("");
   const [versions, setVersions] = useState<any[]>([]);
   const currentPublished = versions[0] || null;
   const currentPublicVersion = currentPublished
@@ -910,10 +1352,10 @@ export default function AdminDesignBuilder({
   const currentDisplayVersion = currentPublished?.display || formatCustomizerVersion(currentPublicVersion);
   const nextPublicVersion = nextCustomizerVersion(currentPublicVersion, updateType);
 
-  const loadVersions = async () => {
-    if (!product?.id) return;
+  const loadVersions = async (productId: string | null = product?.id || null) => {
+    if (!productId) return;
     try {
-      const res = await fetch(`/api/admin/customizer/templates/${encodeURIComponent(product.id)}/versions`);
+      const res = await fetch(`/api/admin/customizer/templates/${encodeURIComponent(productId)}/versions`);
       const data = await res.json().catch(() => ({}));
       if (res.ok && data.ok) setVersions(data.versions || []);
     } catch {
@@ -950,42 +1392,78 @@ export default function AdminDesignBuilder({
     );
   }
 
+  /**
+   * Persist the CURRENT revision as the template draft. The product's own
+   * status (active / hidden / draft) is never changed by a template save —
+   * the form's "template" action keeps whatever the server has.
+   *
+   * Only the revision that was sent is marked clean: an edit made while the
+   * request was in flight keeps the document unsaved.
+   */
+  const saveCurrentRevision = async () => {
+    const revision = revisions.current;
+    const keyBefore = recoveryKeyRef.current;
+    const result = asProductSaveResult(await onSave?.("template", { template: tRef.current }));
+    if (result.ok) {
+      revisions.markSaved(revision);
+      // The server now holds this revision: its local copy is no longer the
+      // only one. An edit made while the request was in flight is still
+      // unsaved, so it is written again under the product's real id.
+      clearStudioRecovery(studioStorage(), keyBefore);
+      recoveryKeyRef.current = studioRecoveryKey(result.productId);
+      if (revisions.isDirty()) persistRecoveryNow();
+      else clearStudioRecovery(studioStorage(), recoveryKeyRef.current);
+    }
+    setDirtySinceSave(revisions.isDirty());
+    return result;
+  };
+
   const confirmPublish = async () => {
+    if (busyRef.current) return;
+    busyRef.current = true;
+    await autosaveInFlightRef.current;
+    setStudioBusy("publishing");
     setPublishCheck(null);
     setPublishNotice("");
-    // 1) Persist the draft through the product form's save pipeline.
-    await onSave?.("publish");
-    setDirtySinceSave(false);
-    // 2) Freeze the published state as an immutable version snapshot
-    //    (spec §19). Existing designs keep their version; new customers get
-    //    this one.
-    if (product?.id) {
-      try {
-        const res = await fetch(`/api/admin/customizer/templates/${encodeURIComponent(product.id)}/publish`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ updateType, notes: updateNotes }),
-        });
-        const data = await res.json().catch(() => ({}));
-        if (res.ok && data.ok) {
-          setPublishNotice(`Published as Version ${data.version?.display}.`);
-          setUpdateNotes("");
-          loadVersions();
-        } else {
-          setPublishNotice(data?.errors?.[0] || data?.error || "Saved, but the version snapshot failed.");
-        }
-      } catch {
-        setPublishNotice("Saved, but the version snapshot failed.");
+    try {
+      // 1) Persist the draft. 2) Only if that save is confirmed, freeze
+      //    exactly that draft revision as an immutable version (spec §19),
+      //    using the product id the save returned (a new product has none
+      //    before its first save). Existing designs keep their version; new
+      //    customers get this one.
+      const outcome = await saveThenPublish({
+        save: saveCurrentRevision,
+        publish: (productId, expectedDraftUpdatedAt) =>
+          requestTemplatePublication(productId, { updateType, notes: updateNotes, expectedDraftUpdatedAt }),
+      });
+      setPublishNotice(outcome.message);
+      if (outcome.status === "published") {
+        setUpdateNotes("");
+        void loadVersions(outcome.save.productId);
       }
+    } finally {
+      busyRef.current = false;
+      setStudioBusy("");
     }
   };
 
   const saveDraft = async () => {
-    await onSave?.(isPublished ? "publish" : "draft");
-    setDirtySinceSave(false);
+    if (busyRef.current) return;
+    busyRef.current = true;
+    await autosaveInFlightRef.current;
+    setStudioBusy("saving");
+    setPublishNotice("");
+    try {
+      const result = await saveCurrentRevision();
+      if (result.ok === false && result.reason === "busy") setPublishNotice(result.error);
+    } finally {
+      busyRef.current = false;
+      setStudioBusy("");
+    }
   };
 
   const deactivate = () => {
+    if (busyRef.current) return;
     if (!window.confirm("Deactivate the customizer for this product? Customers will no longer be able to personalize it (existing customizations are kept).")) return;
     onChange({ ...t, enabled: false });
     setStudioOpen(false);
@@ -1012,17 +1490,29 @@ export default function AdminDesignBuilder({
    * a history entry — so dragging a value from 0 to 2.4 is one undo, not
    * twenty-four (spec §17).
    */
-  const onSelectedTextStylePreview = (patch: Record<string, unknown>) => {
+  const previewSelectionChange = (next: any) => {
     if (!textStylePreviewRef.current) {
       const snapshotted = !editingSelectedText();
       const baseline = clone(tRef.current);
+      const revision = revisions.current;
       if (snapshotted) snapshot();
-      textStylePreviewRef.current = { baseline, snapshotted };
+      textStylePreviewRef.current = { baseline, snapshotted, revision };
     }
-    apply(buildSelectedTextStyle(patch));
+    apply(next);
   };
-  const onSelectedTextStylePatch = (patch: Record<string, unknown>) => {
-    const next = buildSelectedTextStyle(patch);
+  const onSelectedTextStylePreview = (patch: Record<string, unknown>) => previewSelectionChange(buildSelectedTextStyle(patch));
+  const onSelectedTextStylePatch = (patch: Record<string, unknown>) => commitSelectionChange(buildSelectedTextStyle(patch));
+  /** A shape's own properties (fill, line colour, line weight) on every selected shape. */
+  const buildSelectedShapeProps = (patch: Record<string, unknown>) => {
+    let next = tRef.current;
+    for (const id of selectedLayerIdsRef.current) {
+      if (getLayer(next, id)?.type === "shape") next = updateLayer(next, id, patch);
+    }
+    return next;
+  };
+  const onSelectedShapePreview = (patch: Record<string, unknown>) => previewSelectionChange(buildSelectedShapeProps(patch));
+  const onSelectedShapePatch = (patch: Record<string, unknown>) => commitSelectionChange(buildSelectedShapeProps(patch));
+  const commitSelectionChange = (next: any) => {
     const session = textStylePreviewRef.current;
     textStylePreviewRef.current = null;
     // A preview session already pushed the history entry for this interaction.
@@ -1037,7 +1527,8 @@ export default function AdminDesignBuilder({
     if (!session) return;
     textStylePreviewRef.current = null;
     if (session.snapshotted) undoStack.current.pop();
-    apply(session.baseline);
+    // Back to the exact starting revision: no history, no unsaved indicator.
+    apply(session.baseline, session.revision);
     bump();
   };
   const currentAssetIds: string[] = [
@@ -1102,7 +1593,7 @@ export default function AdminDesignBuilder({
         templateName={settings.templateName || productName}
         productName={productName}
         statusChips={statusChips}
-        saveStatusLabel={saving ? "Saving…" : ""}
+        saveStatusLabel={studioBusy === "publishing" ? "Publishing…" : saving || studioBusy ? "Saving…" : ""}
         publicVersion={currentDisplayVersion}
         tab={tab}
         onTabChange={setTab}
@@ -1110,17 +1601,33 @@ export default function AdminDesignBuilder({
         canRedo={redoStack.current.length > 0}
         onUndo={undo}
         onRedo={redo}
-        onBack={() => setStudioOpen(false)}
+        onBack={() => {
+          // Keep the studio open until its save/publish sequence finishes.
+          if (!busyRef.current) setStudioOpen(false);
+        }}
         onSaveDraft={saveDraft}
         onPublish={requestPublish}
         publishLabel="Publish Changes"
-        saving={saving}
+        saving={Boolean(saving || studioBusy)}
       />
 
       {errorMessage && (
         <p className="border-b border-red-200 bg-red-50 px-4 py-2 text-xs font-bold text-red-700" role="alert">
           {errorMessage}
         </p>
+      )}
+      {recoveryOffer && (
+        <div data-studio-recovery className="flex flex-wrap items-center gap-3 border-b border-[#D4AF37]/40 bg-[#D4AF37]/10 px-4 py-2 text-xs font-bold text-[#8a701d]" role="alert">
+          <span>
+            Unsaved design changes from {formatRecoveryTime(recoveryOffer.savedAt)} were kept in this browser. Restore them, or keep the saved design?
+          </span>
+          <button type="button" onClick={restoreRecovery} className="rounded-lg bg-[#303839] px-3 py-1.5 text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2">
+            Restore unsaved changes
+          </button>
+          <button type="button" onClick={discardRecovery} className="underline underline-offset-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839]">
+            Keep saved design
+          </button>
+        </div>
       )}
       {publishNotice && (
         <p className="border-b border-[#D4AF37]/40 bg-[#D4AF37]/10 px-4 py-2 text-xs font-bold text-[#8a701d]" role="status">
@@ -1215,28 +1722,37 @@ export default function AdminDesignBuilder({
                   })()}
                 </p>
               )}
-              {selectedLayerIds.length > 0 && (
+              {/* Crop brings its own bar; the selection toolbar would sit on top of it. */}
+              {selectedLayerIds.length > 0 && !croppingLayerId && !erasingLayerId && (
                 <div className="pointer-events-none absolute inset-x-0 top-3 z-30 flex justify-center px-3">
                   <AdminContextToolbar
-                    layer={selectedLayer}
                     selectedLayers={selectedLayers}
-                    selectionCount={selectedLayerIds.length}
                     editingText={editingTextLayerId === selectedLayerId}
-                    canTransformSelection={canTransformSelection()}
+                    canTransform={canTransformSelection()}
+                    canDelete={selectedLayers.some((layer: any) => !layer.locked && layer.adminEditable !== false)}
                     approvedColors={Array.isArray(settings.allowedCustomerColors) ? settings.allowedCustomerColors : []}
                     groupAction={groupActionState()}
-                    onEnterGroup={() => selectedLayerId && enterAdminGroup(selectedLayerId)}
+                    maskAction={selectedLayerIds.length === 2 ? clipMaskState() : undefined}
                     onStylePatch={onSelectedTextStylePatch}
                     onStylePreview={onSelectedTextStylePreview}
                     onStyleCancel={onSelectedTextStyleCancel}
-                    onAlign={runAlign}
-                    onDistribute={runDistribute}
-                    onMatchSize={runMatchSize}
+                    onLayerPropsPatch={onSelectedShapePatch}
+                    onLayerPropsPreview={onSelectedShapePreview}
+                    onLayerPropsCancel={onSelectedTextStyleCancel}
+                    onCopy={copySelectedLayers}
+                    onDelete={() => deleteSelectedLayers()}
+                    onScale={runScale}
                     onGroup={groupSelectedLayers}
                     onUngroup={ungroupSelectedLayer}
-                    onDuplicate={duplicateSelectedLayers}
-                    onLayerOrder={arrangeSelectedLayers}
-                    onDelete={() => deleteSelectedLayers()}
+                    onMask={clipSelectedLayers}
+                    onFit={runFit}
+                    onChangeImage={changeSelectedImage}
+                    canCrop={selectedLayerIds.length === 1 && isAdminCroppableLayer(selectedLayer)}
+                    onCrop={() => selectedLayerId && requestCrop(selectedLayerId)}
+                    canErase={selectedLayerIds.length === 1 && isAdminCroppableLayer(selectedLayer)}
+                    onErase={() => selectedLayerId && requestErase(selectedLayerId)}
+                    alignmentOpen={alignmentOpen}
+                    onToggleAlignment={() => setAlignmentOpen((open) => !open)}
                   />
                 </div>
               )}
@@ -1247,8 +1763,23 @@ export default function AdminDesignBuilder({
                 values={{}}
                 selectedLayerId={selectedLayerId}
                 selectedLayerIds={selectedLayerIds}
-                onSelectionChange={setSelectedLayerIds}
-                onBeginChange={snapshot}
+                onSelectionChange={onCanvasSelectionChange}
+                onCropChange={setCroppingLayerId}
+                cropRequest={cropRequest}
+                onEraseChange={setErasingLayerId}
+                eraseRequest={eraseRequest}
+                // Eraser Apply: one committed change, one undo step. No marks left = no mask.
+                onEraseCommit={(layerId: string, eraseMask: unknown) => onLayerPatch(layerId, { eraseMask: eraseMask || undefined })}
+                // Crop Done: one committed change, one undo step.
+                onImageTransformCommit={(layerId: string, imageTransform: Record<string, unknown>) => onLayerPatch(layerId, { imageTransform })}
+                // The selection the menu acts on is the one the canvas just
+                // set, so the menu is keyed to it explicitly.
+                onLayerContextMenu={(layerId: string, position: { x: number; y: number }) =>
+                  openContextMenu(position, undefined, selectedLayerIds.includes(layerId) ? selectionKey : layerId)}
+                onCanvasContextMenu={(position: { x: number; y: number }, point: { x: number; y: number }) => {
+                  if (clipboardRef.current.layers.length) openContextMenu(position, point, "");
+                }}
+                onBeginChange={beginGesture}
                 onLayerChange={onCanvasLayerChange}
                 onLayersChange={onCanvasLayersChange}
                 editTextRequest={editTextRequest}
@@ -1273,15 +1804,30 @@ export default function AdminDesignBuilder({
                 snapEnabled={snapEnabled}
                 activeTool={activeTool}
                 guides={(t.guides || []).filter((guide: any) => guide.pageId === activePage)}
-                onGuideChange={(guideId: string, patch: any) => apply({
-                  ...tRef.current,
-                  guides: patch.deleted
-                    ? (tRef.current.guides || []).filter((guide: any) => guide.id !== guideId)
-                    : (tRef.current.guides || []).map((guide: any) => guide.id === guideId ? { ...guide, ...patch } : guide),
-                })}
+                onGuideChange={(guideId: string, patch: any) => {
+                  const guide = (tRef.current.guides || []).find((entry: any) => entry.id === guideId);
+                  if (!guide) return;
+                  if (!patch.deleted && Object.entries(patch).every(([key, value]) => Object.is(guide[key], value))) return;
+                  flushGestureHistory();
+                  apply({
+                    ...tRef.current,
+                    guides: patch.deleted
+                      ? (tRef.current.guides || []).filter((entry: any) => entry.id !== guideId)
+                      : (tRef.current.guides || []).map((entry: any) => entry.id === guideId ? { ...entry, ...patch } : entry),
+                  });
+                }}
               />
-              <div className="pointer-events-none absolute inset-x-0 bottom-3 z-30 flex items-center justify-center gap-2">
-                <div className="pointer-events-auto flex items-center gap-2">
+              {contextMenu && contextMenuGroups.length > 0 && (
+                <CustomerCanvasContextMenu
+                  groups={contextMenuGroups}
+                  x={contextMenu.x}
+                  y={contextMenu.y}
+                  onAction={runContextMenuAction}
+                  onClose={() => setContextMenu(null)}
+                />
+              )}
+              <div className="pointer-events-none absolute inset-x-0 bottom-3 z-30 flex items-center justify-center gap-2 px-3">
+                <div className="pointer-events-auto flex flex-wrap items-center justify-center gap-2">
                   <CustomizerZoomControls
                     zoom={zoom}
                     onZoomChange={setZoom}
@@ -1328,6 +1874,36 @@ export default function AdminDesignBuilder({
                       Bleed
                     </button>
                   </div>
+                  <div
+                    role="radiogroup"
+                    aria-label="Artboard orientation"
+                    className="flex min-h-11 items-center gap-0.5 rounded-full border border-[#303839]/8 bg-white p-1 shadow-[0_2px_12px_rgba(48,56,57,0.08)]"
+                  >
+                    {(["portrait", "landscape"] as const).map((value) => {
+                      const active = artboardOrientation === value;
+                      const label = value === "portrait" ? "Vertical" : "Horizontal";
+                      return (
+                        <button
+                          key={value}
+                          type="button"
+                          role="radio"
+                          aria-checked={active}
+                          aria-label={label}
+                          title={artboardOrientation === "square" ? "A square card has no vertical or horizontal orientation" : `${label} card — the design is carried across`}
+                          disabled={artboardOrientation === "square"}
+                          onClick={() => setArtboardOrientation(value)}
+                          className={`flex min-h-9 items-center gap-1.5 rounded-full px-3 text-[11px] font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white disabled:cursor-not-allowed disabled:opacity-40 ${
+                            active ? "bg-[#303839] text-white" : "text-[#303839]/50 hover:bg-[#F8F6F1] hover:text-[#303839]"
+                          }`}
+                        >
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" aria-hidden>
+                            {value === "portrait" ? <rect x="6.5" y="3" width="11" height="18" rx="1.5" /> : <rect x="3" y="6.5" width="18" height="11" rx="1.5" />}
+                          </svg>
+                          <span className="max-xl:sr-only">{label}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
               </div>
             </main>
@@ -1335,7 +1911,19 @@ export default function AdminDesignBuilder({
             {/* Right inspector: the configuration surface for the selection. */}
             <aside className="flex w-[clamp(300px,21vw,360px)] shrink-0 flex-col border-l border-[#303839]/8 bg-white max-lg:absolute max-lg:inset-x-0 max-lg:bottom-0 max-lg:z-40 max-lg:max-h-[48%] max-lg:w-full max-lg:rounded-t-2xl max-lg:border-l-0 max-lg:border-t max-lg:shadow-[0_-8px_32px_rgba(48,56,57,0.14)]">
               <div className="min-h-0 flex-1 overflow-y-auto [scrollbar-color:rgba(48,56,57,0.18)_transparent] [scrollbar-width:thin]">
-                {activePanel === "text" && !selectedLayer ? (
+                {alignmentOpen && selectedLayerIds.length > 0 ? (
+                  <AdminAlignmentPanel
+                    selectionCount={selectedLayerIds.length}
+                    canTransform={canTransformSelection()}
+                    rotation={sharedRotation(selectedLayers)}
+                    onClose={() => setAlignmentOpen(false)}
+                    onAlign={runAlign}
+                    onDistribute={runDistribute}
+                    onFlip={runFlip}
+                    onScale={runScale}
+                    onRotateBy={runRotateBy}
+                  />
+                ) : activePanel === "text" && !selectedLayer ? (
                   <AdminTextToolPanel
                     preset={textPlacementPreset}
                     onSelectPreset={(preset) => {
@@ -1360,7 +1948,9 @@ export default function AdminDesignBuilder({
                   onStylePatch={onStylePatch}
                   onFieldPatch={onFieldPatch}
                   onLinkField={onLinkField}
+                  onUnlinkField={onUnlinkField}
                   onToggleCustomerEditable={onToggleCustomerEditable}
+                  onReplaceImage={replaceImageOnLayer}
                   onDuplicate={onDuplicate}
                   onRemove={onRemove}
                   onReorderToTarget={onReorderToTarget}
@@ -1408,7 +1998,17 @@ export default function AdminDesignBuilder({
         )}
 
         {tab === "mockups" && (
-          <AdminMockupEditor template={t} product={product || { title: productName }} onChange={(next: any) => commit(next)} />
+          <AdminMockupEditor
+            template={t}
+            product={product || { title: productName }}
+            onChange={(next: any) => commit(next)}
+            // Loading or saving the normalized mockup tables is its own save
+            // path; reflecting its result must not mark the draft unsaved.
+            onSyncedChange={(next: any) => {
+              tRef.current = next;
+              onChangeRef.current(next);
+            }}
+          />
         )}
 
         {tab === "settings" && (
@@ -1554,9 +2154,10 @@ export default function AdminDesignBuilder({
                 <button
                   type="button"
                   onClick={confirmPublish}
-                  className="rounded-full bg-[#303839] px-5 py-2 text-xs font-bold text-white hover:bg-[#434c4d]"
+                  disabled={Boolean(studioBusy || saving)}
+                  className="rounded-full bg-[#303839] px-5 py-2 text-xs font-bold text-white hover:bg-[#434c4d] disabled:opacity-50"
                 >
-                  Publish
+                  {studioBusy === "publishing" ? "Publishing…" : "Publish"}
                 </button>
               )}
             </div>

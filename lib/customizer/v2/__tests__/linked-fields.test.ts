@@ -74,14 +74,15 @@ describe("linkLayerToField", () => {
     template = setCustomerEditable(template, "photo", true);
     const textFieldId = template.layers.find((l: any) => l.id === "bride-front").fieldId;
 
-    // linkLayerToField itself doesn't enforce type compatibility (that's a UI
-    // concern in AdminPropertiesPanel's dropdown filtering), but confirm the
-    // underlying link still only rewires fieldId/customerEditable and never
-    // mutates unrelated layer geometry or type.
+    // Compatibility is enforced by the operation itself, not only by the
+    // dropdown: a photo cannot share a text field (or vice versa), so the
+    // template comes back unchanged.
+    const ownPhotoField = template.layers.find((l: any) => l.id === "photo").fieldId;
     const linked = linkLayerToField(template, "photo", textFieldId);
+    expect(linked).toBe(template);
     const photo = linked.layers.find((l: any) => l.id === "photo");
     expect(photo.type).toBe("image");
-    expect(photo.fieldId).toBe(textFieldId);
+    expect(photo.fieldId).toBe(ownPhotoField);
   });
 });
 

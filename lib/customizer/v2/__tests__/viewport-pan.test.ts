@@ -175,7 +175,10 @@ describe("viewport pan — Space must not steal typing", () => {
     expect(isTypingTarget({ tagName: "INPUT" })).toBe(true);
     expect(isTypingTarget({ tagName: "TEXTAREA" })).toBe(true);
     expect(isTypingTarget({ tagName: "SELECT" })).toBe(true);
-    expect(isTypingTarget({ tagName: "BUTTON" })).toBe(true);
+    // A focused button keeps Space (it activates the button) but not the
+    // canvas shortcuts.
+    expect(isTypingTarget({ tagName: "BUTTON" }, " ")).toBe(true);
+    expect(isTypingTarget({ tagName: "BUTTON" }, "Delete")).toBe(false);
     expect(isTypingTarget({ tagName: "DIV", isContentEditable: true })).toBe(true);
   });
 
@@ -288,7 +291,8 @@ describe("AdminCanvas pan wiring", () => {
   it("does not clear the selection when the pan gesture owns the pointer", () => {
     // The whole interaction layer stands down while pan owns the pointer, so a
     // pan can no longer clear or alter the selection as a side effect.
-    expect(adminCanvas).toContain("disabled={panToolActive || isPanning}");
+    // Crop mode owns the pointer the same way.
+    expect(adminCanvas).toContain("disabled={panToolActive || isPanning || Boolean(crop) || Boolean(erase)}");
     // A background gesture that never moved is a plain click, which clears the
     // selection; a marquee that moved replaces or merges it.
     expect(stage).toContain("resolveMarqueeSelection({");
@@ -298,7 +302,8 @@ describe("AdminCanvas pan wiring", () => {
   it("stands down layer, handle, rotation and guide gestures during pan", () => {
     // Object gestures: the shared stage stops listening entirely, which is a
     // stronger guarantee than each handler remembering to check.
-    expect(adminCanvas).toContain("disabled={panToolActive || isPanning}");
+    // Crop mode owns the pointer the same way.
+    expect(adminCanvas).toContain("disabled={panToolActive || isPanning || Boolean(crop) || Boolean(erase)}");
     expect(stage).toContain('pointerEvents: interactive ? "auto" : "none"');
     expect(stage).toContain("const interactive = !disabled && !textEditingId;");
     // Ruler guides keep a DOM gesture and still defer to pan explicitly.

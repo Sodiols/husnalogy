@@ -32,3 +32,6 @@ Copy of *
 # Supplied source archives / transfer artifacts (never part of the app)
 app.zip
 *.zip
+
+# Asset variant repair backups and reports (contain storage paths; kept local)
+.asset-repair-backups/

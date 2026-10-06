@@ -35,6 +35,7 @@ export default function GoogleFontMultiSelect({ value, onChange }: Props) {
           value=""
           onChange={add}
           className="min-w-0 flex-1"
+          manageFavourites
         />
         {!allGoogleFonts && (
           <button

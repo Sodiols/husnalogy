@@ -28,6 +28,7 @@ const requiredTables = [
   "customizer_feature_flags",
   "customizer_audit_logs",
   "customizer_asset_folders",
+  "customizer_font_favourites",
 ];
 
 const requiredFragments = [

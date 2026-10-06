@@ -40,6 +40,8 @@ export type HistoryStacks<T> = {
   reset: () => void;
   checkpoint: () => HistoryCheckpoint<T>;
   restoreCheckpoint: (checkpoint: HistoryCheckpoint<T>) => void;
+  /** Merge every step recorded since `checkpoint` into ONE (see the hook). */
+  collapseSince: (checkpoint: HistoryCheckpoint<T>) => boolean;
   depth: () => { past: number; future: number };
 };
 
@@ -98,6 +100,22 @@ export function createHistoryStacks<T>(
       // next real edit into an entry that no longer exists.
       lastGroup = null;
     },
+    collapseSince(saved) {
+      const base = saved.past.length;
+      if (past.length <= base + 1) return false;
+      // Only when the stack still starts with exactly the checkpoint: if the
+      // history limit dropped old entries meanwhile, the indexes no longer line
+      // up and collapsing would splice the wrong steps.
+      for (let index = 0; index < base; index += 1) {
+        if (past[index] !== saved.past[index]) return false;
+      }
+      // The first step after the checkpoint holds the state from BEFORE the
+      // session — the one Undo must return to.
+      past = past.slice(0, base + 1);
+      future = [];
+      lastGroup = null;
+      return true;
+    },
     depth: () => ({ past: past.length, future: future.length }),
   };
 }
@@ -112,6 +130,13 @@ type HistoryApi<T> = {
   checkpoint: () => HistoryCheckpoint<T>;
   /** Replace both stacks with a checkpoint taken earlier. */
   restoreCheckpoint: (checkpoint: HistoryCheckpoint<T>) => void;
+  /**
+   * Turn every step recorded since `checkpoint` into ONE undo step, returning
+   * to the state before the first of them. A modal session (crop) commits each
+   * control as it is used so the customer can step back inside the session;
+   * once confirmed, the whole session is one operation.
+   */
+  collapseSince: (checkpoint: HistoryCheckpoint<T>) => void;
   /** Current stack depths, for callers that must not cross a checkpoint. */
   depth: () => { past: number; future: number };
   canUndo: boolean;
@@ -172,6 +197,13 @@ export default function useCustomizerHistory<T>(limit = DEFAULT_LIMIT): HistoryA
     [stacks, bump],
   );
 
+  const collapseSince = useCallback(
+    (saved: HistoryCheckpoint<T>) => {
+      if (stacks.collapseSince(saved)) bump();
+    },
+    [stacks, bump],
+  );
+
   const depth = useCallback(() => stacks.depth(), [stacks]);
   const { past, future } = stacks.depth();
 
@@ -183,6 +215,7 @@ export default function useCustomizerHistory<T>(limit = DEFAULT_LIMIT): HistoryA
     reset,
     checkpoint,
     restoreCheckpoint,
+    collapseSince,
     depth,
     canUndo: past > 0,
     canRedo: future > 0,

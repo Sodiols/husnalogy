@@ -10,6 +10,7 @@ import {
   validateCustomizerTemplate,
 } from "@/lib/customizer";
 import { formatCurrency, PRIMARY_CURRENCY, SUPPORTED_CURRENCIES } from "@/lib/currency";
+import type { ProductSaveResult } from "@/lib/customizer/studio-save";
 
 /* ------------------------------------------------------------------ */
 /* Static option data                                                   */
@@ -1291,8 +1292,14 @@ export default function ProductUploadForm({
   const [successMessage, setSuccessMessage] = useState("");
   const [mobilePreviewOpen, setMobilePreviewOpen] = useState(false);
   const formRef = useRef(null);
+  // The product as the server last confirmed it. A brand-new product has no id
+  // until its first save; every later save (and template publication) must use
+  // the id the creation returned, not the null it was opened with.
+  const [persistedProduct, setPersistedProduct] = useState(product);
+  // Synchronous guard: two clicks in the same frame must not both POST.
+  const saveInFlightRef = useRef(false);
 
-  const editingId = product?.id || null;
+  const editingId = persistedProduct?.id || null;
 
   // The form opens above the product list; bring it into view so the admin
   // sees it immediately, especially on phones where it starts off-screen.
@@ -1303,6 +1310,7 @@ export default function ProductUploadForm({
 
   useEffect(() => {
     setForm(buildInitialForm(product));
+    setPersistedProduct(product);
     setErrors({});
     setSaveError("");
     setSuccessMessage("");
@@ -1457,7 +1465,8 @@ export default function ProductUploadForm({
     });
   };
 
-  const validate = (statusToSave) => {
+  const validate = (statusToSave, source = form) => {
+    const form = source;
     const nextErrors: any = {};
     const preparedCustomizerTemplate = form.customizerTemplate
       ? normalizeCustomizerTemplate(prepareCustomizerTemplateForSave(form.customizerTemplate))
@@ -1490,7 +1499,8 @@ export default function ProductUploadForm({
     return nextErrors;
   };
 
-  const buildPayload = (statusToSave) => {
+  const buildPayload = (statusToSave, source = form) => {
+    const form = source;
     const preparedCustomizerTemplate = form.customizerTemplate
       ? normalizeCustomizerTemplate(prepareCustomizerTemplateForSave(form.customizerTemplate))
       : null;
@@ -1506,7 +1516,7 @@ export default function ProductUploadForm({
 
     return {
       title: form.title.trim(),
-      slug: editingId ? product.slug : slugify(form.title),
+      slug: editingId ? persistedProduct?.slug || slugify(form.title) : slugify(form.title),
       status: statusToSave,
       visibility: form.visibility,
       departmentPath: form.departmentPath,
@@ -1549,54 +1559,100 @@ export default function ProductUploadForm({
       quantityOptions: form.quantityOptions,
       // Only persist the customizer template when it is enabled or the product
       // already had one — keeps template rows off products that never use it.
-      ...(preparedCustomizerTemplate?.enabled || product?.customizerTemplate
+      ...(preparedCustomizerTemplate?.enabled || persistedProduct?.customizerTemplate
         ? { customizerTemplate: preparedCustomizerTemplate }
         : {}),
     };
   };
 
-  const save = async (requestedAction) => {
+  /**
+   * Save the product (and its customizer draft).
+   *
+   * Always resolves to an explicit ProductSaveResult — never throws, never
+   * returns undefined — so a caller such as the Design Studio can tell a saved
+   * draft from a validation or request failure and must not publish after a
+   * failure.
+   *
+   * requestedAction:
+   *   "draft"    — save as draft (product footer)
+   *   "publish"  — save as active, or hidden when that is the chosen status
+   *   "template" — Design Studio draft save. The product's PERSISTED status is
+   *                kept exactly (active stays active, hidden stays hidden, a
+   *                new product is created as draft): the status is not sent at
+   *                all, so the server keeps what it has.
+   *
+   * `options.template` is the exact template revision to persist; the studio
+   * passes its own synchronous copy so a save can never send a stale render.
+   */
+  const save = async (requestedAction, options: { template?: any } = {}): Promise<ProductSaveResult> => {
+    if (saveInFlightRef.current) {
+      return { ok: false, reason: "busy", error: "A save is already in progress." };
+    }
+    const templateOnly = requestedAction === "template";
+    const persistedStatus = persistedProduct?.status && persistedProduct.status !== "deleted" ? persistedProduct.status : "draft";
     // "publish" keeps the admin's chosen status unless it is still draft.
-    const statusToSave =
-      requestedAction === "draft" ? "draft" : form.status === "hidden" ? "hidden" : "active";
+    const statusToSave = templateOnly
+      ? persistedStatus
+      : requestedAction === "draft" ? "draft" : form.status === "hidden" ? "hidden" : "active";
+    const source = options.template !== undefined ? { ...form, customizerTemplate: options.template } : form;
 
-    const validationErrors = validate(statusToSave);
-    if (Object.keys(validationErrors).length) {
-      setSaveError("Some required details are missing. They are marked below and in the checklist.");
-      const firstField = formRef.current?.querySelector("[data-field-error]");
-      firstField?.scrollIntoView({ behavior: "smooth", block: "center" });
-      return;
+    // A template-only save neither publishes the product nor changes its
+    // status, so it needs only what a draft needs to persist. The template's
+    // own publish checks run server-side when a version is published.
+    const validationErrors = validate(templateOnly ? "draft" : statusToSave, source);
+    const errorMessages = Object.values(validationErrors).map(String);
+    if (errorMessages.length) {
+      const message = templateOnly
+        ? `Not saved — ${errorMessages[0]}${errorMessages.length > 1 ? ` (+${errorMessages.length - 1} more)` : ""}`
+        : "Some required details are missing. They are marked below and in the checklist.";
+      setSaveError(message);
+      if (!templateOnly) {
+        const firstField = formRef.current?.querySelector("[data-field-error]");
+        firstField?.scrollIntoView({ behavior: "smooth", block: "center" });
+      }
+      return { ok: false, reason: "validation", error: errorMessages[0] };
     }
 
+    saveInFlightRef.current = true;
     setSaving(requestedAction);
     setSaveError("");
     setSuccessMessage("");
 
     try {
       const endpoint = editingId ? `/api/admin/products/${editingId}` : "/api/admin/products";
+      const payload: any = buildPayload(statusToSave, source);
+      if (templateOnly) delete payload.status;
       const response = await fetch(endpoint, {
         method: editingId ? "PUT" : "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(buildPayload(statusToSave)),
+        body: JSON.stringify(payload),
       });
       const data = await response.json().catch(() => ({}));
 
-      if (!response.ok) {
+      if (!response.ok || data?.ok === false) {
         const firstError = data?.errors ? Object.values(data.errors)[0] : data?.error;
         throw new Error(String(firstError || "Product could not be saved."));
       }
+      const saved = data?.product;
+      if (!saved?.id) throw new Error("The server did not confirm the saved product.");
 
-      const message =
-        requestedAction === "draft"
+      const message = templateOnly
+        ? "Design draft saved."
+        : requestedAction === "draft"
           ? "Draft saved."
           : statusToSave === "hidden"
             ? "Product saved as hidden."
             : "Product published. It is now live on the website.";
+      setPersistedProduct(saved);
       setSuccessMessage(message);
-      onSaved?.(data.product, message);
+      onSaved?.(saved, message, { source: templateOnly ? "studio" : "form" });
+      return { ok: true, productId: String(saved.id), product: saved, template: saved.customizerTemplate ?? null };
     } catch (error) {
-      setSaveError(error.message || "Product could not be saved.");
+      const message = error?.message || "Product could not be saved.";
+      setSaveError(message);
+      return { ok: false, reason: "request", error: message };
     } finally {
+      saveInFlightRef.current = false;
       setSaving("");
     }
   };
@@ -1752,7 +1808,7 @@ export default function ProductUploadForm({
                     onProductOptionsChange={(key, entries) => update(key, entries)}
                     onQuantityOptionsChange={(values) => update("quantityOptions", values)}
                     onSave={save}
-                    productStatus={form.status}
+                    productStatus={persistedProduct?.status || "draft"}
                     saving={Boolean(saving)}
                     errorMessage={saveError}
                   />
@@ -2067,8 +2123,10 @@ export default function ProductUploadForm({
                 <button
                   type="button"
                   onClick={async () => {
-                    await save("draft");
-                    onSubmitForReview?.(editingId);
+                    // Submit only a draft the server confirmed, by the id it
+                    // returned (a new product has no id until this save).
+                    const result = await save("draft");
+                    if (result.ok) onSubmitForReview?.(result.productId);
                   }}
                   disabled={Boolean(saving)}
                   className="bg-[#303839] px-6 py-3 text-sm font-semibold text-white transition hover:bg-[#434C4D] disabled:opacity-50"
@@ -2082,7 +2140,7 @@ export default function ProductUploadForm({
                   disabled={Boolean(saving)}
                   className="min-h-11 bg-[#303839] px-6 py-3 text-sm font-semibold text-white transition hover:bg-[#434C4D] disabled:opacity-50"
                 >
-                  {saving === "publish" ? "Publishing…" : form.status === "hidden" ? "Save as hidden" : editingId && product?.status === "active" ? "Update product" : "Publish product"}
+                  {saving === "publish" ? "Publishing…" : form.status === "hidden" ? "Save as hidden" : editingId && persistedProduct?.status === "active" ? "Update product" : "Publish product"}
                 </button>
               )}
             </div>

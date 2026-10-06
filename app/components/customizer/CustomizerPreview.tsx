@@ -11,6 +11,10 @@
 // editor, thumbnails, review, previews, and print files all break lines and
 // clip photos identically.
 
+import { layerTransform } from "@/lib/customizer/v2/layer-flip";
+import { eraseMaskAppliesTo, eraseStrokePaths } from "@/lib/customizer/v2/erase-mask";
+import { CanvasImage, useCanvasImageSource } from "./canvas-image-source";
+import { assetIdentityOf } from "@/lib/customizer/v2/asset-identity";
 import { memo, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { getLegacyMaskPath, getMaskPath } from "@/lib/customizer/v2/masks";
 import { getGridSlotRect, normalizeGridSlot } from "@/lib/customizer/v2/grids";
@@ -18,6 +22,7 @@ import { DEFAULT_LINE_HEIGHT, layoutText, createCanvasMeasure, fallbackMeasure, 
 import { hasImageFilters, imageFilterSvgPrimitives } from "@/lib/customizer/v2/image-filters";
 import { resolveImageDrawBoxFromTransform } from "@/lib/customizer/v2/image-crop";
 import { normalizeQRCodeStyle, qrModuleRects } from "@/lib/customizer/v2/qr";
+import { svgPaint } from "@/lib/customizer/v2/paint";
 import {
   applyGeometryOverrides,
   reuseEquivalentLayers,
@@ -131,6 +136,8 @@ function TextLayer({ layer, field, values, fontsReady, idPrefix, safeBounds }: a
           textAlign: style.textAlign || "center",
           autoSizeMode: style.autoSizeMode,
           fitMode: style.fitMode,
+          rotation: Number(layer.rotation) || 0,
+          growthDirection: style.growthDirection,
         },
         measure,
         safeBounds,
@@ -175,7 +182,7 @@ function TextLayer({ layer, field, values, fontsReady, idPrefix, safeBounds }: a
   const clipId = `${idPrefix}-text-clip-${String(layer.id).replace(/[^a-z0-9_-]/gi, "-")}`;
 
   return (
-    <g transform={layer.rotation ? `rotate(${layer.rotation} ${box.x} ${box.y})` : undefined}>
+    <g transform={layerTransform(layer, box.x, box.y) || undefined}>
       <defs>
         <clipPath id={clipId}>
           <rect x={boxLeft} y={boxTop} width={box.width} height={box.height} />
@@ -209,10 +216,12 @@ function TextLayer({ layer, field, values, fontsReady, idPrefix, safeBounds }: a
 function ShapeLayer({ layer }: any) {
   const x = layer.x - layer.width / 2;
   const y = layer.y - layer.height / 2;
-  const transform = layer.rotation ? `rotate(${layer.rotation} ${layer.x} ${layer.y})` : undefined;
+  const transform = layerTransform(layer, layer.x, layer.y) || undefined;
+  // Transparent is the renderer's "no paint" — the same value the server SVG
+  // draws (lib/customizer/v2/paint.ts).
   const common = {
-    fill: layer.fill || "none",
-    stroke: layer.stroke || "none",
+    fill: svgPaint(layer.fill),
+    stroke: svgPaint(layer.stroke),
     strokeWidth: layer.strokeWidth || 0,
   };
 
@@ -220,7 +229,7 @@ function ShapeLayer({ layer }: any) {
     return <ellipse cx={layer.x} cy={layer.y} rx={layer.width / 2} ry={layer.height / 2} transform={transform} {...common} />;
   }
   if (layer.shape === "line") {
-    const color = layer.stroke || layer.fill || "#303839";
+    const color = svgPaint(layer.stroke || layer.fill || "#303839");
     const thickness = Number(layer.strokeWidth) || 3;
     const capSize = Math.max(8, thickness * 3);
     return <g transform={transform}><line x1={x} y1={layer.y} x2={x + layer.width} y2={layer.y} stroke={color} strokeWidth={thickness} strokeDasharray={layer.lineStyle === "dashed" ? "12 8" : layer.lineStyle === "dotted" ? "2 8" : undefined} strokeLinecap={layer.lineCap || "round"} />{layer.lineStartCap === "circle" && <circle cx={x} cy={layer.y} r={capSize / 2} fill={color} />}{layer.lineEndCap === "circle" && <circle cx={x + layer.width} cy={layer.y} r={capSize / 2} fill={color} />}{layer.lineStartCap === "arrow" && <polygon points={`${x},${layer.y} ${x + capSize},${layer.y - capSize * 0.7} ${x + capSize},${layer.y + capSize * 0.7}`} fill={color} />}{layer.lineEndCap === "arrow" && <polygon points={`${x + layer.width},${layer.y} ${x + layer.width - capSize},${layer.y - capSize * 0.7} ${x + layer.width - capSize},${layer.y + capSize * 0.7}`} fill={color} />}</g>;
@@ -253,7 +262,7 @@ function ElementLayer({ layer, idPrefix }: any) {
   const rotate = layer.rotation ? `rotate(${layer.rotation} ${layer.x} ${layer.y})` : "";
   const transform = [rotate, flip].filter(Boolean).join(" ") || undefined;
 
-  if (!layer.src) return null;
+  if (!layer.src && !assetIdentityOf(layer)) return null;
 
   return (
     <g transform={transform}>
@@ -265,8 +274,9 @@ function ElementLayer({ layer, idPrefix }: any) {
           </filter>
         </defs>
       ) : null}
-      <image
-        href={layer.src}
+      <CanvasImage
+        source={layer}
+        url={String(layer.src || "")}
         x={frameX}
         y={frameY}
         width={layer.width}
@@ -282,39 +292,22 @@ function ElementLayer({ layer, idPrefix }: any) {
 function ImageLayer({ layer, field, values, idPrefix }: any) {
   const image = resolveLayerImage(layer, field, values);
 
-  // Defensive only — the server pipeline is the real guarantee. If an editor
-  // variant turns out to be far smaller than the box it must fill (a legacy
-  // thumbnail-sized editor), fall back to the full-quality original once.
-  // Never falls back to the thumbnail, and never loops.
-  // Declared before any early return so the hook order stays stable.
-  const sourceUrl = String(image?.url || "");
-  const fallbackUrl = String(layer.originalUrl || "");
-  const [downgraded, setDowngraded] = useState(false);
-  useEffect(() => setDowngraded(false), [sourceUrl, fallbackUrl]);
-  useEffect(() => {
-    if (downgraded || !sourceUrl || !fallbackUrl || fallbackUrl === sourceUrl) return;
-    if (typeof window === "undefined" || typeof window.Image === "undefined") return;
-    let cancelled = false;
-    const probe = new window.Image();
-    probe.crossOrigin = "anonymous";
-    probe.onload = () => {
-      // Half the required resolution is an unambiguous variant problem, so
-      // healthy images never trigger a second request.
-      if (!cancelled && probe.naturalWidth > 0 && probe.naturalWidth < layer.width / 2) {
-        console.warn(
-          "Customizer image variant is too small for its layer "
-          + `[layer=${layer.id}] [natural=${probe.naturalWidth}x${probe.naturalHeight}] `
-          + `[required=${Math.round(layer.width)}] — falling back to the original.`,
-        );
-        setDowngraded(true);
-      }
-    };
-    probe.src = sourceUrl;
-    return () => { cancelled = true; };
-  }, [sourceUrl, fallbackUrl, downgraded, layer.width, layer.id]);
-
   const frameX = layer.x - layer.width / 2;
   const frameY = layer.y - layer.height / 2;
+  // Identical formula to the server SVG renderer — one shared implementation so
+  // the on-screen preview and the printed sheet cannot disagree (spec §16).
+  const draw = resolveImageDrawBoxFromTransform(
+    { frameX, frameY, frameWidth: layer.width, frameHeight: layer.height },
+    { zoom: image?.zoom, offsetX: image?.offsetX, offsetY: image?.offsetY, ...(image?.crop || {}) },
+  );
+  // The smallest decoded picture that still looks sharp at this size: the
+  // drawn size, capped at the editor variant's 2400px and at the source's own
+  // size. An editor variant below this (a legacy thumbnail-sized file) is
+  // replaced by the original wherever the viewer may have it.
+  const sourceLongest = Math.max(Number(layer.sourceWidth) || 0, Number(layer.sourceHeight) || 0) || Infinity;
+  const minLongestPx = image?.source === "placeholder" ? 0 : 0.9 * Math.min(Math.max(draw.width, draw.height), 2400, sourceLongest);
+  // Declared before any early return so the hook order stays stable.
+  const { href: imageHref, status: imageStatus } = useCanvasImageSource(image?.asset ?? null, String(image?.url || ""), minLongestPx);
   const clipId = `${idPrefix}-clip-${layer.id}`;
   const filterId = `${idPrefix}-filter-${layer.id}`;
   const filtered = hasImageFilters(layer.filters);
@@ -324,9 +317,16 @@ function ImageLayer({ layer, field, values, idPrefix }: any) {
     ? getMaskPath(layer.mask, { x: frameX, y: frameY, width: layer.width, height: layer.height })
     : getLegacyMaskPath(layer.maskShape, { x: frameX, y: frameY, width: layer.width, height: layer.height });
 
-  if (!image?.url) {
+  if (!image || (!imageHref && imageStatus === "error")) {
+    // An empty frame — or a picture that cannot be loaded right now. The layer
+    // itself is untouched; the resolver keeps retrying and the picture returns
+    // as soon as it loads.
+    const unavailable = Boolean(image);
     return (
-      <g transform={layer.rotation ? `rotate(${layer.rotation} ${layer.x} ${layer.y})` : undefined}>
+      <g
+        transform={layer.rotation ? `rotate(${layer.rotation} ${layer.x} ${layer.y})` : undefined}
+        data-image-unavailable={unavailable ? "true" : undefined}
+      >
         <path
           d={mask.d}
           transform={mask.transform}
@@ -342,20 +342,12 @@ function ImageLayer({ layer, field, values, idPrefix }: any) {
           dominantBaseline="middle"
           style={{ fontFamily: "system-ui, sans-serif", fontSize: `${Math.max(18, layer.width * 0.06)}px`, fill: "#9c8f8f" }}
         >
-          {field?.label || "Photo"}
+          {unavailable ? "Image unavailable — retrying" : field?.label || "Photo"}
         </text>
       </g>
     );
   }
 
-  const imageHref = downgraded && fallbackUrl ? fallbackUrl : String(image.url);
-
-  // Identical formula to the server SVG renderer — one shared implementation so
-  // the on-screen preview and the printed sheet cannot disagree (spec §16).
-  const draw = resolveImageDrawBoxFromTransform(
-    { frameX, frameY, frameWidth: layer.width, frameHeight: layer.height },
-    { zoom: image.zoom, offsetX: image.offsetX, offsetY: image.offsetY, ...(image.crop || {}) },
-  );
   const drawX = draw.x;
   const drawY = draw.y;
   const drawW = draw.width;
@@ -371,6 +363,10 @@ function ImageLayer({ layer, field, values, idPrefix }: any) {
     );
   }
 
+  // Eraser marks — the same strokes, over the same draw box, as the print renderer.
+  const eraseId = `${idPrefix}-erase-${layer.id}`;
+  const erasePaths = eraseMaskAppliesTo(layer, image) ? eraseStrokePaths(layer.eraseMask, { x: drawX, y: drawY, width: drawW, height: drawH }) : [];
+
   return (
     <g transform={layer.rotation ? `rotate(${layer.rotation} ${layer.x} ${layer.y})` : undefined}>
       <defs>
@@ -378,11 +374,19 @@ function ImageLayer({ layer, field, values, idPrefix }: any) {
           <path d={mask.d} transform={mask.transform} />
         </clipPath>
         {filtered ? <filter id={filterId} colorInterpolationFilters="sRGB" dangerouslySetInnerHTML={{ __html: imageFilterSvgPrimitives(layer.filters) }} /> : null}
+        {erasePaths.length ? (
+          <mask id={eraseId} maskUnits="userSpaceOnUse" x={drawX - drawW} y={drawY - drawH} width={drawW * 3} height={drawH * 3}>
+            <rect x={drawX - drawW} y={drawY - drawH} width={drawW * 3} height={drawH * 3} fill="#fff" />
+            {erasePaths.map((path, index) => (
+              <path key={index} d={path.d} fill="none" stroke="#000" strokeWidth={path.width} strokeLinecap="round" strokeLinejoin="round" />
+            ))}
+          </mask>
+        ) : null}
       </defs>
       {layer.backgroundColor ? <path d={mask.d} transform={mask.transform} fill={layer.backgroundColor} /> : null}
       <g clipPath={`url(#${clipId})`}>
         <g transform={innerTransforms.join(" ") || undefined}>
-          <image
+          {imageHref ? <image
             href={imageHref}
             x={drawX}
             y={drawY}
@@ -391,7 +395,10 @@ function ImageLayer({ layer, field, values, idPrefix }: any) {
             preserveAspectRatio={layer.fitMode === "contain" ? "xMidYMid meet" : "xMidYMid slice"}
             crossOrigin="anonymous"
             filter={filtered ? `url(#${filterId})` : undefined}
-          />
+            mask={erasePaths.length ? `url(#${eraseId})` : undefined}
+            data-erased={erasePaths.length ? "true" : undefined}
+            data-image-status={imageStatus}
+          /> : null}
         </g>
       </g>
       {Number(layer.borderWidth) > 0 ? (
@@ -450,8 +457,19 @@ function BackgroundLayer({ layer }: any) {
     <g transform={layer.rotation ? `rotate(${layer.rotation} ${layer.x} ${layer.y})` : undefined}>
       {filtered ? <defs><filter id={filterId} colorInterpolationFilters="sRGB" dangerouslySetInnerHTML={{ __html: imageFilterSvgPrimitives(layer.filters) }} /></defs> : null}
       <rect x={x} y={y} width={layer.width} height={layer.height} fill={layer.color || "#ffffff"} />
-      {layer.src ? (
-        <image href={layer.src} x={x} y={y} width={layer.width} height={layer.height} preserveAspectRatio={layer.fitMode === "contain" ? "xMidYMid meet" : "xMidYMid slice"} crossOrigin="anonymous" filter={filtered ? `url(#${filterId})` : undefined} />
+      {layer.src || assetIdentityOf(layer) ? (
+        <CanvasImage
+          source={layer}
+          url={String(layer.src || "")}
+          minLongestPx={0.9 * Math.min(Math.max(layer.width, layer.height), 2400)}
+          x={x}
+          y={y}
+          width={layer.width}
+          height={layer.height}
+          preserveAspectRatio={layer.fitMode === "contain" ? "xMidYMid meet" : "xMidYMid slice"}
+          crossOrigin="anonymous"
+          filter={filtered ? `url(#${filterId})` : undefined}
+        />
       ) : null}
     </g>
   );
@@ -641,8 +659,18 @@ export default function CustomizerPreview({
     >
       <rect x={0} y={0} width={width} height={height} fill={activePage?.backgroundColor || "#ffffff"} />
 
-      {bg ? (
-        <image href={bg} x={0} y={0} width={width} height={height} preserveAspectRatio="xMidYMid slice" crossOrigin="anonymous" />
+      {bg || (!background && activePage?.backgroundAssetId) ? (
+        <CanvasImage
+          // A page background names its library asset by backgroundAssetId.
+          source={background ? null : activePage?.backgroundAssetId ? { assetId: activePage.backgroundAssetId } : null}
+          url={bg}
+          x={0}
+          y={0}
+          width={width}
+          height={height}
+          preserveAspectRatio="xMidYMid slice"
+          crossOrigin="anonymous"
+        />
       ) : null}
 
       {layers.map((layer: any) =>

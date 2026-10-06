@@ -35,8 +35,22 @@ export type SaveQueueOptions = {
   onStatusChange?: (status: SaveQueueStatus, detail: { lastSavedAt: number | null; error: unknown }) => void;
   /** Quiet period after the last change before a save starts. */
   debounceMs?: number;
+  /**
+   * Minimum time between the START of two queued saves. Continuous editing is
+   * persisted locally at once; the server receives at most one write per
+   * interval, so a burst of edits can never turn into a burst of database
+   * writes. `flush()` ignores it — a lifecycle flush must not wait.
+   */
+  minIntervalMs?: number;
   /** Backoff for retryable failures. An empty array disables retrying. */
   retryDelaysMs?: number[];
+  /**
+   * Keep retrying a retryable failure at this interval once `retryDelaysMs` is
+   * exhausted, instead of giving up until the next edit. A brief outage must
+   * not leave a finished design unsaved just because the customer stopped
+   * editing. Unset keeps the old behaviour.
+   */
+  persistentRetryMs?: number;
   isOnline?: () => boolean;
   setTimer?: (fn: () => void, ms: number) => unknown;
   clearTimer?: (handle: unknown) => void;
@@ -69,6 +83,8 @@ const DEFAULT_RETRY_DELAYS_MS = [1200, 4000];
 
 export function createSaveQueue(options: SaveQueueOptions): SaveQueue {
   const debounceMs = Math.max(0, Number(options.debounceMs ?? DEFAULT_DEBOUNCE_MS));
+  const minIntervalMs = Math.max(0, Number(options.minIntervalMs ?? 0));
+  const persistentRetryMs = options.persistentRetryMs === undefined ? null : Math.max(0, Number(options.persistentRetryMs));
   const retryDelays = options.retryDelaysMs ?? DEFAULT_RETRY_DELAYS_MS;
   const setTimer = options.setTimer ?? ((fn, ms) => setTimeout(fn, ms));
   const clearTimer = options.clearTimer ?? ((handle) => clearTimeout(handle as ReturnType<typeof setTimeout>));
@@ -82,6 +98,7 @@ export function createSaveQueue(options: SaveQueueOptions): SaveQueue {
   let running = false;
   let dirty = false;
   let retryCount = 0;
+  let lastStartedAt: number | null = null;
   let destroyed = false;
   let settleWaiters: Array<() => void> = [];
 
@@ -98,11 +115,23 @@ export function createSaveQueue(options: SaveQueueOptions): SaveQueue {
     }
   }
 
-  function settle() {
-    if (running || dirty) return;
+  /**
+   * Release everyone waiting on `flush()`. Normally only once nothing is left
+   * to save; `force` releases them while work is still queued (offline, or a
+   * failure that will be retried later) so a flush can never hang on an outage
+   * — the caller reads `getStatus()` to learn the outcome.
+   */
+  function settle(force = false) {
+    if (!force && (running || dirty)) return;
     const waiters = settleWaiters;
     settleWaiters = [];
     waiters.forEach((resolve) => resolve());
+  }
+
+  /** The debounce, stretched so two queued saves never start closer than minIntervalMs. */
+  function queuedDelay(): number {
+    if (!minIntervalMs || lastStartedAt === null) return debounceMs;
+    return Math.max(debounceMs, lastStartedAt + minIntervalMs - now());
   }
 
   function schedule(delayMs: number) {
@@ -121,10 +150,12 @@ export function createSaveQueue(options: SaveQueueOptions): SaveQueue {
       // Keep the work queued; nothing is lost and the status is honest.
       setStatus("offline");
       schedule(Math.max(debounceMs, 2000));
+      settle(true);
       return;
     }
 
     running = true;
+    lastStartedAt = now();
     // Claim the current changes. Anything typed from here on re-dirties the
     // queue and triggers exactly one follow-up save when this one lands.
     dirty = false;
@@ -148,7 +179,7 @@ export function createSaveQueue(options: SaveQueueOptions): SaveQueue {
       setStatus(outcome.local ? "saved-local" : "saved");
       if (dirty) {
         setStatus("unsaved");
-        schedule(debounceMs);
+        schedule(queuedDelay());
       }
       settle();
       return;
@@ -168,9 +199,18 @@ export function createSaveQueue(options: SaveQueueOptions): SaveQueue {
       return;
     }
 
+    if (retryable && persistentRetryMs !== null) {
+      // Still unsaved and still worth retrying: say so honestly, keep the work
+      // queued, and let anyone waiting on a flush stop waiting.
+      setStatus(isOnline() ? "error" : "offline");
+      schedule(persistentRetryMs);
+      settle(true);
+      return;
+    }
+
     retryCount = 0;
     setStatus(isOnline() ? "error" : "offline");
-    settle();
+    settle(true);
   }
 
   return {
@@ -179,7 +219,7 @@ export function createSaveQueue(options: SaveQueueOptions): SaveQueue {
       dirty = true;
       retryCount = 0;
       if (!running) setStatus("unsaved");
-      schedule(debounceMs);
+      schedule(queuedDelay());
     },
     flush() {
       if (destroyed) return Promise.resolve();

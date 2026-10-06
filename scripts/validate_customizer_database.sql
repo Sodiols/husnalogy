@@ -31,6 +31,7 @@ declare
     'customizer_feature_flags',
     'customizer_audit_logs',
     'customizer_asset_folders',
+    'customizer_font_favourites',
     'order_production_assets', 'production_tasks', 'notification_tasks',
     'production_recovery_audit', 'manual_production_completions', 'worker_runs'
   ];
@@ -101,6 +102,8 @@ declare
     'public.customizer_audit_logs.customizer_audit_logs_actor_insert',
     'public.customizer_asset_folders.customizer_asset_folders_admin_read',
     'public.customizer_asset_folders.customizer_asset_folders_admin_manage',
+    'public.customizer_font_favourites.customizer_font_favourites_public_read',
+    'public.customizer_font_favourites.customizer_font_favourites_admin_manage',
     'storage.objects.customizer_admin_assets_read',
     'storage.objects.customizer_admin_assets_insert',
     'storage.objects.customizer_admin_assets_update',

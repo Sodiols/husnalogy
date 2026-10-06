@@ -7,6 +7,8 @@
 // breaks. SVG has no automatic wrapping — each output line becomes one
 // positioned <tspan>/<text>, which resvg and browsers draw identically.
 
+import { anchorGrownTextBox, normalizeTextGrowthDirection, type TextGrowthDirection } from "./text-growth";
+
 /**
  * Product defaults for new text, shared by every surface that creates,
  * normalizes or resets a text object so "the default" is one number rather
@@ -385,6 +387,10 @@ export type ResolveTextBoxInput = {
   verticalAlign?: "top" | "middle" | "bottom";
   autoSizeMode?: AutoSizeMode | string;
   fitMode?: string;
+  /** Degrees; the growth anchor is held in the box's own rotated frame. */
+  rotation?: number;
+  /** Which edge holds still when the text gets taller (lib/customizer/v2/text-growth). */
+  growthDirection?: TextGrowthDirection | string;
 };
 
 export type SafeBounds = { left: number; top: number; right: number; bottom: number };
@@ -453,7 +459,13 @@ export function resolveTextBox(
       measure,
     );
     const height = Math.max(1, Math.ceil(layout.totalHeight));
-    // Growing text is top-anchored. The element's visible top edge stays fixed
+    const growth = normalizeTextGrowthDirection(input.growthDirection);
+    if (growth) {
+      const anchored = anchorGrownTextBox({ x: input.x, y: input.y, fromHeight: input.height, toHeight: height, rotation: input.rotation, growth });
+      return { ...stored, x: anchored.x, y: anchored.y, height };
+    }
+    // Without a growth direction (documents made before it existed) growing
+    // text is top-anchored. The element's visible top edge stays fixed
     // while its centre moves down by half the height delta; selection bounds
     // and resize handles consume this same resolved geometry.
     const y = input.y - input.height / 2 + height / 2;
@@ -496,7 +508,14 @@ export function resolveTextBox(
   if (align === "left") x = input.x - input.width / 2 + width / 2;
   else if (align === "right") x = input.x + input.width / 2 - width / 2;
 
-  // Same for the vertical edge when the height tightens around the glyphs.
+  // The growth direction decides which edge holds when the height changes.
+  const growth = normalizeTextGrowthDirection(input.growthDirection);
+  if (growth) {
+    const anchored = anchorGrownTextBox({ x, y: input.y, fromHeight: input.height, toHeight: height, rotation: input.rotation, growth });
+    return { x: anchored.x, y: anchored.y, width, height, autoWidth: true, clampedBySafeArea };
+  }
+
+  // Without one (older documents), the vertical alignment edge holds.
   const vAlign = input.verticalAlign || "middle";
   let y = input.y;
   if (vAlign === "top") y = input.y - input.height / 2 + height / 2;
@@ -849,4 +868,18 @@ export function createOpentypeMeasure(
     }
     return units * scale + Math.max(0, chars.length - 1) * (style.letterSpacing || 0);
   };
+}
+
+/**
+ * The growth direction a text object actually behaves with. An explicit choice
+ * wins; without one it is what the object has always done — auto-height text
+ * grows downward, and a single line keeps its vertical-alignment edge — so the
+ * control shows the truth for documents made before the property existed.
+ */
+export function effectiveTextGrowth(style: Record<string, any> | null | undefined, text: unknown): TextGrowthDirection {
+  const explicit = normalizeTextGrowthDirection(style?.growthDirection);
+  if (explicit) return explicit;
+  const autoHeight = canonicalLayoutText(String(text ?? "")).includes("\n") || getTextAutoSizeMode(style || {}) === "height";
+  if (autoHeight) return "down";
+  return style?.verticalAlign === "top" ? "down" : style?.verticalAlign === "bottom" ? "up" : "center";
 }

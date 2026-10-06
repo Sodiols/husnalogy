@@ -1,7 +1,9 @@
 // Shared, dependency-light normalization for the product customizer.
 // Safe to import on both server and client (only pure helpers are used here).
 
+import { normalizeEraseMask, type EraseMask } from "./v2/erase-mask";
 import { createId } from "@/lib/core/id";
+import { TRANSPARENT_PAINT, canonicalPaint, isExplicitTransparentPaint } from "@/lib/customizer/v2/paint";
 import {
   cleanOptionalString,
   cleanString,
@@ -12,6 +14,8 @@ import {
 import { DEFAULT_FONT_FAMILY, normalizeAllowedCustomerFonts } from "@/lib/customizer/v2/google-fonts";
 import { normalizeGridSlot } from "@/lib/customizer/v2/grids";
 import { normalizeImageFilters } from "@/lib/customizer/v2/image-filters";
+import { normalizeMaskShape } from "@/lib/customizer/v2/masks";
+import { normalizeTextGrowthDirection } from "@/lib/customizer/v2/text-growth";
 import { normalizeQRCodeStyle } from "@/lib/customizer/v2/qr";
 import { migrateTextAutoSizing } from "@/lib/customizer/v2/text-layout";
 import {
@@ -20,6 +24,18 @@ import {
 } from "@/lib/customizer/v2/text-editing";
 import { isCustomizerFeatureEnabled } from "@/lib/customizer/v2/feature-flags";
 import { renderBoundsErrors } from "@/lib/customizer/production-limits";
+import {
+  normalizeStoredCustomerPermissions,
+  permissionBundle,
+  resolveCustomerPermissions,
+} from "@/lib/customizer/v2/permissions";
+import {
+  customerFieldKind,
+  customerFieldKindForLayer,
+  isCustomerFieldRequired,
+  isFieldCompatibleWithLayer,
+  type CustomerFieldKind,
+} from "@/lib/customizer/v2/field-binding";
 
 export const CUSTOMIZER_ENGINES = new Set(["svg"]);
 export const CUSTOMIZER_ORIENTATIONS = new Set(["portrait", "landscape", "square"]);
@@ -127,7 +143,9 @@ export const DEFAULT_CUSTOMIZER_SETTINGS = {
 // GET /api/customizer/fonts and modelled in lib/customizer/v2/google-fonts.ts.
 
 // Expanded permission keys remain in stored documents for server enforcement.
-// The admin-facing source of truth is now the single customerEditable flag.
+// The admin-facing source of truth is the single customerEditable flag plus a
+// few explicit restrictions (fixed grid position, position lock, interaction
+// disabled, legacy allowZoom/allowReposition). See lib/customizer/v2/permissions.ts.
 export const CUSTOMER_PERMISSION_KEYS = [
   "select",
   "editContent",
@@ -168,20 +186,27 @@ export const CUSTOMER_PERMISSION_KEYS = [
   "changeLayerOrder",
 ] as const;
 
-// The admin builder exposes one Customer editable checkbox. Keep the expanded
-// permission object for customer/server enforcement, but generate it as one
-// complete bundle so administrators never enable every action by hand.
+// The admin builder exposes one Customer editable checkbox. Toggling it writes
+// one complete bundle so administrators never enable every action by hand.
 export function customerEditablePermissionBundle(editable: boolean): Record<string, boolean> {
-  return Object.fromEntries(CUSTOMER_PERMISSION_KEYS.map((key) => [key, editable]));
+  return permissionBundle(editable);
 }
 
+// Compatibility defaults for a layer with no stored permission object.
 export function defaultCustomerPermissions(layer: any = {}): Record<string, boolean> {
-  return customerEditablePermissionBundle(Boolean(layer.customerEditable));
+  return normalizeStoredCustomerPermissions(undefined, layer);
 }
 
-export function normalizeCustomerPermissions(_input: any, layer: any = {}): Record<string, boolean> {
-  return defaultCustomerPermissions(layer);
+// Keeps explicit restrictions (e.g. a fixed grid's move/resize/rotate false)
+// and fills only MISSING keys from the documented compatibility defaults.
+// customerEditable false always stores a fully denied set.
+export function normalizeCustomerPermissions(input: any, layer: any = {}): Record<string, boolean> {
+  return normalizeStoredCustomerPermissions(input, layer);
 }
+
+export { resolveCustomerPermissions };
+export { customerFieldKind, customerFieldKindForLayer, isCustomerFieldRequired, isFieldCompatibleWithLayer };
+export type { CustomerFieldKind };
 
 export const DEFAULT_TEXT_STYLE = {
   fontFamily: DEFAULT_FONT_FAMILY,
@@ -264,6 +289,8 @@ function normalizeTextStyle(input: any = {}): any {
     lineHeight: toNumber(input.lineHeight, DEFAULT_TEXT_STYLE.lineHeight) || DEFAULT_TEXT_STYLE.lineHeight,
     textAlign: CUSTOMIZER_TEXT_ALIGN.has(textAlign) ? textAlign : DEFAULT_TEXT_STYLE.textAlign,
     verticalAlign: verticalAlign === "top" || verticalAlign === "bottom" ? verticalAlign : "middle",
+    // Persisted only when chosen: absent keeps the behaviour the design was made with.
+    ...(normalizeTextGrowthDirection(input.growthDirection) ? { growthDirection: normalizeTextGrowthDirection(input.growthDirection) } : {}),
     uppercase: normalizeBoolean(input.uppercase),
     multiline: normalizeBoolean(input.multiline),
     // V2 text box behaviour (spec §9): "shrink" reduces the size down to
@@ -281,13 +308,53 @@ function normalizeTextStyle(input: any = {}): any {
       ? { autoSizeMode: cleanString(input.autoSizeMode) }
       : {}),
     ...(input.minFontSize !== undefined ? { minFontSize: toPositiveInt(input.minFontSize, 8) } : {}),
+    ...(input.maxFontSize !== undefined ? { maxFontSize: toPositiveInt(input.maxFontSize, 0) || undefined } : {}),
   };
+}
+
+// The canonical in-frame crop state of an image/frame layer. The builder and
+// the flat template call it `imageTransform`; a published V2 document calls it
+// `transform`. Both names resolve here so a crop can never be read from one and
+// silently lost from the other.
+export function resolveLayerImageTransform(input: any = {}): any {
+  const legacy = input?.transform && typeof input.transform === "object" && !Array.isArray(input.transform) ? input.transform : null;
+  // `transform` also names GEOMETRY in customer overrides ({x, y, width, …});
+  // only an object shaped like crop state is read as one.
+  const legacyIsCrop = Boolean(
+    legacy &&
+      ["zoom", "offsetX", "offsetY", "flipX", "flipY", "fitMode", "cropX", "cropWidth"].some((key) => legacy[key] !== undefined) &&
+      !["x", "y", "width", "height"].some((key) => legacy[key] !== undefined),
+  );
+  const source =
+    input?.imageTransform && typeof input.imageTransform === "object"
+      ? input.imageTransform
+      : legacyIsCrop
+        ? legacy
+        : null;
+  if (!source) return undefined;
+  const out: any = {};
+  if (source.zoom !== undefined) out.zoom = Math.min(20, Math.max(0.05, toNumber(source.zoom, 1) || 1));
+  if (source.offsetX !== undefined) out.offsetX = toNumber(source.offsetX, 0);
+  if (source.offsetY !== undefined) out.offsetY = toNumber(source.offsetY, 0);
+  if (source.rotation !== undefined) out.rotation = toNumber(source.rotation, 0);
+  if (source.flipX !== undefined) out.flipX = normalizeBoolean(source.flipX);
+  if (source.flipY !== undefined) out.flipY = normalizeBoolean(source.flipY);
+  if (source.fitMode !== undefined) out.fitMode = cleanString(source.fitMode) === "contain" ? "contain" : "cover";
+  for (const key of ["cropX", "cropY"]) if (source[key] !== undefined) out[key] = toNumber(source[key], 0);
+  for (const key of ["cropWidth", "cropHeight"]) if (source[key] !== undefined) out[key] = Math.max(0, toNumber(source[key], 0));
+  return out;
 }
 
 function clampOpacity(value: any): number {
   const num = Number(value);
   if (!Number.isFinite(num)) return 1;
   return Math.min(1, Math.max(0, num));
+}
+
+/** A photo's eraser marks — carried only when there are some, so untouched photos are unchanged. */
+function eraseMaskField(input: unknown): { eraseMask?: EraseMask } {
+  const eraseMask = normalizeEraseMask(input);
+  return eraseMask ? { eraseMask } : {};
 }
 
 export function normalizeCustomizerLayer(input: any = {}): any {
@@ -344,9 +411,18 @@ export function normalizeCustomizerLayer(input: any = {}): any {
       thumbnailPath: cleanOptionalString(input.thumbnailPath),
       originalFilename: cleanOptionalString(input.originalFilename),
       assetReference: input.assetReference && typeof input.assetReference === "object" ? input.assetReference : undefined,
-      imageTransform: input.imageTransform && typeof input.imageTransform === "object" ? input.imageTransform : undefined,
-      maskShape: CUSTOMIZER_MASK_SHAPES.has(maskShape) ? maskShape : "rectangle",
-      fitMode: CUSTOMIZER_FIT_MODES.has(fitMode) ? fitMode : "cover",
+      imageTransform: resolveLayerImageTransform(input),
+      ...(input.mask && typeof input.mask === "object" && input.mask.kind ? { mask: normalizeMaskShape(input.mask) } : {}),
+      ...eraseMaskField(input.eraseMask),
+      maskShape: CUSTOMIZER_MASK_SHAPES.has(maskShape)
+        ? maskShape
+        : CUSTOMIZER_MASK_SHAPES.has(cleanString(input.mask?.kind)) ? cleanString(input.mask.kind) : "rectangle",
+      fitMode: CUSTOMIZER_FIT_MODES.has(fitMode)
+        ? fitMode
+        : cleanString(input.transform?.fitMode) === "contain" ? "contain" : "cover",
+      ...(toNumber(input.sourceWidth, 0) > 0 ? { sourceWidth: toNumber(input.sourceWidth, 0) } : {}),
+      ...(toNumber(input.sourceHeight, 0) > 0 ? { sourceHeight: toNumber(input.sourceHeight, 0) } : {}),
+      ...(cleanOptionalString(input.mimeType) ? { mimeType: cleanOptionalString(input.mimeType) } : {}),
       allowZoom: input.allowZoom === undefined ? true : normalizeBoolean(input.allowZoom),
       allowReposition: input.allowReposition === undefined ? true : normalizeBoolean(input.allowReposition),
       placeholderImage: cleanOptionalString(input.placeholderImage),
@@ -400,6 +476,7 @@ export function normalizeCustomizerLayer(input: any = {}): any {
       editorPath: cleanOptionalString(input.editorPath),
       thumbnailPath: cleanOptionalString(input.thumbnailPath),
       src: cleanOptionalString(input.src),
+      assetReference: input.assetReference && typeof input.assetReference === "object" ? input.assetReference : undefined,
       fitMode: CUSTOMIZER_FIT_MODES.has(cleanString(input.fitMode)) ? cleanString(input.fitMode) : "cover",
       filters: normalizeImageFilters(input.filters || input.imageFilters),
     };
@@ -417,6 +494,8 @@ export function normalizeCustomizerLayer(input: any = {}): any {
       originalFilename: cleanOptionalString(input.originalFilename),
       src: cleanOptionalString(input.src),
       tintColor: cleanOptionalString(input.tintColor),
+      // Kept so the editors know the artwork is an SVG (and offer recolouring).
+      ...(cleanOptionalString(input.mimeType) ? { mimeType: cleanOptionalString(input.mimeType).slice(0, 80) } : {}),
       flipX: normalizeBoolean(input.flipX),
       flipY: normalizeBoolean(input.flipY),
     };
@@ -427,8 +506,10 @@ export function normalizeCustomizerLayer(input: any = {}): any {
     return {
       ...base,
       shape: CUSTOMIZER_SHAPE_KINDS.has(kind) ? kind : "rectangle",
-      fill: cleanString(input.fill) || "#F8F6F1",
-      stroke: cleanOptionalString(input.stroke),
+      // Transparent ("none", or the CSS synonym) is a real choice and is kept;
+      // only a MISSING fill takes the default, exactly as before.
+      fill: isExplicitTransparentPaint(input.fill) ? TRANSPARENT_PAINT : cleanString(input.fill) || "#F8F6F1",
+      stroke: canonicalPaint(cleanOptionalString(input.stroke)),
       strokeWidth: toNumber(input.strokeWidth, 0),
       borderRadius: toNumber(input.borderRadius, 0),
       points: Array.isArray(input.points)
@@ -441,6 +522,7 @@ export function normalizeCustomizerLayer(input: any = {}): any {
       lineCap: ["butt", "round", "square"].includes(cleanString(input.lineCap)) ? cleanString(input.lineCap) : "round",
       lineStartCap: ["none", "circle", "arrow"].includes(cleanString(input.lineStartCap)) ? cleanString(input.lineStartCap) : "none",
       lineEndCap: ["none", "circle", "arrow"].includes(cleanString(input.lineEndCap)) ? cleanString(input.lineEndCap) : "none",
+      ...layerFlips(input),
     };
   }
 
@@ -459,7 +541,18 @@ export function normalizeCustomizerLayer(input: any = {}): any {
     // The design text the admin typed. The customer's value overrides it only
     // when the layer is customer-editable and connected to a field.
     text,
+    ...(toPositiveInt(input.maxLines, 0) > 0 ? { maxLines: toPositiveInt(input.maxLines, 0) } : {}),
+    ...(toPositiveInt(input.maxChars, 0) > 0 ? { maxChars: toPositiveInt(input.maxChars, 0) } : {}),
     textStyle: promoteTextStyleForValue(normalizeTextStyle(input.textStyle), text),
+    ...layerFlips(input),
+  };
+}
+
+/** A text or shape layer's mirror — carried only when set, so unflipped layers are unchanged. */
+function layerFlips(input: any): { flipX?: true; flipY?: true } {
+  return {
+    ...(normalizeBoolean(input.flipX) ? { flipX: true as const } : {}),
+    ...(normalizeBoolean(input.flipY) ? { flipY: true as const } : {}),
   };
 }
 
@@ -522,6 +615,7 @@ export function normalizeUserLayer(input: any = {}): any | null {
     lineHeight: toNumber(input.textStyle?.lineHeight, 1.2) || 1.2,
     textAlign: CUSTOMIZER_TEXT_ALIGN.has(textAlign) ? textAlign : "center",
     verticalAlign: ["top", "middle", "bottom"].includes(cleanString(input.textStyle?.verticalAlign)) ? cleanString(input.textStyle?.verticalAlign) : "middle",
+    ...(normalizeTextGrowthDirection(input.textStyle?.growthDirection) ? { growthDirection: normalizeTextGrowthDirection(input.textStyle?.growthDirection) } : {}),
     uppercase: normalizeBoolean(input.textStyle?.uppercase),
     multiline: normalizeBoolean(input.textStyle?.multiline),
     autoSizeMode: CUSTOMIZER_AUTO_SIZE_MODES.has(cleanString(input.textStyle?.autoSizeMode))
@@ -577,6 +671,7 @@ function normalizeLayerOverride(input: any = {}): any | null {
       const align = cleanString(src.verticalAlign).toLowerCase();
       if (["top", "middle", "bottom"].includes(align)) style.verticalAlign = align;
     }
+    if (src.growthDirection !== undefined) style.growthDirection = normalizeTextGrowthDirection(src.growthDirection);
     const cleaned = Object.fromEntries(Object.entries(style).filter(([, v]) => v !== undefined && v !== ""));
     if (Object.keys(cleaned).length) out.textStyle = cleaned;
   }
@@ -621,13 +716,22 @@ function normalizeLayerOverride(input: any = {}): any | null {
     const gridSlots: Record<string, any> = {};
     for (const [slotId, raw] of Object.entries(input.gridSlots as Record<string, any>)) {
       if (!raw || typeof raw !== "object") continue;
-      const transform = raw.transform && typeof raw.transform === "object" ? raw.transform : {};
-      gridSlots[cleanString(slotId)] = {
-        assetId: cleanString(raw.assetId),
-        src: clampString(raw.src ?? "", 4000),
-        bucket: cleanString(raw.bucket),
-        path: clampString(raw.path ?? "", 600),
-        transform: {
+      // An override is SPARSE: it holds only what the customer changed, and is
+      // merged over the template's slot. Writing every field — a crop-only
+      // override came back with `src: ""` — replaced the template's photo with
+      // nothing after a reload. Same shape the save validator keeps.
+      const slot: Record<string, any> = {};
+      if (raw.assetId !== undefined) slot.assetId = cleanString(raw.assetId);
+      if (raw.src !== undefined) slot.src = clampString(raw.src ?? "", 4000);
+      if (raw.bucket !== undefined) slot.bucket = cleanString(raw.bucket);
+      if (raw.path !== undefined) slot.path = clampString(raw.path ?? "", 600);
+      if (raw.originalPath !== undefined) slot.originalPath = clampString(raw.originalPath ?? "", 600);
+      if (raw.ownerId !== undefined) slot.ownerId = cleanString(raw.ownerId);
+      if (raw.assetReference && typeof raw.assetReference === "object") slot.assetReference = raw.assetReference;
+      if (raw.metadata && typeof raw.metadata === "object") slot.metadata = raw.metadata;
+      if (raw.transform && typeof raw.transform === "object") {
+        const transform = raw.transform;
+        slot.transform = {
           zoom: Math.min(20, Math.max(0.05, toNumber(transform.zoom, 1) || 1)),
           offsetX: toNumber(transform.offsetX, 0),
           offsetY: toNumber(transform.offsetY, 0),
@@ -635,8 +739,9 @@ function normalizeLayerOverride(input: any = {}): any | null {
           flipX: normalizeBoolean(transform.flipX),
           flipY: normalizeBoolean(transform.flipY),
           fitMode: cleanString(transform.fitMode) === "contain" ? "contain" : "cover",
-        },
-      };
+        };
+      }
+      if (Object.keys(slot).length) gridSlots[cleanString(slotId)] = slot;
     }
     if (Object.keys(gridSlots).length) out.gridSlots = gridSlots;
   }
@@ -747,61 +852,121 @@ export function createDefaultCustomizerTemplate(): any {
   });
 }
 
+/* ---- Customer field <-> layer binding --------------------------------------
+   Helpers live in lib/customizer/v2/field-binding.ts (shared with preflight). */
+
+function uniqueFieldId(base: string, taken: Set<string>): string {
+  const clean = keyify(base) || "field";
+  if (!taken.has(clean)) return clean;
+  let i = 2;
+  while (taken.has(`${clean}_${i}`)) i += 1;
+  return `${clean}_${i}`;
+}
+
 // Reconcile fields against layers before validation/save. This is the single
-// source of truth for the layer<->field connection: it (re)builds template.fields
-// purely from the customer-editable layers, so newly-added editable layers always
-// get a field, orphan/deleted/hidden fields are dropped, ids stay unique, and
-// text defaults track the layer text. Non-editable layers lose any dangling field.
+// source of truth for the layer<->field connection:
+//
+//   - A field id referenced by several compatible customer-editable layers is
+//     kept as ONE shared definition (label, type, required, placeholder, help
+//     text, choices, max length and customer visibility all preserved).
+//   - A new id is generated only when a layer has no id at all, or when its id
+//     is already owned by an incompatible kind of layer (a photo pointing at a
+//     text field). Generated ids never collide with an existing field.
+//   - Existing fields keep the display order configured in the Fields panel;
+//     newly created fields are appended in layer order. Display order is
+//     therefore independent of layer stacking.
+//   - customerVisible:false survives; the hidden field keeps its binding.
+//   - Only genuinely unused fields (no customer-editable layer binds them) are
+//     dropped. Non-editable layers lose any dangling field reference.
 export function prepareCustomizerTemplateForSave(template: any = {}): any {
   const t = template && typeof template === "object" ? template : {};
-  const priorFields = new Map((Array.isArray(t.fields) ? t.fields : []).map((f: any) => [f.id, f]));
-  const usedIds = new Set<string>();
-  const nextFields: any[] = [];
+  const priorList: any[] = (Array.isArray(t.fields) ? t.fields : []).filter((field: any) => field && typeof field === "object");
+  const priorById = new Map<string, any>();
+  for (const field of priorList) {
+    const id = keyify(field.id || field.key || "");
+    if (id && !priorById.has(id)) priorById.set(id, field);
+  }
 
-  const layers = (Array.isArray(t.layers) ? t.layers : []).map((raw: any) => {
+  const rawLayers: any[] = Array.isArray(t.layers) ? t.layers : [];
+  const eligible = (layer: any) => Boolean(layer?.customerEditable) && customerFieldKindForLayer(layer) !== null;
+
+  // Pass 1: decide which kind owns each referenced id. The existing field's
+  // own kind wins when any referencing layer matches it; otherwise the first
+  // referencing layer decides (and the field type is converted to match).
+  const referencingKinds = new Map<string, CustomerFieldKind[]>();
+  for (const layer of rawLayers) {
+    if (!eligible(layer)) continue;
+    const id = keyify(layer.fieldId || "");
+    if (!id) continue;
+    const kinds = referencingKinds.get(id) || [];
+    kinds.push(customerFieldKindForLayer(layer)!);
+    referencingKinds.set(id, kinds);
+  }
+  const ownerKind = new Map<string, CustomerFieldKind>();
+  for (const [id, kinds] of referencingKinds) {
+    const prior = priorById.get(id);
+    const priorKind = prior ? customerFieldKind(prior) : null;
+    ownerKind.set(id, priorKind && kinds.includes(priorKind) ? priorKind : kinds[0]);
+  }
+
+  // Pass 2: bind every eligible layer.
+  const taken = new Set<string>([...priorById.keys(), ...ownerKind.keys()]);
+  const firstLayerByField = new Map<string, any>();
+  const createdOrder: string[] = [];
+  const layers = rawLayers.map((raw: any) => {
     const layer = { ...raw };
-    const canEdit = layer.customerEditable && (layer.type === "text" || layer.type === "image");
-
-    if (!canEdit) {
+    if (!eligible(layer)) {
       // A non-editable layer must never keep a field reference.
       if (layer.fieldId) layer.fieldId = "";
       return layer;
     }
-
-    // Prefer the layer's current connection, then its name, then a generated id.
-    const originalId = keyify(layer.fieldId) || keyify(layer.name);
-    let fieldId = originalId || `field_${Math.random().toString(36).slice(2, 8)}`;
-    if (usedIds.has(fieldId)) {
-      let i = 2;
-      while (usedIds.has(`${fieldId}_${i}`)) i += 1;
-      fieldId = `${fieldId}_${i}`;
+    const kind = customerFieldKindForLayer(layer)!;
+    let id = keyify(layer.fieldId || "");
+    if (!id || ownerKind.get(id) !== kind) {
+      // Genuinely missing, or conflicting with an incompatible owner: derive a
+      // fresh id from the layer's name (falling back to the old id).
+      id = uniqueFieldId(layer.name || id || "field", taken);
+      taken.add(id);
+      ownerKind.set(id, kind);
     }
-    usedIds.add(fieldId);
-    layer.fieldId = fieldId;
-
-    const prior: any = priorFields.get(originalId) || priorFields.get(fieldId) || {};
-    const isImage = layer.type === "image";
-    // Keep the admin's chosen field type (date, time, select, …) for text
-    // layers; only derive it when nothing was configured yet.
-    const priorTextType = !isImage && prior.type && prior.type !== "image" && prior.type !== "file" ? prior.type : "";
-    nextFields.push({
-      id: fieldId,
-      label: prior.label || layer.name || "Editable field",
-      type: isImage ? "image" : priorTextType || (layer.textStyle?.multiline ? "textarea" : "text"),
-      required: Boolean(prior.required),
-      // Text defaults track the layer's design text; images keep any prior default.
-      defaultValue: isImage ? prior.defaultValue || "" : layer.text || prior.defaultValue || "",
-      placeholder: prior.placeholder || (isImage ? "" : layer.text || ""),
-      helpText: prior.helpText || "",
-      maxLength: prior.maxLength || 0,
-      options: prior.options || [],
-      customerVisible: true,
-    });
-
+    layer.fieldId = id;
+    if (!firstLayerByField.has(id)) {
+      firstLayerByField.set(id, layer);
+      if (!priorById.has(id)) createdOrder.push(id);
+    }
     return layer;
   });
 
-  return { ...t, layers, fields: nextFields };
+  const buildField = (id: string): any => {
+    const layer = firstLayerByField.get(id);
+    const prior: any = priorById.get(id) || {};
+    const isImage = ownerKind.get(id) === "image";
+    // Keep the admin's chosen type (date, time, select, file, …) when it is
+    // compatible; only derive it when nothing compatible was configured yet.
+    const priorType = prior.type && customerFieldKind(prior) === (isImage ? "image" : "text") ? prior.type : "";
+    return {
+      id,
+      label: prior.label || layer?.name || "Editable field",
+      type: priorType || (isImage ? "image" : layer?.textStyle?.multiline ? "textarea" : "text"),
+      required: Boolean(prior.required),
+      // Text defaults track the (first bound) layer's design text; images keep any prior default.
+      defaultValue: isImage ? prior.defaultValue || "" : layer?.text || prior.defaultValue || "",
+      placeholder: prior.placeholder || (isImage ? "" : layer?.text || ""),
+      helpText: prior.helpText || "",
+      maxLength: prior.maxLength || 0,
+      options: Array.isArray(prior.options) ? prior.options : [],
+      customerVisible: prior.customerVisible === false || prior.customerVisible === "false" ? false : true,
+    };
+  };
+
+  const ordered: string[] = [];
+  for (const field of priorList) {
+    const id = keyify(field.id || field.key || "");
+    if (id && firstLayerByField.has(id) && !ordered.includes(id)) ordered.push(id);
+  }
+  for (const id of createdOrder) if (!ordered.includes(id)) ordered.push(id);
+
+  return { ...t, layers, fields: ordered.map(buildField) };
 }
 
 // Part 14: build a simple template from legacy product.customizationFields so
@@ -871,7 +1036,8 @@ export function validateCustomizerTemplate(template: any = {}): Record<string, s
   // Customer-editable layers must be connected to a labelled field.
   layers.forEach((layer: any) => {
     if (!layer.customerEditable) return;
-    if (layer.type === "grid" || layer.type === "group" || layer.type === "element") return;
+    // Only text and photo layers carry a customer field.
+    if (!customerFieldKindForLayer(layer)) return;
     const field: any = layer.fieldId ? fieldMap.get(layer.fieldId) : null;
     if (!field || !field.label) {
       errors.editable = "Every customer-editable layer needs a field label.";
@@ -880,7 +1046,7 @@ export function validateCustomizerTemplate(template: any = {}): Record<string, s
       errors.editable = "Every customer-editable field needs a key.";
     }
     // Photo placeholders must connect to an upload field.
-    if (layer.type === "image" && field && field.type !== "image" && field.type !== "file") {
+    if (customerFieldKindForLayer(layer) === "image" && field && customerFieldKind(field) !== "image") {
       errors.photo = "Editable photo placeholders must connect to an image upload field.";
     }
   });
@@ -934,24 +1100,41 @@ export function validateCustomizerTemplateDetailed(template: any = {}): { errors
   if (new Set(fieldIds).size !== fieldIds.length) errors.push("Field keys must be unique.");
 
   const fieldMap = new Map(fields.map((field: any) => [field.id, field]));
-  const enabledPageIdSet = new Set(enabledPages.map((page: any) => page.id));
+  const enabledPageIdSet = new Set<string>(enabledPages.map((page: any) => page.id));
   const layersOnEnabledPages = layers.filter((layer: any) => enabledPageIdSet.has(layer.page));
   if (!layersOnEnabledPages.length) errors.push("Add at least one design layer to an enabled page.");
 
   layers.forEach((layer: any) => {
     if (!layer.customerEditable) return;
+    if (layer.hidden) warnings.push(`Editable layer "${layer.name || layer.id}" is hidden — customers will not see it.`);
+    if (!enabledPageIdSet.has(layer.page)) {
+      warnings.push(`Editable layer "${layer.name || layer.id}" sits on a disabled page.`);
+    }
+    // Only text and photo layers carry a customer field. Grids, groups,
+    // shapes, elements, QR codes and backgrounds are edited on the canvas
+    // through their permissions alone.
+    if (!customerFieldKindForLayer(layer)) return;
     const field: any = layer.fieldId ? fieldMap.get(layer.fieldId) : null;
     if (!field) {
       errors.push(`Editable layer "${layer.name || layer.id}" has no connected customer field.`);
       return;
     }
     if (!field.label) errors.push(`The field for layer "${layer.name || layer.id}" needs a customer label.`);
-    if (layer.type === "image" && field.type !== "image" && field.type !== "file") {
+    if (customerFieldKindForLayer(layer) === "image" && customerFieldKind(field) !== "image") {
       errors.push(`Photo area "${layer.name || layer.id}" must connect to an image upload field.`);
     }
-    if (layer.hidden) warnings.push(`Editable layer "${layer.name || layer.id}" is hidden — customers will not see it.`);
-    if (!enabledPageIdSet.has(layer.page)) {
-      warnings.push(`Editable layer "${layer.name || layer.id}" sits on a disabled page.`);
+    if (customerFieldKindForLayer(layer) === "text" && customerFieldKind(field) === "image") {
+      errors.push(`Text layer "${layer.name || layer.id}" cannot share the photo field "${field.label || field.id}".`);
+    }
+  });
+
+  // A required field the customer cannot reach is treated as optional
+  // everywhere (see isCustomerFieldRequired); say so rather than surprise.
+  fields.forEach((field: any) => {
+    if (field.required && !isCustomerFieldRequired(field, layers, enabledPageIdSet)) {
+      warnings.push(
+        `"${field.label || field.id}" is marked required but customers cannot fill it (hidden, disabled, or not editable) — it will be treated as optional.`,
+      );
     }
   });
 

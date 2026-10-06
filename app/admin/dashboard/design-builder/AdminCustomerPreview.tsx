@@ -399,16 +399,6 @@ export default function AdminCustomerPreview({ template, product }: { template: 
                   editingText={editingTextLayerId === selectedLayer.id}
                   onStyleChange={onStyleChange}
                   onEditText={() => setEditTextRequest((current) => ({ layerId: selectedLayer.id, requestId: (current?.requestId || 0) + 1 }))}
-                  onDuplicate={undefined}
-                  onDelete={
-                    selectedIsUser
-                      ? () =>
-                          setEditorState((current) => ({
-                            ...current,
-                            userLayers: current.userLayers.filter((item: any) => item.id !== selectedLayer.id),
-                          }))
-                      : undefined
-                  }
                 />
               </div>
             )}

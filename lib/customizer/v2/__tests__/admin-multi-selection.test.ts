@@ -163,13 +163,14 @@ describe("admin multi-object selection and alignment", () => {
     // renderer, so it cannot reach the PNG/PDF pipeline.
     expect(renderer).not.toContain("data-admin-selection-marquee");
     expect(renderer).not.toContain("Transformer");
-    // Distribution, spacing, match size and grouping moved out of the toolbar
-    // row into the structured Layout menu; their gating now lives in the pure
-    // layoutActionAvailability helper (asserted in admin-text-toolbar.test.ts).
-    expect(toolbar).toContain('label="Equal horizontal spacing"');
-    expect(toolbar).toContain('label="Equal vertical spacing"');
-    expect(toolbar).toContain('label="Group objects"');
+    // Grouping sits on the multi-selection toolbar; alignment and distribution
+    // live in the Alignment panel, gated by the pure alignmentPanelAvailability
+    // helper (asserted in admin-toolbar-state.test.ts).
+    const panel = readFileSync("app/admin/dashboard/design-builder/AdminAlignmentPanel.tsx", "utf8");
+    expect(toolbar).toContain('label="Group"');
     expect(toolbar).toContain('label="Ungroup"');
-    expect(toolbar).toContain("layoutActionAvailability");
+    expect(panel).toContain('name="Distribute horizontally"');
+    expect(panel).toContain('name="Distribute vertically"');
+    expect(panel).toContain("alignmentPanelAvailability");
   });
 });

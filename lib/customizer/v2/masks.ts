@@ -140,6 +140,59 @@ export function getMaskPath(
   }
 }
 
+const MASK_KINDS = new Set(["rectangle", "rounded", "circle", "oval", "arch", "arch-top", "arch-bottom", "polygon", "path"]);
+// Path data is written into the server SVG verbatim, so a stored path may hold
+// path-data characters only — never markup.
+const PATH_DATA = /^[MmLlHhVvCcSsQqTtAaZz0-9eE.,+\-\s]*$/;
+const MAX_POLYGON_POINTS = 64;
+const MAX_PATH_LENGTH = 8000;
+
+/**
+ * The one canonical form of a stored mask. Every reader of a layer's `mask`
+ * (template normalizer, published document, customer save validation) goes
+ * through here, so a renderer only ever receives geometry: a known kind,
+ * finite numbers, and path data without markup. Anything else becomes a plain
+ * rectangle — the same clip the layer would get with no mask at all.
+ */
+export function normalizeMaskShape(input: unknown): MaskShape {
+  const raw = input && typeof input === "object" ? (input as Record<string, any>) : {};
+  const kind = String(raw.kind || "");
+  if (!MASK_KINDS.has(kind)) return { kind: "rectangle" };
+  if (kind === "rounded") {
+    const radius = Number(raw.radius);
+    return { kind, radius: Number.isFinite(radius) && radius > 0 ? radius : 0 };
+  }
+  if (kind === "polygon") {
+    const points = (Array.isArray(raw.points) ? raw.points.slice(0, MAX_POLYGON_POINTS) : [])
+      .map((point: any) => ({ x: Number(point?.x), y: Number(point?.y) }))
+      .filter((point: { x: number; y: number }) => Number.isFinite(point.x) && Number.isFinite(point.y))
+      .map((point: { x: number; y: number }) => ({ x: Math.min(1, Math.max(0, point.x)), y: Math.min(1, Math.max(0, point.y)) }));
+    return points.length >= 3 ? { kind, points } : { kind: "rectangle" };
+  }
+  if (kind === "path") {
+    const d = typeof raw.d === "string" ? raw.d.trim() : "";
+    const viewBoxWidth = Number(raw.viewBoxWidth);
+    const viewBoxHeight = Number(raw.viewBoxHeight);
+    if (!d || d.length > MAX_PATH_LENGTH || !PATH_DATA.test(d) || !(viewBoxWidth > 0) || !(viewBoxHeight > 0) || !Number.isFinite(viewBoxWidth) || !Number.isFinite(viewBoxHeight)) {
+      return { kind: "rectangle" };
+    }
+    return { kind, d, viewBoxWidth, viewBoxHeight };
+  }
+  return { kind } as MaskShape;
+}
+
+/**
+ * The names a frame's DRAWN outline goes by in the template's frame-shape
+ * allowlist. The mask object is what every renderer draws, so it is what is
+ * checked; the legacy `maskShape` name only counts when there is no mask. The
+ * allowlist's "arch" is the legacy name of the top arch.
+ */
+export function frameMaskAllowlistNames(layer: { mask?: unknown; maskShape?: unknown }): string[] {
+  const kind = layer.mask && typeof layer.mask === "object" ? String((layer.mask as Record<string, unknown>).kind || "") : "";
+  const name = kind ? (kind === "arch" ? "arch-full" : kind) : String(layer.maskShape || "rectangle");
+  return name === "arch" || name === "arch-top" ? ["arch-top", "arch"] : [name];
+}
+
 // Map legacy V1 maskShape strings onto V2 MaskShape objects. V1 knew
 // rectangle | rounded | circle | arch — "arch" always meant the top arch.
 export function maskShapeFromLegacy(value: string | undefined | null, width = 0, height = 0): MaskShape {

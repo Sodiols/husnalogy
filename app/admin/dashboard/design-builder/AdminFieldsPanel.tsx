@@ -18,9 +18,12 @@ export default function AdminFieldsPanel({
   const layers = template?.layers || [];
   const fields = template?.fields || [];
 
+  // A linked field is ONE definition shared by several layers (e.g. the
+  // couple's names on Front and Back); it is listed once, with every page it
+  // appears on. Order here is the customer's display order (template.fields).
   const connected = fields.map((field: any) => {
-    const layer = layers.find((l: any) => l.fieldId === field.id && l.customerEditable);
-    return { field, layer };
+    const bound = layers.filter((l: any) => l.fieldId === field.id && l.customerEditable);
+    return { field, layer: bound[0], bound };
   });
   const orphanFields = connected.filter((entry: any) => !entry.layer);
   const editableWithoutField = layers.filter(
@@ -60,7 +63,7 @@ export default function AdminFieldsPanel({
       <div className="grid gap-4 xl:grid-cols-2">
         {connected
           .filter((entry: any) => entry.layer)
-          .map(({ field, layer }: any, index: number, visible: any[]) => (
+          .map(({ field, layer, bound }: any, index: number, visible: any[]) => (
             <div key={field.id} className="rounded-lg border border-[#303839]/12 bg-white p-4">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="flex items-center gap-2">
@@ -68,7 +71,7 @@ export default function AdminFieldsPanel({
                     {field.type}
                   </span>
                   <span className="text-[11px] font-bold text-[#303839]/45">
-                    {field.id} · page: {layer.page}
+                    {field.id} · {bound.length > 1 ? `linked on ${bound.map((l: any) => l.page).join(", ")}` : `page: ${layer.page}`}
                   </span>
                 </div>
                 <div className="flex items-center gap-1.5">
@@ -129,14 +132,17 @@ export default function AdminFieldsPanel({
               </div>
 
               <div className="mt-3 flex flex-wrap items-center gap-4">
-                <label className="flex items-center gap-2 text-xs font-bold text-[#303839]/75">
+                {/* Hidden fields are never required (isCustomerFieldRequired):
+                    customers cannot fill what they cannot see. */}
+                <label className={`flex items-center gap-2 text-xs font-bold text-[#303839]/75 ${field.customerVisible === false ? "opacity-60" : ""}`}>
                   <input
                     type="checkbox"
-                    checked={Boolean(field.required)}
+                    checked={Boolean(field.required) && field.customerVisible !== false}
+                    disabled={field.customerVisible === false}
                     onChange={(e) => onToggleRequired(layer.id, e.target.checked)}
                     className="h-4 w-4 accent-[#303839]"
                   />
-                  Required
+                  {field.customerVisible === false ? "Optional while hidden" : "Required"}
                 </label>
                 <label className="flex items-center gap-2 text-xs font-bold text-[#303839]/75">
                   <input

@@ -59,20 +59,18 @@ describe("editable numeric stepper component contract", () => {
     const customerToolbar = read("app/components/customizer/CustomerContextToolbar.tsx");
     expect(component).toContain("showStepButtons?: boolean");
     expect(component).toContain("showStepButtons &&");
-    for (const toolbar of [adminToolbar, customerToolbar]) {
-      expect(toolbar).toContain('label="Font size"');
-      expect(toolbar).toMatch(/label="Letter spac(?:e|ing)"/);
-      expect(toolbar).toContain('label="Line height"');
-    }
+    expect(adminToolbar).toContain('label="Font size"');
+    expect(adminToolbar).toContain('label="Line weight"');
+    expect(customerToolbar).toContain('label="Font size"');
+    expect(customerToolbar).toMatch(/label="Letter spac(?:e|ing)"/);
+    expect(customerToolbar).toContain('label="Line height"');
     // The customer toolbar keeps its label-only numeric fields.
     expect(customerToolbar).toContain("showStepButtons={false}");
     // The admin toolbar now shows explicit decrease/increase buttons (spec §9):
     // a bare `showStepButtons` prop (true), not `showStepButtons={false}`.
     // Matched line-ending agnostically so a CRLF checkout cannot break it.
     expect(adminToolbar).toMatch(/showStepButtons\s*\r?\n/);
-    expect(adminToolbar).toContain('sharedTextStyleValue(selectedLayers, "fontSize"');
-    expect(adminToolbar).toContain('sharedTextStyleValue(selectedLayers, "letterSpacing"');
-    expect(adminToolbar).toContain('sharedTextStyleValue(selectedLayers, "lineHeight"');
+    expect(adminToolbar).toContain('sharedTextStyleValue(layers, "fontSize"');
     expect(customerToolbar).toContain("style.fontSize ?? 48");
     expect(customerToolbar).toContain("style.letterSpacing ?? 0");
     expect(customerToolbar).toContain("style.lineHeight ?? 1.2");
@@ -97,7 +95,6 @@ describe("editable numeric stepper component contract", () => {
     const builder = read("app/admin/dashboard/design-builder/AdminDesignBuilder.tsx");
     expect(stepper).toContain('placeholder={mixed ? "Mixed" : undefined}');
     expect(toolbar).toContain("sharedTextStyleValue");
-    expect(toolbar).toContain("mixed={textAlign.mixed}");
     expect(builder).toContain("for (const id of selectedLayerIdsRef.current)");
     expect(builder).toContain('if (layer?.type === "text") next = constrainTextLayerBox(updateLayerStyle');
   });

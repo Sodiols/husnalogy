@@ -37,7 +37,7 @@ describe("customer workspace geometry is memoized", () => {
     expect(workspace).toContain("const interactionNodes = useInteractionNodes({");
     expect(workspace).toContain("metricsRevision: textMetricsRevision");
     expect(hook).toContain("return useMemo(");
-    expect(hook).toContain("[surface, layers, isTargetable, safeBounds, editingGroupId, metricsRevision]");
+    expect(hook).toContain("[surface, layers, allLayers, isTargetable, safeBounds, editingGroupId, metricsRevision]");
   });
 
   it("tracks the font-load revision so measurements refresh once webfonts land", () => {

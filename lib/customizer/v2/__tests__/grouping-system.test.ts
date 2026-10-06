@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import { adminToolbarKind } from "../admin-toolbar-state";
 import { describe, expect, it } from "vitest";
 import {
   evaluateGroupAction,
@@ -17,7 +18,6 @@ import {
   moveLayers,
   removeLayer,
 } from "@/app/admin/dashboard/design-builder/builder-utils";
-import { planTextToolbar } from "../text-toolbar";
 
 const read = (relative: string) => readFileSync(relative, "utf8");
 const adminToolbar = read("app/admin/dashboard/design-builder/AdminContextToolbar.tsx");
@@ -446,50 +446,25 @@ describe("grouping — layers panel", () => {
 /* ------------------------------------------------------------ toolbar ----- */
 
 describe("grouping — toolbar surface", () => {
-  it("keeps Group visible in the toolbar ahead of lower-priority actions", () => {
-    const plan = planTextToolbar({
-      availableWidth: 900,
-      showTextControls: false,
-      selectionCount: 2,
-      showGrouping: true,
-    });
-    expect(plan.inline).toContain("grouping");
-    // Grouping outranks every other optional control.
-    expect(plan.overflow).not.toContain("grouping");
+  it("offers Group on the multi-selection and image + shape toolbars", () => {
+    expect(adminToolbarKind([box("a", 0, 0), box("b", 10, 10)])).toBe("multi");
+    expect(adminToolbar).toContain('(kind === "multi" || kind === "mask") && (');
+    expect(adminToolbar).toContain('<LabelButton label="Group" path={ICONS.group} onClick={props.onGroup} disabled={!props.groupAction.group.enabled} reason={props.groupAction.group.reason} />');
   });
 
-  it("never shows the grouping control when it cannot apply", () => {
-    const plan = planTextToolbar({ availableWidth: 1200, showTextControls: true, selectionCount: 1 });
-    expect(plan.inline).not.toContain("grouping");
-    expect(plan.overflow).not.toContain("grouping");
+  it("offers Ungroup — not Group — when the selection is one group", () => {
+    expect(adminToolbarKind([{ ...box("g", 0, 0), type: "group" }])).toBe("group");
+    expect(adminToolbar).toContain('kind === "group" && (');
+    expect(adminToolbar).toContain('<LabelButton label="Ungroup" path={ICONS.ungroup} onClick={props.onUngroup} disabled={!props.groupAction.ungroup.enabled} reason={props.groupAction.ungroup.reason} />');
   });
 
-  it("places Group into More rather than dropping it when space runs out", () => {
-    const plan = planTextToolbar({
-      availableWidth: 420,
-      showTextControls: true,
-      selectionCount: 2,
-      showGrouping: true,
-    });
-    expect([...plan.inline, ...plan.overflow]).toContain("grouping");
+  it("never shows a grouping control for a single ordinary object", () => {
+    expect(adminToolbarKind([box("a", 0, 0)])).not.toBe("multi");
+    expect(adminToolbarKind([box("a", 0, 0)])).not.toBe("group");
   });
 
-  it("renders Group and Ungroup as one control with the shared toolbar style", () => {
-    expect(adminToolbar).toContain('aria-label={ungroupMode ? "Ungroup" : "Group"}');
-    expect(adminToolbar).toContain("const ungroupMode = isGroup");
-    // Same shell, height and states as every other toolbar control.
-    expect(adminToolbar).toContain("${CONTROL_BASE} w-full ${plan.showFieldLabels ? \"gap-1.5 px-2\" : \"\"}");
-    expect(adminToolbar).toContain("style={{ height: CONTROL_HEIGHT[density] }}");
-    // Label on wide layouts, icon plus tooltip when compact.
-    expect(adminToolbar).toContain('{plan.showFieldLabels && <span>{ungroupMode ? "Ungroup" : "Group"}</span>}');
-    expect(adminToolbar).toContain("title={state.reason}");
-  });
-
-  it("offers grouping from the Layout menu and the More menu as well", () => {
-    expect(adminToolbar).toContain('label="Group objects"');
-    expect(adminToolbar).toContain('label="Ungroup"');
-    expect(adminToolbar).toContain('label="Edit group"');
-    expect(adminToolbar).toContain('plan.overflow.includes("grouping")');
+  it("explains a blocked Group in its tooltip instead of hiding it", () => {
+    expect(adminToolbar).toContain("title={disabled && reason ? `${label} — ${reason}` : title || label}");
   });
 });
 
@@ -545,7 +520,8 @@ describe("grouping — builder and customer wiring", () => {
     expect(customerClient).toContain("customerGroupingEnabled && multiselectEnabled && selectedLayers.length > 1");
     expect(customerToolbar).toContain("const showGroup = groupingAllowed && !isGroup && selectionCount > 1");
     expect(customerToolbar).toContain("const showUngroup = ungroupingAllowed && isGroup");
-    expect(customerToolbar).toContain("if (!showGroup && !showUngroup && !onDuplicate && !onDelete) return null;");
+    // Duplicate and Delete moved to the shared object menu (Customizer Point 9).
+    expect(customerToolbar).toContain("if (!showGroup && !showUngroup) return null;");
   });
 
   it("enforces customer permissions in the document logic, not only the UI", () => {

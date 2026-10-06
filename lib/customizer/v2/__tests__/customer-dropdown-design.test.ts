@@ -19,7 +19,10 @@ const adminToolbar = readFileSync(
 describe("customer toolbar dropdown design", () => {
   it("shares the polished dropdown implementation with the admin customizer", () => {
     expect(customerToolbar).toContain('from "./ToolbarDropdown"');
-    expect(adminToolbar).toContain('from "@/app/components/customizer/ToolbarDropdown"');
+    // The admin toolbar's menus are portalled popovers (font, colour, text
+    // alignment); none of them is a native <select> either.
+    expect(adminToolbar).toContain('from "./ToolbarPopover"');
+    expect(adminToolbar).not.toContain("<select");
     expect(customerToolbar).not.toContain("<select");
   });
 

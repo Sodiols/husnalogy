@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   constrainCropToAspect,
+  cropPanDelta,
   resolveCropRect,
   resolveImageDrawBox,
   resolveImageDrawBoxFromTransform,
@@ -186,5 +187,42 @@ describe("constrainCropToAspect", () => {
       width: 1,
       height: 1,
     });
+  });
+});
+
+describe("cropPanDelta: the photo follows the pointer on every frame", () => {
+  // Forward map of the renderers: a pan (x, y) inside flips, the in-frame
+  // rotation and the layer rotation, scaled by the crop, lands on screen here.
+  const toScreen = (pan: { x: number; y: number }, frame: { rotation?: number; imageRotation?: number; flipX?: boolean; flipY?: boolean; crop?: { x: number; y: number; width: number; height: number } | null }) => {
+    const cropScale = frame.crop ? Math.max(1 / frame.crop.width, 1 / frame.crop.height) : 1;
+    let x = pan.x * cropScale * (frame.flipX ? -1 : 1);
+    let y = pan.y * cropScale * (frame.flipY ? -1 : 1);
+    const angle = (((frame.rotation || 0) + (frame.imageRotation || 0)) * Math.PI) / 180;
+    [x, y] = [x * Math.cos(angle) - y * Math.sin(angle), x * Math.sin(angle) + y * Math.cos(angle)];
+    return { x, y };
+  };
+
+  const frames = [
+    {},
+    { rotation: 90 },
+    { rotation: 33 },
+    { imageRotation: -40, rotation: 15 },
+    { flipX: true },
+    { flipY: true, rotation: 120 },
+    { crop: { x: 0.25, y: 0.25, width: 0.5, height: 0.5 } },
+    { crop: { x: 0.1, y: 0, width: 0.4, height: 0.8 }, rotation: 45, flipX: true },
+  ];
+
+  for (const frame of frames) {
+    it(`${JSON.stringify(frame)}`, () => {
+      const pan = cropPanDelta(30, -12, frame);
+      const screen = toScreen(pan, frame);
+      expect(screen.x).toBeCloseTo(30, 9);
+      expect(screen.y).toBeCloseTo(-12, 9);
+    });
+  }
+
+  it("an unrotated, unflipped, uncropped photo pans one to one", () => {
+    expect(cropPanDelta(7, -3)).toEqual({ x: 7, y: -3 });
   });
 });

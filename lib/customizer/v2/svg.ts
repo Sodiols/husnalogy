@@ -5,6 +5,7 @@
 // same mask generator, and break lines through the same text layout service.
 // The output feeds @resvg/resvg-js for PNG production and pdf-lib for PDFs.
 
+import { svgPaint } from "./paint";
 import { DEFAULT_FONT_FAMILY } from "./google-fonts";
 import {
   getEffectiveLayersForPage,
@@ -15,6 +16,8 @@ import {
   type EditorState,
 } from "@/app/components/customizer/customizer-utils";
 import { getLegacyMaskPath, getMaskPath } from "./masks";
+import { layerTransform } from "./layer-flip";
+import { eraseMaskAppliesTo, eraseStrokePaths } from "./erase-mask";
 import { DEFAULT_LINE_HEIGHT, layoutText, fallbackMeasure, resolveTextBox, type MeasureFn, type SafeBounds } from "./text-layout";
 import { getGridSlotRect, normalizeGridSlot } from "./grids";
 import { hasImageFilters, imageFilterSvgPrimitives } from "./image-filters";
@@ -112,6 +115,8 @@ function renderTextLayer(layer: any, field: any, values: Record<string, any>, me
       textAlign: style.textAlign || "center",
       autoSizeMode: style.autoSizeMode,
       fitMode: style.fitMode,
+      rotation: Number(layer.rotation) || 0,
+      growthDirection: style.growthDirection,
     },
     measure,
     safeBounds,
@@ -143,7 +148,8 @@ function renderTextLayer(layer: any, field: any, values: Record<string, any>, me
   const boxLeft = box.x - box.width / 2;
   const boxTop = box.y - box.height / 2;
   const fill = isPlaceholder ? "#9aa0a1" : style.color || "#303839";
-  const rotate = layer.rotation ? ` transform="rotate(${layer.rotation} ${box.x} ${box.y})"` : "";
+  const textTransform = layerTransform(layer, box.x, box.y);
+  const rotate = textTransform ? ` transform="${textTransform}"` : "";
   const clipId = `text-clip-${String(layer.id).replace(/[^a-z0-9_-]/gi, "-")}`;
 
   const spans = layout.lines
@@ -166,15 +172,17 @@ function renderTextLayer(layer: any, field: any, values: Record<string, any>, me
 function renderShapeLayer(layer: any): string {
   const x = layer.x - layer.width / 2;
   const y = layer.y - layer.height / 2;
-  const rotate = layer.rotation ? ` transform="rotate(${layer.rotation} ${layer.x} ${layer.y})"` : "";
-  const common = `${attr("fill", layer.fill || "none")}${attr("stroke", layer.stroke || "none")}${attr("stroke-width", layer.strokeWidth || 0)}`;
+  const shapeTransform = layerTransform(layer, layer.x, layer.y);
+  const rotate = shapeTransform ? ` transform="${shapeTransform}"` : "";
+  // Transparent is the renderer's "no paint" (lib/customizer/v2/paint.ts).
+  const common = `${attr("fill", svgPaint(layer.fill))}${attr("stroke", svgPaint(layer.stroke))}${attr("stroke-width", layer.strokeWidth || 0)}`;
 
   if (layer.shape === "ellipse" || layer.shape === "circle" || layer.shape === "oval") {
     return `<ellipse cx="${layer.x}" cy="${layer.y}" rx="${layer.width / 2}" ry="${layer.height / 2}"${rotate}${common}/>`;
   }
   if (layer.shape === "line") {
     const dash = layer.lineStyle === "dashed" ? "12 8" : layer.lineStyle === "dotted" ? "2 8" : "";
-    const color = esc(layer.stroke || layer.fill || "#303839");
+    const color = esc(svgPaint(layer.stroke || layer.fill || "#303839"));
     const thickness = Number(layer.strokeWidth) || 3;
     const capSize = Math.max(8, thickness * 3);
     const start = layer.lineStartCap === "circle" ? `<circle cx="${x}" cy="${layer.y}" r="${capSize / 2}" fill="${color}"/>` : layer.lineStartCap === "arrow" ? `<polygon points="${x},${layer.y} ${x + capSize},${layer.y - capSize * 0.7} ${x + capSize},${layer.y + capSize * 0.7}" fill="${color}"/>` : "";
@@ -237,7 +245,7 @@ function renderImageLayer(
   const mask = layer.mask && typeof layer.mask === "object"
     ? getMaskPath(layer.mask, { x: frameX, y: frameY, width: layer.width, height: layer.height })
     : getLegacyMaskPath(layer.maskShape, { x: frameX, y: frameY, width: layer.width, height: layer.height });
-  const maskTransform = mask.transform ? ` transform="${mask.transform}"` : "";
+  const maskTransform = mask.transform ? ` transform="${esc(mask.transform)}"` : "";
   const rotate = layer.rotation ? ` transform="rotate(${layer.rotation} ${layer.x} ${layer.y})"` : "";
 
   if (!image?.url) {
@@ -245,7 +253,7 @@ function renderImageLayer(
     if (mode === "print") return "";
     return (
       `<g${rotate}>` +
-      `<path d="${mask.d}"${maskTransform} fill="${esc(layer.backgroundColor || "#F8F6F1")}" stroke="#c9bcbc" stroke-width="3" stroke-dasharray="14 12"/>` +
+      `<path d="${esc(mask.d)}"${maskTransform} fill="${esc(layer.backgroundColor || "#F8F6F1")}" stroke="#c9bcbc" stroke-width="3" stroke-dasharray="14 12"/>` +
       `<text x="${layer.x}" y="${layer.y}" text-anchor="middle" dominant-baseline="middle" font-family="sans-serif" font-size="${Math.max(18, layer.width * 0.06)}" fill="#9c8f8f">${esc(field?.label || "Photo")}</text>` +
       `</g>`
     );
@@ -271,16 +279,25 @@ function renderImageLayer(
   }
   const innerTransform = inner.length ? ` transform="${inner.join(" ")}"` : "";
   const preserve = layer.fitMode === "contain" ? "xMidYMid meet" : "xMidYMid slice";
+  // Eraser marks: white keeps the picture, the black strokes erase it.
+  const eraseId = `${idPrefix}-erase-${layer.id}`;
+  const erasePaths = eraseMaskAppliesTo(layer, image) ? eraseStrokePaths(layer.eraseMask, { x: drawX, y: drawY, width: drawW, height: drawH }) : [];
+  const eraseDef = erasePaths.length
+    ? `<mask id="${eraseId}" maskUnits="userSpaceOnUse" x="${drawX - drawW}" y="${drawY - drawH}" width="${drawW * 3}" height="${drawH * 3}">` +
+      `<rect x="${drawX - drawW}" y="${drawY - drawH}" width="${drawW * 3}" height="${drawH * 3}" fill="#fff"/>` +
+      erasePaths.map((path) => `<path d="${esc(path.d)}" fill="none" stroke="#000" stroke-width="${path.width}" stroke-linecap="round" stroke-linejoin="round"/>`).join("") +
+      `</mask>`
+    : "";
 
   return (
     `<g${rotate}>` +
-    `<defs><clipPath id="${clipId}"><path d="${mask.d}"${maskTransform}/></clipPath>${filtered ? `<filter id="${filterId}" color-interpolation-filters="sRGB">${imageFilterSvgPrimitives(layer.filters)}</filter>` : ""}</defs>` +
-    (layer.backgroundColor ? `<path d="${mask.d}"${maskTransform} fill="${esc(layer.backgroundColor)}"/>` : "") +
+    `<defs><clipPath id="${clipId}"><path d="${esc(mask.d)}"${maskTransform}/></clipPath>${filtered ? `<filter id="${filterId}" color-interpolation-filters="sRGB">${imageFilterSvgPrimitives(layer.filters)}</filter>` : ""}${eraseDef}</defs>` +
+    (layer.backgroundColor ? `<path d="${esc(mask.d)}"${maskTransform} fill="${esc(layer.backgroundColor)}"/>` : "") +
     `<g clip-path="url(#${clipId})"><g${innerTransform}>` +
-    `<image href="${esc(mapHref(image.url, hrefMap))}" x="${drawX}" y="${drawY}" width="${drawW}" height="${drawH}" preserveAspectRatio="${preserve}"${filtered ? ` filter="url(#${filterId})"` : ""}/>` +
+    `<image href="${esc(mapHref(image.url, hrefMap))}" x="${drawX}" y="${drawY}" width="${drawW}" height="${drawH}" preserveAspectRatio="${preserve}"${filtered ? ` filter="url(#${filterId})"` : ""}${eraseDef ? ` mask="url(#${eraseId})"` : ""}/>` +
     `</g></g>` +
     (Number(layer.borderWidth) > 0
-      ? `<path d="${mask.d}"${maskTransform} fill="none" stroke="${esc(layer.borderColor || "#303839")}" stroke-width="${Number(layer.borderWidth)}"/>`
+      ? `<path d="${esc(mask.d)}"${maskTransform} fill="none" stroke="${esc(layer.borderColor || "#303839")}" stroke-width="${Number(layer.borderWidth)}"/>`
       : "") +
     `</g>`
   );

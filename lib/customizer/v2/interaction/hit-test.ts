@@ -121,3 +121,24 @@ export function resolveSelectionTarget(
   }
   return current?.id ?? hitId;
 }
+
+/**
+ * What a press at a document point selects, by the same rules as a click on
+ * the Konva stage: the top-most targetable object, resolved to its group
+ * unless that group has been entered. Null means empty canvas.
+ *
+ * The stage cannot answer this while it is not listening — during inline text
+ * editing it steps aside so the DOM editor owns the pointer — yet a press on
+ * another object must still finish the edit AND select that object.
+ */
+export function selectionTargetAt(
+  x: number,
+  y: number,
+  candidates: readonly (HitCandidate & { capabilities?: { selectable?: boolean } })[],
+  options: HitOptions = {},
+): string | null {
+  const selectable = candidates.filter((candidate) => candidate.capabilities?.selectable !== false);
+  const hit = hitTestPoint(x, y, selectable, options);
+  if (!hit) return null;
+  return resolveSelectionTarget(hit.id, selectable, options.editingGroupId ?? null);
+}

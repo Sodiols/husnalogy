@@ -12,10 +12,10 @@ import { rejectCrossSiteRequest } from "@/lib/security/same-origin";
 import { bodyErrorResponse, readJsonBody } from "@/lib/http/read-body";
 import { logEvent, requestIdFrom } from "@/lib/observability/logger";
 
-// Generous enough for the real autosave cadence (900ms debounce, spec
-// lib/customizer/save-queue.ts) plus retries, but still bounds a runaway or
-// scripted client from hammering the save endpoint.
-const SAVE_RATE_LIMIT = { name: "customizations-save", limit: 300, windowMs: 5 * 60 * 1000 };
+// Generous enough for the real autosave cadence (at most one queued write per
+// second, lib/customizer/save-queue.ts) plus keepalive and retries, but still
+// bounds a runaway or scripted client from hammering the save endpoint.
+const SAVE_RATE_LIMIT = { name: "customizations-save", limit: 600, windowMs: 5 * 60 * 1000 };
 /** A large multi-page design with many customer layers stays well below this. */
 const MAX_CUSTOMIZATION_BODY_BYTES = 2 * 1024 * 1024;
 const PRIVATE_HEADERS = { "Cache-Control": "private, no-store, max-age=0" };
@@ -124,7 +124,12 @@ export async function POST(request: Request) {
     return Response.json({ ok: false, error: validation.error, violations: validation.violations }, { status: validation.status });
   }
 
-  const row = customizationInsertRow(user.id, { ...validation.body, status: validation.body.status || "draft" });
+  const created: Record<string, any> = { ...validation.body, status: validation.body.status || "draft" };
+  // The first save of a design records its revision, so later writes are ordered.
+  if (typeof created.clientRevision === "number" && created.renderData && typeof created.renderData === "object") {
+    created.renderData = { ...created.renderData, clientRevision: created.clientRevision };
+  }
+  const row = customizationInsertRow(user.id, created);
   const { data, error } = await service.from("product_customizations").insert(row).select("*").single();
   if (error) {
     logEvent("error", "customizations.create_failed", { requestId, userId: user.id, productId, error });

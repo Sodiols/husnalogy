@@ -16,6 +16,7 @@ import CustomizerPreview from "@/app/components/customizer/CustomizerPreview";
 import { createTransientGeometryStore, type TransientGeometryStore } from "@/lib/customizer/v2/interaction/transient-preview";
 import InteractionStageClient from "@/app/components/customizer/interaction/InteractionStageClient";
 import { useInteractionNodes } from "@/app/components/customizer/interaction/useInteractionNodes";
+import { useSelectOnPressWhileEditing } from "@/app/components/customizer/interaction/useSelectOnPressWhileEditing";
 import EditableNumericStepper from "@/app/components/customizer/EditableNumericStepper";
 import InlineCanvasTextEditor from "@/app/components/customizer/InlineCanvasTextEditor";
 import {
@@ -26,7 +27,7 @@ import {
   type MeasureFn,
   type SafeBounds,
 } from "@/lib/customizer/v2/text-layout";
-import { getFieldById, resolveLayerText } from "@/app/components/customizer/customizer-utils";
+import { getFieldById, resolveLayerImage, resolveLayerText } from "@/app/components/customizer/customizer-utils";
 import {
   createPanGesture,
   isTypingTarget,
@@ -40,11 +41,20 @@ import {
   type PanGesture,
 } from "@/lib/customizer/v2/viewport-pan";
 import { resolveLayerSelectionGeometry } from "@/lib/customizer/v2/selection-geometry";
+import { cropPanDelta, resolveCropRect, resolveImageDrawBoxFromTransform } from "@/lib/customizer/v2/image-crop";
+import { ERASE_LIMITS, canvasPointToDrawBox, normalizeEraseMask, type EraseStroke } from "@/lib/customizer/v2/erase-mask";
+import AdminEraserBar, { ERASER_BRUSH } from "./AdminEraserBar";
 import { isEmptyText } from "@/lib/customizer/v2/text-editing";
 import { actualSizeZoom, computeWorkspaceFit, resolveWorkspacePadding } from "@/lib/customizer/v2/zoom";
-import { layersForPage, selectableLayersForPage } from "./builder-utils";
+import { isAdminCroppableLayer, layersForPage, selectableLayersForPage } from "./builder-utils";
+import CustomerImageToolbar from "@/app/components/customizer/CustomerImageToolbar";
 import { useGoogleFontMetricsRevision } from "@/app/components/customizer/useGoogleFonts";
 
+
+/** The administrator may use every crop control on the template's own photos. */
+/** Top inset that keeps the fitted card clear of the floating selection toolbar. */
+const ADMIN_TOOLBAR_CLEARANCE = 66;
+const ADMIN_CROP_PERMISSIONS = { cropImage: true, zoomImage: true, repositionImage: true, flipImage: true, rotateImage: true };
 
 export default function AdminCanvas({
   template,
@@ -79,6 +89,14 @@ export default function AdminCanvas({
   onEnterGroup,
   onExitGroup,
   onFitZoomChange,
+  onLayerContextMenu,
+  onCanvasContextMenu,
+  onImageTransformCommit,
+  onCropChange,
+  cropRequest = null,
+  eraseRequest = null,
+  onEraseChange,
+  onEraseCommit,
 }: any) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const surfaceRef = useRef<HTMLDivElement>(null);
@@ -152,13 +170,19 @@ export default function AdminCanvas({
   //
   // The workspace box is measured live, so collapsing the tool rail, the layers
   // panel or the inspector re-fits the page with no breakpoint involved.
+  // The selection toolbar floats over the top of the workspace (12px down,
+  // ~46px tall), so the fitted card starts below it and no control ever sits
+  // on top of the artwork.
+  const basePadding = resolveWorkspacePadding(containerWidth, containerHeight);
+  const studioPadding = { ...basePadding, top: Math.max(basePadding.top, ADMIN_TOOLBAR_CLEARANCE) };
   const workspaceFit = computeWorkspaceFit({
     availableWidth: containerWidth,
     availableHeight: containerHeight,
     canvasWidth: canvasW,
     canvasHeight: canvasH,
+    padding: studioPadding,
   });
-  const fitPadding = workspaceFit?.padding ?? resolveWorkspacePadding(containerWidth, containerHeight);
+  const fitPadding = workspaceFit?.padding ?? studioPadding;
   // Before the first measurement, fall back to a width-derived guess purely so
   // the very first frame is not zero-sized; it is replaced on the next tick.
   const baseWidth = workspaceFit?.baseWidth ?? Math.max(260, (containerWidth || 520) - 96);
@@ -280,6 +304,318 @@ export default function AdminCanvas({
     return layout.overflowWidth || layout.overflowHeight || layout.truncatedLines;
   };
 
+  /* ----- crop mode: the frame stays put, the photo moves inside it ----- */
+  // Double-click a photo to crop. Every pointer move only PREVIEWS (the shared
+  // transient store feeds the same draw-box formula the saved render and the
+  // print renderer use); Done writes the result once — one undo step — and
+  // Cancel or Escape restores exactly what was there before.
+  const [crop, setCrop] = useState<{ layerId: string; base: Record<string, any>; patch: Record<string, number | boolean> } | null>(null);
+  const cropRef = useRef(crop);
+  const cropDragRef = useRef<{ pointerId: number; clientX: number; clientY: number; offsetX: number; offsetY: number } | null>(null);
+  const [cropDragging, setCropDragging] = useState(false);
+  const cropLayer = crop ? layers.find((layer: any) => layer.id === crop.layerId) || null : null;
+  const canCropLayer = isAdminCroppableLayer;
+  const liveCropTransform = (state = cropRef.current) => (state ? { ...state.base, ...state.patch } : {});
+  const updateCrop = (patch: Record<string, number | boolean>) => {
+    const current = cropRef.current;
+    if (!current) return;
+    const next = { ...current, patch: { ...current.patch, ...patch } };
+    cropRef.current = next;
+    setCrop(next);
+    transientStore.set({ [next.layerId]: { imageTransform: liveCropTransform(next) } });
+  };
+  const finishCrop = (mode: "commit" | "discard") => {
+    const current = cropRef.current;
+    cropRef.current = null;
+    cropDragRef.current = null;
+    setCropDragging(false);
+    setCrop(null);
+    transientStore.set(null);
+    if (!current || mode !== "commit" || !Object.keys(current.patch).length) return;
+    onImageTransformCommit?.(current.layerId, liveCropTransform(current));
+  };
+  const finishCropRef = useRef(finishCrop);
+  finishCropRef.current = finishCrop;
+  // The studio's Crop button and object menu ask for crop through this request;
+  // it enters the very same session double-clicking does.
+  const beginCropRef = useRef<(layer: any) => void>(() => {});
+  const cropRequestRef = useRef(cropRequest);
+  cropRequestRef.current = cropRequest;
+  const layersRef = useRef(layers);
+  layersRef.current = layers;
+  // Only a NEW request (a new id) opens crop; re-renders of the same one do not.
+  const cropRequestId = cropRequest?.requestId ?? 0;
+  useEffect(() => {
+    if (!cropRequestId) return;
+    const layer = layersRef.current.find((candidate: any) => candidate.id === cropRequestRef.current?.layerId);
+    if (layer) beginCropRef.current(layer);
+  }, [cropRequestId]);
+  const beginCrop = (layer: any) => {
+    if (!canCropLayer(layer)) return;
+    const next = { layerId: layer.id, base: { ...(layer.imageTransform || {}) }, patch: {} };
+    cropRef.current = next;
+    setCrop(next);
+    onSelectionChange?.([layer.id]);
+  };
+  beginCropRef.current = beginCrop;
+  // Keys while cropping belong to the crop: Enter is Done, Escape is Cancel,
+  // arrows nudge the photo, and nothing else may edit the document underneath.
+  const onCropKey = (event: KeyboardEvent) => {
+    // The crop bar's own fields keep their keys (typing a zoom, Enter to set it).
+    if (event.target instanceof Element && event.target.closest("[data-admin-crop-bar]")) return;
+    if (event.key === "Escape" || event.key === "Enter") {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      finishCropRef.current(event.key === "Enter" ? "commit" : "discard");
+      return;
+    }
+    const arrows: Record<string, [number, number]> = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
+    if (arrows[event.key]) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      const layer = layers.find((candidate: any) => candidate.id === cropRef.current?.layerId);
+      const live = liveCropTransform();
+      const step = event.shiftKey ? 10 : 1;
+      const delta = cropPanDelta(arrows[event.key][0] * step, arrows[event.key][1] * step, {
+        rotation: Number(layer?.rotation) || 0,
+        imageRotation: Number(live.rotation) || 0,
+        flipX: Boolean(live.flipX),
+        flipY: Boolean(live.flipY),
+        crop: resolveCropRect(live),
+      });
+      updateCrop({ offsetX: (Number(live.offsetX) || 0) + delta.x, offsetY: (Number(live.offsetY) || 0) + delta.y });
+      return;
+    }
+    if (event.key === "Delete" || event.key === "Backspace" || event.ctrlKey || event.metaKey) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+    }
+  };
+  const onCropKeyRef = useRef(onCropKey);
+  onCropKeyRef.current = onCropKey;
+  const cropping = Boolean(crop);
+  const croppingId = crop?.layerId ?? null;
+  useEffect(() => {
+    onCropChange?.(croppingId);
+  }, [croppingId, onCropChange]);
+  useEffect(() => {
+    if (!cropping) return;
+    const onKey = (event: KeyboardEvent) => onCropKeyRef.current(event);
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, [cropping]);
+  // The photo disappearing underneath (an undo, a page switch) cancels crop;
+  // leaving the studio mid-crop keeps the edit, as the customer editor does.
+  useEffect(() => {
+    if (crop && !cropLayer) finishCropRef.current("discard");
+  }, [crop, cropLayer]);
+  useEffect(() => {
+    const finish = finishCropRef;
+    return () => finish.current("commit");
+  }, []);
+  const onCropPointerDown = (event: React.PointerEvent) => {
+    if (event.button !== 0) return;
+    event.stopPropagation();
+    (event.currentTarget as HTMLElement).setPointerCapture?.(event.pointerId);
+    const live = liveCropTransform();
+    cropDragRef.current = { pointerId: event.pointerId, clientX: event.clientX, clientY: event.clientY, offsetX: Number(live.offsetX) || 0, offsetY: Number(live.offsetY) || 0 };
+    setCropDragging(true);
+  };
+  const onCropPointerMove = (event: React.PointerEvent) => {
+    const drag = cropDragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId || !cropLayer) return;
+    const live = liveCropTransform();
+    const delta = cropPanDelta((event.clientX - drag.clientX) / scale, (event.clientY - drag.clientY) / scale, {
+      rotation: Number(cropLayer.rotation) || 0,
+      imageRotation: Number(live.rotation) || 0,
+      flipX: Boolean(live.flipX),
+      flipY: Boolean(live.flipY),
+      crop: resolveCropRect(live),
+    });
+    updateCrop({ offsetX: Math.round(drag.offsetX + delta.x), offsetY: Math.round(drag.offsetY + delta.y) });
+  };
+  const onCropPointerUp = (event: React.PointerEvent) => {
+    if (cropDragRef.current?.pointerId !== event.pointerId) return;
+    cropDragRef.current = null;
+    setCropDragging(false);
+  };
+  const onCropWheel = (event: React.WheelEvent) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const current = Number(liveCropTransform().zoom) > 0 ? Number(liveCropTransform().zoom) : 1;
+    updateCrop({ zoom: Number(Math.min(8, Math.max(1, current * (event.deltaY < 0 ? 1.06 : 1 / 1.06))).toFixed(3)) });
+  };
+
+  /* ----- eraser mode: brush strokes over a photo, applied once ----- */
+  // Non-destructive: the strokes become the photo's `eraseMask`, which the
+  // browser preview and the print renderer both draw as an SVG mask over the
+  // untouched picture. Every stroke only PREVIEWS (transient store); Undo and
+  // Redo step through this session; Apply writes the result as ONE document
+  // change and Cancel or Escape leaves no trace.
+  type EraseSession = { layerId: string; initial: EraseStroke[]; strokes: EraseStroke[]; past: EraseStroke[][]; future: EraseStroke[][] };
+  const [erase, setErase] = useState<EraseSession | null>(null);
+  const eraseRef = useRef(erase);
+  const [brushSize, setBrushSize] = useState(48);
+  const eraseStrokeRef = useRef<{ pointerId: number; stroke: EraseStroke } | null>(null);
+  const [eraseCursor, setEraseCursor] = useState<{ x: number; y: number } | null>(null);
+  const eraseLayer = erase ? layers.find((layer: any) => layer.id === erase.layerId) || null : null;
+  const setEraseSession = (next: EraseSession | null) => {
+    eraseRef.current = next;
+    setErase(next);
+  };
+  const previewErase = (layerId: string, strokes: EraseStroke[]) =>
+    transientStore.set({ [layerId]: { eraseMask: strokes.length ? { strokes } : null } });
+  /** Where the photo's picture is drawn — the same formula both renderers use. */
+  const erasePicture = (layer: any) => {
+    const field = layer.fieldId ? getFieldById(template, layer.fieldId) : null;
+    const image = resolveLayerImage(layer, field, values);
+    const draw = resolveImageDrawBoxFromTransform(
+      { frameX: layer.x - layer.width / 2, frameY: layer.y - layer.height / 2, frameWidth: layer.width, frameHeight: layer.height },
+      { zoom: image?.zoom, offsetX: image?.offsetX, offsetY: image?.offsetY, ...(image?.crop || {}) },
+    );
+    return { draw, picture: { imageRotation: Number(image?.imageRotation) || 0, flipX: Boolean(image?.flipX), flipY: Boolean(image?.flipY) } };
+  };
+  const finishErase = (mode: "commit" | "discard") => {
+    const current = eraseRef.current;
+    eraseStrokeRef.current = null;
+    setEraseCursor(null);
+    setEraseSession(null);
+    transientStore.set(null);
+    if (!current || mode !== "commit") return;
+    if (JSON.stringify(current.strokes) === JSON.stringify(current.initial)) return;
+    onEraseCommit?.(current.layerId, normalizeEraseMask({ strokes: current.strokes }));
+  };
+  const finishEraseRef = useRef(finishErase);
+  finishEraseRef.current = finishErase;
+  const stepErase = (direction: "undo" | "redo") => {
+    const current = eraseRef.current;
+    if (!current) return;
+    const from = direction === "undo" ? current.past : current.future;
+    if (!from.length) return;
+    const target = from[from.length - 1];
+    const next: EraseSession = direction === "undo"
+      ? { ...current, strokes: target, past: current.past.slice(0, -1), future: [...current.future, current.strokes] }
+      : { ...current, strokes: target, future: current.future.slice(0, -1), past: [...current.past, current.strokes] };
+    setEraseSession(next);
+    previewErase(next.layerId, next.strokes);
+  };
+  const restoreErase = () => {
+    const current = eraseRef.current;
+    if (!current || !current.strokes.length) return;
+    const next = { ...current, strokes: [], past: [...current.past, current.strokes], future: [] };
+    setEraseSession(next);
+    previewErase(next.layerId, next.strokes);
+  };
+  const beginErase = (layer: any) => {
+    if (!canCropLayer(layer)) return;
+    const existing = normalizeEraseMask(layer.eraseMask)?.strokes || [];
+    // A brush about a twelfth of the photo's shorter side is a useful start.
+    setBrushSize(Math.round(Math.min(ERASER_BRUSH.maximum, Math.max(ERASER_BRUSH.minimum, Math.min(layer.width, layer.height) / 12))));
+    setEraseSession({ layerId: layer.id, initial: existing, strokes: existing, past: [], future: [] });
+    onSelectionChange?.([layer.id]);
+  };
+  const beginEraseRef = useRef(beginErase);
+  beginEraseRef.current = beginErase;
+  const eraseRequestRef = useRef(eraseRequest);
+  eraseRequestRef.current = eraseRequest;
+  const eraseRequestId = eraseRequest?.requestId ?? 0;
+  useEffect(() => {
+    if (!eraseRequestId) return;
+    const layer = layersRef.current.find((candidate: any) => candidate.id === eraseRequestRef.current?.layerId);
+    if (layer) beginEraseRef.current(layer);
+  }, [eraseRequestId]);
+  const stepEraseRef = useRef(stepErase);
+  stepEraseRef.current = stepErase;
+  const erasing = Boolean(erase);
+  const erasingId = erase?.layerId ?? null;
+  useEffect(() => {
+    onEraseChange?.(erasingId);
+  }, [erasingId, onEraseChange]);
+  // Keys while erasing belong to the eraser: Enter applies, Escape cancels,
+  // Ctrl+Z / Ctrl+Y step through the strokes, and nothing else may edit the
+  // document underneath.
+  useEffect(() => {
+    if (!erasing) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.target instanceof Element && event.target.closest("[data-admin-eraser-bar]") && event.key !== "Escape" && event.key !== "Enter") return;
+      const key = event.key.toLowerCase();
+      if (event.key === "Escape" || event.key === "Enter") {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        finishEraseRef.current(event.key === "Enter" ? "commit" : "discard");
+        return;
+      }
+      if ((event.ctrlKey || event.metaKey) && (key === "z" || key === "y")) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        stepEraseRef.current(key === "y" || event.shiftKey ? "redo" : "undo");
+        return;
+      }
+      if (event.key === "Delete" || event.key === "Backspace" || event.ctrlKey || event.metaKey) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+      }
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, [erasing]);
+  // The photo disappearing underneath cancels; leaving the studio keeps the strokes.
+  useEffect(() => {
+    if (erase && !eraseLayer) finishEraseRef.current("discard");
+  }, [erase, eraseLayer]);
+  useEffect(() => {
+    const finish = finishEraseRef;
+    return () => finish.current("commit");
+  }, []);
+  const eraseDocPoint = (event: React.PointerEvent) => {
+    const rect = surfaceRef.current?.getBoundingClientRect();
+    if (!rect) return null;
+    return { x: (event.clientX - rect.left) / scale, y: (event.clientY - rect.top) / scale, screenX: event.clientX - rect.left, screenY: event.clientY - rect.top };
+  };
+  const onErasePointerDown = (event: React.PointerEvent) => {
+    if (event.button !== 0 || !eraseLayer || !eraseRef.current) return;
+    event.stopPropagation();
+    (event.currentTarget as HTMLElement).setPointerCapture?.(event.pointerId);
+    const point = eraseDocPoint(event);
+    if (!point) return;
+    const { draw, picture } = erasePicture(eraseLayer);
+    if (!(draw.width > 0) || !(draw.height > 0)) return;
+    const local = canvasPointToDrawBox(point, eraseLayer, picture, draw);
+    const stroke: EraseStroke = { size: brushSize / Math.min(draw.width, draw.height), points: [local.x, local.y] };
+    eraseStrokeRef.current = { pointerId: event.pointerId, stroke };
+    previewErase(eraseRef.current.layerId, [...eraseRef.current.strokes, stroke]);
+  };
+  const onErasePointerMove = (event: React.PointerEvent) => {
+    const point = eraseDocPoint(event);
+    if (point) setEraseCursor({ x: point.screenX, y: point.screenY });
+    const active = eraseStrokeRef.current;
+    const session = eraseRef.current;
+    if (!active || active.pointerId !== event.pointerId || !point || !eraseLayer || !session) return;
+    const { draw, picture } = erasePicture(eraseLayer);
+    const local = canvasPointToDrawBox(point, eraseLayer, picture, draw);
+    const points = active.stroke.points;
+    const used = session.strokes.reduce((total, stroke) => total + stroke.points.length / 2, 0) + points.length / 2;
+    // Skip sub-pixel moves; stop adding points at the stored limit.
+    const lastX = points[points.length - 2];
+    const lastY = points[points.length - 1];
+    if (Math.hypot((local.x - lastX) * draw.width, (local.y - lastY) * draw.height) < 1.5 || used >= ERASE_LIMITS.maxPoints) return;
+    active.stroke = { ...active.stroke, points: [...points, local.x, local.y] };
+    previewErase(session.layerId, [...session.strokes, active.stroke]);
+  };
+  const onErasePointerUp = (event: React.PointerEvent) => {
+    const active = eraseStrokeRef.current;
+    const session = eraseRef.current;
+    if (!active || active.pointerId !== event.pointerId || !session) return;
+    eraseStrokeRef.current = null;
+    if (session.strokes.length >= ERASE_LIMITS.maxStrokes) {
+      previewErase(session.layerId, session.strokes);
+      return;
+    }
+    const next = { ...session, strokes: [...session.strokes, active.stroke], past: [...session.past, session.strokes], future: [] };
+    setEraseSession(next);
+    previewErase(next.layerId, next.strokes);
+  };
+
   const selectionIds: string[] = selectedLayerIds.length
     ? selectedLayerIds
     : selectedLayerId
@@ -358,6 +694,7 @@ export default function AdminCanvas({
   const interactionNodes = useInteractionNodes({
     surface: "admin",
     layers: selectableLayers,
+    allLayers: layers,
     resolveText: useCallback(
       (layer: any) =>
         String(resolveLayerText(layer, layer.fieldId ? getFieldById(template, layer.fieldId) : null, values)),
@@ -367,6 +704,15 @@ export default function AdminCanvas({
     safeBounds,
     editingGroupId,
     metricsRevision: fontMetricsRevision,
+  });
+
+  useSelectOnPressWhileEditing({
+    surfaceRef,
+    editingTextId,
+    nodes: interactionNodes,
+    editingGroupId,
+    scale,
+    onSelect: (ids) => onSelectionChange?.(ids),
   });
 
   const handleGestureStart = useCallback(() => {
@@ -515,7 +861,7 @@ export default function AdminCanvas({
   useEffect(() => {
     const down = (event: KeyboardEvent) => {
       if (event.code !== "Space" || event.repeat) return;
-      if (editingTextId || isTypingTarget(event.target) || isTypingTarget(document.activeElement)) return;
+      if (editingTextId || isTypingTarget(event.target, event.key) || isTypingTarget(document.activeElement, event.key)) return;
       event.preventDefault();
       setSpacePanActive(true);
     };
@@ -555,7 +901,7 @@ export default function AdminCanvas({
       // second offset calculation.
       // overflow-hidden: pan owns canvas movement, so browser scrollbars must
       // not fight it with a second, competing movement system.
-      className="flex h-full w-full items-center justify-center overflow-hidden bg-transparent"
+      className="relative flex h-full w-full items-center justify-center overflow-hidden bg-transparent"
       style={{
         paddingTop: fitPadding.top,
         paddingRight: fitPadding.right,
@@ -573,6 +919,48 @@ export default function AdminCanvas({
         if (event.button === MIDDLE_MOUSE_BUTTON) event.preventDefault();
       }}
     >
+      {/* The customer editor's crop toolbar — zoom, image rotation, rotate 90°,
+          flips, reset, Cancel, Done — driving this session. Anchored to the
+          whole workspace (not the card), where the selection toolbar it
+          replaces while cropping sits. Every control only previews; Done
+          writes once, Cancel restores. */}
+      {crop && cropLayer && (
+        <div
+          data-admin-crop-bar
+          className="absolute left-1/2 top-3 z-50 flex max-w-[calc(100%-24px)] -translate-x-1/2 justify-center"
+          onPointerDown={(event) => event.stopPropagation()}
+        >
+          <CustomerImageToolbar
+            layer={{ ...cropLayer, imageTransform: liveCropTransform(crop) }}
+            permissions={ADMIN_CROP_PERMISSIONS}
+            cropping
+            hasImage
+            onImagePatch={(patch) => updateCrop(patch as Record<string, number | boolean>)}
+            onConfirmCrop={() => finishCrop("commit")}
+            onCancelCrop={() => finishCrop("discard")}
+            showPositionFields={false}
+          />
+        </div>
+      )}
+      {erase && eraseLayer && (
+        <div
+          className="absolute left-1/2 top-3 z-50 flex max-w-[calc(100%-24px)] -translate-x-1/2 justify-center"
+          onPointerDown={(event) => event.stopPropagation()}
+        >
+          <AdminEraserBar
+            brushSize={brushSize}
+            canUndo={erase.past.length > 0}
+            canRedo={erase.future.length > 0}
+            canRestore={erase.strokes.length > 0}
+            onBrushSize={(size) => setBrushSize(Math.min(ERASER_BRUSH.maximum, Math.max(ERASER_BRUSH.minimum, size)))}
+            onUndo={() => stepErase("undo")}
+            onRedo={() => stepErase("redo")}
+            onRestore={restoreErase}
+            onCancel={() => finishErase("discard")}
+            onApply={() => finishErase("commit")}
+          />
+        </div>
+      )}
       <div
         ref={surfaceRef}
         data-canvas-surface
@@ -610,7 +998,7 @@ export default function AdminCanvas({
           selectedIds={selectionIds}
           editingGroupId={editingGroupId}
           textEditingId={editingTextId}
-          disabled={panToolActive || isPanning}
+          disabled={panToolActive || isPanning || Boolean(crop) || Boolean(erase)}
           snapping={{
             enabled: snapEnabled,
             safeArea: template?.safeArea,
@@ -627,12 +1015,101 @@ export default function AdminCanvas({
             const layer = selectableLayers.find((candidate: any) => candidate.id === layerId);
             if (!layer) return;
             onSelectionChange?.([layer.id]);
-            if (layer.type === "group") onEnterGroup?.(layer.id);
+            if (canCropLayer(layer)) beginCrop(layer);
+            else if (layer.type === "group") onEnterGroup?.(layer.id);
             else if (layer.type === "text" && !layer.locked && layer.adminEditable !== false) {
               beginTextEditing(layer.id);
             }
           }}
+          // Right click: the studio's object menu. An object outside the
+          // selection becomes the selection first, exactly as in the customer
+          // editor; empty design space clears it and offers Paste here.
+          onContextMenuNode={(layerId, position) => {
+            if (editingTextId) return;
+            if (!selectionIds.includes(layerId)) onSelectionChange?.([layerId]);
+            onLayerContextMenu?.(layerId, position);
+          }}
+          onContextMenuCanvas={(position, point) => {
+            if (editingTextId) return;
+            onSelectionChange?.([]);
+            onCanvasContextMenu?.(position, point);
+          }}
         />
+
+        {erase && eraseLayer && (
+          <div
+            role="application"
+            aria-label="Eraser — drag over the photo to erase, Enter to apply, Escape to cancel"
+            data-admin-eraser-surface
+            onPointerDown={onErasePointerDown}
+            onPointerMove={onErasePointerMove}
+            onPointerUp={onErasePointerUp}
+            onPointerCancel={onErasePointerUp}
+            onPointerLeave={() => setEraseCursor(null)}
+            className="absolute inset-0 z-40"
+            style={{ cursor: "crosshair", touchAction: "none" }}
+          >
+            {/* The photo being erased, outlined so the target is unmistakable. */}
+            <span
+              aria-hidden
+              className="pointer-events-none absolute"
+              style={{
+                left: (eraseLayer.x - eraseLayer.width / 2) * scale,
+                top: (eraseLayer.y - eraseLayer.height / 2) * scale,
+                width: eraseLayer.width * scale,
+                height: eraseLayer.height * scale,
+                transform: eraseLayer.rotation ? `rotate(${eraseLayer.rotation}deg)` : undefined,
+                outline: "2px solid #D4AF37",
+                outlineOffset: 2,
+              }}
+            />
+            {eraseCursor && (
+              <span
+                aria-hidden
+                className="pointer-events-none absolute rounded-full border-2 border-white shadow-[0_0_0_1px_rgba(48,56,57,0.6)]"
+                style={{
+                  left: eraseCursor.x - (brushSize * scale) / 2,
+                  top: eraseCursor.y - (brushSize * scale) / 2,
+                  width: brushSize * scale,
+                  height: brushSize * scale,
+                }}
+              />
+            )}
+          </div>
+        )}
+
+        {crop && cropLayer && (
+          <>
+            <div className="pointer-events-none absolute inset-0 z-30 bg-[#303839]/25" aria-hidden />
+            <div
+              role="application"
+              aria-label="Crop photo — drag to reposition, scroll to zoom, Enter for Done, Escape to cancel"
+              onPointerDown={onCropPointerDown}
+              onPointerMove={onCropPointerMove}
+              onPointerUp={onCropPointerUp}
+              onPointerCancel={onCropPointerUp}
+              onWheel={onCropWheel}
+              className="absolute z-40"
+              style={{
+                // From the real drag state, as every other canvas cursor here.
+                cursor: cropDragging ? "grabbing" : "grab",
+                left: (cropLayer.x - cropLayer.width / 2) * scale,
+                top: (cropLayer.y - cropLayer.height / 2) * scale,
+                width: cropLayer.width * scale,
+                height: cropLayer.height * scale,
+                transform: cropLayer.rotation ? `rotate(${cropLayer.rotation}deg)` : undefined,
+                outline: "2px solid #D4AF37",
+                outlineOffset: 2,
+                touchAction: "none",
+              }}
+            >
+              <span aria-hidden className="pointer-events-none absolute inset-y-0 left-1/3 w-px bg-white/70" />
+              <span aria-hidden className="pointer-events-none absolute inset-y-0 left-2/3 w-px bg-white/70" />
+              <span aria-hidden className="pointer-events-none absolute inset-x-0 top-1/3 h-px bg-white/70" />
+              <span aria-hidden className="pointer-events-none absolute inset-x-0 top-2/3 h-px bg-white/70" />
+            </div>
+          </>
+        )}
 
         {/* Saved template guides. They are editor-only and never enter the SVG renderer. */}
         {savedGuides.filter((guide: any) => !guide.hidden).map((guide: any) => {

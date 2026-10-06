@@ -100,15 +100,12 @@ describe("resetImageTransformPatch", () => {
 describe("reset crop against the real permission bundle", () => {
   const permissions = template.layers[0].customerPermissions;
 
-  // Characterisation: for a NON-grid layer, `getLayerPermissions` ignores the
-  // per-layer `customerPermissions` object and returns the all-on/all-off
-  // bundle driven by the single "Customer editable" checkbox. So in today's
-  // model a partial shape like `cropImage:true, flipImage:false` never actually
-  // reaches this toolbar, and the previous unconditional reset was not a live
-  // defect. These tests pin that down so the assumption is visible if the
-  // permission model is ever widened to honour per-image overrides — the way
-  // grids already do.
-  it("documents that a non-grid layer gets an all-or-nothing bundle", () => {
+  // The permission model now honours per-layer restrictions for EVERY layer
+  // type (lib/customizer/v2/permissions.ts), so the fixture's flipImage:false
+  // genuinely reaches the toolbar and the validator. An unconditional reset
+  // that sends flips is therefore rejected — exactly the defect the
+  // permission-aware reset below avoids.
+  it("rejects an unconditional reset when the layer forbids flipping", () => {
     const result = validateCustomerState(template, {
       editorState: {
         layerOverrides: {
@@ -118,9 +115,7 @@ describe("reset crop against the real permission bundle", () => {
         },
       },
     } as any);
-    // flipImage:false in the fixture is overridden to true by the bundle, so
-    // even an unconditional reset is accepted.
-    expect(result.violations).toEqual([]);
+    expect(result.violations.map((violation) => violation.code)).toEqual(["flip-not-allowed"]);
   });
 
   it("keeps the permission-aware reset valid for the same layer", () => {

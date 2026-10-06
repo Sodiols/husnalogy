@@ -22,8 +22,6 @@ type Props = {
   onGroup: () => void;
   onUngroup: () => void;
   onEnterGroup?: () => void;
-  onDuplicate?: () => void;
-  onDelete?: () => void;
   /** Compact layout for narrow screens: icons with tooltips, no labels. */
   compact?: boolean;
 };
@@ -57,13 +55,11 @@ export default function CustomerGroupToolbar({
   onGroup,
   onUngroup,
   onEnterGroup,
-  onDuplicate,
-  onDelete,
   compact = false,
 }: Props) {
   const showGroup = groupingAllowed && !isGroup && selectionCount > 1;
   const showUngroup = ungroupingAllowed && isGroup;
-  if (!showGroup && !showUngroup && !onDuplicate && !onDelete) return null;
+  if (!showGroup && !showUngroup) return null;
 
   return (
     <div
@@ -123,26 +119,6 @@ export default function CustomerGroupToolbar({
         </>
       )}
 
-      {(onDuplicate || onDelete) && (showGroup || showUngroup) && (
-        <span className="mx-0.5 h-6 w-px shrink-0 bg-[#303839]/12" aria-hidden />
-      )}
-
-      {onDuplicate && (
-        <button type="button" aria-label="Duplicate selection" title="Duplicate selection" onClick={onDuplicate} className={`${BUTTON} w-9 px-0`}>
-          <Icon path={ICONS.duplicate} />
-        </button>
-      )}
-      {onDelete && (
-        <button
-          type="button"
-          aria-label="Delete selection"
-          title="Delete selection"
-          onClick={onDelete}
-          className={`${BUTTON} w-9 px-0 text-red-600 hover:border-red-300 hover:bg-red-50 hover:text-red-700`}
-        >
-          <Icon path={ICONS.trash} />
-        </button>
-      )}
     </div>
   );
 }

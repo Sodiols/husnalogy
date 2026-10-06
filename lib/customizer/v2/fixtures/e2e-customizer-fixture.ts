@@ -24,6 +24,9 @@
  * customer-editable vs template-only objects.
  */
 
+import { CARD_SIZE_PRESETS, changeTemplateOrientation, resizeTemplateArtboard } from "../artboard";
+import { applyClippingMask, findClipMaskPair } from "../clipping-mask";
+
 export const E2E_FIXTURE_SLUG = "__e2e-customizer-fixture";
 
 /** Every permission key the customizer understands, all granted. */
@@ -487,7 +490,70 @@ export type E2ECustomizerFixtureOptions = {
    * correctness tests do plus a realistic crowd around them.
    */
   stressLayers?: number;
+  /**
+   * An official card size other than the default 5 × 7 (e.g. "3.5x5"). The
+   * design is carried across exactly as the Design Studio does it, through
+   * `resizeTemplateArtboard`, so the customer editor is exercised on a real
+   * converted template rather than on hand-written numbers.
+   */
+  cardSize?: string;
+  /** "landscape" turns the card through `changeTemplateOrientation`, as the Studio does. */
+  orientation?: string;
+  /** Restrict customers to these font families (empty = every Google Font). */
+  allowedFonts?: string[];
+  /**
+   * Turn the two front photos into Design Studio clipping masks, built by the
+   * same `applyClippingMask` the studio's Mask button commits: the croppable,
+   * replaceable photo inside a circle, and the other — locked for customers —
+   * inside a rotated rounded rectangle.
+   */
+  adminClip?: boolean;
+  /**
+   * Make the croppable photo a Husnalogy LIBRARY asset whose canvas URL is a
+   * signed URL living `expiresInMs` (negative: already expired), served by the
+   * reliability specs' Storage stand-in (e2e/asset-reliability-stub.ts).
+   */
+  libraryAssetExpiresInMs?: number;
 };
+
+export const E2E_LIBRARY_ASSET_ID = "8b3e3e70-5d4c-4b9a-9c32-2e6c4d9f1a33";
+
+function libraryAssetPhoto(input: any[], expiresInMs: number): any[] {
+  const exp = Math.floor((Date.now() + expiresInMs) / 1000);
+  const token = `h.${Buffer.from(JSON.stringify({ exp })).toString("base64url")}.s`;
+  return input.map((layer) =>
+    layer.id === "fx_photo_crop"
+      ? {
+          ...layer,
+          assetId: E2E_LIBRARY_ASSET_ID,
+          bucket: "customizer-elements",
+          path: `assets/${E2E_LIBRARY_ASSET_ID}/original/photo.png`,
+          originalPath: `assets/${E2E_LIBRARY_ASSET_ID}/original/photo.png`,
+          editorPath: `assets/${E2E_LIBRARY_ASSET_ID}/editor/editor.webp`,
+          thumbnailPath: `assets/${E2E_LIBRARY_ASSET_ID}/thumbnail/thumb.webp`,
+          sourceWidth: 3000,
+          sourceHeight: 2250,
+          src: `/__e2e-assets/${E2E_LIBRARY_ASSET_ID}/editor.png?v=0&token=${token}`,
+        }
+      : layer,
+  );
+}
+
+function clipFixturePhotos(input: any[]): any[] {
+  const shapes = [
+    { id: "fx_clip_circle", page: "front", type: "shape", shape: "circle", x: 480, y: 760, width: 480, height: 480, rotation: 0, zIndex: 12, fill: "#F8F6F1", stroke: "#303839", strokeWidth: 4 },
+    { id: "fx_clip_rounded", page: "front", type: "shape", shape: "rounded-rectangle", borderRadius: 60, x: 1030, y: 760, width: 400, height: 500, rotation: 8, zIndex: 13, fill: "#F8F6F1" },
+  ];
+  let layers = [...input, ...shapes];
+  for (const [photoId, shapeId] of [["fx_photo_crop", "fx_clip_circle"], ["fx_photo_no_crop", "fx_clip_rounded"]]) {
+    const pair = findClipMaskPair(layers.filter((layer) => layer.id === photoId || layer.id === shapeId));
+    if (pair) layers = applyClippingMask(layers, pair);
+  }
+  // The second clip is the template's own: customers see it but cannot edit it.
+  return layers.map((layer) =>
+    layer.id === "fx_photo_no_crop" ? { ...layer, customerEditable: false, customerPermissions: { ...NO_PERMISSIONS, select: true } } : layer,
+  );
+}
 
 export type E2ECustomizerFixture = {
   product: Record<string, any>;
@@ -554,7 +620,7 @@ function stressLayers(count: number, startZ: number): any[] {
 }
 
 export function buildE2ECustomizerFixture(options: E2ECustomizerFixtureOptions = {}): E2ECustomizerFixture {
-  const template = {
+  const base = {
     id: "e2e-fixture-template",
     productId: "e2e-fixture-product",
     enabled: true,
@@ -570,7 +636,10 @@ export function buildE2ECustomizerFixture(options: E2ECustomizerFixtureOptions =
     pages: PAGES.map((page) => ({ ...page })),
     fields: FIELDS.map((field) => ({ ...field })),
     layers: [
-      ...layers(),
+      ...(() => {
+        const base = options.adminClip ? clipFixturePhotos(layers()) : layers();
+        return options.libraryAssetExpiresInMs !== undefined ? libraryAssetPhoto(base, options.libraryAssetExpiresInMs) : base;
+      })(),
       ...stressLayers(Number(options.stressLayers) || 0, 1000),
     ],
     safeArea: { top: 90, right: 90, bottom: 90, left: 90 },
@@ -580,10 +649,28 @@ export function buildE2ECustomizerFixture(options: E2ECustomizerFixtureOptions =
       ...SETTINGS,
       autosave: Boolean(options.autosave),
       snapping: options.snapping !== false,
+      ...(options.allowedFonts?.length ? { allowedCustomerFonts: options.allowedFonts } : {}),
     },
     featureFlags: { ...FORCED_FLAGS },
     mockupTemplates: [],
   };
+  const preset = options.cardSize ? CARD_SIZE_PRESETS.find((item) => item.id === options.cardSize) : null;
+  const sized = preset && preset.id !== "5x7"
+    ? {
+        ...resizeTemplateArtboard(base, { widthIn: preset.widthIn, heightIn: preset.heightIn, dpi: base.dpi }).template,
+        // A different design: its drafts must never be confused with the 5 × 7 one.
+        id: `${base.id}-${preset.id}`,
+      }
+    : base;
+  const oriented = options.orientation === "landscape"
+    ? { ...changeTemplateOrientation(sized, "landscape").template, id: `${sized.id}-landscape` }
+    : sized;
+  // A different design: its drafts must never be confused with the plain one.
+  const template = options.adminClip
+    ? { ...oriented, id: `${oriented.id}-admin-clip` }
+    : options.libraryAssetExpiresInMs !== undefined
+      ? { ...oriented, id: `${oriented.id}-library-asset` }
+      : oriented;
 
   const product = {
     id: "e2e-fixture-product",

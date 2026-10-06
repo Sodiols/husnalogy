@@ -22,6 +22,8 @@ export type ContextMenuActionId =
   | "replacePhoto"
   | "crop"
   | "enterGroup"
+  | "copy"
+  | "paste"
   | "duplicate"
   | "delete"
   | "bringToFront"
@@ -30,6 +32,10 @@ export type ContextMenuActionId =
   | "sendToBack"
   | "group"
   | "ungroup"
+  | "clipMask"
+  | "matchWidth"
+  | "matchHeight"
+  | "matchSize"
   | "hide"
   | "show"
   | "lock"
@@ -52,11 +58,19 @@ export type ContextMenuCapabilities = {
   canReplacePhoto?: boolean;
   canCrop?: boolean;
   canEnterGroup?: boolean;
+  /** The selection may be copied to the Customizer clipboard. */
+  canCopy?: boolean;
+  /** The Customizer clipboard holds objects that may be pasted here. */
+  canPaste?: boolean;
   canDuplicate?: boolean;
   canDelete?: boolean;
   canArrange?: boolean;
   canGroup?: boolean;
   canUngroup?: boolean;
+  /** The selection is exactly one shape and one photo that can be clipped together. */
+  canClipMask?: boolean;
+  /** Design Studio only: give every selected object the first-selected object's width, height, or both. */
+  canMatchSize?: boolean;
   canHide?: boolean;
   isHidden?: boolean;
   canLock?: boolean;
@@ -74,7 +88,10 @@ export function buildCustomerContextMenu(
   capabilities: ContextMenuCapabilities,
 ): ContextMenuItem[][] {
   const count = Number(capabilities?.selectionCount) || 0;
-  if (count < 1) return [];
+  // Empty artboard: the only thing to offer is pasting what was copied.
+  if (count < 1) {
+    return on(capabilities?.canPaste) ? [[{ id: "paste", label: "Paste here", shortcut: "Mod+V" }]] : [];
+  }
   const single = count === 1;
 
   // Primary action for the object under the cursor. Only ever one, and only
@@ -96,6 +113,12 @@ export function buildCustomerContextMenu(
   }
 
   const clipboard: ContextMenuItem[] = [];
+  if (on(capabilities.canCopy)) {
+    clipboard.push({ id: "copy", label: "Copy", shortcut: "Mod+C" });
+  }
+  if (on(capabilities.canPaste)) {
+    clipboard.push({ id: "paste", label: "Paste", shortcut: "Mod+V" });
+  }
   if (on(capabilities.canDuplicate)) {
     clipboard.push({ id: "duplicate", label: "Duplicate", shortcut: "Mod+D" });
   }
@@ -116,6 +139,18 @@ export function buildCustomerContextMenu(
   }
   if (single && on(capabilities.canUngroup)) {
     grouping.push({ id: "ungroup", label: "Ungroup", shortcut: "Mod+Shift+G" });
+  }
+  if (count === 2 && on(capabilities.canClipMask)) {
+    grouping.push({ id: "clipMask", label: "Clipping mask" });
+  }
+
+  const size: ContextMenuItem[] = [];
+  if (count >= 2 && on(capabilities.canMatchSize)) {
+    size.push(
+      { id: "matchWidth", label: "Match width" },
+      { id: "matchHeight", label: "Match height" },
+      { id: "matchSize", label: "Match size" },
+    );
   }
 
   const state: ContextMenuItem[] = [];
@@ -139,7 +174,7 @@ export function buildCustomerContextMenu(
     destructive.push({ id: "delete", label: "Delete", shortcut: "Del", danger: true });
   }
 
-  return [primary, clipboard, arrange, grouping, state, destructive].filter(
+  return [primary, clipboard, arrange, grouping, size, state, destructive].filter(
     (group) => group.length > 0,
   );
 }

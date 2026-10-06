@@ -6,6 +6,7 @@
 // editor. Customers can only touch what the administrator made editable; all
 // their changes live in values + editorState, never in the template.
 
+import { configureAssetRuntime } from "@/app/components/customizer/canvas-image-source";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import useAuth from "@/app/lib/useAuth";
@@ -55,10 +56,26 @@ import {
   type SaveQueueStatus,
 } from "@/lib/customizer/save-queue";
 import { isCustomizerFeatureEnabled } from "@/lib/customizer/v2/feature-flags";
-import { stripEphemeralAssetUrls } from "@/lib/customizer/v2/asset-references";
+import {
+  collectCustomerAssetReferences,
+  hydratePrivateAssetUrls,
+  stripEphemeralAssetUrls,
+  type ResolvedPrivateAsset,
+} from "@/lib/customizer/v2/asset-references";
+import {
+  acknowledgeRecoverySnapshot,
+  chooseRestoreSource,
+  readRecoverySnapshot,
+  recoveryStorageKey,
+  serverCustomizationId,
+  writeRecoverySnapshot,
+  type RecoverySnapshot,
+} from "@/lib/customizer/recovery-store";
 import { anyGridSlotGrantsPhotoEditing, createGridSlotsFromPreset, GRID_PRESETS } from "@/lib/customizer/v2/grids";
 import CustomerCanvasContextMenu from "@/app/components/customizer/CustomerCanvasContextMenu";
 import { buildCustomerContextMenu, type ContextMenuActionId } from "@/lib/customizer/v2/context-menu";
+import { applyClippingMask, findClipMaskPair } from "@/lib/customizer/v2/clipping-mask";
+import { frameMaskAllowlistNames } from "@/lib/customizer/v2/masks";
 import { resolveImageCropCapabilities } from "@/lib/customizer/v2/image-permissions";
 import { alignCustomerLayers, arrangeLayers, removeCustomerLayers, reorderLayerByDrop, type AlignAction, type ArrangeAction } from "@/lib/customizer/v2/customer-actions";
 import { evaluateGroupAction, getDescendantIds, groupLayers, transformGroupChildren, ungroupLayers } from "@/lib/customizer/v2/groups";
@@ -101,9 +118,20 @@ function firstOf(value: any, fallback = ""): string {
   return fallback;
 }
 
-const DRAFT_STORAGE_PREFIX = "husnalogy_customizer_draft";
 const GUEST_SESSION_KEY = "husnalogy_guest_session_id";
 const customerTextMeasure = createCanvasMeasure();
+/** Quiet period after the last committed change before the server save. */
+const AUTOSAVE_DEBOUNCE_MS = 300;
+/** At most one queued server write per interval while the customer keeps editing. */
+const AUTOSAVE_MIN_INTERVAL_MS = 1000;
+/** Coalescing window for the durable local recovery snapshot. */
+const RECOVERY_WRITE_DELAY_MS = 200;
+/**
+ * keepalive requests are capped by browsers at 64 KiB in flight. A larger
+ * unload write is skipped: the recovery snapshot already holds the state.
+ */
+const KEEPALIVE_BODY_LIMIT_BYTES = 60 * 1024;
+const RESTORE_RETRY_DELAYS_MS = [1500, 4000, 10000];
 
 // Easy Personalize (spec §1): the only tools a normal wedding customer needs
 // — their own details and photos, then product options. Everything else
@@ -113,49 +141,78 @@ const customerTextMeasure = createCanvasMeasure();
 // name and a date.
 const EASY_PERSONALIZE_TOOL_IDS = new Set<CustomerTool>(["edit", "uploads", "options"]);
 
-function canUseStorage() {
-  return typeof window !== "undefined" && Boolean(window.localStorage);
-}
-
-function getGuestSessionId() {
-  if (!canUseStorage()) return "";
-  const existing = window.localStorage.getItem(GUEST_SESSION_KEY);
-  if (existing) return existing;
-  const id = typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `guest_${Date.now()}_${Math.random().toString(36).slice(2)}`;
-  window.localStorage.setItem(GUEST_SESSION_KEY, id);
-  return id;
-}
-
-function draftStorageKey(productId: string, templateId: string, templateVersion: number) {
-  return `${DRAFT_STORAGE_PREFIX}:${productId || "product"}:${templateId || "template"}:${templateVersion || 1}`;
-}
-
-function readLocalDraft(key: string) {
-  if (!canUseStorage()) return null;
+/**
+ * The browser's localStorage, or null where it is unavailable. Merely reading
+ * `window.localStorage` throws in some privacy modes, so it is guarded too.
+ */
+function browserStorage(): Storage | null {
+  if (typeof window === "undefined") return null;
   try {
-    const value = window.localStorage.getItem(key);
-    return value ? JSON.parse(value) : null;
+    return window.localStorage || null;
   } catch {
     return null;
   }
 }
 
-function writeLocalDraft(key: string, payload: any) {
-  if (!canUseStorage()) return payload;
-  const current = readLocalDraft(key) || {};
-  const next = {
-    ...current,
-    ...payload,
-    id: current.id || `local_${Date.now()}_${Math.random().toString(36).slice(2)}`,
-    guestSessionId: current.guestSessionId || getGuestSessionId(),
-    updatedAt: new Date().toISOString(),
-  };
+function getGuestSessionId() {
+  const storage = browserStorage();
+  if (!storage) return "";
   try {
-    window.localStorage.setItem(key, JSON.stringify(next));
+    const existing = storage.getItem(GUEST_SESSION_KEY);
+    if (existing) return existing;
+    const id = typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `guest_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+    storage.setItem(GUEST_SESSION_KEY, id);
+    return id;
   } catch {
-    // Storage may be full (preview images are large) — keep editing anyway.
+    return "";
   }
-  return next;
+}
+
+/** A failed save, carrying the HTTP status so the queue can tell transient from permanent. */
+class CustomizationSaveError extends Error {
+  constructor(
+    message: string,
+    readonly status: number | null,
+    /** Overrides the status-based rule when the caller knows better. */
+    readonly retryable?: boolean,
+  ) {
+    super(message);
+    this.name = "CustomizationSaveError";
+  }
+}
+
+/**
+ * Worth retrying: no response at all (offline, DNS, reset), a server-side
+ * failure, a timeout or a rate limit. A rejected or forbidden save is not —
+ * sending the same body again cannot succeed.
+ */
+function isRetryableSaveError(error: unknown): boolean {
+  const status = error instanceof CustomizationSaveError ? error.status : null;
+  return status === null || status >= 500 || status === 408 || status === 429;
+}
+
+/**
+ * Point the address bar at the saved design without navigating, so a refresh
+ * reopens exactly this customization (and its pinned template version).
+ */
+function syncCustomizationIdInUrl(customizationId: string) {
+  if (typeof window === "undefined" || !serverCustomizationId(customizationId)) return;
+  const url = new URL(window.location.href);
+  if (url.searchParams.get("customizationId") === customizationId) return;
+  url.searchParams.set("customizationId", customizationId);
+  window.history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`);
+}
+
+function removeCustomizationIdFromUrl() {
+  if (typeof window === "undefined") return;
+  const url = new URL(window.location.href);
+  if (!url.searchParams.has("customizationId")) return;
+  url.searchParams.delete("customizationId");
+  window.history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`);
+}
+
+function utf8Length(text: string): number {
+  return typeof TextEncoder === "undefined" ? text.length * 3 : new TextEncoder().encode(text).length;
 }
 
 function safeInternalPath(value: string, fallback: string) {
@@ -210,6 +267,9 @@ type HistorySnapshot = {
 };
 
 export default function PersonalizeClient({ product, template }: { product: any; template: any }) {
+  // The asset resolver signs library images for THIS product's published
+  // design; set before any canvas image resolves (an idempotent assignment).
+  configureAssetRuntime({ audience: "customer", productId: String(product?.id || template?.productId || "") });
   const router = useRouter();
   const searchParams = useSearchParams();
   const { user, authLoading } = useAuth();
@@ -229,7 +289,10 @@ export default function PersonalizeClient({ product, template }: { product: any;
   const allowedCustomerColors: string[] = Array.isArray(template?.settings?.allowedCustomerColors) ? template.settings.allowedCustomerColors : [];
   const allowedCustomerShapes: string[] = Array.isArray(template?.settings?.allowedCustomerShapes) ? template.settings.allowedCustomerShapes : [];
   const allowedCustomerElementIds: string[] = Array.isArray(template?.settings?.allowedCustomerElementIds) ? template.settings.allowedCustomerElementIds : [];
-  const allowedCustomerFrameMasks: string[] = Array.isArray(template?.settings?.allowedCustomerFrameMasks) ? template.settings.allowedCustomerFrameMasks : [];
+  const allowedCustomerFrameMasks: string[] = useMemo(
+    () => (Array.isArray(template?.settings?.allowedCustomerFrameMasks) ? template.settings.allowedCustomerFrameMasks : []),
+    [template?.settings?.allowedCustomerFrameMasks],
+  );
   const allowedCustomerGridPresets: string[] = Array.isArray(template?.settings?.allowedCustomerGridPresets) ? template.settings.allowedCustomerGridPresets : [];
   const allowedCustomerImageFilters: string[] = Array.isArray(template?.settings?.allowedCustomerImageFilters) ? template.settings.allowedCustomerImageFilters : [];
   const allowedCustomerPages: string[] = Array.isArray(template?.settings?.allowedCustomerPages) ? template.settings.allowedCustomerPages : [];
@@ -237,14 +300,17 @@ export default function PersonalizeClient({ product, template }: { product: any;
   const enabledPages = useMemo(() => getEnabledPages(template), [template]);
   const requireApproval = template?.settings?.requireApprovalCheckbox !== false;
   const protectionEnabled = template?.settings?.protectedPreview !== false;
-  const initialCustomizationId = searchParams.get("customizationId") || "";
-  const initialCartItemId = searchParams.get("cartItemId") || "";
+  // Read ONCE. The address bar is later rewritten to carry the saved design's
+  // id (so a refresh reopens it); that must never look like a request to load
+  // a different design and re-run the restore.
+  const [initialCustomizationId] = useState(() => searchParams.get("customizationId") || "");
+  const [initialCartItemId] = useState(() => searchParams.get("cartItemId") || "");
   const exitHref = safeInternalPath(
     searchParams.get("returnTo") || "",
     initialCartItemId ? "/cart" : `/products/${product.slug}`,
   );
   const localDraftKey = useMemo(
-    () => draftStorageKey(product.id, template?.id || "", template?.version || 1),
+    () => recoveryStorageKey(product.id, template?.id || "", template?.version || 1),
     [product.id, template?.id, template?.version],
   );
 
@@ -291,6 +357,9 @@ export default function PersonalizeClient({ product, template }: { product: any;
   const [customizationId, setCustomizationId] = useState(initialCustomizationId);
   const [cartItemId, setCartItemId] = useState(initialCartItemId);
   const [restoreReady, setRestoreReady] = useState(false);
+  /** Set when a saved design could not be loaded; editing stays blocked so nothing overwrites it. */
+  const [restoreError, setRestoreError] = useState("");
+  const [restoreAttempt, setRestoreAttempt] = useState(0);
   const [dirty, setDirty] = useState(false);
   const [saveStatus, setSaveStatus] = useState<SaveQueueStatus>("idle");
   const [lastSavedAt, setLastSavedAt] = useState<number | null>(null);
@@ -351,6 +420,27 @@ export default function PersonalizeClient({ product, template }: { product: any;
   const dirtyRef = useRef(dirty);
   const changeVersionRef = useRef(0);
   /**
+   * Persistence ordering (crash-safe autosave). `revisionRef` numbers the
+   * persisted state and only ever moves forward for a design — across reloads
+   * too, through the recovery snapshot — so the server can refuse an older
+   * body that arrives after a newer one. `ackedRevisionRef` is the newest
+   * revision the server confirmed.
+   */
+  const revisionRef = useRef(0);
+  const ackedRevisionRef = useRef(0);
+  /** The persisted-state objects the current revision describes. */
+  const observedStateRef = useRef<{
+    values: Record<string, any>;
+    editorState: EditorState;
+    options: Record<string, any>;
+    quantity: number;
+    activePage: string;
+  } | null>(null);
+  const recoveryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** False when the browser refused the last recovery write: then unload must still warn. */
+  const recoveryDurableRef = useRef(true);
+  const restoreReadyRef = useRef(false);
+  /**
    * Save attempts ever started. Lets crop Cancel prove whether the server could
    * possibly hold a state from inside the session: if no save started since the
    * session opened, it cannot.
@@ -369,6 +459,8 @@ export default function PersonalizeClient({ product, template }: { product: any;
     snapshot: HistorySnapshot;
     dirty: boolean;
     changeVersion: number;
+    /** Save attempts started before the session opened (see restoreCancelledTextSession). */
+    saveAttempt: number;
   } | null>(null);
 
   valuesRef.current = values;
@@ -381,6 +473,7 @@ export default function PersonalizeClient({ product, template }: { product: any;
   customizationIdRef.current = customizationId;
   cartItemIdRef.current = cartItemId;
   dirtyRef.current = dirty;
+  restoreReadyRef.current = restoreReady;
 
   const validation = useMemo(() => validateCustomerValues(template, values), [template, values]);
   const basePrice = getProductBasePrice(product);
@@ -555,6 +648,8 @@ export default function PersonalizeClient({ product, template }: { product: any;
     // Finishing explicitly also kills the gesture's pending frame and settle
     // timer, so nothing from this page can fire once the next page is showing.
     confirmActiveCrop();
+    // The open page is part of the saved design: a refresh reopens it.
+    if (pageId !== activePageRef.current) markDirty();
     setActivePage(pageId);
     activeTextHistoryIdRef.current = null;
     setEditingTextLayerId(null);
@@ -675,6 +770,8 @@ export default function PersonalizeClient({ product, template }: { product: any;
         fontSize: style.fontSize,
         textAlign: style.textAlign,
         verticalAlign: "middle",
+        // Paragraphs grow downward, single lines from the centre.
+        growthDirection: style.multiline ? "down" : "center",
         lineHeight: style.lineHeight,
         letterSpacing: style.letterSpacing,
         multiline: style.multiline,
@@ -688,6 +785,7 @@ export default function PersonalizeClient({ product, template }: { product: any;
       snapshot: snapshot(),
       dirty: dirtyRef.current,
       changeVersion: changeVersionRef.current,
+      saveAttempt: saveAttemptRef.current,
     };
     recordHistory();
     activeTextHistoryIdRef.current = layer.id;
@@ -722,6 +820,9 @@ export default function PersonalizeClient({ product, template }: { product: any;
       page: activePage,
       assetId: element.id,
       src: element.url,
+      mimeType: element.mimeType || "",
+      // A single-colour SVG starts in its default colour; anything else starts
+      // as Original. Either way every SVG can be recoloured afterwards.
       tintColor: element.tintable ? element.defaultColor || "" : "",
       x: Math.round(position?.x ?? canvasW / 2),
       y: Math.round(position?.y ?? canvasH / 2),
@@ -805,48 +906,14 @@ export default function PersonalizeClient({ product, template }: { product: any;
     }));
   };
 
-  const duplicateElementLayer = (layerId: string) => {
-    const source = editorStateRef.current.userLayers.find((layer) => layer.id === layerId);
-    if (!source) return;
-    const copy = normalizeUserLayer({ ...source, id: "", x: (source.x || 0) + 40, y: (source.y || 0) + 40 });
-    if (!copy) return;
-    recordHistory();
-    patchEditorState((current) => ({ ...current, userLayers: [...current.userLayers, copy] }));
-    setSelectedLayerId(copy.id);
-  };
 
+  /** The layers panel's per-row delete: the same Delete as everywhere else. */
   const deleteUserLayer = (layerId: string) => {
-    recordHistory();
-    patchEditorState((current) => ({
-      ...current,
-      userLayers: removeCustomerLayers(current.userLayers, [layerId]),
-    }));
-    setSelectedLayerIds([]);
-    setSelectedLayerId(null);
+    const layer = effectiveLayers.find((item: any) => item.id === layerId);
+    if (!layer?.isUserLayer) return;
+    deleteLayers([layer, ...effectiveLayers.filter((item: any) => getDescendantIds(effectiveLayers, layerId).includes(item.id))]);
   };
 
-  const duplicateSelectedLayer = () => {
-    const layer = selectedLayer;
-    if (!layer) return;
-    let copySource: any = null;
-    if (layer.isUserLayer) {
-      copySource = layer;
-    } else if (getLayerPermissions(layer).duplicate && layer.type === "text") {
-      const field = layer.fieldId ? getFieldById(template, layer.fieldId) : null;
-      copySource = { ...layer, text: resolveLayerText(layer, field, values) };
-    }
-    if (!copySource) return;
-    const copy = normalizeUserLayer({
-      ...copySource,
-      id: "",
-      x: (copySource.x || 0) + 40,
-      y: (copySource.y || 0) + 40,
-    });
-    if (!copy) return;
-    recordHistory();
-    patchEditorState((current) => ({ ...current, userLayers: [...current.userLayers, copy] }));
-    setSelectedLayerId(copy.id);
-  };
 
   /* ----- selection ----- */
   const effectiveLayers = useMemo(
@@ -974,6 +1041,20 @@ export default function PersonalizeClient({ product, template }: { product: any;
     selectedLayers.length === 1 &&
     selectedLayers[0]?.type === "group" &&
     (selectedLayers[0]?.isUserLayer || selectedLayers[0]?.allowCustomerUngroup);
+  // Clipping mask: exactly one of the customer's own shapes plus one of their
+  // own photos. A frame result must pass the same frame rules the server checks.
+  const clipMaskPair = useMemo(() => {
+    if (selectedLayers.length !== 2 || selectedLayerIds.length !== 2) return null;
+    if (!selectedLayers.every((layer: any) => layer.isUserLayer && !layer.locked && !layer.hidden)) return null;
+    const pair = findClipMaskPair(selectedLayers);
+    if (!pair) return null;
+    if (pair.image.type === "frame") {
+      if (!template?.settings?.allowCustomerFrames) return null;
+      const names = frameMaskAllowlistNames({ mask: pair.mask });
+      if (allowedCustomerFrameMasks.length && !names.some((name) => allowedCustomerFrameMasks.includes(name))) return null;
+    }
+    return pair;
+  }, [selectedLayers, selectedLayerIds.length, template?.settings?.allowCustomerFrames, allowedCustomerFrameMasks]);
   const selectedIsUser = Boolean(selectedLayer?.isUserLayer);
   const selectedPermissions = useMemo(
     () => (selectedLayer ? getLayerPermissions(selectedLayer) : {}),
@@ -984,14 +1065,33 @@ export default function PersonalizeClient({ product, template }: { product: any;
   // The canvas already suppresses the browser menu for copy protection, so a
   // right click used to do nothing. Every capability below is the same flag the
   // toolbars use, so the menu can never offer more than the rest of the editor.
-  const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
+  const [contextMenu, setContextMenu] = useState<{
+    x: number;
+    y: number;
+    /** Document point under the pointer, where Paste lands (empty-artboard menus). */
+    point?: { x: number; y: number };
+    /** The selection the menu was opened for. */
+    selectionKey: string;
+  } | null>(null);
+  const selectionKey = selectedLayerIds.join("|");
+  const openContextMenu = (position: { x: number; y: number }, point?: { x: number; y: number }, forSelection = selectionKey) =>
+    setContextMenu({ ...position, point, selectionKey: forSelection });
   // A menu must never outlive the object it acts on: switching page, changing
-  // the selection, or entering preview closes it.
+  // the selection after it opened, or entering preview closes it.
+  useEffect(() => {
+    setContextMenu((current) => (current && current.selectionKey !== selectionKey ? null : current));
+  }, [selectionKey]);
   useEffect(() => {
     setContextMenu(null);
-  }, [activePage, selectedLayerIds, previewMode]);
+  }, [activePage, previewMode]);
+  // Read at render: the clipboard lives in a ref, and the menu is rebuilt each
+  // time it opens.
+  const pasteAvailable = Boolean(contextMenu) && customerClipboardRef.current.layers.length > 0 && pageAllowsCustomerObjects;
   const contextMenuGroups = useMemo(() => {
-    if (!contextMenu || !selectedLayer) return [];
+    if (!contextMenu) return [];
+    if (!selectedLayer) {
+      return buildCustomerContextMenu({ selectionCount: 0, canPaste: pasteAvailable });
+    }
     const imageLike = selectedLayer.type === "image" || selectedLayer.type === "frame";
     const cropCapabilities = resolveImageCropCapabilities(selectedPermissions as any);
     return buildCustomerContextMenu({
@@ -1002,11 +1102,14 @@ export default function PersonalizeClient({ product, template }: { product: any;
       canReplacePhoto: imageLike && (selectedIsUser || Boolean((selectedPermissions as any).replaceImage)),
       canCrop: imageLike && cropCapabilities.canEnterCrop,
       canEnterGroup: selectedLayerIds.length === 1 && selectedLayer.type === "group",
+      canCopy: canDuplicateSelection,
+      canPaste: pasteAvailable,
       canDuplicate: canDuplicateSelection,
       canDelete: canDeleteSelection,
       canArrange: canArrangeSelection,
       canGroup: canGroupSelection,
       canUngroup: canUngroupSelection,
+      canClipMask: Boolean(clipMaskPair),
       canHide: selectedIsUser || Boolean((selectedPermissions as any).hide),
       isHidden: Boolean(selectedLayer.hidden),
       // Locking is a customer-layer affordance; template layers are governed by
@@ -1016,6 +1119,7 @@ export default function PersonalizeClient({ product, template }: { product: any;
     });
   }, [
     contextMenu,
+    pasteAvailable,
     selectedLayer,
     selectedLayerIds.length,
     selectedPermissions,
@@ -1025,11 +1129,18 @@ export default function PersonalizeClient({ product, template }: { product: any;
     canArrangeSelection,
     canGroupSelection,
     canUngroupSelection,
+    clipMaskPair,
   ]);
 
   const runContextMenuAction = (id: ContextMenuActionId) => {
+    // Paste is the one action with no selection: it lands where the menu opened.
+    if (id === "paste") {
+      pasteClipboard(contextMenu?.point);
+      return;
+    }
     if (!selectedLayer) return;
     switch (id) {
+      case "copy": copySelection(); break;
       case "editText": onEditTextAction(); break;
       case "replacePhoto": setActiveTool("uploads"); setMobilePanelOpen(true); break;
       case "crop": enterCropMode(selectedLayer.id); break;
@@ -1042,6 +1153,7 @@ export default function PersonalizeClient({ product, template }: { product: any;
       case "sendToBack": arrangeSelection("sendToBack"); break;
       case "group": groupSelection(); break;
       case "ungroup": ungroupSelection(); break;
+      case "clipMask": createClippingMask(); break;
       case "hide": toggleLayerVisibility(selectedLayer.id, true); break;
       case "show": toggleLayerVisibility(selectedLayer.id, false); break;
       case "lock": toggleLayerLock(selectedLayer.id, true); break;
@@ -1063,7 +1175,15 @@ export default function PersonalizeClient({ product, template }: { product: any;
     // should stand rather than be thrown away by a click elsewhere.
     const cropTargetId = cropCheckpointRef.current?.target.layerId;
     if (cropTargetId && !(ids.length === 1 && ids[0] === cropTargetId)) confirmActiveCrop();
-    const scope = groupScope === undefined ? editingGroupId : groupScope;
+    let scope = groupScope === undefined ? editingGroupId : groupScope;
+    // Selecting anything outside the entered group — another object, a
+    // marquee elsewhere, or empty canvas — leaves the group, the way every
+    // editor behaves. Staying "inside" made the group's members separately
+    // clickable long after the customer had moved on.
+    if (scope && groupScope === undefined && leavesGroupScope(ids, scope)) {
+      scope = null;
+      setEditingGroupId(null);
+    }
     const selectable = new Set(
       effectiveLayers
         .filter((layer: any) => !layer.hidden)
@@ -1079,6 +1199,13 @@ export default function PersonalizeClient({ product, template }: { product: any;
         .map((layer: any) => layer.id),
     );
     applySelection(sanitizeSelection(ids, selectable));
+  };
+
+  /** True when a selection is not entirely inside the entered group `scope`. */
+  const leavesGroupScope = (ids: readonly string[], scope: string) => {
+    if (!ids.length) return true;
+    const members = new Set(getDescendantIds(effectiveLayers, scope));
+    return ids.some((id) => !members.has(id));
   };
 
   const transformCustomerGroupState = (
@@ -1235,6 +1362,25 @@ export default function PersonalizeClient({ product, template }: { product: any;
     applySelection([groupId]);
   };
 
+  /**
+   * Shape + photo → one clipped photo, as ONE history step. The photo keeps its
+   * id and image data and takes the shape's geometry and outline; the shape is
+   * removed (see lib/customizer/v2/clipping-mask.ts).
+   */
+  const createClippingMask = () => {
+    if (!clipMaskPair) return;
+    const current = editorStateRef.current.userLayers;
+    const shape = current.find((layer) => layer.id === clipMaskPair.shape.id);
+    const image = current.find((layer) => layer.id === clipMaskPair.image.id);
+    if (!shape || !image) return;
+    recordHistory();
+    patchEditorState((state) => ({
+      ...state,
+      userLayers: applyClippingMask(state.userLayers, { shape, image, mask: clipMaskPair.mask }),
+    }));
+    applySelection([image.id]);
+  };
+
   const ungroupSelection = () => {
     const group = selectedLayers.find((layer: any) => layer.type === "group");
     if (!canUngroupSelection || !group) return;
@@ -1258,7 +1404,10 @@ export default function PersonalizeClient({ product, template }: { product: any;
       return { ...current, userLayers, layerOverrides };
     });
     setEditingGroupId(null);
-    onSelectionChange(childIds);
+    // The children are selected directly: `onSelectionChange` would sanitise
+    // them against the layers as they were BEFORE the ungroup — still members
+    // of the group being removed — and drop every one of them.
+    applySelection(childIds);
   };
 
   const enterGroup = (groupId: string) => {
@@ -1272,7 +1421,10 @@ export default function PersonalizeClient({ product, template }: { product: any;
     if (!editingGroupId) return;
     const groupId = editingGroupId;
     setEditingGroupId(null);
-    onSelectionChange([groupId]);
+    // Sanitised with NO group scope: against the scope still in this render's
+    // closure, the group itself is "the group being edited" and is filtered out
+    // — Escape used to leave nothing selected at all.
+    onSelectionChange([groupId], null);
   };
 
   const renameLayer = (layerId: string, name: string) => updateUserLayer(layerId, { name }, `rename-${layerId}`);
@@ -1296,7 +1448,14 @@ export default function PersonalizeClient({ product, template }: { product: any;
    * the layers the customer actually picked, so the result can be selected
    * without also selecting each child that tagged along.
    */
-  const cloneLayerSet = (sources: readonly any[], requestedIds: readonly string[], offset = 32) => {
+  const cloneLayerSet = (
+    sources: readonly any[],
+    requestedIds: readonly string[],
+    offset: number | { dx: number; dy: number } = 32,
+    page?: string,
+  ) => {
+    const dx = typeof offset === "number" ? offset : offset.dx;
+    const dy = typeof offset === "number" ? offset : offset.dy;
     const paired = sources
       .map((source: any) => ({
         source,
@@ -1305,8 +1464,10 @@ export default function PersonalizeClient({ product, template }: { product: any;
           id: "",
           fieldId: "",
           name: `${source.name || "Object"} copy`,
-          x: Number(source.x || 0) + offset,
-          y: Number(source.y || 0) + offset,
+          // Paste lands on the page being edited, not the page it was copied on.
+          ...(page ? { page } : {}),
+          x: Number(source.x || 0) + dx,
+          y: Number(source.y || 0) + dy,
           locked: false,
           hidden: false,
           positionLocked: false,
@@ -1337,6 +1498,53 @@ export default function PersonalizeClient({ product, template }: { product: any;
     applySelection(selectionIds);
   };
 
+  /**
+   * Copy and Paste — ONE implementation shared by the keyboard shortcuts and the
+   * context menu.
+   *
+   * The Customizer keeps its own object clipboard (never the system clipboard):
+   * the whole SUBTREE plus the ids actually selected, so a copied group pastes
+   * as a group. Storing a group container without its members produced a
+   * clipboard entry that could only ever paste as an empty group.
+   */
+  const copySelection = () => {
+    if (!canDuplicateSelection) return false;
+    const rootIds = selectedLayers.map((layer: any) => layer.id);
+    customerClipboardRef.current = {
+      rootIds,
+      layers: expandCloneSelection(effectiveLayers, rootIds).map((layer: any) => structuredClone(layer)),
+    };
+    return true;
+  };
+
+  const canPasteClipboard = () => customerClipboardRef.current.layers.length > 0 && pageAllowsCustomerObjects;
+
+  /**
+   * Paste through the same clone path as Duplicate, onto the page being edited.
+   * `at` (a document point — where a context menu was opened) centres the pasted
+   * objects on it; without it they land a little offset from the originals.
+   */
+  const pasteClipboard = (at?: { x: number; y: number }) => {
+    if (!canPasteClipboard()) return;
+    const { layers, rootIds } = customerClipboardRef.current;
+    let offset: number | { dx: number; dy: number } = 32;
+    if (at) {
+      const roots = layers.filter((layer: any) => rootIds.includes(layer.id));
+      const left = Math.min(...roots.map((layer: any) => Number(layer.x) - Number(layer.width) / 2));
+      const right = Math.max(...roots.map((layer: any) => Number(layer.x) + Number(layer.width) / 2));
+      const top = Math.min(...roots.map((layer: any) => Number(layer.y) - Number(layer.height) / 2));
+      const bottom = Math.max(...roots.map((layer: any) => Number(layer.y) + Number(layer.height) / 2));
+      if ([left, right, top, bottom].every(Number.isFinite)) {
+        offset = { dx: Math.round(at.x - (left + right) / 2), dy: Math.round(at.y - (top + bottom) / 2) };
+      }
+    }
+    const { copies, selectionIds } = cloneLayerSet(layers, rootIds, offset, activePage);
+    if (!copies.length) return;
+    recordHistory();
+    patchEditorState((current) => ({ ...current, userLayers: [...current.userLayers, ...copies] }));
+    applySelection(selectionIds);
+  };
+
   const duplicateLayer = (layerId: string) => {
     const source = effectiveLayers.find((layer: any) => layer.id === layerId);
     if (!source || (!source.isUserLayer && !getLayerPermissions(source).duplicate)) return;
@@ -1347,10 +1555,15 @@ export default function PersonalizeClient({ product, template }: { product: any;
     applySelection(selectionIds);
   };
 
-  const deleteSelection = () => {
-    if (!canDeleteSelection) return;
-    const removableIds = selectedActionLayers.filter((layer: any) => layer.isUserLayer).map((layer: any) => layer.id);
-    const hiddenTemplateIds = selectedActionLayers.filter((layer: any) => !layer.isUserLayer).map((layer: any) => layer.id);
+  /**
+   * THE Delete — keyboard, context menu and layers panel all end here. Customer
+   * objects are removed; template objects (which the customer may delete) are
+   * hidden, so the trusted template is never altered.
+   */
+  const deleteLayers = (layers: readonly any[]) => {
+    const removableIds = layers.filter((layer: any) => layer.isUserLayer).map((layer: any) => layer.id);
+    const hiddenTemplateIds = layers.filter((layer: any) => !layer.isUserLayer).map((layer: any) => layer.id);
+    if (!removableIds.length && !hiddenTemplateIds.length) return;
     recordHistory();
     patchEditorState((current) => ({
       ...current,
@@ -1364,6 +1577,11 @@ export default function PersonalizeClient({ product, template }: { product: any;
       ),
     }));
     onSelectionChange([]);
+  };
+
+  const deleteSelection = () => {
+    if (!canDeleteSelection) return;
+    deleteLayers(selectedActionLayers);
   };
 
   /**
@@ -1390,8 +1608,11 @@ export default function PersonalizeClient({ product, template }: { product: any;
   const patchSelectedProperties = (patch: Record<string, any>) => {
     if (selectedLayers.length !== 1) return;
     const layer = selectedLayers[0];
-    if (layer.isUserLayer) updateUserLayer(layer.id, patch, `properties-${layer.id}`);
-    else updateLayerOverride(layer.id, "properties", patch, `properties-${layer.id}`);
+    // One undo step per PROPERTY: dragging a colour picker coalesces into one
+    // step, but changing the fill and then the line colour are two.
+    const historyGroup = `properties-${layer.id}-${Object.keys(patch).sort().join(",")}`;
+    if (layer.isUserLayer) updateUserLayer(layer.id, patch, historyGroup);
+    else updateLayerOverride(layer.id, "properties", patch, historyGroup);
   };
 
   /* ----- photo crop mode (spec §11) ----- */
@@ -1549,8 +1770,13 @@ export default function PersonalizeClient({ product, template }: { product: any;
    * nothing changed.
    */
   const confirmActiveCrop = () => {
-    if (!cropCheckpointRef.current) return;
+    const checkpoint = cropCheckpointRef.current;
+    if (!checkpoint) return;
     finishCropGesture("commit");
+    // The confirmed crop is ONE operation: a single Undo returns the photo to
+    // how it was before crop opened. An unrelated edit made from the side panel
+    // during the session keeps its own steps, so nothing is merged then.
+    if (!checkpoint.foreignHistory) history.collapseSince(checkpoint.history);
     closeCropMode();
   };
 
@@ -1866,6 +2092,15 @@ export default function PersonalizeClient({ product, template }: { product: any;
         ].some((permission) => selectedPermissions[permission])));
 
   const showSelectionPanel = !previewMode && step === "design" && selectedLayers.length > 0;
+  // Offered whenever the selection has any structural action, while not cropping.
+  const showMoreActions =
+    !previewMode &&
+    step === "design" &&
+    activeTool !== "options" &&
+    selectedLayers.length > 0 &&
+    !cropLayerId &&
+    !cropGridSlotId &&
+    (canDuplicateSelection || canDeleteSelection || canArrangeSelection || canGroupSelection || canUngroupSelection);
 
   // Grouping toolbar: shown for a multiple selection, or for one selected
   // group so Ungroup and Edit group are reachable from the canvas.
@@ -1909,6 +2144,9 @@ export default function PersonalizeClient({ product, template }: { product: any;
       targetId = parent.id;
     }
     if (targetId && !customerSelectableLayers.some((layer: any) => layer.id === targetId)) return;
+    // Picking something outside the entered group (from the layers panel, or
+    // nothing at all) leaves the group, exactly as a canvas click does.
+    if (editingGroupId && (!targetId || leavesGroupScope([targetId], editingGroupId))) setEditingGroupId(null);
     // Same reducer as the canvas, so a panel row and a card click agree.
     const nextIds = resolveSelection(
       selectedLayerIds,
@@ -2091,6 +2329,10 @@ export default function PersonalizeClient({ product, template }: { product: any;
         !isSingleLineAutoSizeText(selectedLayer.textStyle, selectedText)
       ) return null;
       const nextStyle = { ...(selectedLayer.textStyle || {}), ...stylePatch };
+      // With a growth direction the renderer anchors the new size to the
+      // stored box, so the box is left as it is: writing the new height here
+      // would move the anchor with every size change.
+      if (nextStyle.growthDirection) return null;
       const minFontSize = Math.max(4, Number(nextStyle.minFontSize) || 4);
       const maxFontSize = Math.max(minFontSize, Number(nextStyle.maxFontSize) || 500);
       nextStyle.fontSize = Math.min(maxFontSize, Math.max(minFontSize, Number(nextStyle.fontSize) || minFontSize));
@@ -2148,7 +2390,7 @@ export default function PersonalizeClient({ product, template }: { product: any;
               ? permissions.changeColor
               : key === "textAlign"
                 ? permissions.changeAlignment
-                : key === "verticalAlign"
+                : key === "verticalAlign" || key === "growthDirection"
                   ? permissions.changeAlignment || permissions.editStyle
                 : key === "letterSpacing"
                   ? permissions.changeLetterSpacing
@@ -2212,6 +2454,7 @@ export default function PersonalizeClient({ product, template }: { product: any;
       snapshot: snapshot(),
       dirty: dirtyRef.current,
       changeVersion: changeVersionRef.current,
+      saveAttempt: saveAttemptRef.current,
     };
     recordHistory();
     activeTextHistoryIdRef.current = layerId;
@@ -2301,8 +2544,19 @@ export default function PersonalizeClient({ product, template }: { product: any;
     if (!session || session.layerId !== layerId) return false;
     setValues(session.snapshot.values);
     setEditorState(session.snapshot.editorState);
-    setDirty(session.dirty);
-    changeVersionRef.current = session.changeVersion;
+    if (saveAttemptRef.current === session.saveAttempt) {
+      // No save started during the session, so the server provably still
+      // holds the state the session began from: rewinding is exact.
+      setDirty(session.dirty);
+      changeVersionRef.current = session.changeVersion;
+    } else {
+      // A save (autosave, or a lifecycle flush) may already carry the typing
+      // being cancelled. Move the version FORWARD so that save cannot mark the
+      // restored document saved, and save the restoration after it — the same
+      // rule crop Cancel follows.
+      changeVersionRef.current += 1;
+      setDirty(true);
+    }
     history.discardLast();
     activeTextHistoryIdRef.current = null;
     activeTextSessionRef.current = null;
@@ -2341,10 +2595,6 @@ export default function PersonalizeClient({ product, template }: { product: any;
     setSelectedLayerId(null);
   };
 
-  const onDeleteSelected = () => {
-    if (!selectedLayer) return;
-    if (selectedIsUser) deleteUserLayer(selectedLayer.id);
-  };
 
   /* ----- uploads ----- */
   const onUploadPhoto = async (file: File) => {
@@ -2366,7 +2616,6 @@ export default function PersonalizeClient({ product, template }: { product: any;
     }
   };
 
-  /* ----- persistence (same pipeline as before, plus editorState) ----- */
   const collectUploadedFiles = (currentValues: Record<string, any>) => {
     const files: Record<string, any> = {};
     (template?.fields || []).forEach((field: any) => {
@@ -2377,14 +2626,104 @@ export default function PersonalizeClient({ product, template }: { product: any;
     return files;
   };
 
-  const buildCustomizationPayload = async (status = "draft") => {
+  /* ----- crash-safe persistence -----
+     Three layers, so no committed edit depends on a single write landing:
+       1. React state — updated immediately by every edit.
+       2. A durable recovery snapshot in this browser — written within
+          RECOVERY_WRITE_DELAY_MS of a change, and synchronously when the page
+          is hidden, unloaded or the editor unmounts.
+       3. The server — a single-flight queue (coalesced, rate-bounded, retried)
+          plus a keepalive write while the page unloads. Every write carries a
+          revision number, and the server refuses one older than what it holds.
+     Continuous gestures (drag, resize, rotate, crop) live in the workspace as
+     transient geometry and reach this code only when they commit, so nothing
+     here runs per pointer move. */
+
+  const ownerIdOf = () => user?.id || user?.uid || "";
+
+  /** The persisted part of the editor, from refs so it is always the newest. */
+  const currentPersistedState = () => ({
+    values: valuesRef.current,
+    editorState: editorStateRef.current,
+    options: optionsRef.current,
+    quantity: quantityRef.current,
+    activePage: activePageRef.current,
+  });
+
+  /**
+   * Advance the revision when the persisted state changed since it was last
+   * numbered. Runs before anything is written — locally or to the server — so
+   * the number sent always describes exactly the state sent. The first call
+   * after a restore only records the restored state as the baseline.
+   */
+  const observePersistedState = () => {
+    const current = currentPersistedState();
+    const last = observedStateRef.current;
+    if (!last) {
+      observedStateRef.current = current;
+      return false;
+    }
+    if (
+      last.values === current.values &&
+      last.editorState === current.editorState &&
+      last.options === current.options &&
+      last.quantity === current.quantity &&
+      last.activePage === current.activePage
+    ) {
+      return false;
+    }
+    observedStateRef.current = current;
+    revisionRef.current += 1;
+    return true;
+  };
+
+  /** Write the recovery snapshot now. Returns it, or null when nothing durable could be written. */
+  const persistRecoveryNow = (): RecoverySnapshot | null => {
+    if (recoveryTimerRef.current) {
+      clearTimeout(recoveryTimerRef.current);
+      recoveryTimerRef.current = null;
+    }
+    // Before the saved design is restored the editor shows the bare template;
+    // recording that would overwrite the very copy about to be restored.
+    if (!restoreReadyRef.current) return null;
+    observePersistedState();
+    const state = currentPersistedState();
+    const written = writeRecoverySnapshot(browserStorage(), localDraftKey, {
+      identity: { productId: product.id, templateId: template?.id || "", templateVersion: Number(template?.version) || 1 },
+      state: {
+        values: state.values,
+        editorState: state.editorState,
+        selectedOptions: { ...state.options, quantity: state.quantity },
+        activePage: state.activePage,
+      },
+      customizationId: customizationIdRef.current,
+      cartItemId: cartItemIdRef.current,
+      clientRevision: revisionRef.current,
+      ackedRevision: ackedRevisionRef.current,
+      guestSessionId: getGuestSessionId(),
+    });
+    recoveryDurableRef.current = Boolean(written);
+    return written;
+  };
+
+  /** Coalesce bursts of edits into one recovery write; never delays it past RECOVERY_WRITE_DELAY_MS. */
+  const scheduleRecoveryWrite = () => {
+    if (recoveryTimerRef.current) return;
+    recoveryTimerRef.current = setTimeout(() => {
+      recoveryTimerRef.current = null;
+      persistRecoveryNow();
+    }, RECOVERY_WRITE_DELAY_MS);
+  };
+
+  const buildCustomizationPayload = (status = "draft") => {
+    observePersistedState();
     const currentValues = valuesRef.current;
     const currentEditorState = editorStateRef.current;
     const currentOptions = optionsRef.current;
     const currentQuantity = quantityRef.current;
     const currentActivePage = activePageRef.current;
     const selectedOptions = { ...currentOptions, quantity: currentQuantity };
-    const ownerId = user?.id || user?.uid || "";
+    const ownerId = ownerIdOf();
     const permanentValues = stripEphemeralAssetUrls(currentValues, ownerId);
     const permanentEditorState = stripEphemeralAssetUrls(currentEditorState, ownerId);
     const uploadedFiles = stripEphemeralAssetUrls(collectUploadedFiles(currentValues), ownerId);
@@ -2398,9 +2737,7 @@ export default function PersonalizeClient({ product, template }: { product: any;
     }, ownerId);
 
     return {
-      customizationId: customizationIdRef.current && !String(customizationIdRef.current).startsWith("local_")
-        ? customizationIdRef.current
-        : "",
+      customizationId: serverCustomizationId(customizationIdRef.current),
       productId: product.id,
       templateId: template?.id || "",
       templateVersion: template?.version || 1,
@@ -2412,6 +2749,7 @@ export default function PersonalizeClient({ product, template }: { product: any;
       previewImages,
       renderData,
       activePage: currentActivePage,
+      clientRevision: revisionRef.current,
     };
   };
 
@@ -2424,7 +2762,7 @@ export default function PersonalizeClient({ product, template }: { product: any;
     recordEditorEvent("saveStarted");
     const savingVersion = changeVersionRef.current;
 
-    const payload = await buildCustomizationPayload(status);
+    const payload = buildCustomizationPayload(status);
     await awaitDevSaveGate();
 
     // A response may only clear dirty if the document is still the version this
@@ -2440,35 +2778,108 @@ export default function PersonalizeClient({ product, template }: { product: any;
     };
 
     if (!user) {
-      const localDraft = writeLocalDraft(localDraftKey, payload);
+      // A guest's design lives on this device: the recovery snapshot IS the
+      // save, written from the newest state rather than the captured payload.
+      const localDraft = persistRecoveryNow();
+      // Status 0: the browser refused the write. Retrying the same write cannot
+      // help; the next edit tries again.
+      if (!localDraft) throw new CustomizationSaveError("This browser could not store your design.", 0);
       setCustomizationId(localDraft.id);
       settleDirty();
       return { ok: true, customization: localDraft, local: true };
     }
 
-    const existingId = payload.customizationId || customizationIdRef.current;
-    const usePatch = existingId && !String(existingId).startsWith("local_");
-    const res = await fetch(usePatch ? `/api/customizations/${existingId}` : "/api/customizations", {
-      method: usePatch ? "PATCH" : "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
+    const existingId = payload.customizationId;
+    const savingRevision = payload.clientRevision;
+    let res: Response;
+    try {
+      res = await fetch(existingId ? `/api/customizations/${encodeURIComponent(existingId)}` : "/api/customizations", {
+        method: existingId ? "PATCH" : "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+    } catch {
+      throw new CustomizationSaveError("Your changes are kept on this device until the connection returns.", null);
+    }
     const data = await res.json().catch(() => ({}));
+
+    if (res.status === 409 && data?.code === "stale-revision") {
+      // The server already holds a newer revision of this design. When this
+      // editor has nothing newer queued, the newer copy came from another tab
+      // or device; the state on THIS screen is what the customer is looking at,
+      // so it is re-sent above that revision (last writer wins, as before)
+      // instead of being silently dropped. When a newer local revision exists,
+      // the queue is already about to send it.
+      if (savingRevision >= revisionRef.current) {
+        revisionRef.current = Math.max(revisionRef.current, Number(data.serverRevision) || 0) + 1;
+        recordEditorEvent("saveRevisionConflict");
+      }
+      throw new CustomizationSaveError("A newer copy of this design was saved elsewhere.", 409, true);
+    }
     if (!res.ok || data.ok === false) {
-      throw new Error(data?.error || "Your changes could not be saved. Please try again.");
+      throw new CustomizationSaveError(data?.error || "Your changes could not be saved. Please try again.", res.status);
     }
 
     const saved = data.customization || {};
-    if (saved.id) setCustomizationId(saved.id);
+    const savedId = serverCustomizationId(saved.id);
+    if (savedId) {
+      // Set the ref now as well: an unload write in the same tick must target
+      // this row, not create another.
+      customizationIdRef.current = savedId;
+      setCustomizationId(savedId);
+      syncCustomizationIdInUrl(savedId);
+    }
     if (saved.cartItemId) setCartItemId(saved.cartItemId);
+    ackedRevisionRef.current = Math.max(ackedRevisionRef.current, savingRevision);
+    acknowledgeRecoverySnapshot(browserStorage(), localDraftKey, { customizationId: savedId, revision: savingRevision });
     settleDirty();
     return { ok: true, customization: saved, local: false };
   };
 
+  /**
+   * The compact body sent with `keepalive` while the page unloads: only the
+   * design state, no render summary (browsers cap keepalive bodies at 64 KiB).
+   * The server merges it into the stored render data. No status: an unload
+   * must never move a design in or out of the cart.
+   */
+  const buildUnloadPayload = () => {
+    observePersistedState();
+    const ownerId = ownerIdOf();
+    return {
+      values: stripEphemeralAssetUrls(valuesRef.current, ownerId),
+      editorState: stripEphemeralAssetUrls(editorStateRef.current, ownerId),
+      uploadedFiles: stripEphemeralAssetUrls(collectUploadedFiles(valuesRef.current), ownerId),
+      selectedOptions: { ...optionsRef.current, quantity: quantityRef.current },
+      activePage: activePageRef.current,
+      clientRevision: revisionRef.current,
+    };
+  };
+
+  /** Best-effort server write that survives the page being torn down. */
+  const sendUnloadSave = () => {
+    if (!user || !restoreReadyRef.current || template?.settings?.autosave === false) return;
+    // A brand-new design is only ever created by the queue: an unload request
+    // racing it could create a second draft. The recovery snapshot holds the
+    // design until the next visit creates it.
+    const id = serverCustomizationId(customizationIdRef.current);
+    if (!id) return;
+    const payload = buildUnloadPayload();
+    // The server already confirmed this exact state.
+    if (revisionRef.current <= ackedRevisionRef.current) return;
+    const body = JSON.stringify(payload);
+    if (utf8Length(body) > KEEPALIVE_BODY_LIMIT_BYTES) return;
+    void fetch(`/api/customizations/${encodeURIComponent(id)}`, {
+      method: "PATCH",
+      keepalive: true,
+      headers: { "Content-Type": "application/json" },
+      body,
+    }).catch(() => undefined);
+  };
+
   /* ----- autosave queue (spec §11) -----
-     Debounced, single-flight and retrying. Single-flight matters most: the old
-     bare setTimeout could start a second POST while the first was still in
-     flight, creating a duplicate draft for the same design. */
+     Coalesced, single-flight, rate-bounded and retrying. Single-flight matters
+     most: two overlapping writes for a design with no id yet were both POSTs —
+     a duplicate draft. */
   const saveDraftRef = useRef(saveCustomizationDraft);
   saveDraftRef.current = saveCustomizationDraft;
   // An explicit save (Save & Exit, Add to cart) owns the write while it runs;
@@ -2477,6 +2888,12 @@ export default function PersonalizeClient({ product, template }: { product: any;
   const saveQueueRef = useRef<SaveQueue | null>(null);
   if (!saveQueueRef.current) {
     saveQueueRef.current = createSaveQueue({
+      debounceMs: AUTOSAVE_DEBOUNCE_MS,
+      minIntervalMs: AUTOSAVE_MIN_INTERVAL_MS,
+      retryDelaysMs: [1000, 3000, 8000],
+      // A brief outage must not leave a finished design unsaved just because
+      // the customer stopped editing.
+      persistentRetryMs: 20000,
       save: async () => {
         if (explicitSaveRef.current) {
           return { ok: false, error: new Error("explicit-save-in-flight"), retryable: true };
@@ -2485,8 +2902,13 @@ export default function PersonalizeClient({ product, template }: { product: any;
           const result = await saveDraftRef.current("draft", { silent: true });
           return { ok: true, local: Boolean(result?.local) };
         } catch (error) {
-          console.warn("Autosave failed:", error);
-          return { ok: false, error };
+          const retryable =
+            error instanceof CustomizationSaveError && error.retryable !== undefined
+              ? error.retryable
+              : isRetryableSaveError(error);
+          // Transient failures are retried quietly; the status pill says so.
+          if (!retryable) console.warn("Autosave failed:", error);
+          return { ok: false, error, retryable };
         }
       },
       onStatusChange: (status, detail) => {
@@ -2497,12 +2919,61 @@ export default function PersonalizeClient({ product, template }: { product: any;
   }
   const saveQueue = saveQueueRef.current;
 
+  // The handlers below are registered once; they call whatever the latest
+  // render defined, so they never act on a stale closure.
+  const lifecycleRef = useRef({ persistRecoveryNow, sendUnloadSave });
+  lifecycleRef.current = { persistRecoveryNow, sendUnloadSave };
+
   // The queue lives in a ref, so it outlives an effect cleanup that React
   // follows with a re-run on the same instance (StrictMode, Activity). Resume on
   // every (re)mount; a permanently destroyed queue silently stopped autosave.
   useEffect(() => {
     saveQueue.resume();
-    return () => saveQueue.destroy();
+    return () => {
+      // Leaving the editor inside the app (a header link, browser Back) must
+      // not drop work still waiting on a timer: record it durably and send it
+      // now. The in-flight request finishes after the component is gone.
+      lifecycleRef.current.persistRecoveryNow();
+      void saveQueue.flush();
+      saveQueue.destroy();
+    };
+  }, [saveQueue]);
+
+  // Lifecycle flushes. Hidden is not gone — a tab switch, the app switcher on
+  // a phone, a locked screen — so an ordinary save can still finish; on
+  // pagehide the page is being torn down and only a keepalive request survives.
+  useEffect(() => {
+    const onVisibilityChange = () => {
+      if (document.visibilityState !== "hidden") return;
+      lifecycleRef.current.persistRecoveryNow();
+      void saveQueue.flush();
+    };
+    const onPageHide = () => {
+      lifecycleRef.current.persistRecoveryNow();
+      lifecycleRef.current.sendUnloadSave();
+    };
+    const onBeforeUnload = (event: BeforeUnloadEvent) => {
+      lifecycleRef.current.persistRecoveryNow();
+      // With a durable recovery copy a refresh reopens exactly this design, so
+      // there is nothing to warn about. Only when the browser refused that copy
+      // can unsaved work actually be lost.
+      if (recoveryDurableRef.current || !saveQueue.hasPendingWork()) return;
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    const onOnline = () => {
+      void saveQueue.flush();
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    window.addEventListener("pagehide", onPageHide);
+    window.addEventListener("beforeunload", onBeforeUnload);
+    window.addEventListener("online", onOnline);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+      window.removeEventListener("pagehide", onPageHide);
+      window.removeEventListener("beforeunload", onBeforeUnload);
+      window.removeEventListener("online", onOnline);
+    };
   }, [saveQueue]);
 
   // One tracked explicit save, used by Save & Exit and Add to cart so their
@@ -2555,56 +3026,137 @@ export default function PersonalizeClient({ product, template }: { product: any;
     if (enabledPages.some((page: any) => page.id === savedActivePage)) {
       setActivePage(savedActivePage);
     }
-    if (saved.id) setCustomizationId(saved.id);
+    if (saved.id) {
+      customizationIdRef.current = saved.id;
+      setCustomizationId(saved.id);
+    }
     if (saved.cartItemId) setCartItemId(saved.cartItemId);
     return true;
+  };
+
+  /**
+   * Fresh signed URLs for every private photo in a state recovered from this
+   * browser. The recovery copy may have outlived its signed URLs (they expire
+   * after an hour); the server row is always re-signed on read, the local copy
+   * is not. Any failure keeps the state as it was.
+   */
+  const refreshRecoveredAssetUrls = async <T,>(state: T): Promise<T> => {
+    const ownerId = ownerIdOf();
+    if (!ownerId) return state;
+    const references = collectCustomerAssetReferences(state, ownerId);
+    if (!references.length) return state;
+    const keyOf = (reference: { assetId?: string; storagePath: string }) => reference.assetId || reference.storagePath;
+    const resolved = new Map<string, ResolvedPrivateAsset>();
+    for (let index = 0; index < references.length; index += 50) {
+      const batch = references.slice(index, index + 50);
+      const res = await fetch("/api/customizer/assets/resolve", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ references: batch, variant: "editor" }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !Array.isArray(data.assets)) return state;
+      batch.forEach((reference, position) => {
+        if (data.assets[position]?.signedUrl) resolved.set(keyOf(reference), data.assets[position]);
+      });
+    }
+    return hydratePrivateAssetUrls(
+      state,
+      async (reference) => {
+        const asset = resolved.get(keyOf(reference));
+        if (!asset) throw new Error("Photo could not be re-signed.");
+        return asset;
+      },
+      { fallbackOwnerId: ownerId },
+    );
+  };
+
+  /**
+   * Load one of the caller's own customizations. "missing" covers not found,
+   * not theirs and signed out alike — the design cannot be opened here.
+   * "failed" means the server could not be reached or errored, and the design
+   * may well exist: it must not be treated as gone.
+   */
+  const fetchOwnCustomization = async (
+    id: string,
+  ): Promise<{ status: "ok"; customization: any } | { status: "missing" } | { status: "failed" }> => {
+    try {
+      const res = await fetch(`/api/customizations/${encodeURIComponent(id)}`, { cache: "no-store" });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.ok && data.customization) return { status: "ok", customization: data.customization };
+      if (res.status === 404 || res.status === 401 || res.status === 403) return { status: "missing" };
+      return { status: "failed" };
+    } catch {
+      return { status: "failed" };
+    }
   };
 
   useEffect(() => {
     if (authLoading) return;
 
     let cancelled = false;
+    let retryTimer: ReturnType<typeof setTimeout> | null = null;
 
     async function restoreDraft() {
+      // A re-run (the customer signed in mid-session, or a retry) first makes
+      // sure the newest on-screen state is the recovery copy it will read.
+      if (restoreReadyRef.current) lifecycleRef.current.persistRecoveryNow();
+      restoreReadyRef.current = false;
       setRestoreReady(false);
-      let restored = false;
+
+      const local = readRecoverySnapshot(browserStorage(), localDraftKey);
+      let requestedId = serverCustomizationId(initialCustomizationId);
+      let server: any = null;
+      let fromLatestDraft = false;
+      let loadFailed = false;
 
       try {
-        if (user && initialCustomizationId && !initialCustomizationId.startsWith("local_")) {
-          const res = await fetch(`/api/customizations/${encodeURIComponent(initialCustomizationId)}`, { cache: "no-store" });
-          const data = await res.json().catch(() => ({}));
-          if (!cancelled && res.ok && data.ok && data.customization) {
-            restored = applySavedCustomization(data.customization);
+        if (user && requestedId) {
+          const loaded = await fetchOwnCustomization(requestedId);
+          if (cancelled) return;
+          if (loaded.status === "ok") server = loaded.customization;
+          else if (loaded.status === "failed") loadFailed = true;
+          else {
+            // Not this customer's design (or deleted): never save over that id.
+            requestedId = "";
+            removeCustomizationIdFromUrl();
           }
         }
 
-        if (!restored && user && initialCartItemId) {
+        if (!server && !loadFailed && user && initialCartItemId) {
           const cart = await getUserCart(user);
+          if (cancelled) return;
           const item = cart.find((entry: any) => String(entry.id) === String(initialCartItemId));
           if (item) {
             setCartItemId(item.id);
-            if (item.customizationId) {
-              const res = await fetch(`/api/customizations/${encodeURIComponent(item.customizationId)}`, { cache: "no-store" });
-              const data = await res.json().catch(() => ({}));
-              if (!cancelled && res.ok && data.ok && data.customization) {
-                restored = applySavedCustomization({ ...data.customization, cartItemId: item.id });
+            cartItemIdRef.current = item.id;
+            const cartCustomizationId = serverCustomizationId(item.customizationId);
+            if (cartCustomizationId) {
+              const loaded = await fetchOwnCustomization(cartCustomizationId);
+              if (cancelled) return;
+              if (loaded.status === "ok") {
+                server = { ...loaded.customization, cartItemId: item.id };
+                requestedId = cartCustomizationId;
+              } else if (loaded.status === "failed") {
+                loadFailed = true;
+                requestedId = cartCustomizationId;
               }
             }
-            if (!restored && !cancelled) {
-              restored = applySavedCustomization({
-                id: item.customizationId || "",
+            if (!server && !loadFailed) {
+              server = {
+                id: cartCustomizationId,
                 cartItemId: item.id,
                 values: item.customizationValues || item.previewData || {},
                 selectedOptions: item.selectedOptions || {},
                 uploadedFiles: item.uploadedFiles || {},
                 previewImages: item.previewImages || {},
                 renderData: item.renderData || {},
-              });
+              };
             }
           }
         }
 
-        if (!restored && user) {
+        if (!server && !loadFailed && user && !requestedId) {
           const query = new URLSearchParams({
             productId: product.id,
             status: "draft",
@@ -2612,27 +3164,85 @@ export default function PersonalizeClient({ product, template }: { product: any;
             templateVersion: String(Number(template?.version) || 1),
           });
           if (template?.id) query.set("templateId", template.id);
-          const res = await fetch(`/api/customizations?${query.toString()}`, { cache: "no-store" });
-          const data = await res.json().catch(() => ({}));
-          const latest = data?.customizations?.[0];
-          if (!cancelled && res.ok && data.ok && latest) {
-            restored = applySavedCustomization(latest, { requireCurrentTemplateVersion: true });
+          try {
+            const res = await fetch(`/api/customizations?${query.toString()}`, { cache: "no-store" });
+            const data = await res.json().catch(() => ({}));
+            if (res.ok && data.ok && data.customizations?.[0]) {
+              server = data.customizations[0];
+              fromLatestDraft = true;
+            }
+          } catch {
+            // No list is not a lost design: nothing specific was asked for, and
+            // a new design is created rather than any existing one overwritten.
           }
-        }
-
-        if (!restored) {
-          const localDraft = readLocalDraft(localDraftKey);
-          if (!cancelled && localDraft) {
-            restored = applySavedCustomization(localDraft);
-          }
+          if (cancelled) return;
         }
       } catch (error) {
         console.warn("Could not restore customization draft.", error);
+        if (requestedId) loadFailed = true;
       }
 
       if (cancelled) return;
-      setDirty(false);
-      setSaveStatus(restored ? "saved" : "idle");
+
+      const decision = chooseRestoreSource({ requestedId, server: loadFailed ? null : server, local });
+
+      if (loadFailed && decision.source !== "local") {
+        // The saved design exists but could not be read. Opening the bare
+        // template here would let the next autosave write it OVER that design,
+        // so editing stays blocked until it loads.
+        setRestoreError("We couldn't load your saved design. Check your connection — we'll keep trying.");
+        const delay = RESTORE_RETRY_DELAYS_MS[restoreAttempt];
+        if (delay !== undefined) retryTimer = setTimeout(() => setRestoreAttempt((attempt) => attempt + 1), delay);
+        return;
+      }
+
+      let restored = false;
+      let needsServerSync = false;
+      if (decision.source === "local") {
+        restored = applySavedCustomization(decision.snapshot);
+        // Edits the server never confirmed are sent as soon as the editor is
+        // ready. A guest's design lives here, so it is already saved.
+        needsServerSync = Boolean(user) && decision.snapshot.clientRevision > decision.snapshot.ackedRevision;
+        ackedRevisionRef.current = decision.snapshot.ackedRevision;
+        if (user) {
+          const recoveredRevision = decision.revision;
+          void Promise.all([
+            refreshRecoveredAssetUrls(decision.snapshot.values),
+            refreshRecoveredAssetUrls(decision.snapshot.renderData.editorState),
+          ])
+            .then(([freshValues, freshEditorState]) => {
+              // Only when nothing was edited since the restore: the revision
+              // moves with every change, so an unchanged one proves it.
+              if (cancelled || revisionRef.current !== recoveredRevision) return;
+              setValues((current) => ({ ...current, ...freshValues }));
+              setEditorState(normalizeEditorState(freshEditorState));
+            })
+            .catch(() => undefined);
+        }
+      } else if (decision.source === "server") {
+        restored = applySavedCustomization(server, { requireCurrentTemplateVersion: fromLatestDraft });
+        ackedRevisionRef.current = restored ? decision.revision : 0;
+      } else {
+        ackedRevisionRef.current = 0;
+      }
+      if (!restored) {
+        // Nothing to reopen: a new design. Forget any id that could not be
+        // opened, so the first save creates a row instead of patching one.
+        customizationIdRef.current = "";
+        setCustomizationId("");
+      }
+
+      revisionRef.current = decision.revision;
+      observedStateRef.current = null;
+      const reopenedId = restored ? serverCustomizationId(customizationIdRef.current) : "";
+      if (user && reopenedId) syncCustomizationIdInUrl(reopenedId);
+
+      setRestoreError("");
+      setDirty(needsServerSync);
+      setSaveStatus(!restored ? "idle" : needsServerSync ? "unsaved" : user ? "saved" : "saved-local");
+      // restoreReadyRef turns true in the render that commits the restored
+      // state, together with the state refs — never before, or an unload in
+      // between would record the bare template as the recovery copy.
       setRestoreReady(true);
       history.reset();
     }
@@ -2641,32 +3251,27 @@ export default function PersonalizeClient({ product, template }: { product: any;
 
     return () => {
       cancelled = true;
+      if (retryTimer) clearTimeout(retryTimer);
     };
-    // Run once after auth resolves for this product/template. Avoid depending on
-    // mutable form state, otherwise a field edit would re-apply the draft.
+    // Run once after auth resolves for this product/template (and on an explicit
+    // retry). Avoid depending on mutable form state, otherwise a field edit
+    // would re-apply the draft.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [authLoading, user?.id, user?.uid, product.id, template?.id, template?.version, initialCustomizationId, initialCartItemId, localDraftKey]);
+  }, [authLoading, user?.id, user?.uid, product.id, template?.id, template?.version, initialCustomizationId, initialCartItemId, localDraftKey, restoreAttempt]);
 
+  // Every committed change: number it, record it durably on this device, and
+  // queue the server save. Restoring a design is not a change.
   useEffect(() => {
-    if (!restoreReady || !dirty) return;
-    if (editingTextLayerId) return;
+    if (!restoreReady) return;
+    if (observePersistedState()) scheduleRecoveryWrite();
+    if (!dirty) return;
     if (template?.settings?.autosave === false) return;
-    // The queue owns debouncing, single-flight and retry — this only tells it
+    // The queue owns coalescing, single-flight and retry — this only tells it
     // that something changed. Snapshot refs give it the latest state at save
     // time, so a coalesced save never writes stale values.
     saveQueue.request();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [values, editorState, options, quantity, activePage, restoreReady, dirty, editingTextLayerId, user?.id, user?.uid]);
-
-  useEffect(() => {
-    const warnBeforeUnload = (event: BeforeUnloadEvent) => {
-      if (!dirtyRef.current) return;
-      event.preventDefault();
-      event.returnValue = "";
-    };
-    window.addEventListener("beforeunload", warnBeforeUnload);
-    return () => window.removeEventListener("beforeunload", warnBeforeUnload);
-  }, []);
+  }, [values, editorState, options, quantity, activePage, restoreReady, dirty, user?.id, user?.uid]);
 
   /* ----- keyboard shortcuts ----- */
   useEffect(() => {
@@ -2675,7 +3280,7 @@ export default function PersonalizeClient({ product, template }: { product: any;
       // editor has focus, Delete, Backspace and the arrow keys are caret
       // controls — routing them to the canvas would delete the object being
       // edited instead of a character.
-      const typing = isTypingTarget(event.target) || isTypingTarget(document.activeElement);
+      const typing = isTypingTarget(event.target, event.key) || isTypingTarget(document.activeElement, event.key);
       const key = String(event.key).toLowerCase();
 
       if ((event.ctrlKey || event.metaKey) && !typing) {
@@ -2701,33 +3306,12 @@ export default function PersonalizeClient({ product, template }: { product: any;
         }
         if (key === "c") {
           event.preventDefault();
-          // Copy the whole SUBTREE, not just the selected rows. Storing a group
-          // container without its members produced a clipboard entry that could
-          // only ever paste as an empty group.
-          if (canDuplicateSelection) {
-            const rootIds = selectedLayers.map((layer: any) => layer.id);
-            customerClipboardRef.current = {
-              rootIds,
-              layers: expandCloneSelection(effectiveLayers, rootIds).map((layer: any) => structuredClone(layer)),
-            };
-          }
+          copySelection();
           return;
         }
-        if (key === "v" && customerClipboardRef.current.layers.length) {
+        if (key === "v" && canPasteClipboard()) {
           event.preventDefault();
-          // Paste goes through the same clone path as Duplicate. Forcing
-          // `groupId: ""` and leaving `childIds` untouched (as this used to)
-          // pasted a group whose childIds still named the ORIGINAL children —
-          // a GROUP_PARENT_MISSING document where moving either group dragged
-          // the other one's contents.
-          const { copies, selectionIds } = cloneLayerSet(
-            customerClipboardRef.current.layers,
-            customerClipboardRef.current.rootIds,
-          );
-          if (!copies.length) return;
-          recordHistory();
-          patchEditorState((current) => ({ ...current, userLayers: [...current.userLayers, ...copies] }));
-          applySelection(selectionIds);
+          pasteClipboard();
           return;
         }
         // Ctrl/Cmd+G groups, Ctrl/Cmd+Shift+G ungroups. Both run through the
@@ -3000,9 +3584,16 @@ export default function PersonalizeClient({ product, template }: { product: any;
     }
   };
 
-  const handleClose = () => {
-    if (dirtyRef.current) {
-      const leave = window.confirm("Leave without saving? Your latest changes will be lost.");
+  // Closing saves first: autosave makes "leave without saving" the exception.
+  // Only a save that genuinely cannot reach the server asks before leaving,
+  // and even then the design is kept on this device.
+  const handleClose = async () => {
+    persistRecoveryNow();
+    if (saveQueue.hasPendingWork()) await saveQueue.flush();
+    if (saveQueue.hasPendingWork()) {
+      const leave = window.confirm(
+        "Your latest changes are kept on this device but have not reached your account yet. Leave anyway?",
+      );
       if (!leave) return;
     }
     router.push(exitHref);
@@ -3167,6 +3758,8 @@ export default function PersonalizeClient({ product, template }: { product: any;
       canGroup={canGroupSelection}
       canUngroup={canUngroupSelection}
       canDuplicate={canDuplicateSelection}
+      palette={allowedCustomerColors}
+      templateLayer={!selectedIsUser && selectedLayer ? (template?.layers || []).find((item: any) => item.id === selectedLayer.id) || null : null}
     />
   ) : null;
 
@@ -3216,7 +3809,11 @@ export default function PersonalizeClient({ product, template }: { product: any;
       showBleed={Boolean(template?.settings?.showBleed) && !previewMode}
       editingGroupId={editingGroupId}
       onEnterGroup={enterGroup}
-      onLayerContextMenu={(_layerId, position) => setContextMenu(position)}
+      // The workspace selects the clicked object first when it was not already
+      // selected; the menu belongs to that selection.
+      onLayerContextMenu={(layerId, position) => openContextMenu(position, undefined, selectedLayerIds.includes(layerId) ? selectionKey : layerId)}
+      // Empty artboard: the selection is cleared and the menu offers Paste here.
+      onCanvasContextMenu={(position, point) => openContextMenu(position, point, "")}
     />
   );
 
@@ -3259,7 +3856,33 @@ export default function PersonalizeClient({ product, template }: { product: any;
         onPrimary={goNext}
       />
 
-      <div className="flex min-h-0 flex-1">
+      <div className="relative flex min-h-0 flex-1">
+        {(!restoreReady || restoreError) && (
+          // Editing waits for the saved design: a change made against the bare
+          // template while it loads would be replaced by the restore, or — if
+          // the load failed — saved over the real design.
+          <div
+            data-customizer-restore-overlay
+            role="status"
+            aria-live="polite"
+            className="absolute inset-0 z-[60] flex items-center justify-center bg-[#F3F1EC]/70"
+          >
+            {restoreError ? (
+              <div className="mx-4 max-w-sm rounded-2xl bg-white px-6 py-5 text-center shadow-[0_18px_50px_rgba(48,56,57,0.16)]">
+                <p className="text-sm font-semibold text-[#303839]">{restoreError}</p>
+                <button
+                  type="button"
+                  onClick={() => setRestoreAttempt((attempt) => attempt + 1)}
+                  className="mt-4 rounded-full bg-[#303839] px-5 py-2 text-xs font-bold text-white hover:bg-[#3d4748]"
+                >
+                  Try again
+                </button>
+              </div>
+            ) : (
+              <p className="rounded-full bg-white px-4 py-2 text-xs font-semibold text-[#303839]/70 shadow-sm">Loading your design…</p>
+            )}
+          </div>
+        )}
         {step === "review" ? (
           <div className="min-h-0 flex-1 overflow-y-auto" data-customizer-protected>
             <CustomizerReviewStep
@@ -3342,10 +3965,10 @@ export default function PersonalizeClient({ product, template }: { product: any;
 
             {/* Central workspace */}
             <main className="relative flex min-h-0 min-w-0 flex-1 flex-col bg-[#F3F1EC]" data-customizer-protected>
-              {(showTextToolbar || showElementToolbar || showImageToolbar || showGridToolbar || showGroupToolbar) && (
+              {(showTextToolbar || showElementToolbar || showImageToolbar || showGridToolbar || showGroupToolbar || showMoreActions) && (
                 <div
                   data-customer-toolbar-dock
-                  className="pointer-events-none absolute inset-x-0 top-3 z-40 flex min-w-0 justify-center px-3"
+                  className="pointer-events-none absolute inset-x-0 top-3 z-40 flex min-w-0 items-center justify-center gap-2 px-3"
                 >
                   {showGroupToolbar && (
                     <CustomerGroupToolbar
@@ -3358,8 +3981,6 @@ export default function PersonalizeClient({ product, template }: { product: any;
                       onGroup={groupSelection}
                       onUngroup={ungroupSelection}
                       onEnterGroup={selectionIsGroup ? () => enterGroup(selectedLayers[0].id) : undefined}
-                      onDuplicate={canDuplicateSelection ? duplicateSelection : undefined}
-                      onDelete={canDeleteSelection ? deleteSelection : undefined}
                     />
                   )}
 
@@ -3371,10 +3992,6 @@ export default function PersonalizeClient({ product, template }: { product: any;
                       editingText={editingTextLayerId === selectedLayer.id}
                       onStyleChange={onToolbarStyleChange}
                       onEditText={onEditTextAction}
-                      onDuplicate={
-                        selectedIsUser || (selectedPermissions as any).duplicate ? duplicateSelectedLayer : undefined
-                      }
-                      onDelete={selectedIsUser ? onDeleteSelected : undefined}
                       allowedFonts={allowedCustomerFonts}
                       allowedColors={allowedCustomerColors}
                     />
@@ -3384,8 +4001,7 @@ export default function PersonalizeClient({ product, template }: { product: any;
                     <CustomerElementToolbar
                       layer={selectedLayer}
                       onPatch={(patch, group) => updateElementLayer(selectedLayer.id, patch, group)}
-                      onDuplicate={() => duplicateElementLayer(selectedLayer.id)}
-                      onDelete={() => deleteUserLayer(selectedLayer.id)}
+                      palette={allowedCustomerColors}
                     />
                   )}
 
@@ -3452,10 +4068,38 @@ export default function PersonalizeClient({ product, template }: { product: any;
                       }
                     />
                   )}
+                  {showMoreActions && (
+                    // Structural commands (copy, paste, duplicate, arrange,
+                    // group, lock, delete) live in ONE menu — the same one a
+                    // right click opens. This button is also how touch devices,
+                    // which have no right click, reach it.
+                    <button
+                      type="button"
+                      aria-label="More actions"
+                      aria-haspopup="menu"
+                      title="More actions"
+                      onClick={(event) => {
+                        const rect = event.currentTarget.getBoundingClientRect();
+                        openContextMenu({ x: rect.left, y: rect.bottom + 6 });
+                      }}
+                      className="pointer-events-auto grid h-11 w-11 shrink-0 place-items-center rounded-full border border-[#303839]/12 bg-white text-[#303839] shadow-[0_6px_24px_rgba(48,56,57,0.14)] hover:bg-[#F8F6F1] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839]"
+                    >
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+                        <circle cx="5" cy="12" r="1.8" />
+                        <circle cx="12" cy="12" r="1.8" />
+                        <circle cx="19" cy="12" r="1.8" />
+                      </svg>
+                    </button>
+                  )}
                 </div>
               )}
 
-              {(showTextToolbar || showElementToolbar || showImageToolbar || showGridToolbar) && (
+              {/* The toolbar row is reserved for the whole design step, whatever
+                  is selected. Reserving it only for SOME selection types
+                  re-centred (and in Fit, re-scaled) the canvas whenever the
+                  selection changed type — including on the very press that
+                  starts a drag, so the object jumped away from the pointer. */}
+              {!previewMode && (
                 <div data-customer-toolbar-spacer className="h-[72px] shrink-0" aria-hidden />
               )}
 

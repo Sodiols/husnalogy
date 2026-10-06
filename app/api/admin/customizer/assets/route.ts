@@ -10,6 +10,7 @@ import {
   buildRasterVariants,
   buildSvgVariants,
   inspectStoredVariant,
+  verifyStoredEditorVariant,
   variantStoragePath,
   VARIANT_GENERATION_VERSION,
   type AssetVariants,
@@ -310,6 +311,22 @@ export const POST = withAdminMutation(async function POST(request: Request) {
       return Response.json({ ok: false, error: `Upload failed: ${error.message}` }, { status: 500 });
     }
     uploadedPaths.push(item.path);
+  }
+
+  // The asset is "ready" only once its stored editor variant reads back whole
+  // and at the right size for this source.
+  const stored = await verifyStoredEditorVariant({
+    supabase,
+    bucket: ADMIN_ASSET_BUCKET,
+    storagePath: editorPath,
+    sourceWidth: width,
+    sourceHeight: height,
+    vector: sniffed.mime === "image/svg+xml",
+  });
+  if (!stored.ok) {
+    await supabase.storage.from(ADMIN_ASSET_BUCKET).remove(uploadedPaths);
+    console.error(`Customizer asset upload rejected: stored editor variant ${stored.reason} [path=${editorPath}]`);
+    return Response.json({ ok: false, error: "The optimized image could not be verified after upload. Please try again." }, { status: 500 });
   }
 
   const { data, error } = await supabase

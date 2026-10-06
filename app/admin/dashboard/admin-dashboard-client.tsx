@@ -479,7 +479,16 @@ export default function AdminDashboardClient({ basePath = "/admin/dashboard" }: 
     showNotice(`${activeLabel} filters cleared.`);
   };
 
-  const handleProductSaved = async (_product, message) => {
+  const handleProductSaved = async (_product, message, meta: { source?: string } = {}) => {
+    // A Design Studio save (draft save, or the save before a template
+    // publication) must keep the product form — and the studio inside it —
+    // mounted until its own sequence finishes. Only footer saves close it.
+    if (meta?.source === "studio") {
+      // Silent: a non-silent refresh swaps the section for a spinner, which
+      // would unmount the studio just as surely as closing the form.
+      await loadData(true);
+      return;
+    }
     setEditingProduct(null);
     setProductFormOpen(false);
     await loadData();

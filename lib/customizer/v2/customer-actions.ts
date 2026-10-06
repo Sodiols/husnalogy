@@ -1,5 +1,6 @@
 import { distributeAlongAxis, groupLayers, resolveGroupBounds, rotatedAxisHalfExtents, ungroupLayers } from "./groups";
 import { reorderLayersByDrop } from "./interaction/layer-reorder";
+import { resolveCustomerPermissions } from "./permissions";
 import {
   marqueeSelectedLayerIds,
   selectionBounds as resolveSelectionBounds,
@@ -15,6 +16,12 @@ export type AlignAction =
 export type CardSize = { width: number; height: number };
 const CARD_ONLY_ACTIONS = new Set<AlignAction>(["centerOnCardHorizontal", "centerOnCardVertical", "centerOnCard"]);
 
+// Template layers resolve through the shared permission model (the server
+// validator uses the same one), so position-locked or restricted layers are
+// never reordered or grouped client-side only to be rejected on save.
+const templateLayerMayReorder = (layer: any) =>
+  Boolean(layer.customerEditable && resolveCustomerPermissions(layer).changeLayerOrder);
+
 export function layersInsideSelection(rect: SelectionRect, layers: any[]): string[] {
   return marqueeSelectedLayerIds(
     rect,
@@ -26,7 +33,7 @@ export function arrangeLayers(layers: any[], selectedIds: string[], action: Arra
   const ids = new Set(selectedIds);
   if (!ids.size) return layers;
   const ordered = layers.slice().sort((a, b) => Number(a.zIndex || 0) - Number(b.zIndex || 0));
-  const movable = (layer: any) => ids.has(layer.id) && (layer.isUserLayer || (layer.customerEditable && layer.customerPermissions?.changeLayerOrder !== false)) && !layer.customerInteractionDisabled;
+  const movable = (layer: any) => ids.has(layer.id) && (layer.isUserLayer || templateLayerMayReorder(layer)) && !layer.customerInteractionDisabled;
   const protectedLayer = (layer: any) => !ids.has(layer.id) && (!layer.customerEditable || layer.customerInteractionDisabled);
 
   if (action === "bringForward") {
@@ -68,7 +75,7 @@ export function reorderLayerByDrop(layers: any[], sourceId: string, targetId: st
   return reorderLayersByDrop(layers, sourceId, targetId, {
     canMove: (layer) =>
       Boolean(
-        (layer.isUserLayer || (layer.customerEditable && layer.customerPermissions?.changeLayerOrder !== false)) &&
+        (layer.isUserLayer || templateLayerMayReorder(layer)) &&
           !layer.customerInteractionDisabled,
       ),
     canCross: (layer) =>
@@ -78,7 +85,7 @@ export function reorderLayerByDrop(layers: any[], sourceId: string, targetId: st
 
 export function groupCustomerLayers(layers: any[], selectedIds: string[], groupId: string): any[] {
   const selected = layers.filter((layer) => selectedIds.includes(layer.id));
-  if (selected.length < 2 || selected.some((layer) => !layer.isUserLayer && !layer.customerPermissions?.group)) return layers;
+  if (selected.length < 2 || selected.some((layer) => !layer.isUserLayer && !resolveCustomerPermissions(layer).group)) return layers;
   return groupLayers(layers, selectedIds, groupId, "Customer group").map((layer) => layer.id === groupId ? { ...layer, isUserLayer: true, customerEditable: true, allowCustomerUngroup: true } : layer);
 }
 

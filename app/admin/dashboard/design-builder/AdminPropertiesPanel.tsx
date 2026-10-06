@@ -3,18 +3,43 @@
 // The selected layer's content, styling, and customer-facing template settings.
 // Transform geometry remains available on the canvas rather than in this panel.
 
+import PaintControl from "@/app/components/customizer/PaintControl";
 import { useRef, useState } from "react";
-import { getConnectedField, uploadBuilderImage } from "./builder-utils";
-import { customerEditablePermissionBundle } from "@/lib/customizer";
+import { getConnectedField, uploadBuilderImage, type BuilderAsset } from "./builder-utils";
+import { customerEditablePermissionBundle, isFieldCompatibleWithLayer } from "@/lib/customizer";
 import EditableNumericStepper from "@/app/components/customizer/EditableNumericStepper";
-import { getTextAutoSizeMode } from "@/lib/customizer/v2/text-layout";
+import { effectiveTextGrowth, getTextAutoSizeMode } from "@/lib/customizer/v2/text-layout";
+import TextGrowthControl from "@/app/components/customizer/TextGrowthControl";
 import {
   countTextLines,
   insertTextNewline,
   resolveTextEditorKeyAction,
 } from "@/lib/customizer/v2/text-editing";
+import { isSvgElement } from "@/lib/customizer/v2/element-colour";
+import { useFamilyCapabilities, useSelectableFamilies } from "@/app/components/customizer/useGoogleFonts";
+import {
+  LETTER_SPACING_RULES,
+  LINE_HEIGHT_RULES,
+  TEXT_TOOLBAR_DEFAULTS,
+  nearestSupportedWeight,
+  resolveWeightOptions,
+} from "@/lib/customizer/v2/text-toolbar";
 
 const controlClass = "h-11 w-full rounded-xl border border-[#303839]/12 bg-white px-3 text-sm text-[#303839] outline-none transition-colors hover:border-[#303839]/25 focus:border-[#303839]/60 focus:ring-2 focus:ring-[#303839]/15";
+
+/**
+ * The preset the Mask shape select shows. A stored mask object is what every
+ * renderer draws, so it wins over the legacy name; a clipping mask's polygon
+ * has no preset and shows as "custom".
+ */
+function maskSelectValue(layer: any): string {
+  const kind = layer?.mask && typeof layer.mask === "object" ? String(layer.mask.kind || "") : "";
+  if (!kind) return layer?.maskShape || "rectangle";
+  if (kind === "polygon" || kind === "path") return "custom";
+  if (kind === "arch") return "arch-full";
+  if (kind === "arch-top") return "arch";
+  return kind;
+}
 
 function Lbl({ children }: any) {
   return <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-[0.1em] text-[#303839]/55">{children}</span>;
@@ -56,14 +81,62 @@ function Sel({ value, onChange, options, ariaLabel }: any) {
     </span>
   );
 }
-function Check({ checked, onChange, label }: any) {
+function Check({ checked, onChange, label, disabled = false }: any) {
   return (
-    <label className="flex min-h-9 cursor-pointer items-center gap-2.5 text-xs font-semibold text-[#303839]/75">
-      <input type="checkbox" checked={Boolean(checked)} onChange={(e) => onChange(e.target.checked)} className="h-[18px] w-[18px] accent-[#303839]" />
+    <label className={`flex min-h-9 items-center gap-2.5 text-xs font-semibold text-[#303839]/75 ${disabled ? "cursor-not-allowed opacity-60" : "cursor-pointer"}`}>
+      <input type="checkbox" checked={Boolean(checked)} disabled={disabled} onChange={(e) => onChange(e.target.checked)} className="h-[18px] w-[18px] accent-[#303839]" />
       {label}
     </label>
   );
 }
+/**
+ * Weight, letter spacing and line height. The selection toolbar carries the
+ * everyday text controls; these finer ones live here. Weights come from the
+ * family's real Google Fonts cuts, so a weight the font cannot draw is never
+ * offered.
+ */
+function TextSpacingFields({ layer, style, onStylePatch }: { layer: any; style: any; onStylePatch: (id: string, patch: any) => void }) {
+  const { families } = useSelectableFamilies();
+  const family = String(style.fontFamily || TEXT_TOOLBAR_DEFAULTS.fontFamily);
+  const capabilities = useFamilyCapabilities(family, families);
+  const weight = nearestSupportedWeight(capabilities.weights, style.fontWeight || TEXT_TOOLBAR_DEFAULTS.fontWeight);
+  return (
+    <div className="grid grid-cols-3 gap-2">
+      <div>
+        <Lbl>Weight</Lbl>
+        <Sel
+          ariaLabel="Font weight"
+          value={weight}
+          onChange={(fontWeight: string) => onStylePatch(layer.id, { fontWeight })}
+          options={resolveWeightOptions(capabilities.weights).filter((option) => !option.disabled).map((option) => ({ value: option.value, label: option.label }))}
+        />
+      </div>
+      <div>
+        <Lbl>Letter spacing</Lbl>
+        <Num
+          ariaLabel="Letter spacing"
+          value={style.letterSpacing ?? TEXT_TOOLBAR_DEFAULTS.letterSpacing}
+          min={LETTER_SPACING_RULES.minimum}
+          max={LETTER_SPACING_RULES.maximum}
+          step={LETTER_SPACING_RULES.step}
+          onChange={(letterSpacing: number) => onStylePatch(layer.id, { letterSpacing })}
+        />
+      </div>
+      <div>
+        <Lbl>Line height</Lbl>
+        <Num
+          ariaLabel="Line height"
+          value={style.lineHeight ?? TEXT_TOOLBAR_DEFAULTS.lineHeight}
+          min={LINE_HEIGHT_RULES.minimum}
+          max={LINE_HEIGHT_RULES.maximum}
+          step={LINE_HEIGHT_RULES.step}
+          onChange={(lineHeight: number) => onStylePatch(layer.id, { lineHeight })}
+        />
+      </div>
+    </div>
+  );
+}
+
 function Section({ title, children, subtle = false, collapsible = false, defaultOpen = true }: any) {
   const surface = `py-1 ${subtle ? "rounded-xl bg-[#F8F6F1] px-3.5 py-3" : ""}`;
   if (collapsible) {
@@ -85,7 +158,7 @@ function Section({ title, children, subtle = false, collapsible = false, default
   );
 }
 
-function ImageSrcControl({ layer, onLayerPatch }: any) {
+function ImageSrcControl({ layer, onLayerPatch, onReplaceImage }: { layer: any; onLayerPatch: (id: string, patch: any) => void; onReplaceImage: (id: string, asset: BuilderAsset) => void }) {
   const [busy, setBusy] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const handle = async (file?: File) => {
@@ -93,16 +166,7 @@ function ImageSrcControl({ layer, onLayerPatch }: any) {
     setBusy(true);
     try {
       const asset = await uploadBuilderImage(file, layer.type === "frame" ? "frame" : "image");
-      if (asset.url) onLayerPatch(layer.id, {
-        src: asset.editorUrl || asset.url,
-        assetId: asset.id,
-        bucket: asset.bucket,
-        path: asset.originalPath,
-        originalPath: asset.originalPath,
-        editorPath: asset.editorPath,
-        thumbnailPath: asset.thumbnailPath,
-        originalFilename: asset.originalFilename,
-      });
+      if (asset.url) onReplaceImage(layer.id, asset);
     } finally {
       setBusy(false);
     }
@@ -278,7 +342,9 @@ export default function AdminPropertiesPanel({
   onStylePatch,
   onFieldPatch,
   onLinkField,
+  onUnlinkField,
   onToggleCustomerEditable,
+  onReplaceImage,
 }: any) {
   // Declared before the early return so the hook order stays stable.
   const [inspectorTab, setInspectorTab] = useState("design");
@@ -385,6 +451,14 @@ export default function AdminPropertiesPanel({
             <Lbl>Font size</Lbl>
             <Num ariaLabel="Font size" value={style.fontSize ?? 48} min={4} max={500} onChange={(fontSize: number) => onStylePatch(layer.id, { fontSize })} />
           </div>
+          <TextSpacingFields layer={layer} style={style} onStylePatch={onStylePatch} />
+          <div>
+            <Lbl>Text growth</Lbl>
+            <TextGrowthControl
+              value={effectiveTextGrowth(style, layer.text)}
+              onChange={(growthDirection) => onStylePatch(layer.id, { growthDirection })}
+            />
+          </div>
           <div className="grid grid-cols-2 gap-2">
             <div>
               <Lbl>Text sizing</Lbl>
@@ -421,15 +495,17 @@ export default function AdminPropertiesPanel({
 
       {inspectorTab === "design" && (layer.type === "image" || layer.type === "frame") && (
         <Section title="Image / photo area">
-          <ImageSrcControl layer={layer} onLayerPatch={onLayerPatch} />
+          <ImageSrcControl layer={layer} onLayerPatch={onLayerPatch} onReplaceImage={onReplaceImage} />
           <PlaceholderImageControl layer={layer} onLayerPatch={onLayerPatch} />
           <div className="grid grid-cols-2 gap-2">
             <div>
               <Lbl>Mask shape</Lbl>
               <Sel
                 ariaLabel="Mask shape"
-                value={layer.maskShape}
-                onChange={(v: string) => onLayerPatch(layer.id, { maskShape: v })}
+                value={maskSelectValue(layer)}
+                // A preset replaces any stored mask object, which would otherwise
+                // keep drawing over the chosen preset.
+                onChange={(v: string) => v !== "custom" && onLayerPatch(layer.id, { maskShape: v, mask: undefined })}
                 options={[
                   { value: "rectangle", label: "Rectangle" },
                   { value: "rounded", label: "Rounded rectangle" },
@@ -438,6 +514,7 @@ export default function AdminPropertiesPanel({
                   { value: "arch", label: "Arch (top)" },
                   { value: "arch-bottom", label: "Arch (bottom)" },
                   { value: "arch-full", label: "Arch (both ends)" },
+                  ...(maskSelectValue(layer) === "custom" ? [{ value: "custom", label: "Clipping shape" }] : []),
                 ]}
               />
             </div>
@@ -512,12 +589,16 @@ export default function AdminPropertiesPanel({
             <label><Lbl>Background</Lbl><input type="color" value={layer.backgroundColor || "#F8F6F1"} onChange={(event) => onLayerPatch(layer.id, { backgroundColor: event.target.value })} className="h-10 w-full rounded-lg border border-[#303839]/15" /></label>
             <label><Lbl>Border</Lbl><input type="color" value={layer.borderColor || "#303839"} onChange={(event) => onLayerPatch(layer.id, { borderColor: event.target.value })} className="h-10 w-full rounded-lg border border-[#303839]/15" /></label>
           </div>
+          {/* Stored as explicit move/resize/rotate:false restrictions, which
+              survive save and publication; photo replacement and cropping
+              stay governed by the remaining permissions and the slots. */}
           <Check
             checked={layer.customerEditable && ["move", "resize", "rotate"].every((key) => layer.customerPermissions?.[key] === false)}
+            disabled={!layer.customerEditable}
             onChange={(fixed: boolean) => onLayerPatch(layer.id, {
               customerPermissions: { ...(layer.customerPermissions || customerEditablePermissionBundle(true)), move: !fixed, resize: !fixed, rotate: !fixed },
             })}
-            label="Keep grid position fixed for customers"
+            label={layer.customerEditable ? "Keep grid position fixed for customers" : "Keep grid position fixed (turn on Customer editable first)"}
           />
           <div className="grid gap-1.5 border-t border-[#303839]/10 pt-2">
             <p className="text-[10px] font-extrabold uppercase tracking-[0.12em] text-[#303839]/45">Slots</p>
@@ -530,15 +611,17 @@ export default function AdminPropertiesPanel({
 
       {inspectorTab === "design" && layer.type === "shape" && (
         <Section title={layer.shape === "line" ? "Line" : "Shape"}>
-          {layer.shape !== "line" && <div className="grid grid-cols-2 gap-2">
-            <label><Lbl>Fill</Lbl><input type="color" value={layer.fill || "#F8F6F1"} onChange={(event) => onLayerPatch(layer.id, { fill: event.target.value })} className="h-10 w-full rounded-lg border border-[#303839]/15" /></label>
-            <label><Lbl>Border</Lbl><input type="color" value={layer.stroke || "#303839"} onChange={(event) => onLayerPatch(layer.id, { stroke: event.target.value })} className="h-10 w-full rounded-lg border border-[#303839]/15" /></label>
-            <div><Lbl>Border width</Lbl><CarouselStepper ariaLabel="Shape border width" value={layer.strokeWidth || 0} min={0} max={100} onChange={(value: number) => onLayerPatch(layer.id, { strokeWidth: value })} /></div>
-            <div><Lbl>Corner radius</Lbl><CarouselStepper ariaLabel="Shape corner radius" value={layer.borderRadius || 0} min={0} max={500} onChange={(value: number) => onLayerPatch(layer.id, { borderRadius: value })} /></div>
+          {layer.shape !== "line" && <div className="grid gap-2">
+            <PaintControl label="Fill Colour" value={layer.fill} fallbackColour="#f8f6f1" onChange={(fill) => onLayerPatch(layer.id, { fill })} />
+            <PaintControl label="Line Colour" value={layer.stroke} fallbackColour="#303839" onChange={(stroke) => onLayerPatch(layer.id, { stroke })} />
+            <div className="grid grid-cols-2 gap-2">
+              <div><Lbl>Line Weight</Lbl><CarouselStepper ariaLabel="Shape line weight" value={layer.strokeWidth || 0} min={0} max={100} onChange={(value: number) => onLayerPatch(layer.id, { strokeWidth: value })} /></div>
+              <div><Lbl>Corner radius</Lbl><CarouselStepper ariaLabel="Shape corner radius" value={layer.borderRadius || 0} min={0} max={500} onChange={(value: number) => onLayerPatch(layer.id, { borderRadius: value })} /></div>
+            </div>
           </div>}
-          {layer.shape === "line" && <div className="grid grid-cols-2 gap-2">
-            <label><Lbl>Colour</Lbl><input type="color" value={layer.stroke || "#303839"} onChange={(event) => onLayerPatch(layer.id, { stroke: event.target.value })} className="h-10 w-full rounded-lg border border-[#303839]/15" /></label>
-            <div><Lbl>Thickness</Lbl><CarouselStepper ariaLabel="Line thickness" value={layer.strokeWidth || 4} min={1} max={100} onChange={(value: number) => onLayerPatch(layer.id, { strokeWidth: value })} /></div>
+          {layer.shape === "line" && <PaintControl label="Line Colour" value={layer.stroke || layer.fill} fallbackColour="#303839" onChange={(stroke) => onLayerPatch(layer.id, { stroke })} />}
+          {layer.shape === "line" && <div className="mt-2 grid grid-cols-2 gap-2">
+            <div><Lbl>Line Weight</Lbl><CarouselStepper ariaLabel="Line weight" value={layer.strokeWidth || 4} min={1} max={100} onChange={(value: number) => onLayerPatch(layer.id, { strokeWidth: value })} /></div>
             <div><Lbl>Style</Lbl><Sel ariaLabel="Line style" value={layer.lineStyle || "solid"} onChange={(value: string) => onLayerPatch(layer.id, { lineStyle: value })} options={[{ value: "solid", label: "Solid" }, { value: "dashed", label: "Dashed" }, { value: "dotted", label: "Dotted" }]} /></div>
             <div><Lbl>Caps</Lbl><Sel ariaLabel="Line caps" value={layer.lineCap || "round"} onChange={(value: string) => onLayerPatch(layer.id, { lineCap: value })} options={[{ value: "butt", label: "Flat" }, { value: "round", label: "Round" }, { value: "square", label: "Square" }]} /></div>
             <div><Lbl>Start</Lbl><Sel ariaLabel="Line start cap" value={layer.lineStartCap || "none"} onChange={(value: string) => onLayerPatch(layer.id, { lineStartCap: value })} options={[{ value: "none", label: "None" }, { value: "circle", label: "Circle" }, { value: "arrow", label: "Arrow" }]} /></div>
@@ -549,7 +632,27 @@ export default function AdminPropertiesPanel({
 
       {inspectorTab === "design" && layer.type === "element" && (
         <Section title="Element">
-          <label><Lbl>Colour tint</Lbl><input type="color" value={layer.tintColor || "#303839"} onChange={(event) => onLayerPatch(layer.id, { tintColor: event.target.value })} className="h-10 w-full rounded-lg border border-[#303839]/15" /></label>
+          {/* Any SVG can be recoloured (multicolour artwork becomes the chosen
+              colour); Original shows the artwork's own colours. A raster image
+              would turn into a solid silhouette, so — exactly as in the
+              customer editor — it is offered only for SVGs, or to take an
+              existing tint back to Original. */}
+          {(isSvgElement(layer) || Boolean(layer.tintColor)) && (
+          <div role="group" aria-label="Element colour">
+            <Lbl>Colour</Lbl>
+            <div className="flex items-center gap-2">
+              <input type="color" aria-label="Element colour" value={layer.tintColor || "#303839"} onChange={(event) => onLayerPatch(layer.id, { tintColor: event.target.value })} className="h-10 min-w-0 flex-1 rounded-lg border border-[#303839]/15" />
+              <button
+                type="button"
+                aria-pressed={!layer.tintColor}
+                onClick={() => onLayerPatch(layer.id, { tintColor: "" })}
+                className={`h-10 shrink-0 rounded-lg border px-3 text-xs font-bold transition ${!layer.tintColor ? "border-[#303839] bg-[#303839] text-white" : "border-[#303839]/15 text-[#303839] hover:bg-[#F8F6F1]"}`}
+              >
+                Original
+              </button>
+            </div>
+          </div>
+          )}
           <div className="flex gap-3"><Check checked={Boolean(layer.flipX)} onChange={(value: boolean) => onLayerPatch(layer.id, { flipX: value })} label="Flip horizontal" /><Check checked={Boolean(layer.flipY)} onChange={(value: boolean) => onLayerPatch(layer.id, { flipY: value })} label="Flip vertical" /></div>
         </Section>
       )}
@@ -570,7 +673,7 @@ export default function AdminPropertiesPanel({
       {inspectorTab === "design" && layer.type === "background" && (
         <Section title="Background">
           <label><Lbl>Background colour</Lbl><input type="color" value={layer.color || "#ffffff"} onChange={(event) => onLayerPatch(layer.id, { color: event.target.value })} className="h-10 w-full rounded-lg border border-[#303839]/15" /></label>
-          <ImageSrcControl layer={layer} onLayerPatch={onLayerPatch} />
+          <ImageSrcControl layer={layer} onLayerPatch={onLayerPatch} onReplaceImage={onReplaceImage} />
           <div><Lbl>Image fit</Lbl><Sel ariaLabel="Background image fit" value={layer.fitMode || "cover"} onChange={(value: string) => onLayerPatch(layer.id, { fitMode: value })} options={[{ value: "cover", label: "Cover" }, { value: "contain", label: "Contain" }]} /></div>
         </Section>
       )}
@@ -599,28 +702,50 @@ export default function AdminPropertiesPanel({
               {(() => {
                 // Linked wedding fields (spec §15): e.g. the couple's names
                 // repeated on Front and Back should update together. This
-                // links this layer to an EXISTING field instead of renaming
-                // its own - typing an existing key above only auto-suffixes
-                // to avoid a collision, it can never point at another field.
-                const compatible = (template?.fields || []).filter(
-                  (f: any) => f.id !== field.id && (f.type === "image") === (field.type === "image"),
+                // links this layer to an EXISTING compatible field (text with
+                // text, photo with photo). Renaming the key above renames the
+                // shared field for every linked layer; it never links.
+                const linkedLayers = (template?.layers || []).filter(
+                  (other: any) => other.id !== layer.id && other.fieldId === field.id,
                 );
-                if (!compatible.length) return null;
+                const compatible = (template?.fields || []).filter(
+                  (f: any) => f.id !== field.id && isFieldCompatibleWithLayer(f, layer),
+                );
+                if (!compatible.length && !linkedLayers.length) return null;
                 return (
                   <div>
-                    <Lbl>Link to another field</Lbl>
-                    <Sel
-                      ariaLabel="Link to another field"
-                      value=""
-                      onChange={(value: string) => value && onLinkField(layer.id, value)}
-                      options={[
-                        { value: "", label: "— Use own field —" },
-                        ...compatible.map((f: any) => ({ value: f.id, label: f.label || f.id })),
-                      ]}
-                    />
-                    <p className="mt-1 text-[11px] leading-relaxed text-[#303839]/45">
-                      Sharing a field means the customer edits it once and every linked layer updates together.
-                    </p>
+                    {linkedLayers.length > 0 && (
+                      <div className="mb-2 rounded-md border border-[#303839]/12 bg-[#F8F6F1] p-2 text-[11px] leading-relaxed text-[#303839]/70">
+                        <p className="font-bold text-[#303839]">
+                          Shared with {linkedLayers.length} other layer{linkedLayers.length === 1 ? "" : "s"}
+                        </p>
+                        <p>{linkedLayers.map((other: any) => `${other.name || other.id} (${other.page})`).join(", ")}</p>
+                        <button
+                          type="button"
+                          onClick={() => onUnlinkField?.(layer.id)}
+                          className="mt-1 font-bold underline underline-offset-2"
+                        >
+                          Unlink — give this layer its own field
+                        </button>
+                      </div>
+                    )}
+                    {compatible.length > 0 && (
+                      <>
+                        <Lbl>Link to another field</Lbl>
+                        <Sel
+                          ariaLabel="Link to another field"
+                          value=""
+                          onChange={(value: string) => value && onLinkField(layer.id, value)}
+                          options={[
+                            { value: "", label: "— Choose a field to share —" },
+                            ...compatible.map((f: any) => ({ value: f.id, label: f.label || f.id })),
+                          ]}
+                        />
+                        <p className="mt-1 text-[11px] leading-relaxed text-[#303839]/45">
+                          Sharing a field means the customer edits it once and every linked layer updates together.
+                        </p>
+                      </>
+                    )}
                   </div>
                 );
               })()}
@@ -657,7 +782,15 @@ export default function AdminPropertiesPanel({
                 </div>
               )}
               <div><Lbl>Helper text</Lbl><Txt value={field.helpText} onChange={(v: string) => onFieldPatch(layer.id, { helpText: v })} /></div>
-              <Check checked={field.required} onChange={(v: boolean) => onFieldPatch(layer.id, { required: v })} label={layer.type === "image" ? "Photo required" : "Required field"} />
+              <Check checked={field.customerVisible !== false} onChange={(v: boolean) => onFieldPatch(layer.id, { customerVisible: v })} label="Visible to customers" />
+              {/* A field customers cannot see is never required (see
+                  isCustomerFieldRequired), so the control says so. */}
+              <Check
+                checked={Boolean(field.required) && field.customerVisible !== false}
+                disabled={field.customerVisible === false}
+                onChange={(v: boolean) => onFieldPatch(layer.id, { required: v })}
+                label={field.customerVisible === false ? "Optional while hidden from customers" : layer.type === "image" ? "Photo required" : "Required field"}
+              />
             </div>
           )}
         </Section>

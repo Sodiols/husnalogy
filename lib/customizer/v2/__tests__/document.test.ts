@@ -71,13 +71,15 @@ describe("V1 → V2 document migration", () => {
     expect(document.layers).toHaveLength(3);
   });
 
-  it("maps customerEditable into the complete permission model", () => {
+  it("maps customerEditable into the complete permission model, honouring legacy image flags", () => {
     const { document } = templateToDocument(legacyTemplate);
     const photo = document.layers.find((l) => l.id === "photo_layer") as ImageLayer;
     expect(photo.customerPermissions.replaceImage).toBe(true);
-    expect(photo.customerPermissions.zoomImage).toBe(true);
+    // The fixture's legacy allowZoom:false is reconciled, not discarded: zoom
+    // is denied and so is the crop umbrella that would re-grant it.
+    expect(photo.customerPermissions.zoomImage).toBe(false);
+    expect(photo.customerPermissions.cropImage).toBe(false);
     expect(photo.customerPermissions.repositionImage).toBe(true);
-    expect(photo.customerPermissions.cropImage).toBe(true);
     expect(photo.customerPermissions.move).toBe(true);
     expect(photo.customerPermissions.select).toBe(true);
 

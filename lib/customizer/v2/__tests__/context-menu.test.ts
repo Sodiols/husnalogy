@@ -18,6 +18,23 @@ const ids = (capabilities: ContextMenuCapabilities) =>
   flattenContextMenu(buildCustomerContextMenu(capabilities)).map((item) => item.id);
 
 describe("buildCustomerContextMenu", () => {
+  it("offers Match width / height / size only where the studio enables it, for two or more objects", () => {
+    expect(ids({ selectionCount: 2, canMatchSize: true })).toEqual(["matchWidth", "matchHeight", "matchSize"]);
+    expect(ids({ selectionCount: 1, canMatchSize: true })).toEqual([]);
+    // The customer editor never passes the capability, so customers never see it.
+    expect(ids({ selectionCount: 2, canCopy: true })).not.toContain("matchSize");
+  });
+
+  it("offers Copy and Paste beside Duplicate, with their shortcuts", () => {
+    const menu = buildCustomerContextMenu({ selectionCount: 1, primaryType: "shape", canCopy: true, canPaste: true, canDuplicate: true, canDelete: true });
+    expect(menu[0].map((item) => [item.id, item.shortcut])).toEqual([["copy", "Mod+C"], ["paste", "Mod+V"], ["duplicate", "Mod+D"]]);
+  });
+
+  it("on empty artboard, offers only Paste here — and only when something was copied", () => {
+    expect(buildCustomerContextMenu({ selectionCount: 0, canPaste: true })).toEqual([[{ id: "paste", label: "Paste here", shortcut: "Mod+V" }]]);
+    expect(buildCustomerContextMenu({ selectionCount: 0, canPaste: false })).toEqual([]);
+  });
+
   it("offers nothing when there is no selection", () => {
     expect(buildCustomerContextMenu({ selectionCount: 0 })).toEqual([]);
     expect(buildCustomerContextMenu({ selectionCount: 0, canDuplicate: true })).toEqual([]);
@@ -150,8 +167,9 @@ describe("canvas wiring", () => {
     expect(stageSource).toContain("if (!selection.includes(node.id)) onSelectionChange([node.id]);");
   });
 
-  it("closes when the page, selection or preview state changes", () => {
-    expect(personalizeSource).toContain("}, [activePage, selectedLayerIds, previewMode]);");
+  it("closes when the page or preview changes, or the selection changes after it opened", () => {
+    expect(personalizeSource).toContain("current && current.selectionKey !== selectionKey ? null : current");
+    expect(personalizeSource).toContain("}, [activePage, previewMode]);");
   });
 
   it("renders nothing when no action is permitted", () => {
@@ -196,5 +214,16 @@ describe("formatShortcut", () => {
   it("passes plain keys through and tolerates nothing", () => {
     expect(formatShortcut("Enter")).toBe("Enter");
     expect(formatShortcut(undefined)).toBe("");
+  });
+});
+
+describe("Clipping mask", () => {
+  const ids = (capabilities: Parameters<typeof buildCustomerContextMenu>[0]) => buildCustomerContextMenu(capabilities).flat().map((item) => item.id);
+
+  it("is offered only for exactly two objects the editor says can be clipped", () => {
+    expect(ids({ selectionCount: 2, canClipMask: true, canGroup: true })).toEqual(["group", "clipMask"]);
+    expect(ids({ selectionCount: 2, canClipMask: false })).not.toContain("clipMask");
+    expect(ids({ selectionCount: 3, canClipMask: true })).not.toContain("clipMask");
+    expect(ids({ selectionCount: 1, canClipMask: true })).not.toContain("clipMask");
   });
 });

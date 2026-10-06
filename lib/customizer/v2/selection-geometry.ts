@@ -206,6 +206,8 @@ export function resolveLayerSelectionGeometry(
       verticalAlign: style.verticalAlign || "middle",
       autoSizeMode: style.autoSizeMode,
       fitMode: style.fitMode,
+      rotation: Number(layer.rotation) || 0,
+      growthDirection: style.growthDirection,
     },
     options.measure,
     options.safeBounds,

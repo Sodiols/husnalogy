@@ -1,11 +1,21 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import GoogleFontMultiSelect from "@/app/components/customizer/GoogleFontMultiSelect";
 import { CUSTOMIZER_FEATURE_FLAGS } from "@/lib/customizer/v2/feature-flags";
 import { PRODUCTION_RENDER_LIMITS } from "@/lib/customizer/production-limits";
 import { GRID_PRESETS } from "@/lib/customizer/v2/grids";
 import EditableNumericStepper from "@/app/components/customizer/EditableNumericStepper";
+import {
+  CARD_SIZE_PRESETS,
+  artboardOf,
+  changeTemplateOrientation,
+  orientationOf,
+  canvasPixelsFor,
+  isArtboardConsistent,
+  matchCardSizePreset,
+  resizeTemplateArtboard,
+} from "@/lib/customizer/v2/artboard";
 
 // Template Settings tab (Section 33): identity, canvas, guides, customer
 // abilities, protection, and admin-only notes. Everything is stored on the
@@ -64,8 +74,37 @@ export default function AdminTemplateSettings({ template, onChange, productName,
   const enabledPages = (t.pages || []).filter((p: any) => p.enabled !== false);
   const [dbFlags, setDbFlags] = useState<Record<string, boolean> | null>(null);
   const [flagStatus, setFlagStatus] = useState<"idle" | "loading" | "saving" | "saved" | "error">("idle");
+  const [flagError, setFlagError] = useState("");
+  // Feature flags save to their own database table, separately from the
+  // template draft. Responses can arrive out of order, so:
+  //  - each flag's requests are numbered and only the NEWEST may change what
+  //    the toggle shows (a slow earlier response can never overwrite it);
+  //  - the last value the database CONFIRMED is remembered, and a failed save
+  //    reverts the toggle to it instead of leaving an unsaved "on";
+  //  - template writes use the latest template, never the render that started
+  //    the request.
+  const templateRef = useRef(t);
+  templateRef.current = t;
+  const confirmedFlagsRef = useRef<Record<string, boolean>>({});
+  const flagRequestSeqRef = useRef<Record<string, number>>({});
+  const pendingFlagSavesRef = useRef(0);
+  const failedFlagsRef = useRef<Set<string>>(new Set());
 
   const patch = (updates: any) => onChange({ ...t, ...updates });
+  // Size changes never go field by field: inches, DPI and pixels move together
+  // and the design is carried across in ONE change (one undo step).
+  const board = artboardOf(t);
+  const sizePreset = matchCardSizePreset(board);
+  const artboardConsistent = isArtboardConsistent(t);
+  const orientation = orientationOf(board);
+  const resize = (target: Partial<{ widthIn: number; heightIn: number; dpi: number }>) =>
+    onChange(
+      resizeTemplateArtboard(t, {
+        widthIn: target.widthIn ?? board.widthIn,
+        heightIn: target.heightIn ?? board.heightIn,
+        dpi: target.dpi ?? board.dpi,
+      }).template,
+    );
   const patchSettings = (updates: any) => patch({ settings: { ...settings, ...updates } });
 
   useEffect(() => {
@@ -81,17 +120,38 @@ export default function AdminTemplateSettings({ template, onChange, productName,
           const globalRow = (payload.flags || []).find((row: any) => row.flag === flag && row.scope === "global");
           next[flag] = Boolean(productRow ? productRow.enabled : globalRow?.enabled);
         }
+        confirmedFlagsRef.current = { ...next };
         setDbFlags(next);
         setFlagStatus("idle");
       })
-      .catch(() => setFlagStatus("error"));
+      .catch(() => {
+        setFlagStatus("error");
+        setFlagError("Database flags could not be loaded. Toggles show the template copy only.");
+      });
   }, [productId]);
 
+  const setTemplateFlag = (flag: string, enabled: boolean | undefined) => {
+    const latest = templateRef.current || {};
+    const latestSettings = latest.settings || {};
+    const featureFlags = { ...(latestSettings.featureFlags || {}) };
+    if (enabled === undefined) delete featureFlags[flag];
+    else featureFlags[flag] = enabled;
+    onChange({ ...latest, settings: { ...latestSettings, featureFlags } });
+  };
+
   const updateFlag = async (flag: string, enabled: boolean) => {
-    patchSettings({ featureFlags: { ...(settings.featureFlags || {}), [flag]: enabled } });
-    setDbFlags((current) => ({ ...(current || settings.featureFlags || {}), [flag]: enabled }));
+    const previousTemplateValue = templateRef.current?.settings?.featureFlags?.[flag];
+    setTemplateFlag(flag, enabled);
+    setDbFlags((current) => ({ ...(current || templateRef.current?.settings?.featureFlags || {}), [flag]: enabled }));
     if (!productId) return;
+
+    const seq = (flagRequestSeqRef.current[flag] || 0) + 1;
+    flagRequestSeqRef.current[flag] = seq;
+    pendingFlagSavesRef.current += 1;
     setFlagStatus("saving");
+    setFlagError("");
+    let ok = false;
+    let reason = "";
     try {
       const response = await fetch(`/api/admin/customizer/feature-flags/${encodeURIComponent(productId)}`, {
         method: "PUT",
@@ -100,9 +160,34 @@ export default function AdminTemplateSettings({ template, onChange, productName,
       });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok || payload.ok === false) throw new Error(payload.error || "Could not save flag.");
-      setFlagStatus("saved");
-    } catch {
-      setFlagStatus("error");
+      ok = true;
+    } catch (error: any) {
+      reason = String(error?.message || "Could not save flag.");
+    } finally {
+      pendingFlagSavesRef.current -= 1;
+    }
+
+    const newest = flagRequestSeqRef.current[flag] === seq;
+    if (ok) {
+      // The database confirmed THIS value; only the newest request decides
+      // what the toggle shows.
+      if (newest) {
+        confirmedFlagsRef.current = { ...confirmedFlagsRef.current, [flag]: enabled };
+        failedFlagsRef.current.delete(flag);
+      }
+    } else if (newest) {
+      failedFlagsRef.current.add(flag);
+      // Revert to what the database last confirmed — never leave a toggle on
+      // that was not saved.
+      const confirmed = confirmedFlagsRef.current[flag];
+      setDbFlags((current) => ({ ...(current || {}), [flag]: Boolean(confirmed) }));
+      if (templateRef.current?.settings?.featureFlags?.[flag] === enabled) setTemplateFlag(flag, previousTemplateValue);
+      setFlagError(`"${flag}" was not saved: ${reason}`);
+    }
+    if (pendingFlagSavesRef.current === 0) {
+      const failed = failedFlagsRef.current.size > 0;
+      setFlagStatus(failed ? "error" : "saved");
+      if (!failed) setFlagError("");
     }
   };
 
@@ -142,7 +227,8 @@ export default function AdminTemplateSettings({ template, onChange, productName,
           <div className="flex items-center justify-between gap-3"><h4 className="font-display text-xl text-[#303839]">Staged V2 features</h4><span className={`h-2.5 w-2.5 rounded-full ${flagStatus === "error" ? "bg-red-500" : flagStatus === "saving" || flagStatus === "loading" ? "animate-pulse bg-[#D4AF37]" : flagStatus === "saved" ? "bg-emerald-500" : "bg-[#303839]/20"}`} aria-label={`Feature flags ${flagStatus}`} /></div>
           <p className="mt-1 text-xs leading-5 text-[#303839]/50">Database-authoritative product overrides. Template JSON is retained only for backward compatibility.</p>
           {!productId && <p className="mt-2 rounded-lg bg-[#F8F6F1] px-3 py-2 text-xs font-semibold text-[#303839]/65">Save this product first to create database feature flags.</p>}
-          {flagStatus === "error" && <p className="mt-2 text-xs font-bold text-red-700">Database flags could not be synchronized.</p>}
+          {flagStatus === "saving" && <p className="mt-2 text-xs font-semibold text-[#303839]/60" role="status">Saving feature flags…</p>}
+          {flagError && <p className="mt-2 text-xs font-bold text-red-700" role="alert">{flagError}</p>}
         </div>
         {[
           ["customizer_v2", "Customizer V2"],
@@ -175,18 +261,73 @@ export default function AdminTemplateSettings({ template, onChange, productName,
 
       <section className="grid gap-4 rounded-xl border border-[#303839]/12 bg-white p-4 shadow-[0_12px_30px_rgba(48,56,57,0.04)] md:p-5 xl:row-span-2">
         <h4 className="font-display text-xl text-[#303839]">Canvas</h4>
+        {!artboardConsistent && (
+          <div role="alert" className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-900">
+            <span>
+              The canvas ({board.widthPx} × {board.heightPx} px) does not match the printed size ({board.widthIn} × {board.heightIn} in at {board.dpi} DPI), so print output would be scaled.
+            </span>
+            <button type="button" onClick={() => resize({})} className="rounded-full bg-amber-900 px-3 py-1.5 text-[11px] font-bold text-white hover:bg-amber-800">
+              Match canvas to printed size
+            </button>
+          </div>
+        )}
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-          <Field label="Card width (in)"><SettingStepper label="Card width in inches" value={t.cardWidthIn} minimum={0.25} maximum={100} step={0.01} onCommit={(cardWidthIn: number) => patch({ cardWidthIn })} /></Field>
-          <Field label="Card height (in)"><SettingStepper label="Card height in inches" value={t.cardHeightIn} minimum={0.25} maximum={100} step={0.01} onCommit={(cardHeightIn: number) => patch({ cardHeightIn })} /></Field>
-          <Field label="DPI"><SettingStepper label="Print DPI" value={t.dpi} minimum={PRODUCTION_RENDER_LIMITS.minDpi} maximum={PRODUCTION_RENDER_LIMITS.maxDpi} onCommit={(dpi: number) => patch({ dpi })} /></Field>
-          <Field label="Canvas width (px)"><SettingStepper label="Canvas width in pixels" value={t.canvasWidthPx} minimum={10} maximum={PRODUCTION_RENDER_LIMITS.maxSidePx} onCommit={(canvasWidthPx: number) => patch({ canvasWidthPx })} /></Field>
-          <Field label="Canvas height (px)"><SettingStepper label="Canvas height in pixels" value={t.canvasHeightPx} minimum={10} maximum={PRODUCTION_RENDER_LIMITS.maxSidePx} onCommit={(canvasHeightPx: number) => patch({ canvasHeightPx })} /></Field>
+          <Field label="Card size" hint="Changing the size scales the design to fit — it is never stretched.">
+            <span className="relative block min-w-0">
+              <select
+                aria-label="Card size"
+                className={`${inputCls} appearance-none pr-10`}
+                value={sizePreset?.id || "custom"}
+                onChange={(e) => {
+                  const preset = CARD_SIZE_PRESETS.find((item) => item.id === e.target.value);
+                  if (!preset) return;
+                  // A preset keeps the card's current orientation.
+                  const landscape = board.widthIn > board.heightIn;
+                  resize({
+                    widthIn: landscape ? preset.heightIn : preset.widthIn,
+                    heightIn: landscape ? preset.widthIn : preset.heightIn,
+                  });
+                }}
+              >
+                {CARD_SIZE_PRESETS.map((preset) => (
+                  <option key={preset.id} value={preset.id}>
+                    {preset.label} ({canvasPixelsFor(preset.widthIn, board.dpi)} × {canvasPixelsFor(preset.heightIn, board.dpi)} px at {board.dpi} DPI)
+                  </option>
+                ))}
+                <option value="custom" disabled={Boolean(sizePreset)}>Custom size</option>
+              </select>
+              <svg className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[#303839]/50" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                <path d="m6 9 6 6 6-6" />
+              </svg>
+            </span>
+          </Field>
+          <Field label="Card width (in)"><SettingStepper label="Card width in inches" value={board.widthIn} minimum={0.25} maximum={100} step={0.01} onCommit={(widthIn: number) => resize({ widthIn })} /></Field>
+          <Field label="Card height (in)"><SettingStepper label="Card height in inches" value={board.heightIn} minimum={0.25} maximum={100} step={0.01} onCommit={(heightIn: number) => resize({ heightIn })} /></Field>
+          <Field label="DPI"><SettingStepper label="Print DPI" value={board.dpi} minimum={PRODUCTION_RENDER_LIMITS.minDpi} maximum={PRODUCTION_RENDER_LIMITS.maxDpi} onCommit={(dpi: number) => resize({ dpi })} /></Field>
+          <Field label="Canvas (px)" hint="The printed size at its DPI.">
+            <span data-artboard-pixels className="flex h-10 items-center rounded-lg border border-[#303839]/10 bg-[#F8F6F1] px-3 text-sm font-semibold tabular-nums text-[#303839]">
+              {board.widthPx} × {board.heightPx}
+            </span>
+          </Field>
           <Field label="Orientation">
             <span className="relative block min-w-0">
-              <select className={`${inputCls} appearance-none pr-10`} value={t.orientation} onChange={(e) => patch({ orientation: e.target.value })}>
-                <option value="portrait">Portrait</option>
-                <option value="landscape">Landscape</option>
-                <option value="square">Square</option>
+              {/* Orientation is a real change of the artboard, not a label: the
+                  card's dimensions swap and the design is carried across in ONE
+                  change (one undo step). The value shown is read from the
+                  dimensions, so it can never disagree with them. */}
+              <select
+                aria-label="Orientation"
+                className={`${inputCls} appearance-none pr-10`}
+                value={orientation}
+                disabled={orientation === "square"}
+                onChange={(e) => {
+                  const next = e.target.value === "landscape" ? "landscape" : "portrait";
+                  onChange(changeTemplateOrientation(t, next).template);
+                }}
+              >
+                <option value="portrait">Vertical (Portrait)</option>
+                <option value="landscape">Horizontal (Landscape)</option>
+                {orientation === "square" && <option value="square">Square</option>}
               </select>
               <svg className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[#303839]/50" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                 <path d="m6 9 6 6 6-6" />

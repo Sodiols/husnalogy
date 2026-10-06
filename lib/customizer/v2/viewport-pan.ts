@@ -104,15 +104,31 @@ export function createPanGesture(
   };
 }
 
-// Space must not hijack typing. Guards the explicit form controls plus anything
-// contenteditable (the inline canvas text editor).
-const TYPING_TAGS = new Set(["INPUT", "TEXTAREA", "SELECT", "BUTTON", "OPTION"]);
+// Fields a caret (or a keyboard-driven value) lives in: every key belongs to
+// them. Includes anything contenteditable (the inline canvas text editor).
+const TYPING_TAGS = new Set(["INPUT", "TEXTAREA", "SELECT"]);
+// Controls that only ACTIVATE from the keyboard. They own Enter and Space —
+// so a focused button still clicks and Space never starts a canvas pan — but
+// nothing else. Counting them as typing (as this used to) meant that after
+// clicking any toolbar button, every canvas shortcut — Delete, Ctrl+D/C/V/Z,
+// arrows, Escape — was dead until the canvas was clicked again.
+const ACTIVATION_TAGS = new Set(["BUTTON", "OPTION", "SUMMARY"]);
+const ACTIVATION_KEYS = new Set(["Enter", " ", "Spacebar"]);
 
-export function isTypingTarget(target: unknown): boolean {
-  const element = target as { tagName?: unknown; isContentEditable?: unknown } | null;
+/**
+ * Does the focused element own this keystroke? With no `key`, answers for
+ * typing fields only (a control's activation keys are then the caller's
+ * concern).
+ */
+export function isTypingTarget(target: unknown, key?: string): boolean {
+  const element = target as { tagName?: unknown; isContentEditable?: unknown; getAttribute?: (name: string) => string | null } | null;
   if (!element) return false;
   if (element.isContentEditable === true) return true;
-  return TYPING_TAGS.has(String(element.tagName || "").toUpperCase());
+  const tag = String(element.tagName || "").toUpperCase();
+  if (TYPING_TAGS.has(tag)) return true;
+  if (key === undefined || !ACTIVATION_KEYS.has(key)) return false;
+  const role = typeof element.getAttribute === "function" ? element.getAttribute("role") : null;
+  return ACTIVATION_TAGS.has(tag) || role === "button" || role === "menuitem" || role === "option" || role === "tab";
 }
 
 // A pan gesture starts on: the Pan tool, held Space, or the middle mouse button

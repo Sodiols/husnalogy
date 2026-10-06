@@ -16,11 +16,18 @@ export const POST = withAdminMutation(async function POST(request: Request, { pa
   const body = bodyRead15.body;
   const notes = typeof body?.notes === "string" ? body.notes.slice(0, 2000) : "";
   const updateType: CustomizerUpdateType = body?.updateType === "major" ? "major" : "minor";
+  // The draft revision the studio just saved. When present, publishing any
+  // other revision is refused rather than freezing unreviewed changes.
+  const expectedDraftUpdatedAt =
+    typeof body?.expectedDraftUpdatedAt === "string" ? body.expectedDraftUpdatedAt.slice(0, 64) : null;
 
   try {
-    const result = await publishTemplateVersion(productId, admin.admin?.id || null, notes, updateType);
+    const result = await publishTemplateVersion(productId, admin.admin?.id || null, notes, updateType, expectedDraftUpdatedAt);
     if (result.ok === false) {
-      return Response.json({ ok: false, errors: result.errors, warnings: result.warnings }, { status: 422 });
+      return Response.json(
+        { ok: false, errors: result.errors, warnings: result.warnings, conflict: Boolean(result.conflict) },
+        { status: result.conflict ? 409 : 422 },
+      );
     }
     // Audit log for template publishing (spec §33).
     console.info(

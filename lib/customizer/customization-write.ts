@@ -6,7 +6,7 @@
  * Customer-editable design state:
  *   values, editorState / renderData, uploadedFiles, selectedOptions,
  *   activePage, cartItemId (only their own cart line), status (draft,
- *   in_cart, archived).
+ *   in_cart, archived), clientRevision (the editor's save ordering number).
  *
  * Server-managed (rejected when a request tries to set them):
  *   userId, orderId, status "ordered", printFiles, previewImages (non-empty),
@@ -15,6 +15,7 @@
  */
 
 import { OPTION_GROUPS } from "@/lib/orders/pricing-resolver";
+import { parseClientRevision } from "@/lib/customizer/save-revision";
 
 export const CUSTOMER_STATUSES = new Set(["draft", "in_cart", "archived"]);
 
@@ -75,6 +76,11 @@ export function prepareCustomerWrite(
   const clean: Record<string, any> = {};
   for (const key of ["values", "editorState", "renderData", "uploadedFiles", "activePage", "cartItemId", "status"]) {
     if (body[key] !== undefined) clean[key] = body[key];
+  }
+  if (body.clientRevision !== undefined) {
+    const revision = parseClientRevision(body.clientRevision);
+    if (revision === null) return { ok: false, status: 400, error: "The design revision is invalid." };
+    clean.clientRevision = revision;
   }
   const options = sanitizeSelectedOptionsShape(body.selectedOptions);
   if (options) clean.selectedOptions = options;

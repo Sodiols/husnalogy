@@ -19,6 +19,7 @@ import {
   type GoogleFontStyle,
 } from "./google-font-loader";
 import { normalizeAllowedCustomerFonts } from "@/lib/customizer/v2/google-fonts";
+import { fontFamilyKey } from "@/lib/customizer/v2/font-categories";
 
 export type CatalogFamily = {
   family: string;
@@ -280,6 +281,85 @@ export function rememberRecentFont(family: string): void {
   } catch {
     // A full/blocked localStorage must never break font selection.
   }
+}
+
+/* ------------------------------------------------------- favourite fonts -- */
+
+type FavouritesSnapshot = { keys: ReadonlySet<string>; canManage: boolean; loaded: boolean };
+
+let favouritesSnapshot: FavouritesSnapshot = { keys: new Set(), canManage: false, loaded: false };
+let favouritesPromise: Promise<void> | null = null;
+const favouriteListeners = new Set<(snapshot: FavouritesSnapshot) => void>();
+
+function publishFavourites(next: FavouritesSnapshot) {
+  favouritesSnapshot = next;
+  favouriteListeners.forEach((listener) => listener(next));
+}
+
+function loadFavourites(): Promise<void> {
+  if (!favouritesPromise) {
+    favouritesPromise = fetch("/api/customizer/fonts/favourites", { cache: "no-store" })
+      .then((response) => response.json().then((payload) => ({ response, payload })))
+      .then(({ response, payload }) => {
+        if (!response.ok || !payload?.ok || !Array.isArray(payload.favourites)) throw new Error("favourites-unavailable");
+        publishFavourites({
+          keys: new Set(payload.favourites.map((family: unknown) => fontFamilyKey(String(family)))),
+          canManage: Boolean(payload.canManage),
+          loaded: true,
+        });
+      })
+      .catch(() => {
+        // No favourites is a working selector, not a broken one. Allow a retry.
+        favouritesPromise = null;
+        publishFavourites({ ...favouritesSnapshot, loaded: true });
+      });
+  }
+  return favouritesPromise;
+}
+
+/**
+ * The Husnalogy-wide Favourite Fonts (Customizer Point 4), shared by every
+ * selector on the page. `toggle` is offered only to administrators and is
+ * optimistic: the star changes at once and reverts if the server refuses.
+ */
+export function useFontFavourites() {
+  const [snapshot, setSnapshot] = useState(favouritesSnapshot);
+  useEffect(() => {
+    favouriteListeners.add(setSnapshot);
+    setSnapshot(favouritesSnapshot);
+    void loadFavourites();
+    return () => {
+      favouriteListeners.delete(setSnapshot);
+    };
+  }, []);
+
+  const toggle = useCallback(async (family: string, favourite: boolean): Promise<string | null> => {
+    const key = fontFamilyKey(family);
+    const before = favouritesSnapshot;
+    const optimistic = new Set(before.keys);
+    if (favourite) optimistic.add(key);
+    else optimistic.delete(key);
+    publishFavourites({ ...before, keys: optimistic });
+    try {
+      const response = await fetch("/api/admin/customizer/fonts/favourites", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ family, favourite }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || !payload?.ok || !Array.isArray(payload.favourites)) {
+        publishFavourites(before);
+        return String(payload?.error || "The favourite could not be saved.");
+      }
+      publishFavourites({ ...favouritesSnapshot, keys: new Set(payload.favourites.map((item: unknown) => fontFamilyKey(String(item)))) });
+      return null;
+    } catch {
+      publishFavourites(before);
+      return "The favourite could not be saved.";
+    }
+  }, []);
+
+  return { favourites: snapshot.keys, canManage: snapshot.canManage, loaded: snapshot.loaded, toggle };
 }
 
 /* ------------------------------------------------------- selectable fonts -- */

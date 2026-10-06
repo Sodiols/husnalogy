@@ -36,6 +36,12 @@ type Props = {
   filtersEnabled?: boolean;
   onFilterPatch?: (patch: Record<string, number | string | undefined>, group?: string) => void;
   allowedFilters?: string[];
+  /**
+   * The Crop X / Crop Y number fields. On by default; an editor whose crop
+   * surface already repositions by dragging and that has less room (the Design
+   * Studio, which also keeps them in its inspector) can leave them out.
+   */
+  showPositionFields?: boolean;
 };
 
 const IconButton = ({
@@ -76,6 +82,7 @@ export default function CustomerImageToolbar({
   filtersEnabled = false,
   onFilterPatch,
   allowedFilters = [],
+  showPositionFields = true,
 }: Props) {
   const transform: ImageTransformState = layer?.imageTransform || {};
   const zoom = Number(transform.zoom) > 0 ? Number(transform.zoom) : 1;
@@ -113,8 +120,12 @@ export default function CustomerImageToolbar({
         {canRotateImage && (
           <EditableNumericStepper label="Image rotation" value={imageRotation} minimum={-360} maximum={360} step={1} largeStep={15} allowNegative allowDecimal={false} onCommit={(rotation) => onImagePatch({ rotation }, "crop-rotate")} showLabel className="h-11 w-32 shrink-0 rounded-lg bg-white px-1" />
         )}
-        <EditableNumericStepper label="Crop X position" value={Number(transform.offsetX) || 0} minimum={-10000} maximum={10000} step={1} largeStep={10} allowNegative allowDecimal={false} disabled={!canReposition} onCommit={(offsetX) => onImagePatch({ offsetX }, "crop-position")} showLabel className="h-11 w-32 shrink-0 rounded-lg bg-white px-1" />
-        <EditableNumericStepper label="Crop Y position" value={Number(transform.offsetY) || 0} minimum={-10000} maximum={10000} step={1} largeStep={10} allowNegative allowDecimal={false} disabled={!canReposition} onCommit={(offsetY) => onImagePatch({ offsetY }, "crop-position")} showLabel className="h-11 w-32 shrink-0 rounded-lg bg-white px-1" />
+        {showPositionFields && (
+          <>
+            <EditableNumericStepper label="Crop X position" value={Number(transform.offsetX) || 0} minimum={-10000} maximum={10000} step={1} largeStep={10} allowNegative allowDecimal={false} disabled={!canReposition} onCommit={(offsetX) => onImagePatch({ offsetX }, "crop-position")} showLabel className="h-11 w-32 shrink-0 rounded-lg bg-white px-1" />
+            <EditableNumericStepper label="Crop Y position" value={Number(transform.offsetY) || 0} minimum={-10000} maximum={10000} step={1} largeStep={10} allowNegative allowDecimal={false} disabled={!canReposition} onCommit={(offsetY) => onImagePatch({ offsetY }, "crop-position")} showLabel className="h-11 w-32 shrink-0 rounded-lg bg-white px-1" />
+          </>
+        )}
 
         {canRotateImage && (
           <IconButton

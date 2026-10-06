@@ -206,10 +206,52 @@ export type TextStyle = {
   lineHeight: number;
   textAlign: "left" | "center" | "right";
   verticalAlign: "top" | "middle" | "bottom";
+  /**
+   * Which edge holds still when the text gets taller (text-growth.ts). OPTIONAL:
+   * absent keeps the behaviour the document was made with.
+   */
+  growthDirection?: "up" | "center" | "down";
   uppercase: boolean;
   multiline: boolean;
   // "auto" shrinks to fit the box down to minFontSize; "fixed" keeps fontSize.
   fitMode: "fixed" | "shrink" | "auto-height";
+  /**
+   * Box sizing mode (see text-layout getTextAutoSizeMode). OPTIONAL on purpose:
+   * an absent value means "use the stored box / legacy fitMode", which is how
+   * documents published before this field existed keep rendering exactly as
+   * they did. Present only when the template set it explicitly.
+   */
+  autoSizeMode?: "fixed" | "width" | "height" | "shrink";
+};
+
+/**
+ * Durable storage identity of an asset-bearing layer or page background.
+ *
+ * `src`/`backgroundImage` are delivery URLs and may be short-lived signed
+ * URLs; they are stripped before persistence and re-signed on every read from
+ * these fields (lib/customizer/server/admin-assets.ts). Production uses the
+ * original path, editing uses the editor variant. All optional: older
+ * documents never carried them and must still round-trip.
+ */
+export type StorageProvenance = {
+  bucket?: string;
+  path?: string;
+  originalPath?: string;
+  editorPath?: string;
+  thumbnailPath?: string;
+  originalFilename?: string;
+  mimeType?: string;
+  sourceWidth?: number;
+  sourceHeight?: number;
+};
+
+/** Library asset behind a photo frame's empty-state placeholder. */
+export type PlaceholderAssetReference = {
+  placeholderAssetId?: string;
+  placeholderAssetBucket?: string;
+  placeholderAssetPath?: string;
+  placeholderAssetEditorPath?: string;
+  placeholderAssetThumbnailPath?: string;
 };
 
 type LayerBase = {
@@ -253,6 +295,9 @@ type LayerBase = {
 
 export type TextLayer = LayerBase & {
   type: "text";
+  /** Mirrored in its own frame (absent = not mirrored). */
+  flipX?: boolean;
+  flipY?: boolean;
   text: string;
   placeholder: string;
   maxChars: number;
@@ -261,7 +306,9 @@ export type TextLayer = LayerBase & {
   textStyle: TextStyle;
 };
 
-export type ImageLayer = LayerBase & {
+export type ImageLayer = LayerBase & StorageProvenance & PlaceholderAssetReference & {
+  /** Non-destructive eraser strokes over the layer's own picture (erase-mask.ts); absent = none. */
+  eraseMask?: import("./erase-mask").EraseMask;
   type: "image";
   src: string;
   assetId: string;
@@ -273,12 +320,15 @@ export type ImageLayer = LayerBase & {
   borderWidth: number;
   backgroundColor: string;
   assetReference?: CustomerAssetReference;
-  bucket?: string;
-  path?: string;
+  /** Admin fit choice. Absent in documents published before it was carried. */
+  fitMode?: "cover" | "contain";
 };
 
 export type ShapeLayer = LayerBase & {
   type: "shape";
+  /** Mirrored in its own frame (absent = not mirrored). */
+  flipX?: boolean;
+  flipY?: boolean;
   shape: "rectangle" | "rounded-rectangle" | "ellipse" | "circle" | "oval" | "triangle" | "polygon" | "arch" | "path" | "line";
   fill: string;
   stroke: string;
@@ -294,14 +344,14 @@ export type ShapeLayer = LayerBase & {
 
 // A frame is an image placeholder with a mask, border, and replacement rules —
 // it renders through the same path as ImageLayer but is authored as a frame.
-export type FrameLayer = LayerBase & {
+export type FrameLayer = LayerBase & StorageProvenance & PlaceholderAssetReference & {
+  /** Non-destructive eraser strokes over the layer's own picture (erase-mask.ts); absent = none. */
+  eraseMask?: import("./erase-mask").EraseMask;
   type: "frame";
   mask: MaskShape;
   defaultAssetId: string;
   assetId: string;
   src: string;
-  bucket?: string;
-  path?: string;
   placeholderImage: string;
   transform: ImageTransform;
   filters: ImageFilters;
@@ -309,6 +359,7 @@ export type FrameLayer = LayerBase & {
   borderWidth: number;
   backgroundColor: string;
   assetReference?: CustomerAssetReference;
+  fitMode?: "cover" | "contain";
 };
 
 export type GridSlot = {
@@ -355,7 +406,7 @@ export type GroupLayer = LayerBase & {
 };
 
 // A decorative element from the Husnalogy elements library (SVG/PNG asset).
-export type ElementLayer = LayerBase & {
+export type ElementLayer = LayerBase & StorageProvenance & {
   type: "element";
   assetId: string;
   src: string;
@@ -365,13 +416,11 @@ export type ElementLayer = LayerBase & {
   flipY: boolean;
 };
 
-export type BackgroundLayer = LayerBase & {
+export type BackgroundLayer = LayerBase & StorageProvenance & {
   type: "background";
   color: string;
   assetId: string;
   src: string;
-  bucket?: string;
-  path?: string;
   assetReference?: CustomerAssetReference;
   fitMode?: "cover" | "contain";
   filters?: ImageFilters;
@@ -414,6 +463,11 @@ export type CustomizerPage = {
   backgroundAssetId?: string;
   backgroundImage?: string;
   thumbnail?: string;
+  /** Storage identity of the page background (re-signed on read). */
+  bucket?: string;
+  originalPath?: string;
+  editorPath?: string;
+  thumbnailPath?: string;
   safeArea: EdgeInsets;
   bleed: EdgeInsets;
   allowCustomerText: boolean;
@@ -518,6 +572,11 @@ export type CustomizerDocument = {
   settings: CustomizerSettings;
   assets: AssetReference[];
   guides?: GuideDefinition[];
+  /**
+   * The page a new customer session opens on. Optional: documents published
+   * before it was carried fall back to the first enabled page.
+   */
+  defaultPageId?: string;
 };
 
 /* --------------------------------------------------- customer editor state */

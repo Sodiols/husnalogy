@@ -1,10 +1,12 @@
 // Pure client helpers shared by the admin setup preview and the customer
 // customizer. No React, no network — just template + value math.
 
+import { assetIdentityOf } from "@/lib/customizer/v2/asset-identity";
 import {
-  customerEditablePermissionBundle,
+  isCustomerFieldRequired,
   normalizeEditorState,
   normalizeUserLayer,
+  resolveCustomerPermissions,
 } from "@/lib/customizer";
 import { anyGridSlotGrantsPhotoEditing, mergeGridSlotOverrides } from "@/lib/customizer/v2/grids";
 import { getRenderableLayers } from "@/lib/customizer/v2/groups";
@@ -71,18 +73,14 @@ export type EditorState = {
 export { normalizeEditorState, normalizeUserLayer };
 
 /* ---- Customer permissions --------------------------------------------------
-   Customer editable is the single admin control: checked unlocks the complete
-   permission bundle, unchecked locks every customer action. */
+   Customer editable is the primary admin control: checked grants the full
+   bundle, unchecked denies every customer action. Explicit restrictions the
+   admin set (a fixed grid's move/resize/rotate, position lock, interaction
+   disabled, legacy allowZoom/allowReposition) are honoured for every layer
+   type. The server validator resolves through the same function, so the UI
+   never offers an action the save will reject. */
 export function getLayerPermissions(layer: any): Record<string, boolean> {
-  const permissions = customerEditablePermissionBundle(Boolean(layer?.customerEditable));
-  // The primary customer-editable checkbox intentionally unlocks the complete
-  // bundle. Grids are the one advanced exception: their container may remain
-  // fixed while independently editable slots inherit/override photo controls.
-  if (layer?.type !== "grid" || !layer?.customerEditable || !layer?.customerPermissions || typeof layer.customerPermissions !== "object") return permissions;
-  for (const [key, value] of Object.entries(layer.customerPermissions)) {
-    if (typeof value === "boolean") permissions[key] = value;
-  }
-  return permissions;
+  return resolveCustomerPermissions(layer);
 }
 
 // Whether the customer may interact with this template layer on the canvas.
@@ -398,15 +396,25 @@ function pickCropRect(
   };
 }
 
-export function resolveLayerImage(layer: any, field: any, values: Record<string, any>): ImageValue | null {
+/**
+ * The picture a photo layer draws and how it sits in its frame.
+ *
+ * `source` says whose picture it is — a customer's photo for the field, or the
+ * layer's own — and `asset` is the object carrying its durable identity. A
+ * picture is described even when its URL is missing (a recovered design
+ * stores no credentials): the runtime resolver signs it from that identity.
+ */
+export function resolveLayerImage(layer: any, field: any, values: Record<string, any>): ResolvedLayerImage | null {
   const editable = Boolean(layer?.customerEditable && field);
   const raw = editable ? values[field.id] : undefined;
   const url = getImageUrl(raw);
   // Crop-mode override (editorState) wins over legacy per-value zoom/offset.
   const crop: ImageTransformOverride = layer?.imageTransform || {};
-  if (url) {
+  if (url || (raw && typeof raw === "object" && assetIdentityOf(raw))) {
     const meta = isImageValue(raw) ? raw : {};
     return {
+      source: "field",
+      asset: raw,
       url,
       signedUrl: isImageValue(raw) ? raw.signedUrl : undefined,
       zoom: Number(crop.zoom) > 0 ? Number(crop.zoom) : Number(meta.zoom) > 0 ? Number(meta.zoom) : 1,
@@ -432,10 +440,17 @@ export function resolveLayerImage(layer: any, field: any, values: Record<string,
     imageRotation: Number(crop.rotation) || 0,
     crop: pickCropRect(crop),
   };
-  if (layer?.src) return { url: layer.src, ...withCrop };
-  if (layer?.placeholderImage) return { url: layer.placeholderImage, ...base };
+  if (layer?.src || assetIdentityOf(layer)) return { source: "layer", asset: layer, url: String(layer.src || ""), ...withCrop };
+  if (layer?.placeholderImage) return { source: "placeholder", asset: null, url: layer.placeholderImage, ...base };
   return null;
 }
+
+export type ResolvedLayerImage = ImageValue & {
+  /** Whose picture is drawn: the customer's for the field, the layer's own, or the empty-frame placeholder. */
+  source: "field" | "layer" | "placeholder";
+  /** The object holding the picture's durable identity (for the runtime asset resolver). */
+  asset: unknown;
+};
 
 // Part 15 customer validation.
 export function validateCustomerValues(
@@ -444,13 +459,14 @@ export function validateCustomerValues(
 ): { errors: Record<string, string>; missingRequired: string[]; ok: boolean } {
   const errors: Record<string, string> = {};
   const missingRequired: string[] = [];
-  const enabledPageIds = new Set(getEnabledPages(template).map((page: any) => page.id));
+  const enabledPageIds = new Set<string>(getEnabledPages(template).map((page: any) => page.id));
+  const layers = template?.layers || [];
   const editableFieldIds = new Set(
-    (template?.layers || [])
+    layers
       .filter((layer: any) => {
         if (!layer?.fieldId || layer.hidden || !enabledPageIds.has(layer.page)) return false;
         const permissions = getLayerPermissions(layer);
-         return layer.type === "image" || layer.type === "frame" ? permissions.replaceImage : permissions.editContent;
+        return layer.type === "image" || layer.type === "frame" ? permissions.replaceImage : permissions.editContent;
       })
       .map((layer: any) => layer.fieldId),
   );
@@ -458,7 +474,8 @@ export function validateCustomerValues(
   (template?.fields || []).forEach((field: any) => {
     if (field.customerVisible === false || !editableFieldIds.has(field.id)) return;
     const value = values[field.id];
-    if (field.required && isValueEmpty(value)) {
+    // Same rule preflight and checkout apply (isCustomerFieldRequired).
+    if (isCustomerFieldRequired(field, layers, enabledPageIds) && isValueEmpty(value)) {
       errors[field.id] = `${field.label} is required.`;
       missingRequired.push(field.id);
       return;

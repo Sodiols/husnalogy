@@ -105,6 +105,8 @@ export const canPublish = (actor: Actor | null): boolean => isAdmin(actor);
 
 /** Move a product through the review workflow on the admin's side. */
 export const canReviewProducts = (actor: Actor | null): boolean => isAdmin(actor);
+/** Husnalogy-wide Favourite Fonts are a catalogue decision, like publishing. */
+export const canManageFontFavourites = (actor: Actor | null): boolean => isAdmin(actor);
 
 /**
  * See the element library the way a producer does — license verdicts on blocked

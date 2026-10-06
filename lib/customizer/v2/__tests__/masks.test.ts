@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { getMaskPath, getLegacyMaskPath, maskShapeFromLegacy } from "../masks";
+import { frameMaskAllowlistNames, getMaskPath, getLegacyMaskPath, maskShapeFromLegacy, normalizeMaskShape } from "../masks";
 
 const frame = { x: 100, y: 200, width: 400, height: 600 };
 
@@ -57,5 +57,39 @@ describe("mask path generator", () => {
     expect(result.d).toBe("M 0 0 L 10 10 Z");
     expect(result.transform).toContain("translate(100 200)");
     expect(result.transform).toContain("scale(40 60)");
+  });
+});
+
+describe("canonical stored masks", () => {
+  it("keeps real geometry exactly", () => {
+    expect(normalizeMaskShape({ kind: "oval" })).toEqual({ kind: "oval" });
+    expect(normalizeMaskShape({ kind: "rounded", radius: 24 })).toEqual({ kind: "rounded", radius: 24 });
+    expect(normalizeMaskShape({ kind: "polygon", points: [{ x: 0.5, y: 0 }, { x: 1, y: 1 }, { x: 0, y: 1 }] })).toEqual({ kind: "polygon", points: [{ x: 0.5, y: 0 }, { x: 1, y: 1 }, { x: 0, y: 1 }] });
+    expect(normalizeMaskShape({ kind: "path", d: "M 0 0 L 10 10 Z", viewBoxWidth: 10, viewBoxHeight: 10 })).toEqual({ kind: "path", d: "M 0 0 L 10 10 Z", viewBoxWidth: 10, viewBoxHeight: 10 });
+  });
+
+  it("turns anything that is not geometry into a plain rectangle", () => {
+    expect(normalizeMaskShape({ kind: "heart" })).toEqual({ kind: "rectangle" });
+    expect(normalizeMaskShape(null)).toEqual({ kind: "rectangle" });
+    expect(normalizeMaskShape({ kind: "path", d: 'M0 0"/><image href="x"/>', viewBoxWidth: 10, viewBoxHeight: 10 })).toEqual({ kind: "rectangle" });
+    expect(normalizeMaskShape({ kind: "path", d: "M 0 0 L 1 1", viewBoxWidth: 0, viewBoxHeight: 10 })).toEqual({ kind: "rectangle" });
+    expect(normalizeMaskShape({ kind: "polygon", points: [{ x: 0, y: 0 }, { x: "a", y: 1 }] })).toEqual({ kind: "rectangle" });
+    expect(normalizeMaskShape({ kind: "rounded", radius: "x" })).toEqual({ kind: "rounded", radius: 0 });
+  });
+
+  it("clamps polygon points into the box and drops extra fields", () => {
+    expect(normalizeMaskShape({ kind: "polygon", points: [{ x: -1, y: 0, z: 9 }, { x: 2, y: 0 }, { x: 0.5, y: 3 }], extra: "<x>" })).toEqual({
+      kind: "polygon",
+      points: [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 0.5, y: 1 }],
+    });
+  });
+
+  it("names the drawn outline for the frame-shape allowlist", () => {
+    expect(frameMaskAllowlistNames({ maskShape: "circle" })).toEqual(["circle"]);
+    expect(frameMaskAllowlistNames({ maskShape: "rectangle", mask: { kind: "oval" } })).toEqual(["oval"]);
+    expect(frameMaskAllowlistNames({ mask: { kind: "arch" } })).toEqual(["arch-full"]);
+    expect(frameMaskAllowlistNames({ mask: { kind: "arch-top" } })).toEqual(["arch-top", "arch"]);
+    expect(frameMaskAllowlistNames({ maskShape: "arch" })).toEqual(["arch-top", "arch"]);
+    expect(frameMaskAllowlistNames({ mask: { kind: "polygon", points: [] } })).toEqual(["polygon"]);
   });
 });

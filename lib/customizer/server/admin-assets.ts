@@ -1,37 +1,16 @@
 import { assetFromRow } from "@/lib/customizer/assets";
+import {
+  ADMIN_ASSET_BUCKET,
+  adminAssetIdentity,
+  permanentAdminReference,
+  stripAdminAssetUrls as stripSharedAdminAssetUrls,
+} from "@/lib/customizer/v2/asset-identity";
 
-export const ADMIN_ASSET_BUCKET = "customizer-elements";
+export { ADMIN_ASSET_BUCKET } from "@/lib/customizer/v2/asset-identity";
 export const ADMIN_ASSET_URL_TTL_SECONDS = 60 * 60;
 
-const EPHEMERAL_ASSET_KEYS = new Set(["url", "src", "image", "backgroundImage", "placeholderImage", "thumbnail", "baseImageUrl", "signedUrl", "editorUrl", "originalUrl", "thumbnailUrl", "expiresAt"]);
-
-function adminAssetIdentity(value: any): { key: string; id: string } | null {
-  if (!value || typeof value !== "object") return null;
-  const entry = Object.entries(value).find(([key, id]) => (key === "assetId" || key.endsWith("AssetId")) && typeof id === "string" && id);
-  return entry ? { key: entry[0], id: String(entry[1]) } : null;
-}
-
-function permanentAdminReference(value: any): boolean {
-  const identity = adminAssetIdentity(value);
-  return Boolean(
-    identity
-      && (value.bucket === ADMIN_ASSET_BUCKET || value.originalPath || value.editorPath || value.thumbnailPath || identity.key !== "assetId" || !value.ownerId),
-  );
-}
-
-export function stripAdminAssetUrls<T>(value: T): T {
-  const visit = (current: any): any => {
-    if (Array.isArray(current)) return current.map(visit);
-    if (!current || typeof current !== "object") return current;
-    const adminAsset = permanentAdminReference(current);
-    return Object.fromEntries(
-      Object.entries(current)
-        .filter(([key]) => !adminAsset || !EPHEMERAL_ASSET_KEYS.has(key))
-        .map(([key, child]) => [key, visit(child)]),
-    );
-  };
-  return visit(value) as T;
-}
+/** Before a template is stored: the shared rule, so the browser's recovery copy strips the same fields. */
+export const stripAdminAssetUrls = stripSharedAdminAssetUrls;
 
 /**
  * Who a signed asset URL is for. The full-resolution ORIGINAL of a Husnalogy

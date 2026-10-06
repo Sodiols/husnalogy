@@ -25,6 +25,7 @@ export type LibraryElement = {
   tintable: boolean;
   defaultColor: string;
   categoryId: string;
+  mimeType?: string;
   bucket?: string;
   originalPath?: string;
   editorPath?: string;
@@ -141,10 +142,18 @@ function Section({ title, action, children }: { title: string; action?: React.Re
   );
 }
 
+/**
+ * The default for an absent allowlist. One shared array, not a fresh `[]` per
+ * render: the library fetch depends on it, and a new identity every render made
+ * the Design Studio — which passes no allowlist — refetch forever and never
+ * leave its loading state.
+ */
+const NO_ALLOWLIST: string[] = [];
+
 export default function CustomerElementsPanel({
   onInsertElement,
   onClose,
-  allowedElementIds = [],
+  allowedElementIds = NO_ALLOWLIST,
   adminMode = false,
   onAddShape,
   onAddLine,

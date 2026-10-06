@@ -236,7 +236,7 @@ describe("global shortcuts never steal a keystroke while typing", () => {
     // Both editors now share ONE typing rule instead of two hand-written copies
     // of the same tagName check.
     expect(source).toContain("isTypingTarget");
-    expect(source).toMatch(/const typing = isTypingTarget\(\w+\.target\) \|\| isTypingTarget\(document\.activeElement\);/);
+    expect(source).toMatch(/const typing = isTypingTarget\((\w+)\.target, \1\.key\) \|\| isTypingTarget\(document\.activeElement, \1\.key\);/);
     expect(source).toMatch(/if \(typing(?: \|\| tab !== "design")?\) return;/);
   });
 
@@ -250,6 +250,21 @@ describe("global shortcuts never steal a keystroke while typing", () => {
     expect(isTypingTarget(editable)).toBe(true);
     expect(isTypingTarget(plain)).toBe(false);
     expect(isTypingTarget(null)).toBe(false);
+  });
+
+  it("a focused button owns only its activation keys, never the canvas shortcuts", () => {
+    const button = { tagName: "BUTTON", getAttribute: () => null } as unknown as EventTarget;
+    const roleButton = { tagName: "DIV", getAttribute: (name: string) => (name === "role" ? "button" : null) } as unknown as EventTarget;
+    expect(isTypingTarget(button, "Enter")).toBe(true);
+    expect(isTypingTarget(button, " ")).toBe(true);
+    expect(isTypingTarget(roleButton, "Enter")).toBe(true);
+    for (const key of ["Delete", "Backspace", "ArrowLeft", "Escape", "d", "z", "v"]) {
+      expect(isTypingTarget(button, key)).toBe(false);
+    }
+    // A field still owns every key, including Delete and the arrows.
+    const input = { tagName: "INPUT" } as unknown as EventTarget;
+    expect(isTypingTarget(input, "Delete")).toBe(true);
+    expect(isTypingTarget(input, "ArrowLeft")).toBe(true);
   });
 
   it("hands the keyboard to the text editor while it is open (spec §33)", () => {

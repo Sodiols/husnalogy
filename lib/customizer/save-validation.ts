@@ -42,6 +42,8 @@ const STALE_OVERRIDE_KEYS: Partial<Record<string, { section: string; keys: strin
   "reposition-not-allowed": { section: "imageTransform", keys: ["offsetX", "offsetY"] },
   "flip-not-allowed": { section: "imageTransform", keys: ["flipX", "flipY"] },
   "image-rotate-not-allowed": { section: "imageTransform", keys: ["rotation"] },
+  // A shape colour saved before the template restricted its palette.
+  "paint-not-allowed": { section: "properties", keys: ["fill", "stroke"] },
 };
 
 function samePersistedValue(left: unknown, right: unknown): boolean {
@@ -97,6 +99,7 @@ const HARD_REJECT_CODES = new Set([
   "letter-spacing-not-allowed",
   "line-height-not-allowed",
   "vertical-alignment-not-allowed",
+  "text-growth-not-allowed",
   "style-not-allowed",
   "zoom-not-allowed",
   "reposition-not-allowed",
@@ -118,6 +121,7 @@ const HARD_REJECT_CODES = new Set([
   "customer-object-limit",
   "font-not-allowed-by-template",
   "color-not-allowed-by-template",
+  "paint-not-allowed",
   "filter-not-allowed-by-template",
   "user-element-not-allowed-by-template",
   "user-shape-not-allowed-by-template",

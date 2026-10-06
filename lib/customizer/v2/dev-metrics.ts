@@ -38,6 +38,8 @@ export type EditorEvent =
   | "saveClearedDirty"
   /** A save response found the document CHANGED since it began, and left it dirty. */
   | "saveKeptDirty"
+  /** The server held a newer revision than this editor's newest, so it re-sent above it. */
+  | "saveRevisionConflict"
   | "dragSession"
   | "transformSession"
   | "historyTransaction";

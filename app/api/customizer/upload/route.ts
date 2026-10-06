@@ -1,4 +1,5 @@
 import sharp from "sharp";
+import { assertVariantsDecodable, assertVariantsSized, verifyStoredEditorVariant } from "@/lib/customizer/server/asset-variants";
 import type { Metadata } from "sharp";
 import { createHash } from "crypto";
 import { createClient, createServiceRoleClient } from "@/lib/supabase/server";
@@ -127,6 +128,16 @@ export async function POST(request: Request) {
   } catch {
     return Response.json({ ok: false, error: "This image could not be processed. Try another file." }, { status: 400 });
   }
+  // The variants must decode AND be the right size for this photo (EXIF
+  // orientation applied): a thumbnail-sized editor image is never stored.
+  const swapped = typeof meta.orientation === "number" && meta.orientation >= 5 && meta.orientation <= 8;
+  try {
+    await assertVariantsDecodable(editorBuffer, thumbBuffer);
+    await assertVariantsSized(editorBuffer, thumbBuffer, swapped ? height : width, swapped ? width : height);
+  } catch (cause) {
+    logEvent("error", "upload.variant_invalid", { requestId, userId: user.id, error: cause });
+    return Response.json({ ok: false, error: "This image could not be processed. Try another file." }, { status: 400 });
+  }
 
   const extension = EXTENSION[sniffed.mime];
   const basePath = `${user.id}/${folder}/${stamp}-${safeFileName(displayName, "photo").replace(/\.[a-z0-9]+$/, "").slice(0, 40)}`;
@@ -148,6 +159,21 @@ export async function POST(request: Request) {
       return Response.json({ ok: false, error: "The image could not be stored. Please try again." }, { status: 500 });
     }
     uploadedPaths.push(item.path);
+  }
+
+  // Read the editor variant back: the stored object must exist and be right
+  // before the photo is offered to the canvas.
+  const stored = await verifyStoredEditorVariant({
+    supabase: service,
+    bucket: BUCKET,
+    storagePath: editorPath,
+    sourceWidth: swapped ? height : width,
+    sourceHeight: swapped ? width : height,
+  });
+  if (!stored.ok) {
+    await service.storage.from(BUCKET).remove(uploadedPaths);
+    logEvent("error", "upload.variant_unverified", { requestId, userId: user.id, error: new Error(`editor ${stored.reason}`) });
+    return Response.json({ ok: false, error: "The image could not be stored. Please try again." }, { status: 500 });
   }
 
   // Library record (reused across products) + audit row.

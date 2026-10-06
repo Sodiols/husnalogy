@@ -26,7 +26,7 @@ import { expect, test, type Locator, type Page } from "@playwright/test";
 const FIXTURE = "/__e2e/customizer";
 /** Must exceed CROP_SETTLE_MS (260) in CustomizerWorkspace. */
 const SETTLE_WAIT = 700;
-/** Must exceed the save queue debounce (900) plus a local write. */
+/** Must exceed the save queue debounce plus its minimum interval and a local write. */
 const AUTOSAVE_WAIT = 2200;
 const DRAFT_KEY = "husnalogy_customizer_draft:e2e-fixture-product:e2e-fixture-template:1";
 
@@ -37,6 +37,16 @@ type Metrics = {
   renders: Record<string, number>;
 };
 type Point = { x: number; y: number };
+
+
+/**
+ * A desktop viewport. The editor reserves its contextual-toolbar row for the
+ * whole design step (so selecting never re-fits the canvas under the
+ * pointer); at 1280x720 that leaves fx_shape so small on screen that its
+ * transformer anchors overlap, and a press meant for one handle lands on its
+ * neighbour. These specs are about gesture maths, not tiny-screen targeting.
+ */
+test.use({ viewport: { width: 1440, height: 900 } });
 
 /* -------------------------------------------------------------------------- */
 /* Helpers                                                                    */
@@ -959,7 +969,13 @@ test.describe("crop Cancel and autosave", () => {
     await expect
       .poll(async () => draftCropOffsets(await readDraft(page)), { timeout: 10_000 })
       .toEqual({ offsetX: 0, offsetY: 0 });
-    const events = (await readMetrics(page)).events;
-    expect(count(events, "saveClearedDirty"), "the restored document was never confirmed saved").toBeGreaterThanOrEqual(1);
+    // The recovery snapshot records the rollback at once; the follow-up save
+    // that confirms it runs on the queue's own (rate-bounded) schedule.
+    await expect
+      .poll(async () => count((await readMetrics(page)).events, "saveClearedDirty"), {
+        timeout: 10_000,
+        message: "the restored document was never confirmed saved",
+      })
+      .toBeGreaterThanOrEqual(1);
   });
 });

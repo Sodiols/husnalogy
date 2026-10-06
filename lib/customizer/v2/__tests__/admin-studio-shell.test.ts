@@ -1,6 +1,7 @@
 import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
+import { buildCustomerContextMenu } from "../context-menu";
 
 // Spec §24: the admin design studio should give the canvas maximum useful
 // space, avoid excessively wide permanent panels, collapse panels where useful,
@@ -75,15 +76,17 @@ describe("admin row controls meet the AA target size", () => {
 
 describe("destructive admin actions are not signalled by colour alone", () => {
   it("gives Delete an accessible name so it is not signalled by colour alone", () => {
-    // Delete moved off the layer row and onto the context toolbar. The rule it
-    // has to satisfy is unchanged: the destructive action must be identifiable
-    // without seeing that it is red.
-    const source = sources.get("AdminContextToolbar.tsx")!;
-    expect(source).toContain('props.selectionCount === 1 ? "Delete the selected object"');
-    expect(source).toContain("label={deleteLabel}");
-    expect(source).toContain("hint={deleteLabel}");
-    // The red treatment is an ADDITION to the name, never the only signal.
-    expect(source).toContain("if (options.danger) return");
+    // Delete is on the selection toolbar (as an icon) and in the object menu.
+    // Either way the destructive action must be identifiable without seeing
+    // that it is red: the toolbar button carries the accessible name "Delete".
+    const toolbar = sources.get("AdminContextToolbar.tsx")!;
+    expect(toolbar).toContain('label="Delete" path={ICONS.trash}');
+    const destructive = buildCustomerContextMenu({ selectionCount: 1, canDelete: true }).flat().find((item) => item.id === "delete");
+    expect(destructive).toMatchObject({ label: "Delete", danger: true });
+    const menu = readFileSync(path.join(process.cwd(), "app/components/customizer/CustomerCanvasContextMenu.tsx"), "utf8");
+    // The red treatment is an ADDITION to the visible label, never the only signal.
+    expect(menu).toContain("{item.label}");
+    expect(menu).toContain("item.danger");
   });
 });
 

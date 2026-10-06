@@ -168,11 +168,17 @@ export default function DesignerWorkspaceClient({
               product={editing}
               mode="designer"
               onSubmitForReview={submitForReview}
-              onSaved={async (saved: any, message: string) => {
+              onSaved={async (saved: any, message: string, meta?: { source?: string }) => {
                 setNotice(message || "Saved.");
-                // Keep the editor open on the saved product so a newly created
-                // draft can be designed and submitted without reopening it.
-                if (saved?.id) setEditing(saved);
+                // A Design Studio save must leave the studio mounted and its
+                // in-memory edits untouched: the form already tracks the saved
+                // product (and a new product's id) itself. Replacing `editing`
+                // here would re-key or reset the form mid-sequence.
+                if (meta?.source !== "studio" && saved?.id) {
+                  // Keep the editor open on the saved product so a newly created
+                  // draft can be designed and submitted without reopening it.
+                  setEditing(saved);
+                }
                 await load();
               }}
               onClose={() => {

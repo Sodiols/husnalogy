@@ -39,6 +39,8 @@ export type EditableNumericStepperProps = {
   /** Exact pixel width for each arrow button. Overrides `compact`, so a
    *  toolbar can guarantee the value column keeps a known readable width. */
   stepButtonWidth?: number;
+  /** Step-button glyphs: chevrons (default) or − / + with no dividers, as the admin toolbar draws them. */
+  stepIcons?: "chevron" | "plusMinus";
   /**
    * Pair the numeric field with a drag slider (opacity, zoom).
    *
@@ -80,6 +82,7 @@ export default function EditableNumericStepper({
   showStepButtons = true,
   mixed = false,
   stepButtonWidth,
+  stepIcons = "chevron",
   slider = false,
   sliderClassName = "h-11 min-w-0 flex-1 accent-[#D4AF37] disabled:opacity-35",
 }: EditableNumericStepperProps) {
@@ -150,8 +153,8 @@ export default function EditableNumericStepper({
     >
       {showLabel && <span className={resolvedLabelClassName}>{label}</span>}
       {showStepButtons && (
-        <button type="button" aria-label={`Decrease ${label}`} onClick={() => applyStep(-1)} disabled={disabled || readOnly || value <= (minimum ?? -Infinity)} className={`${buttonClassName} border-r border-[#303839]/10`}>
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="m15 18-6-6 6-6" /></svg>
+        <button type="button" aria-label={`Decrease ${label}`} onClick={() => applyStep(-1)} disabled={disabled || readOnly || value <= (minimum ?? -Infinity)} className={`${buttonClassName} ${stepIcons === "plusMinus" ? "" : "border-r border-[#303839]/10"}`}>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d={stepIcons === "plusMinus" ? "M5 12h14" : "m15 18-6-6 6-6"} /></svg>
         </button>
       )}
       <input
@@ -208,8 +211,8 @@ export default function EditableNumericStepper({
         style={inputStyle}
       />
       {showStepButtons && (
-        <button type="button" aria-label={`Increase ${label}`} onClick={() => applyStep(1)} disabled={disabled || readOnly || value >= (maximum ?? Infinity)} className={`${buttonClassName} border-l border-[#303839]/10`}>
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="m9 18 6-6-6-6" /></svg>
+        <button type="button" aria-label={`Increase ${label}`} onClick={() => applyStep(1)} disabled={disabled || readOnly || value >= (maximum ?? Infinity)} className={`${buttonClassName} ${stepIcons === "plusMinus" ? "" : "border-l border-[#303839]/10"}`}>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d={stepIcons === "plusMinus" ? "M12 5v14M5 12h14" : "m9 18 6-6-6-6"} /></svg>
         </button>
       )}
     </div>

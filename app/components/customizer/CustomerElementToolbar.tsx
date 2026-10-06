@@ -1,20 +1,25 @@
 "use client";
 
 import EditableNumericStepper from "./EditableNumericStepper";
+import { isSvgElement } from "@/lib/customizer/v2/element-colour";
 
 // Contextual toolbar for a selected customer-inserted element (spec §14):
-// colour (tintable elements), opacity, flip, duplicate, delete. Customer
-// elements are user layers, so the full set is always available.
+// colour, opacity and flip. Structural commands (duplicate, delete, arrange…)
+// live in the shared object menu, opened by right click or "More actions".
 
 type Props = {
   layer: any;
   onPatch: (patch: any, group?: string) => void;
-  onDuplicate: () => void;
-  onDelete: () => void;
+  /** The template's allowed customer colours; empty = any colour. */
+  palette?: readonly string[];
 };
 
-export default function CustomerElementToolbar({ layer, onPatch, onDuplicate, onDelete }: Props) {
+export default function CustomerElementToolbar({ layer, onPatch, palette = [] }: Props) {
   const divider = <span className="mx-0.5 h-5 w-px shrink-0 bg-[#303839]/12" aria-hidden />;
+  const tint = String(layer.tintColor || "");
+  // Every SVG can be recoloured — single-colour or not. A raster element that
+  // already carries a tint keeps its control so the tint can be changed back.
+  const recolourable = isSvgElement(layer) || Boolean(tint);
 
   return (
     <div
@@ -24,21 +29,53 @@ export default function CustomerElementToolbar({ layer, onPatch, onDuplicate, on
     >
       <span className="whitespace-nowrap px-1 text-[10px] font-bold uppercase tracking-wide text-[#303839]/50">Element</span>
 
-      {layer.tintColor !== undefined && layer.tintColor !== "" && (
-        <label
-          className="relative grid h-11 w-11 shrink-0 cursor-pointer place-items-center rounded-lg border border-[#303839]/12 hover:bg-[#303839]/5 focus-within:ring-2 focus-within:ring-[#303839]"
-          title="Element colour"
-        >
-          <span className="sr-only">Element colour</span>
-          <span className="h-4 w-4 rounded-sm border border-[#303839]/20" style={{ background: layer.tintColor || "#303839" }} aria-hidden />
-          <input
-            type="color"
-            value={layer.tintColor || "#303839"}
-            onChange={(e) => onPatch({ tintColor: e.target.value }, "element-tint")}
-            className="absolute inset-0 cursor-pointer opacity-0"
-            aria-label="Element colour"
-          />
-        </label>
+      {recolourable && (
+        <div role="group" aria-label="Element colour" className="flex shrink-0 items-center gap-1">
+          {palette.length ? (
+            palette.map((swatch) => (
+              <button
+                key={swatch}
+                type="button"
+                aria-label={`Element colour ${swatch}`}
+                aria-pressed={tint.toLowerCase() === swatch.toLowerCase()}
+                onClick={() => onPatch({ tintColor: swatch }, "element-tint")}
+                className={`h-7 w-7 shrink-0 rounded-full border shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] ${
+                  tint.toLowerCase() === swatch.toLowerCase() ? "border-[#303839] ring-2 ring-[#303839] ring-offset-1" : "border-[#303839]/15"
+                }`}
+                style={{ backgroundColor: swatch }}
+              />
+            ))
+          ) : (
+            <label
+              className="relative grid h-11 w-11 shrink-0 cursor-pointer place-items-center rounded-lg border border-[#303839]/12 hover:bg-[#303839]/5 focus-within:ring-2 focus-within:ring-[#303839]"
+              title="Element colour"
+            >
+              <span
+                className="h-4 w-4 rounded-sm border border-[#303839]/20"
+                style={{ background: tint || "conic-gradient(#D4AF37 0 25%, #8FB9A8 0 50%, #C9A0B4 0 75%, #303839 0)" }}
+                aria-hidden
+              />
+              <input
+                type="color"
+                value={tint || "#303839"}
+                onChange={(e) => onPatch({ tintColor: e.target.value }, "element-tint")}
+                className="absolute inset-0 cursor-pointer opacity-0"
+                aria-label="Element colour"
+              />
+            </label>
+          )}
+          <button
+            type="button"
+            aria-pressed={!tint}
+            onClick={() => onPatch({ tintColor: "" }, "element-tint-original")}
+            title="Show the artwork's own colours"
+            className={`h-11 shrink-0 rounded-lg px-2.5 text-[11px] font-bold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] ${
+              !tint ? "bg-[#303839] text-white" : "text-[#303839] hover:bg-[#303839]/5"
+            }`}
+          >
+            Original
+          </button>
+        </div>
       )}
 
       <EditableNumericStepper label="Element opacity" value={Math.round((layer.opacity === undefined ? 1 : Number(layer.opacity)) * 100)} minimum={10} maximum={100} step={5} largeStep={25} allowNegative={false} allowDecimal={false} formatValue={(value) => `${Math.round(value)}%`} onCommit={(value) => onPatch({ opacity: value / 100 }, "element-opacity")} showLabel className="h-11 w-32 shrink-0 rounded-lg bg-white px-1" />
@@ -70,29 +107,6 @@ export default function CustomerElementToolbar({ layer, onPatch, onDuplicate, on
         </svg>
       </button>
 
-      {divider}
-
-      <button
-        type="button"
-        aria-label="Duplicate element"
-        onClick={onDuplicate}
-        className="grid h-11 w-11 shrink-0 place-items-center rounded-lg text-[#303839] hover:bg-[#303839]/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white"
-      >
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" aria-hidden>
-          <rect x="9" y="9" width="12" height="12" rx="2" />
-          <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-        </svg>
-      </button>
-      <button
-        type="button"
-        aria-label="Delete element"
-        onClick={onDelete}
-        className="grid h-11 w-11 shrink-0 place-items-center rounded-lg text-red-700 hover:bg-red-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400"
-      >
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-          <path d="M3 6h18M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
-        </svg>
-      </button>
     </div>
   );
 }

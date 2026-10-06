@@ -2,6 +2,8 @@
 
 import { useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import type { TextGrowthDirection } from "@/lib/customizer/v2/text-growth";
+import { TEXT_GROWTH_OPTIONS, TextGrowthIcon } from "./TextGrowthControl";
 
 const HORIZONTAL = [
   { value: "left", label: "Align left", path: "M4 6h16M4 10h10M4 14h16M4 18h12" },
@@ -22,6 +24,10 @@ type Props = {
   canVertical?: boolean;
   onHorizontalChange: (value: string) => void;
   onVerticalChange: (value: string) => void;
+  /** Text growth (which edge holds when the text gets taller); omitted hides the section. */
+  growth?: TextGrowthDirection;
+  canGrowth?: boolean;
+  onGrowthChange?: (value: TextGrowthDirection) => void;
   className?: string;
 };
 
@@ -40,6 +46,9 @@ export default function TextAlignmentDropdown({
   canVertical = true,
   onHorizontalChange,
   onVerticalChange,
+  growth,
+  canGrowth = true,
+  onGrowthChange,
   className = "",
 }: Props) {
   const [open, setOpen] = useState(false);
@@ -84,8 +93,9 @@ export default function TextAlignmentDropdown({
     };
   }, [open]);
 
-  const select = (kind: "horizontal" | "vertical", value: string) => {
+  const select = (kind: "horizontal" | "vertical" | "growth", value: string) => {
     if (kind === "horizontal") onHorizontalChange(value);
+    else if (kind === "growth") onGrowthChange?.(value as TextGrowthDirection);
     else onVerticalChange(value);
     setOpen(false);
     triggerRef.current?.focus();
@@ -143,6 +153,34 @@ export default function TextAlignmentDropdown({
               );
             })}
           </div>
+          {growth && onGrowthChange && (
+            <div role="group" aria-label="Text growth" className="mt-2 border-t border-[#303839]/8 pt-2">
+              <p className="px-1 pb-1 text-[10px] font-bold uppercase tracking-[0.12em] text-[#303839]/50">Text growth</p>
+              <div className="grid grid-cols-3 gap-1">
+                {TEXT_GROWTH_OPTIONS.map((option) => {
+                  const active = growth === option.value;
+                  return (
+                    <button
+                      key={option.value}
+                      type="button"
+                      role="menuitemradio"
+                      aria-checked={active}
+                      aria-label={`Text grows ${option.label.toLowerCase()}`}
+                      title={option.hint}
+                      disabled={!canGrowth}
+                      onClick={() => select("growth", option.value)}
+                      className={`grid h-12 cursor-pointer place-items-center gap-0.5 rounded-lg text-[10px] font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white disabled:cursor-not-allowed disabled:opacity-30 ${
+                        active ? "bg-cream text-[#303839] ring-1 ring-[#D4AF37]/45" : "text-[#303839]/60 hover:bg-cream"
+                      }`}
+                    >
+                      <TextGrowthIcon path={option.path} />
+                      {option.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </div>,
         document.body,
       )

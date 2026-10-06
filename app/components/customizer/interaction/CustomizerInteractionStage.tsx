@@ -26,7 +26,8 @@
  *   a scale transform cannot preview honestly). The workspace does not render.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { flushSync } from "react-dom";
 import { Label, Layer, Line, Rect, Stage, Tag, Text, Transformer } from "react-konva";
 import type Konva from "konva";
 
@@ -139,6 +140,11 @@ export type InteractionNode = {
   maxFontSize?: number;
   /** Grid slots, in document coordinates (spec §28). */
   slots?: Array<{ id: string; x: number; y: number; width: number; height: number }>;
+  /**
+   * For a group: every layer inside it, at any depth. A group draws nothing of
+   * its own — its members are separate artwork — so a drag moves them with it.
+   */
+  descendantIds?: string[];
 };
 
 export type GestureCommit = {
@@ -191,6 +197,11 @@ export type InteractionStageProps = {
   onTransientGeometry?: (overrides: Record<string, Record<string, unknown>> | null) => void;
   onDoubleClickNode?: (id: string) => void;
   onContextMenuNode?: (id: string, position: { x: number; y: number }) => void;
+  /**
+   * Right click on EMPTY artboard: the viewport position for the menu, and the
+   * document point under the pointer (where Paste should land).
+   */
+  onContextMenuCanvas?: (position: { x: number; y: number }, point: { x: number; y: number }) => void;
   onGridSlotSelect?: (layerId: string, slotId: string) => void;
 };
 
@@ -231,6 +242,8 @@ type DragSession = {
     width: number;
     height: number;
     rotation: number;
+    /** Artwork that moves with this member: a group's contents. */
+    descendantIds: string[];
   }>;
   startX: number;
   startY: number;
@@ -238,7 +251,18 @@ type DragSession = {
   collapseOnRelease: boolean;
   lastX: number;
   lastY: number;
+  /** The followers' positions from the latest move, re-pinned after Konva's Transformer has had its say. */
+  lastMoves?: Array<{ id: string; x: number; y: number }>;
 };
+
+/** Namespace of the lead-node listener that re-pins followers during a drag. */
+const FOLLOWER_PIN_EVENT = "dragmove.followerPin";
+
+/** Whether a Konva drag event belongs to the gesture's lead object (not a follower the Transformer drags along). */
+function isLeadEvent(event: Konva.KonvaEventObject<DragEvent> | undefined, session: { leadId: string }): boolean {
+  const target = event?.target as Konva.Node | undefined;
+  return !target || target.name() === session.leadId;
+}
 
 export default function CustomizerInteractionStage({
   documentWidth,
@@ -258,11 +282,21 @@ export default function CustomizerInteractionStage({
   onTransientGeometry,
   onDoubleClickNode,
   onContextMenuNode,
+  onContextMenuCanvas,
   onGridSlotSelect,
 }: InteractionStageProps) {
   const stageRef = useRef<Konva.Stage>(null);
   const transformerRef = useRef<Konva.Transformer>(null);
   const proxyRefs = useRef(new Map<string, Konva.Rect>());
+  /** Multi-selection member outlines, moved with their artwork during a drag. */
+  const memberOutlineRefs = useRef(new Map<string, Konva.Rect>());
+  /**
+   * The hand-off from a gesture's transient preview to the committed document.
+   * Set just before a gesture commits; cleared by the layout effect below once
+   * the committed geometry has rendered, so the preview is removed in the very
+   * commit that draws the real geometry — never a frame early.
+   */
+  const pendingHandoffRef = useRef<{ ids: string[]; nodes: readonly InteractionNode[]; clearGeometry: boolean } | null>(null);
   const guideLayerRef = useRef<Konva.Layer>(null);
   const guideNodesRef = useRef<Konva.Line[]>([]);
   const marqueeRef = useRef<Konva.Rect>(null);
@@ -276,6 +310,15 @@ export default function CustomizerInteractionStage({
     x: number;
     y: number;
   }>(null);
+  /** Detaches the window listeners of the marquee in flight. */
+  const marqueeListenersRef = useRef<(() => void) | null>(null);
+  /**
+   * The buttons of the last two presses on an object. Konva reports ANY two
+   * quick presses as a double click — a right click then a left click included
+   * — but only two primary-button presses are one: anything else would open
+   * crop or text editing from what was really a right click.
+   */
+  const pressButtonsRef = useRef<[number, number]>([0, 0]);
   const transformStartRef = useRef<Map<string, InteractionNode>>(new Map());
   /**
    * The Transformer's own box at the start of a resize, in absolute stage
@@ -511,6 +554,8 @@ export default function CustomizerInteractionStage({
 
     dragRef.current = null;
     dragSnapTargetsRef.current = null;
+    marqueeListenersRef.current?.();
+    marqueeListenersRef.current = null;
     marqueeSessionRef.current = null;
     if (marqueeRef.current?.visible()) marqueeRef.current.visible(false);
     transformStartRef.current = new Map();
@@ -656,6 +701,8 @@ export default function CustomizerInteractionStage({
 
   const handleNodePointerDown = useCallback(
     (event: Konva.KonvaEventObject<PointerEvent>, node: InteractionNode) => {
+      // Remembered for the double-click rule below, before anything can return.
+      pressButtonsRef.current = [pressButtonsRef.current[1], Number((event.evt as PointerEvent)?.button ?? 0)];
       if (!interactive) return;
       // A right click selects without arming a drag, so the context menu always
       // acts on the object under the cursor (spec §32).
@@ -704,6 +751,7 @@ export default function CustomizerInteractionStage({
               width: item.width,
               height: item.height,
               rotation: Number(item.rotation) || 0,
+              descendantIds: item.descendantIds ?? [],
             }))
           : [],
         startX: target.x,
@@ -718,14 +766,71 @@ export default function CustomizerInteractionStage({
   );
 
   /* ---------------------------------------------------------------------- */
+  /* Gesture hand-off: transient preview → committed document                */
+  /* ---------------------------------------------------------------------- */
+
+  /**
+   * Commit a finished gesture and retire its transient preview without a
+   * single frame of the old geometry.
+   *
+   * Clearing the preview first and committing second left a window — however
+   * short — in which the artwork was drawn at its ORIGINAL position (preview
+   * gone, new geometry not yet rendered): the snap-back flicker at the end of
+   * a drag. Now the commit is rendered synchronously (`flushSync`), and the
+   * preview is removed by the layout effect of that very render, after the DOM
+   * holds the new geometry and before the browser paints. A commit that
+   * changes nothing renders no new geometry; its preview is removed at once,
+   * which shows the (unchanged) document.
+   */
+  const commitWithHandoff = useCallback(
+    (ids: readonly string[], changes: Parameters<typeof onGestureCommit>[0], clearGeometry: boolean) => {
+      pendingHandoffRef.current = { ids: [...ids], nodes, clearGeometry };
+      if (changes.length) flushSync(() => onGestureCommit(changes));
+      const pending = pendingHandoffRef.current;
+      if (!pending) return;
+      pendingHandoffRef.current = null;
+      if (pending.clearGeometry) onTransientGeometry?.(null);
+      clearTransientTransforms(previewRootRef?.current, pending.ids);
+    },
+    [nodes, onGestureCommit, onTransientGeometry, previewRootRef],
+  );
+
+  useLayoutEffect(() => {
+    const pending = pendingHandoffRef.current;
+    if (!pending || pending.nodes === nodes) return;
+    pendingHandoffRef.current = null;
+    if (pending.clearGeometry) onTransientGeometry?.(null);
+    clearTransientTransforms(previewRootRef?.current, pending.ids);
+  }, [nodes, onTransientGeometry, previewRootRef]);
+
+  /* ---------------------------------------------------------------------- */
   /* Dragging — transient, zero document writes until release                */
   /* ---------------------------------------------------------------------- */
 
-  const handleDragStart = useCallback(() => {
+  const handleDragStart = useCallback((event: Konva.KonvaEventObject<DragEvent>) => {
     if (!interactive) return;
     const session = dragRef.current;
     if (!session || !session.members.length) return;
+    // Konva's Transformer starts a native drag on every OTHER attached node when
+    // one of them is dragged (Transformer._proxyDrag). The stage moves those
+    // followers itself, by the lead's snapped delta, so their own drag events
+    // must not be treated as the gesture's.
+    if (!isLeadEvent(event, session)) return;
+    if (session.moved) return;
     session.moved = true;
+    // Konva's Transformer, on the lead's first move, nudges every other
+    // attached node by that move AFTER the stage has placed it. This listener is
+    // registered later than the Transformer's, so it runs after it and puts
+    // each follower back on the stage's position.
+    const leadNode = event.target as Konva.Node;
+    leadNode.off(FOLLOWER_PIN_EVENT);
+    leadNode.on(FOLLOWER_PIN_EVENT, () => {
+      const moves = dragRef.current?.lastMoves;
+      if (!moves) return;
+      for (const move of moves) {
+        if (move.id !== dragRef.current?.leadId) proxyRefs.current.get(move.id)?.position({ x: move.x, y: move.y });
+      }
+    });
     gestureActiveRef.current = true;
     dragSnapTargetsRef.current = snapTargetsFor(session.members.map((member) => member.id));
     transformStartRef.current = new Map(
@@ -739,6 +844,7 @@ export default function CustomizerInteractionStage({
     (event: Konva.KonvaEventObject<DragEvent>) => {
       const session = dragRef.current;
       if (!session || !session.members.length) return;
+      if (!isLeadEvent(event, session)) return;
       const node = event.target as Konva.Rect;
       const lead = session.members.find((member) => member.id === session.leadId);
       if (!lead) return;
@@ -775,25 +881,38 @@ export default function CustomizerInteractionStage({
       session.lastY = snapped.y;
 
       const moves = applySelectionDelta(session.members, session.leadId, snapped.x, snapped.y, lead.x, lead.y);
+      session.lastMoves = moves;
 
-      schedulerRef.current!.schedule(() => {
-        paintGuides(snapped.guides);
-        const root = previewRootRef?.current;
-        for (const move of moves) {
-          const member = session.members.find((item) => item.id === move.id);
-          if (!member) continue;
-          // Followers have no Konva drag of their own, so move their proxies too
-          // or the selection frame would tear away from the artwork.
-          if (move.id !== session.leadId) proxyRefs.current.get(move.id)?.position({ x: move.x, y: move.y });
-          applyTransientTransform(root, move.id, { dx: move.x - member.x, dy: move.y - member.y });
-        }
-        stageRef.current?.batchDraw();
-      });
+      // Applied NOW, in the same event that moved the lead proxy — not in a
+      // later animation-frame callback, which could run after Konva's own draw
+      // and paint one frame with the lead moved and everything else behind.
+      // These are a few attribute writes; the browser still paints once per
+      // frame and Konva's redraw stays batched.
+      paintGuides(snapped.guides);
+      const root = previewRootRef?.current;
+      for (const move of moves) {
+        const member = session.members.find((item) => item.id === move.id);
+        if (!member) continue;
+        // Every visual of a member takes the SAME position: its artwork (a
+        // transient transform), its hit proxy and its selection outline.
+        // Followers' proxies are the stage's to place — their dragBoundFunc
+        // holds them still against Konva's own drag.
+        if (move.id !== session.leadId) proxyRefs.current.get(move.id)?.position({ x: move.x, y: move.y });
+        memberOutlineRefs.current.get(move.id)?.position({ x: move.x, y: move.y });
+        const offset = { dx: move.x - member.x, dy: move.y - member.y };
+        applyTransientTransform(root, move.id, offset);
+        // A group's contents are its artwork: they move by the very same offset.
+        for (const descendantId of member.descendantIds) applyTransientTransform(root, descendantId, offset);
+      }
+      stageRef.current?.batchDraw();
     },
     [snapTargetsFor, metrics.snapTolerance, paintGuides, previewRootRef],
   );
 
-  const handleDragEnd = useCallback(() => {
+  const handleDragEnd = useCallback((event: Konva.KonvaEventObject<DragEvent>) => {
+    // A follower's own (suppressed) drag ending is not the gesture ending.
+    if (dragRef.current && !isLeadEvent(event, dragRef.current)) return;
+    (event?.target as Konva.Node | undefined)?.off(FOLLOWER_PIN_EVENT);
     // The gesture was abandoned (a second finger arrived): Konva still fires
     // dragend on the way out, and it must not write anything.
     if (abortedRef.current) {
@@ -810,10 +929,6 @@ export default function CustomizerInteractionStage({
     if (!lead) return;
     const moves = applySelectionDelta(session.members, session.leadId, session.lastX, session.lastY, lead.x, lead.y);
 
-    // The transient preview is dropped in the SAME turn the real geometry is
-    // committed, so the artwork never flashes back to its old position.
-    clearTransientTransforms(previewRootRef?.current, session.members.map((member) => member.id));
-
     // A drag TRANSLATES: the delta the gesture applied moves the PERSISTED
     // origin. Committing the resolved box's absolute position instead would
     // write the measured text box centre into the document — see
@@ -822,10 +937,11 @@ export default function CustomizerInteractionStage({
 
     dragRef.current = null;
     gestureActiveRef.current = false;
-    // A gesture that ended where it started is a click, not a drag: committing
-    // it would push an empty step onto the undo stack (spec §45).
-    if (changes.length) onGestureCommit(changes);
-  }, [clearGuides, previewRootRef, onGestureCommit]);
+    // ONE commit for the whole gesture, handed off without a flash: the
+    // transient preview stays until the committed geometry has rendered (spec
+    // §45: a drag that ended where it started commits nothing).
+    commitWithHandoff(session.members.flatMap((member) => [member.id, ...member.descendantIds]), changes, false);
+  }, [clearGuides, commitWithHandoff]);
 
   /**
    * Pointer up without a drag. This is the click half of the "press an object
@@ -1027,10 +1143,6 @@ export default function CustomizerInteractionStage({
       proxy.scaleX(1);
       proxy.scaleY(1);
     }
-    // Drop the preview in the same turn as the commit: the renderer is about to
-    // draw the real geometry from the document instead.
-    onTransientGeometry?.(null);
-    clearTransientTransforms(previewRootRef?.current, selection);
     if (angleLabelRef.current?.visible()) {
       angleLabelRef.current.visible(false);
       angleLabelRef.current.getLayer()?.batchDraw();
@@ -1038,8 +1150,10 @@ export default function CustomizerInteractionStage({
     transformStartRef.current = new Map();
     boundStartRef.current = null;
     gestureActiveRef.current = false;
-    if (changes.length) onGestureCommit(changes);
-  }, [collectTransformChanges, selection, previewRootRef, onTransientGeometry, onGestureCommit]);
+    // The preview (transient geometry and transforms) is dropped by the same
+    // hand-off as a drag: only once the committed geometry has rendered.
+    commitWithHandoff(selection, changes, true);
+  }, [collectTransformChanges, selection, commitWithHandoff]);
 
   /* ---------------------------------------------------------------------- */
   /* Marquee                                                                 */
@@ -1095,13 +1209,90 @@ export default function CustomizerInteractionStage({
     [scale, onGridSlotSelect, onSelectionChange, onDoubleClickNode],
   );
 
-  const stagePoint = useCallback(() => {
-    const stage = stageRef.current;
-    const pointer = stage?.getPointerPosition();
-    if (!stage || !pointer) return null;
-    const safeScale = Math.max(Math.abs(scale), 1e-6);
-    return { x: (pointer.x - STAGE_GUTTER) / safeScale, y: (pointer.y - STAGE_GUTTER) / safeScale };
-  }, [scale]);
+  /**
+   * A viewport point in document coordinates. Computed from the container's
+   * box rather than Konva's last pointer position, because a marquee keeps
+   * going after the pointer leaves the stage — Konva stops tracking it there.
+   */
+  const documentPointFromClient = useCallback(
+    (clientX: number, clientY: number) => {
+      const container = stageRef.current?.container();
+      if (!container) return null;
+      const box = container.getBoundingClientRect();
+      const safeScale = Math.max(Math.abs(scale), 1e-6);
+      return { x: (clientX - box.left - STAGE_GUTTER) / safeScale, y: (clientY - box.top - STAGE_GUTTER) / safeScale };
+    },
+    [scale],
+  );
+
+  const moveMarquee = useCallback(
+    (clientX: number, clientY: number) => {
+      const session = marqueeSessionRef.current;
+      if (!session) return;
+      const point = documentPointFromClient(clientX, clientY);
+      if (!point) return;
+      session.x = point.x;
+      session.y = point.y;
+      if (!session.moved && Math.hypot(point.x - session.startX, point.y - session.startY) * scale < 4) return;
+      session.moved = true;
+      schedulerRef.current!.schedule(() => {
+        const rect = marqueeRef.current;
+        if (!rect) return;
+        rect.visible(true);
+        rect.strokeWidth(metrics.strokeWidth);
+        rect.position({ x: Math.min(session.startX, session.x), y: Math.min(session.startY, session.y) });
+        rect.size({
+          width: Math.abs(session.x - session.startX),
+          height: Math.abs(session.y - session.startY),
+        });
+        rect.getLayer()?.batchDraw();
+      });
+    },
+    [documentPointFromClient, scale, metrics.strokeWidth],
+  );
+
+  const finishMarquee = useCallback(
+    (clientX: number, clientY: number) => {
+      marqueeListenersRef.current?.();
+      marqueeListenersRef.current = null;
+      const session = marqueeSessionRef.current;
+      if (session) {
+        const point = documentPointFromClient(clientX, clientY);
+        if (point && session.moved) {
+          session.x = point.x;
+          session.y = point.y;
+        }
+      }
+      marqueeSessionRef.current = null;
+      schedulerRef.current!.flush();
+      const rect = marqueeRef.current;
+      if (rect) {
+        rect.visible(false);
+        rect.getLayer()?.batchDraw();
+      }
+      if (!session) return;
+      const found = session.moved
+        ? hitTestMarquee(
+            { left: session.startX, top: session.startY, right: session.x, bottom: session.y },
+            nodes,
+            { editingGroupId, scale },
+          )
+        : [];
+      onSelectionChange(
+        resolveMarqueeSelection({
+          original: session.original,
+          found,
+          additive: session.additive,
+          moved: session.moved,
+        }),
+      );
+    },
+    [documentPointFromClient, nodes, editingGroupId, scale, onSelectionChange],
+  );
+
+  // The window listeners call whatever the latest render defined.
+  const marqueeHandlersRef = useRef({ moveMarquee, finishMarquee });
+  marqueeHandlersRef.current = { moveMarquee, finishMarquee };
 
   const handleStagePointerDown = useCallback(
     (event: Konva.KonvaEventObject<PointerEvent>) => {
@@ -1110,7 +1301,8 @@ export default function CustomizerInteractionStage({
       if (event.target !== event.target.getStage()) return;
       if ((event.evt as PointerEvent)?.button !== 0) return;
       if (resolvePointerOwner({ tool }) !== "marquee") return;
-      const point = stagePoint();
+      const source = event.evt as PointerEvent;
+      const point = documentPointFromClient(source.clientX, source.clientY);
       if (!point) return;
       marqueeSessionRef.current = {
         startX: point.x,
@@ -1121,59 +1313,31 @@ export default function CustomizerInteractionStage({
         original: selection.slice(),
         moved: false,
       };
+      /**
+       * Followed on the WINDOW, not the stage. A marquee is routinely dragged
+       * past the edge of the page; the stage stops hearing the pointer there,
+       * so a release outside it used to be lost — the selection was never
+       * applied and the marquee stayed armed, following the mouse with no
+       * button held.
+       */
+      marqueeListenersRef.current?.();
+      const onMove = (moveEvent: PointerEvent) => marqueeHandlersRef.current.moveMarquee(moveEvent.clientX, moveEvent.clientY);
+      const onUp = (upEvent: PointerEvent) => marqueeHandlersRef.current.finishMarquee(upEvent.clientX, upEvent.clientY);
+      const onCancel = () => interrupt({ type: "pointercancel" });
+      window.addEventListener("pointermove", onMove);
+      window.addEventListener("pointerup", onUp);
+      window.addEventListener("pointercancel", onCancel);
+      marqueeListenersRef.current = () => {
+        window.removeEventListener("pointermove", onMove);
+        window.removeEventListener("pointerup", onUp);
+        window.removeEventListener("pointercancel", onCancel);
+      };
     },
-    [interactive, tool, stagePoint, selection],
+    [interactive, tool, documentPointFromClient, selection, interrupt],
   );
 
-  const handleStagePointerMove = useCallback(() => {
-    const session = marqueeSessionRef.current;
-    if (!session) return;
-    const point = stagePoint();
-    if (!point) return;
-    session.x = point.x;
-    session.y = point.y;
-    if (!session.moved && Math.hypot(point.x - session.startX, point.y - session.startY) * scale < 4) return;
-    session.moved = true;
-    schedulerRef.current!.schedule(() => {
-      const rect = marqueeRef.current;
-      if (!rect) return;
-      rect.visible(true);
-      rect.strokeWidth(metrics.strokeWidth);
-      rect.position({ x: Math.min(session.startX, session.x), y: Math.min(session.startY, session.y) });
-      rect.size({
-        width: Math.abs(session.x - session.startX),
-        height: Math.abs(session.y - session.startY),
-      });
-      rect.getLayer()?.batchDraw();
-    });
-  }, [stagePoint, scale, metrics.strokeWidth]);
-
-  const handleStagePointerUp = useCallback(() => {
-    const session = marqueeSessionRef.current;
-    marqueeSessionRef.current = null;
-    schedulerRef.current!.flush();
-    const rect = marqueeRef.current;
-    if (rect) {
-      rect.visible(false);
-      rect.getLayer()?.batchDraw();
-    }
-    if (!session) return;
-    const found = session.moved
-      ? hitTestMarquee(
-          { left: session.startX, top: session.startY, right: session.x, bottom: session.y },
-          nodes,
-          { editingGroupId, scale },
-        )
-      : [];
-    onSelectionChange(
-      resolveMarqueeSelection({
-        original: session.original,
-        found,
-        additive: session.additive,
-        moved: session.moved,
-      }),
-    );
-  }, [nodes, editingGroupId, scale, onSelectionChange]);
+  // An unmount mid-marquee must not leave window listeners behind.
+  useEffect(() => () => marqueeListenersRef.current?.(), []);
 
   /* ---------------------------------------------------------------------- */
   /* Render                                                                  */
@@ -1198,8 +1362,15 @@ export default function CustomizerInteractionStage({
       scaleY={scale}
       listening={interactive}
       onPointerDown={handleStagePointerDown}
-      onPointerMove={handleStagePointerMove}
-      onPointerUp={handleStagePointerUp}
+      onContextMenu={(event) => {
+        // Objects open their own menu (their handler runs first); only a right
+        // click on genuinely empty design space reaches this.
+        if (!interactive || event.target !== event.target.getStage()) return;
+        const source = event.evt as MouseEvent;
+        source.preventDefault();
+        const point = documentPointFromClient(source.clientX, source.clientY);
+        if (point) onContextMenuCanvas?.({ x: source.clientX, y: source.clientY }, point);
+      }}
       style={{
         position: "absolute",
         left: -STAGE_GUTTER,
@@ -1251,12 +1422,17 @@ export default function CustomizerInteractionStage({
               // it, and the artwork would snap back on release.
               dragBoundFunc={function dragBound(this: Konva.Node, position) {
                 const session = dragRef.current;
-                if (session && !session.members.length) {
+                // A pinned selection, or a FOLLOWER dragged natively by the
+                // Transformer: stay exactly where the stage put it.
+                if (session && (!session.members.length || this.name() !== session.leadId)) {
                   return { x: this.absolutePosition().x, y: this.absolutePosition().y };
                 }
                 return position;
               }}
               onMouseEnter={() => {
+                // Mid-gesture the pointer crosses other objects: no hover state
+                // (and no stage re-render) until the gesture is over.
+                if (gestureActiveRef.current) return;
                 setHoveredId(node.id);
                 setStageCursor(node.capabilities.movable ? "move" : "pointer");
               }}
@@ -1269,7 +1445,11 @@ export default function CustomizerInteractionStage({
               onDragStart={handleDragStart}
               onDragMove={handleDragMove}
               onDragEnd={handleDragEnd}
-              onDblClick={() => handleDoubleClick(node)}
+              // Only two primary presses are a double click (see pressButtonsRef).
+              onDblClick={() => {
+                if (pressButtonsRef.current.some((button) => button !== 0)) return;
+                handleDoubleClick(node);
+              }}
               onDblTap={() => handleDoubleClick(node)}
               onContextMenu={(event) => {
                 event.evt.preventDefault();
@@ -1295,6 +1475,11 @@ export default function CustomizerInteractionStage({
               return (
                 <Rect
                   key={`member-${id}`}
+                  name={`member-outline:${id}`}
+                  ref={(instance) => {
+                    if (instance) memberOutlineRefs.current.set(id, instance);
+                    else memberOutlineRefs.current.delete(id);
+                  }}
                   x={node.x}
                   y={node.y}
                   width={node.width}
