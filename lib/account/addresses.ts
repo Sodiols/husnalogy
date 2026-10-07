@@ -10,6 +10,9 @@ import { z } from "zod";
 
 export const MAX_SAVED_ADDRESSES = 10;
 
+/** One budget shared by every address route (list, create, edit, delete), per account. */
+export const ADDRESS_RATE_LIMIT = { name: "account-addresses", limit: 60, windowMs: 10 * 60 * 1000 };
+
 const text = (max: number) => z.string().trim().max(max);
 const required = (max: number, message: string) => z.string().trim().min(1, message).max(max);
 

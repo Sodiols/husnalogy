@@ -2,12 +2,11 @@ import { createClient } from "@/lib/supabase/server";
 import { rateLimit } from "@/lib/security/rate-limit";
 import { rejectCrossSiteRequest } from "@/lib/security/same-origin";
 import { readJsonObject } from "@/lib/http/read-body";
-import { AddressError, addressInputSchema, createAddress, firstIssue, listAddresses } from "@/lib/account/addresses";
+import { ADDRESS_RATE_LIMIT, AddressError, addressInputSchema, createAddress, firstIssue, listAddresses } from "@/lib/account/addresses";
 
 export const dynamic = "force-dynamic";
 
 const PRIVATE_HEADERS = { "Cache-Control": "private, no-store, max-age=0" };
-export const ADDRESS_RATE_LIMIT = { name: "account-addresses", limit: 60, windowMs: 10 * 60 * 1000 };
 
 // The session-scoped client: Row Level Security (user_id = auth.uid()) decides
 // what this account can read and write. The service role is never used here.

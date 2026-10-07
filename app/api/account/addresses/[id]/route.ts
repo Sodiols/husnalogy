@@ -2,12 +2,11 @@ import { createClient } from "@/lib/supabase/server";
 import { rateLimit } from "@/lib/security/rate-limit";
 import { rejectCrossSiteRequest } from "@/lib/security/same-origin";
 import { readJsonObject } from "@/lib/http/read-body";
-import { AddressError, addressPatchSchema, deleteAddress, firstIssue, updateAddress } from "@/lib/account/addresses";
+import { ADDRESS_RATE_LIMIT, AddressError, addressPatchSchema, deleteAddress, firstIssue, updateAddress } from "@/lib/account/addresses";
 
 export const dynamic = "force-dynamic";
 
 const PRIVATE_HEADERS = { "Cache-Control": "private, no-store, max-age=0" };
-const ADDRESS_RATE_LIMIT = { name: "account-addresses", limit: 60, windowMs: 10 * 60 * 1000 };
 
 async function session() {
   const supabase = await createClient();
