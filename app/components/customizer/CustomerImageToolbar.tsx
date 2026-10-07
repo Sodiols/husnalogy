@@ -114,16 +114,16 @@ export default function CustomerImageToolbar({
         <span className="whitespace-nowrap px-1 text-[10px] font-bold uppercase tracking-wide text-[#303839]/50">Crop</span>
 
         {canZoom && (
-          <EditableNumericStepper label="Zoom photo" value={Math.round(zoom * 100)} minimum={100} maximum={500} step={1} largeStep={10} allowNegative={false} allowDecimal={false} formatValue={(value) => `${Math.round(value)}%`} onCommit={(value) => onImagePatch({ zoom: value / 100 }, "crop-zoom")} showLabel className="h-11 w-32 shrink-0 rounded-lg bg-white px-1" />
+          <EditableNumericStepper stepIcons="plusMinus" label="Zoom photo" value={Math.round(zoom * 100)} minimum={100} maximum={500} step={1} largeStep={10} allowNegative={false} allowDecimal={false} formatValue={(value) => `${Math.round(value)}%`} onCommit={(value) => onImagePatch({ zoom: value / 100 }, "crop-zoom")} showLabel className="h-11 w-32 shrink-0 rounded-lg bg-white px-1" />
         )}
 
         {canRotateImage && (
-          <EditableNumericStepper label="Image rotation" value={imageRotation} minimum={-360} maximum={360} step={1} largeStep={15} allowNegative allowDecimal={false} onCommit={(rotation) => onImagePatch({ rotation }, "crop-rotate")} showLabel className="h-11 w-32 shrink-0 rounded-lg bg-white px-1" />
+          <EditableNumericStepper stepIcons="plusMinus" label="Image rotation" value={imageRotation} minimum={-360} maximum={360} step={1} largeStep={15} allowNegative allowDecimal={false} onCommit={(rotation) => onImagePatch({ rotation }, "crop-rotate")} showLabel className="h-11 w-32 shrink-0 rounded-lg bg-white px-1" />
         )}
         {showPositionFields && (
           <>
-            <EditableNumericStepper label="Crop X position" value={Number(transform.offsetX) || 0} minimum={-10000} maximum={10000} step={1} largeStep={10} allowNegative allowDecimal={false} disabled={!canReposition} onCommit={(offsetX) => onImagePatch({ offsetX }, "crop-position")} showLabel className="h-11 w-32 shrink-0 rounded-lg bg-white px-1" />
-            <EditableNumericStepper label="Crop Y position" value={Number(transform.offsetY) || 0} minimum={-10000} maximum={10000} step={1} largeStep={10} allowNegative allowDecimal={false} disabled={!canReposition} onCommit={(offsetY) => onImagePatch({ offsetY }, "crop-position")} showLabel className="h-11 w-32 shrink-0 rounded-lg bg-white px-1" />
+            <EditableNumericStepper stepIcons="plusMinus" label="Crop X position" value={Number(transform.offsetX) || 0} minimum={-10000} maximum={10000} step={1} largeStep={10} allowNegative allowDecimal={false} disabled={!canReposition} onCommit={(offsetX) => onImagePatch({ offsetX }, "crop-position")} showLabel className="h-11 w-32 shrink-0 rounded-lg bg-white px-1" />
+            <EditableNumericStepper stepIcons="plusMinus" label="Crop Y position" value={Number(transform.offsetY) || 0} minimum={-10000} maximum={10000} step={1} largeStep={10} allowNegative allowDecimal={false} disabled={!canReposition} onCommit={(offsetY) => onImagePatch({ offsetY }, "crop-position")} showLabel className="h-11 w-32 shrink-0 rounded-lg bg-white px-1" />
           </>
         )}
 
@@ -227,7 +227,7 @@ export default function CustomerImageToolbar({
       {canRotateLayer && onLayerRotate && (
         <>
           {divider}
-          <EditableNumericStepper label="Rotation in degrees" value={Math.round(Number(layer?.rotation) || 0)} minimum={-360} maximum={360} step={1} largeStep={15} allowNegative allowDecimal={false} onCommit={onLayerRotate} showLabel className="h-11 w-32 shrink-0 rounded-lg bg-white px-1" />
+          <EditableNumericStepper stepIcons="plusMinus" label="Rotation in degrees" value={Math.round(Number(layer?.rotation) || 0)} minimum={-360} maximum={360} step={1} largeStep={15} allowNegative allowDecimal={false} onCommit={onLayerRotate} showLabel className="h-11 w-32 shrink-0 rounded-lg bg-white px-1" />
         </>
       )}
       {filtersEnabled && permissions.applyImageFilters && onFilterPatch && (
@@ -240,10 +240,10 @@ export default function CustomerImageToolbar({
             ["grayscale", "Grayscale", 0, 1, 0.05, 0],
             ["sepia", "Sepia", 0, 1, 0.05, 0],
           ].filter(([key]) => !allowedFilters.length || allowedFilters.includes(String(key))).map(([key, label, min, max, step, fallback]: any) => (
-            <EditableNumericStepper key={key} label={label} value={layer.filters?.[key] ?? fallback} minimum={min} maximum={max} step={step} largeStep={step * 5} allowNegative={min < 0} allowDecimal={step < 1} onCommit={(value) => onFilterPatch({ [key]: value }, `filter-${key}`)} showLabel className="h-11 w-28 shrink-0 rounded-lg bg-white px-1" />
+            <EditableNumericStepper stepIcons="plusMinus" key={key} label={label} value={layer.filters?.[key] ?? fallback} minimum={min} maximum={max} step={step} largeStep={step * 5} allowNegative={min < 0} allowDecimal={step < 1} onCommit={(value) => onFilterPatch({ [key]: value }, `filter-${key}`)} showLabel className="h-11 w-28 shrink-0 rounded-lg bg-white px-1" />
           ))}
           {(!allowedFilters.length || allowedFilters.includes("tint")) && <><label className="grid min-h-11 shrink-0 grid-cols-[auto_44px] items-center gap-2 rounded-lg bg-white px-2 text-[9px] font-bold"><span>Tint</span><input type="color" value={layer.filters?.tintColor || "#D4AF37"} onChange={(event) => onFilterPatch({ tintColor: event.target.value, tintAmount: Math.max(0.2, Number(layer.filters?.tintAmount) || 0) }, "filter-tint")} className="h-11 w-11 rounded-full" /></label>
-          <EditableNumericStepper label="Tint amount" value={layer.filters?.tintAmount || 0} minimum={0} maximum={1} step={0.05} largeStep={0.25} allowNegative={false} allowDecimal onCommit={(tintAmount) => onFilterPatch({ tintAmount }, "filter-tint")} showLabel className="h-11 w-28 shrink-0 rounded-lg bg-white px-1" /></>}
+          <EditableNumericStepper stepIcons="plusMinus" label="Tint amount" value={layer.filters?.tintAmount || 0} minimum={0} maximum={1} step={0.05} largeStep={0.25} allowNegative={false} allowDecimal onCommit={(tintAmount) => onFilterPatch({ tintAmount }, "filter-tint")} showLabel className="h-11 w-28 shrink-0 rounded-lg bg-white px-1" /></>}
           <button type="button" onClick={() => onFilterPatch(resetFilters, "filter-reset")} className="min-h-11 shrink-0 rounded-lg px-2 text-[10px] font-bold hover:bg-[#303839]/5">Reset filters</button>
         </>
       )}

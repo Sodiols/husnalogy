@@ -31,7 +31,7 @@ type Props = {
 
 export default function TextGrowthControl({ value, onChange, disabled = false }: Props) {
   return (
-    <div role="radiogroup" aria-label="Text growth" className="grid grid-cols-3 gap-1 rounded-xl border border-[#303839]/12 bg-white p-1">
+    <div role="radiogroup" aria-label="Text growth" className="grid grid-cols-3 gap-0.5 rounded-full bg-[#F2F3F5] p-1">
       {TEXT_GROWTH_OPTIONS.map((option) => {
         const active = value === option.value;
         return (
@@ -43,8 +43,9 @@ export default function TextGrowthControl({ value, onChange, disabled = false }:
             title={option.hint}
             disabled={disabled}
             onClick={() => onChange(option.value)}
-            className={`flex h-10 items-center justify-center gap-1.5 rounded-lg text-xs font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] disabled:cursor-not-allowed disabled:opacity-35 ${
-              active ? "bg-[#303839] text-white" : "text-[#303839]/70 hover:bg-[#F8F6F1] hover:text-[#303839]"
+            data-shape="round"
+            className={`flex h-8 cursor-pointer items-center justify-center gap-1 rounded-full text-[12.5px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#27307A] disabled:cursor-not-allowed disabled:opacity-35 ${
+              active ? "bg-white font-semibold text-[#1f2425] shadow-[0_1px_3px_rgba(31,36,37,0.14)]" : "font-medium text-[#303839]/65 hover:text-[#1f2425]"
             }`}
           >
             <TextGrowthIcon path={option.path} />

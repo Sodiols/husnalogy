@@ -37,7 +37,8 @@ describe("admin properties sidebar contract", () => {
   });
 
   it("uses the Husnalogy soft background for customer access", () => {
-    expect(panel).toContain('bg-[#F8F6F1]');
+    // The studio's light-grey card surface (shared with the side panels).
+    expect(panel).toContain('bg-[#F2F3F5]');
     expect(panel).not.toContain("#F4ECEC");
   });
 

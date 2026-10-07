@@ -28,7 +28,11 @@ import {
   resolveWeightOptions,
 } from "@/lib/customizer/v2/text-toolbar";
 
-const controlClass = "h-11 w-full rounded-xl border border-[#303839]/12 bg-white px-3 text-sm text-[#303839] outline-none transition-colors hover:border-[#303839]/25 focus:border-[#303839]/60 focus:ring-2 focus:ring-[#303839]/15";
+// Shared with the studio's side panels: dark text, light-grey cards, navy
+// focus and actions, sentence-case labels.
+const controlClass = "h-10 w-full rounded-md border border-[#303839]/20 bg-white px-3 text-[14px] text-[#1f2425] outline-none transition-colors placeholder:text-[#303839]/40 hover:border-[#303839]/35 focus:border-[#27307A] focus:ring-2 focus:ring-[#27307A]/15";
+const OUTLINE_PILL = "inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-full border-[1.5px] border-[#27307A] bg-white px-3 text-[13px] font-semibold text-[#27307A] transition-colors hover:bg-[#27307A]/[0.05] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#27307A] focus-visible:ring-offset-2 focus-visible:ring-offset-white disabled:cursor-wait disabled:opacity-50";
+const HINT = "mt-1 text-[12px] leading-snug text-[#303839]/60";
 
 /**
  * The preset the Mask shape select shows. A stored mask object is what every
@@ -45,18 +49,74 @@ function maskSelectValue(layer: any): string {
 }
 
 function Lbl({ children }: any) {
-  return <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-[0.1em] text-[#303839]/55">{children}</span>;
+  return <span className="mb-1 block text-[12.5px] font-semibold text-[#1f2425]">{children}</span>;
+}
+
+const HEX = /^#?([0-9a-f]{3}|[0-9a-f]{6})$/i;
+function toHex(value: unknown): string | null {
+  const match = HEX.exec(String(value ?? "").trim());
+  if (!match) return null;
+  const digits = match[1].length === 3 ? match[1].split("").map((digit) => digit + digit).join("") : match[1];
+  return `#${digits.toLowerCase()}`;
+}
+
+/**
+ * A colour: a round swatch that opens the system picker (a real colour input
+ * sits on it) and the hex value, typed and applied on Enter or blur.
+ */
+function ColourField({ value, fallback, onChange, ariaLabel, extra }: { value: unknown; fallback: string; onChange: (hex: string) => void; ariaLabel: string; extra?: React.ReactNode }) {
+  const current = toHex(value) || fallback;
+  const [draft, setDraft] = useState(current.toUpperCase());
+  const [shown, setShown] = useState(current);
+  if (shown !== current) {
+    setShown(current);
+    setDraft(current.toUpperCase());
+  }
+  const apply = () => {
+    const hex = toHex(draft);
+    if (hex && hex !== current) onChange(hex);
+    else setDraft(current.toUpperCase());
+  };
+  return (
+    <div className="flex items-center gap-2">
+      <span className="relative h-10 w-10 shrink-0 overflow-hidden rounded-full border border-[#303839]/20" style={{ backgroundColor: current }}>
+        <input
+          type="color"
+          aria-label={ariaLabel}
+          value={current}
+          onChange={(event) => onChange(event.target.value)}
+          className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+        />
+      </span>
+      <input
+        value={draft}
+        aria-label={`${ariaLabel} (hex)`}
+        spellCheck={false}
+        maxLength={7}
+        onChange={(event) => setDraft(event.target.value.toUpperCase())}
+        onKeyDown={(event) => {
+          if (event.key === "Enter") {
+            event.preventDefault();
+            apply();
+          }
+        }}
+        onBlur={apply}
+        className={`${controlClass} min-w-0 flex-1 tabular-nums`}
+      />
+      {extra}
+    </div>
+  );
 }
 function Num({ value, onChange, min, max, step = 1, ariaLabel = "Numeric value" }: any) {
-  return <EditableNumericStepper label={ariaLabel} value={Number(value) || 0} minimum={min} maximum={max} step={step} largeStep={step * 10} allowNegative={min === undefined || min < 0} allowDecimal={step < 1} showStepButtons={false} onCommit={onChange} className="h-11 w-full" inputClassName={controlClass} />;
+  return <EditableNumericStepper label={ariaLabel} value={Number(value) || 0} minimum={min} maximum={max} step={step} largeStep={step * 10} allowNegative={min === undefined || min < 0} allowDecimal={step < 1} showStepButtons={false} onCommit={onChange} className="h-10 w-full" inputClassName={controlClass} />;
 }
 /** A font size: shown and typed in points, stored in document px (type-units.ts). */
 function PointSize({ px, dpi, minPx = FONT_SIZE_RULES.minimum, maxPx = FONT_SIZE_RULES.maximum, onChange, ariaLabel }: { px: number; dpi: unknown; minPx?: number; maxPx?: number; onChange: (px: number) => void; ariaLabel: string }) {
   const bounds = fontSizeBoundsInPoints({ minimum: minPx, maximum: maxPx }, dpi);
-  return <EditableNumericStepper label={ariaLabel} value={documentPxToPoints(px, dpi)} minimum={bounds.minimum} maximum={bounds.maximum} step={FONT_SIZE_POINT_RULES.step} largeStep={FONT_SIZE_POINT_RULES.largeStep} allowNegative={false} allowDecimal showStepButtons={false} onCommit={(points) => onChange(pointsToDocumentPx(points, dpi))} className="h-11 w-full" inputClassName={controlClass} />;
+  return <EditableNumericStepper label={ariaLabel} value={documentPxToPoints(px, dpi)} minimum={bounds.minimum} maximum={bounds.maximum} step={FONT_SIZE_POINT_RULES.step} largeStep={FONT_SIZE_POINT_RULES.largeStep} allowNegative={false} allowDecimal showStepButtons={false} onCommit={(points) => onChange(pointsToDocumentPx(points, dpi))} className="h-10 w-full" inputClassName={controlClass} />;
 }
 function CarouselStepper({ value, onChange, min = -Infinity, max = Infinity, step = 1, ariaLabel }: any) {
-  return <EditableNumericStepper label={ariaLabel} value={Number(value) || 0} minimum={Number.isFinite(min) ? min : undefined} maximum={Number.isFinite(max) ? max : undefined} step={step} largeStep={step < 1 ? step * 10 : Math.max(step * 5, 10)} allowNegative={!Number.isFinite(min) || min < 0} allowDecimal={step < 1} showStepButtons={false} onCommit={onChange} className="h-11 w-full" inputClassName={controlClass} />;
+  return <EditableNumericStepper label={ariaLabel} value={Number(value) || 0} minimum={Number.isFinite(min) ? min : undefined} maximum={Number.isFinite(max) ? max : undefined} step={step} largeStep={step < 1 ? step * 10 : Math.max(step * 5, 10)} allowNegative={!Number.isFinite(min) || min < 0} allowDecimal={step < 1} showStepButtons={false} onCommit={onChange} className="h-10 w-full" inputClassName={controlClass} />;
 }
 function Txt({ value, onChange, placeholder }: any) {
   return (
@@ -91,8 +151,8 @@ function Sel({ value, onChange, options, ariaLabel }: any) {
 }
 function Check({ checked, onChange, label, disabled = false }: any) {
   return (
-    <label className={`flex min-h-9 items-center gap-2.5 text-xs font-semibold text-[#303839]/75 ${disabled ? "cursor-not-allowed opacity-60" : "cursor-pointer"}`}>
-      <input type="checkbox" checked={Boolean(checked)} disabled={disabled} onChange={(e) => onChange(e.target.checked)} className="h-[18px] w-[18px] accent-[#303839]" />
+    <label className={`flex min-h-9 items-center gap-2.5 text-[13px] text-[#1f2425] ${disabled ? "cursor-not-allowed opacity-55" : "cursor-pointer"}`}>
+      <input type="checkbox" checked={Boolean(checked)} disabled={disabled} onChange={(e) => onChange(e.target.checked)} className="h-4 w-4 shrink-0 cursor-pointer accent-[#27307A]" />
       {label}
     </label>
   );
@@ -109,8 +169,8 @@ function TextSpacingFields({ layer, style, onStylePatch }: { layer: any; style: 
   const capabilities = useFamilyCapabilities(family, families);
   const weight = nearestSupportedWeight(capabilities.weights, style.fontWeight || TEXT_TOOLBAR_DEFAULTS.fontWeight);
   return (
-    <div className="grid grid-cols-3 gap-2">
-      <div>
+    <div className="grid grid-cols-2 gap-x-2 gap-y-3">
+      <div className="col-span-2">
         <Lbl>Weight</Lbl>
         <Sel
           ariaLabel="Font weight"
@@ -146,21 +206,21 @@ function TextSpacingFields({ layer, style, onStylePatch }: { layer: any; style: 
 }
 
 function Section({ title, children, subtle = false, collapsible = false, defaultOpen = true }: any) {
-  const surface = `py-1 ${subtle ? "rounded-xl bg-[#F8F6F1] px-3.5 py-3" : ""}`;
+  const surface = subtle ? "rounded-[10px] bg-[#F2F3F5] px-3 py-3" : "";
   if (collapsible) {
     return (
       <details className={`${surface} group/section`} open={defaultOpen || undefined}>
-        <summary className="flex min-h-10 cursor-pointer list-none items-center justify-between gap-2 text-[11px] font-extrabold uppercase tracking-[0.11em] text-[#303839]/70 marker:hidden">
+        <summary className="flex min-h-9 cursor-pointer list-none items-center justify-between gap-2 rounded-md text-[14px] font-bold text-[#1f2425] marker:hidden focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#27307A]">
           {title}
           <svg className="shrink-0 transition group-open/section:rotate-180" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden><path d="m6 9 6 6 6-6" /></svg>
         </summary>
-        <div className="mt-3 grid gap-3">{children}</div>
+        <div className="mt-2.5 grid gap-3">{children}</div>
       </details>
     );
   }
   return (
     <section className={surface}>
-      <h4 className="mb-3 text-[11px] font-extrabold uppercase tracking-[0.11em] text-[#303839]/70">{title}</h4>
+      <h4 className="mb-2.5 text-[14px] font-bold text-[#1f2425]">{title}</h4>
       <div className="grid gap-3">{children}</div>
     </section>
   );
@@ -183,17 +243,17 @@ function ImageSrcControl({ layer, onLayerPatch, onReplaceImage }: { layer: any; 
     <div>
       <Lbl>Layer image (optional)</Lbl>
       <div className="flex items-center gap-2">
-        {layer.src ? <img src={layer.src} alt="" className="h-10 w-10 rounded border border-[#303839]/10 object-cover" /> : null}
-        <button type="button" onClick={() => inputRef.current?.click()} className="rounded-full border border-[#303839]/15 bg-white px-3 py-1.5 text-xs font-bold hover:bg-[#F8F6F1]">
+        {layer.src ? <img src={layer.src} alt="" className="h-10 w-10 rounded-md border border-[#303839]/10 object-cover" /> : null}
+        <button type="button" onClick={() => inputRef.current?.click()} data-shape="round" className={OUTLINE_PILL}>
           {busy ? "Uploading…" : layer.src ? "Replace" : "Upload"}
         </button>
         {layer.src && (
-          <button type="button" onClick={() => onLayerPatch(layer.id, { src: "" })} className="rounded-full border border-red-200 bg-white px-3 py-1.5 text-xs font-bold text-red-700 hover:bg-red-50">
+          <button type="button" onClick={() => onLayerPatch(layer.id, { src: "" })} className="cursor-pointer text-[13px] font-semibold text-red-700 underline-offset-2 hover:underline">
             Clear
           </button>
         )}
       </div>
-      <p className="mt-1 text-[10px] text-[#303839]/45">Leave empty for a customer photo placeholder.</p>
+      <p className={HINT}>Leave empty for a customer photo placeholder.</p>
       <input ref={inputRef} type="file" accept="image/*" className="sr-only" onChange={(e) => { handle(e.target.files?.[0]); e.target.value = ""; }} />
     </div>
   );
@@ -208,9 +268,9 @@ function GridSlotEditor({ slot, index, layer, onLayerPatch }: any) {
   const editable = Boolean(slot.permissions?.replaceImage || slot.permissions?.cropImage);
   const transform = slot.transform || {};
   return (
-    <div className="grid gap-2 rounded-xl border border-[#303839]/10 bg-[#F8F6F1] p-2.5">
+    <div className="grid gap-2 rounded-[10px] bg-[#F2F3F5] p-3">
       <div className="flex items-center justify-between gap-2">
-        <span className="text-xs font-extrabold">Photo {index + 1}</span>
+        <span className="text-[13px] font-semibold text-[#1f2425]">Photo {index + 1}</span>
         <Check checked={Boolean(slot.required)} onChange={(required: boolean) => patchSlot({ required })} label="Required" />
       </div>
       <div className="grid grid-cols-2 gap-2">
@@ -226,11 +286,11 @@ function GridSlotEditor({ slot, index, layer, onLayerPatch }: any) {
         </div>
       </div>
       <div className="flex items-center gap-2">
-        {slot.src ? <img src={slot.src} alt="" className="h-10 w-10 rounded-lg border border-[#303839]/10 object-cover" /> : null}
-        <button type="button" disabled={busy} onClick={() => inputRef.current?.click()} className="min-h-10 rounded-lg border border-[#303839]/12 bg-white px-3 text-xs font-bold hover:border-[#303839]/40 disabled:opacity-50">
+        {slot.src ? <img src={slot.src} alt="" className="h-10 w-10 rounded-md border border-[#303839]/10 object-cover" /> : null}
+        <button type="button" disabled={busy} onClick={() => inputRef.current?.click()} data-shape="round" className={OUTLINE_PILL}>
           {busy ? "Uploading…" : slot.src ? "Replace default" : "Add default photo"}
         </button>
-        {slot.src ? <button type="button" onClick={() => patchSlot({ src: "", assetId: "", bucket: undefined, path: undefined })} className="min-h-10 rounded-lg px-2 text-xs font-bold text-red-700 hover:bg-red-50">Clear</button> : null}
+        {slot.src ? <button type="button" onClick={() => patchSlot({ src: "", assetId: "", bucket: undefined, path: undefined })} className="cursor-pointer px-1 text-[13px] font-semibold text-red-700 underline-offset-2 hover:underline">Clear</button> : null}
       </div>
       <div className="grid grid-cols-2 gap-2">
         <div><Lbl>Crop zoom</Lbl><CarouselStepper ariaLabel={`Photo ${index + 1} crop zoom`} value={Math.round((Number(transform.zoom) || 1) * 100)} min={100} max={800} step={5} onChange={(value: number) => patchSlot({ transform: { ...transform, zoom: value / 100 } })} /></div>
@@ -286,13 +346,13 @@ function PlaceholderImageControl({ layer, onLayerPatch }: any) {
       <Lbl>Default placeholder image</Lbl>
       <div className="flex items-center gap-2">
         {layer.placeholderImage ? (
-          <img src={layer.placeholderImage} alt="" className="h-10 w-10 rounded border border-[#303839]/10 object-cover" />
+          <img src={layer.placeholderImage} alt="" className="h-10 w-10 rounded-md border border-[#303839]/10 object-cover" />
         ) : null}
-        <button type="button" onClick={() => inputRef.current?.click()} className="rounded-full border border-[#303839]/15 bg-white px-3 py-1.5 text-xs font-bold hover:bg-[#F8F6F1]">
+        <button type="button" onClick={() => inputRef.current?.click()} data-shape="round" className={OUTLINE_PILL}>
           {busy ? "Uploading…" : layer.placeholderImage ? "Replace" : "Upload"}
         </button>
         {layer.placeholderImage && (
-          <button type="button" onClick={() => onLayerPatch(layer.id, { placeholderImage: "", placeholderAssetId: "", placeholderAssetPath: "", placeholderAssetBucket: "", placeholderAssetEditorPath: "", placeholderAssetThumbnailPath: "" })} className="rounded-full border border-red-200 bg-white px-3 py-1.5 text-xs font-bold text-red-700 hover:bg-red-50">
+          <button type="button" onClick={() => onLayerPatch(layer.id, { placeholderImage: "", placeholderAssetId: "", placeholderAssetPath: "", placeholderAssetBucket: "", placeholderAssetEditorPath: "", placeholderAssetThumbnailPath: "" })} className="cursor-pointer text-[13px] font-semibold text-red-700 underline-offset-2 hover:underline">
             Clear
           </button>
         )}
@@ -331,7 +391,9 @@ function OpacityField({ layer, onLayerPatch }: any) {
         onPreviewChange={(value: number) => onLayerPatch(layer.id, { opacity: value / 100 })}
         onCommit={(value: number) => onLayerPatch(layer.id, { opacity: value / 100 })}
         showStepButtons={false}
-        className="h-11 w-full rounded-md border border-[#303839]/15 bg-white px-1"
+        className="flex h-10 w-full items-center gap-3"
+        sliderClassName="h-10 min-w-0 flex-1 cursor-pointer accent-[#27307A] disabled:opacity-35"
+        inputClassName={`${controlClass} w-[76px] shrink-0 text-center tabular-nums`}
       />
     </div>
   );
@@ -359,9 +421,12 @@ export default function AdminPropertiesPanel({
 
   if (!layer) {
     return (
-      <div className="p-5 text-sm text-[#303839]/55">
-        <p className="font-semibold text-[#303839]">Nothing selected</p>
-        <p className="mt-1">Select a layer on the canvas, or add one from the tool rail.</p>
+      <div className="grid justify-items-center gap-2 px-6 py-12 text-center">
+        <span className="grid h-12 w-12 place-items-center rounded-full bg-[#F2F3F5] text-[#303839]/55" aria-hidden>
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="m4 4 7 17 2.5-7.5L21 11Z" /></svg>
+        </span>
+        <p className="text-[15px] font-semibold text-[#1f2425]">Nothing selected</p>
+        <p className="text-[13px] leading-relaxed text-[#303839]/65">Select a layer on the canvas, or add one from the tool rail.</p>
       </div>
     );
   }
@@ -373,30 +438,31 @@ export default function AdminPropertiesPanel({
     <div data-customizer-text-interaction className="bg-white">
       {/* Inspector tabs. Purely a routing layer over the existing sections —
           every control below keeps its original handler. */}
-      <div className="sticky top-0 z-10 flex items-center gap-0.5 border-b border-[#303839]/8 bg-white px-3 pt-3">
+      <div className="sticky top-0 z-10 bg-white px-4 pb-2 pt-4">
+        <div role="tablist" aria-label="Inspector sections" className="flex items-center gap-0.5 rounded-full bg-[#F2F3F5] p-1">
         {INSPECTOR_TABS.map((entry) => {
           const active = inspectorTab === entry.id;
           return (
             <button
               key={entry.id}
               type="button"
+              role="tab"
+              data-shape="round"
               onClick={() => setInspectorTab(entry.id)}
+              aria-selected={active}
               aria-current={active ? "true" : undefined}
-              className={`relative px-3 pb-2.5 text-[11px] font-bold uppercase tracking-[0.1em] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white ${
-                active ? "text-[#303839]" : "text-[#303839]/40 hover:text-[#303839]/70"
+              className={`flex-1 cursor-pointer whitespace-nowrap rounded-full px-3 py-1.5 text-[13px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#27307A] focus-visible:ring-offset-1 focus-visible:ring-offset-[#F2F3F5] ${
+                active ? "bg-white font-semibold text-[#1f2425] shadow-[0_1px_3px_rgba(31,36,37,0.14)]" : "font-medium text-[#303839]/65 hover:text-[#1f2425]"
               }`}
             >
               {entry.label}
-              <span
-                aria-hidden
-                className={`absolute inset-x-2 bottom-0 h-[2px] rounded-full ${active ? "bg-[#D4AF37]" : "bg-transparent"}`}
-              />
             </button>
           );
         })}
+        </div>
       </div>
 
-    <div className="grid gap-6 p-5">
+    <div className="grid gap-5 px-4 pb-6 pt-3">
       {inspectorTab === "design" && (
         <div>
           <Lbl>Layer name</Lbl>
@@ -448,7 +514,7 @@ export default function AdminPropertiesPanel({
                 if (!style.multiline) onStylePatch(layer.id, multilineTextPatch(style));
               }}
               title="Enter adds a line. Ctrl/Cmd + Enter finishes editing."
-              className="min-h-11 w-full resize-y rounded-xl border border-[#303839]/12 bg-white p-3 text-sm leading-relaxed text-[#303839] outline-none transition-colors focus:border-[#303839]/60 focus:ring-2 focus:ring-[#303839]/15"
+              className="min-h-11 w-full resize-y rounded-md border border-[#303839]/20 bg-white p-3 text-[14px] leading-relaxed text-[#1f2425] outline-none transition-colors hover:border-[#303839]/35 focus:border-[#27307A] focus:ring-2 focus:ring-[#27307A]/15"
             />
           </div>
           <div>
@@ -463,7 +529,7 @@ export default function AdminPropertiesPanel({
               onChange={(growthDirection) => onStylePatch(layer.id, { growthDirection })}
             />
           </div>
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid gap-3">
             <div>
               <Lbl>Text sizing</Lbl>
               <Sel
@@ -491,7 +557,7 @@ export default function AdminPropertiesPanel({
               </div>
             )}
           </div>
-          <div className="flex gap-3">
+          <div className="flex flex-wrap gap-x-4">
             <Check checked={style.uppercase} onChange={(v: boolean) => onStylePatch(layer.id, { uppercase: v })} label="Uppercase" />
             <Check checked={style.multiline} onChange={(v: boolean) => onStylePatch(layer.id, { multiline: v })} label="Multiline (wraps in box)" />
           </div>
@@ -529,13 +595,7 @@ export default function AdminPropertiesPanel({
             </div>
             <div>
               <Lbl>Frame border colour</Lbl>
-              <input
-                type="color"
-                aria-label="Frame border colour"
-                value={layer.borderColor || "#303839"}
-                onChange={(e) => onLayerPatch(layer.id, { borderColor: e.target.value })}
-                className="h-9 w-full rounded-md border border-[#303839]/15"
-              />
+              <ColourField ariaLabel="Frame border colour" value={layer.borderColor} fallback="#303839" onChange={(borderColor) => onLayerPatch(layer.id, { borderColor })} />
             </div>
             <div>
               <Lbl>Frame border width</Lbl>
@@ -543,24 +603,17 @@ export default function AdminPropertiesPanel({
             </div>
             <div className="col-span-2">
               <Lbl>Frame background</Lbl>
-              <div className="flex items-center gap-2">
-                <input
-                  type="color"
-                  aria-label="Frame background colour"
-                  value={layer.backgroundColor || "#F8F6F1"}
-                  onChange={(e) => onLayerPatch(layer.id, { backgroundColor: e.target.value })}
-                  className="h-9 w-full rounded-md border border-[#303839]/15"
-                />
-                {layer.backgroundColor ? (
-                  <button
-                    type="button"
-                    onClick={() => onLayerPatch(layer.id, { backgroundColor: "" })}
-                    className="shrink-0 rounded-full border border-[#303839]/15 px-3 py-1.5 text-[11px] font-bold hover:bg-[#F8F6F1]"
-                  >
+              <ColourField
+                ariaLabel="Frame background colour"
+                value={layer.backgroundColor}
+                fallback="#f8f6f1"
+                onChange={(backgroundColor) => onLayerPatch(layer.id, { backgroundColor })}
+                extra={layer.backgroundColor ? (
+                  <button type="button" data-shape="round" onClick={() => onLayerPatch(layer.id, { backgroundColor: "" })} className={`${OUTLINE_PILL} shrink-0`}>
                     Clear
                   </button>
                 ) : null}
-              </div>
+              />
             </div>
           </div>
           {/* Crop and opacity belong with the image they act on, not in a
@@ -591,8 +644,8 @@ export default function AdminPropertiesPanel({
             <div><Lbl>Border width</Lbl><CarouselStepper ariaLabel="Grid border width" value={layer.borderWidth || 0} min={0} max={100} onChange={(value: number) => onLayerPatch(layer.id, { borderWidth: value })} /></div>
           </div>
           <div className="grid grid-cols-2 gap-2">
-            <label><Lbl>Background</Lbl><input type="color" value={layer.backgroundColor || "#F8F6F1"} onChange={(event) => onLayerPatch(layer.id, { backgroundColor: event.target.value })} className="h-10 w-full rounded-lg border border-[#303839]/15" /></label>
-            <label><Lbl>Border</Lbl><input type="color" value={layer.borderColor || "#303839"} onChange={(event) => onLayerPatch(layer.id, { borderColor: event.target.value })} className="h-10 w-full rounded-lg border border-[#303839]/15" /></label>
+            <div className="col-span-2"><Lbl>Background</Lbl><ColourField ariaLabel="Grid background colour" value={layer.backgroundColor} fallback="#f8f6f1" onChange={(backgroundColor) => onLayerPatch(layer.id, { backgroundColor })} /></div>
+            <div className="col-span-2"><Lbl>Border</Lbl><ColourField ariaLabel="Grid border colour" value={layer.borderColor} fallback="#303839" onChange={(borderColor) => onLayerPatch(layer.id, { borderColor })} /></div>
           </div>
           {/* Stored as explicit move/resize/rotate:false restrictions, which
               survive save and publication; photo replacement and cropping
@@ -606,7 +659,7 @@ export default function AdminPropertiesPanel({
             label={layer.customerEditable ? "Keep grid position fixed for customers" : "Keep grid position fixed (turn on Customer editable first)"}
           />
           <div className="grid gap-1.5 border-t border-[#303839]/10 pt-2">
-            <p className="text-[10px] font-extrabold uppercase tracking-[0.12em] text-[#303839]/45">Slots</p>
+            <p className="text-[13px] font-semibold text-[#1f2425]">Slots</p>
             {(layer.slots || []).map((slot: any, index: number) => (
               <GridSlotEditor key={slot.id} slot={slot} index={index} layer={layer} onLayerPatch={onLayerPatch} />
             ))}
@@ -645,17 +698,23 @@ export default function AdminPropertiesPanel({
           {(isSvgElement(layer) || Boolean(layer.tintColor)) && (
           <div role="group" aria-label="Element colour">
             <Lbl>Colour</Lbl>
-            <div className="flex items-center gap-2">
-              <input type="color" aria-label="Element colour" value={layer.tintColor || "#303839"} onChange={(event) => onLayerPatch(layer.id, { tintColor: event.target.value })} className="h-10 min-w-0 flex-1 rounded-lg border border-[#303839]/15" />
-              <button
-                type="button"
-                aria-pressed={!layer.tintColor}
-                onClick={() => onLayerPatch(layer.id, { tintColor: "" })}
-                className={`h-10 shrink-0 rounded-lg border px-3 text-xs font-bold transition ${!layer.tintColor ? "border-[#303839] bg-[#303839] text-white" : "border-[#303839]/15 text-[#303839] hover:bg-[#F8F6F1]"}`}
-              >
-                Original
-              </button>
-            </div>
+            <ColourField
+              ariaLabel="Element colour"
+              value={layer.tintColor}
+              fallback="#303839"
+              onChange={(tintColor) => onLayerPatch(layer.id, { tintColor })}
+              extra={
+                <button
+                  type="button"
+                  data-shape="round"
+                  aria-pressed={!layer.tintColor}
+                  onClick={() => onLayerPatch(layer.id, { tintColor: "" })}
+                  className={`inline-flex h-8 shrink-0 cursor-pointer items-center rounded-full border-[1.5px] px-3 text-[13px] font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#27307A] ${!layer.tintColor ? "border-[#27307A] bg-[#27307A] text-white" : "border-[#27307A] bg-white text-[#27307A] hover:bg-[#27307A]/[0.05]"}`}
+                >
+                  Original
+                </button>
+              }
+            />
           </div>
           )}
           <div className="flex gap-3"><Check checked={Boolean(layer.flipX)} onChange={(value: boolean) => onLayerPatch(layer.id, { flipX: value })} label="Flip horizontal" /><Check checked={Boolean(layer.flipY)} onChange={(value: boolean) => onLayerPatch(layer.id, { flipY: value })} label="Flip vertical" /></div>
@@ -666,8 +725,8 @@ export default function AdminPropertiesPanel({
         <Section title="QR code">
           <label><Lbl>Destination</Lbl><Txt value={layer.value} placeholder="https://example.com" onChange={(value: string) => onLayerPatch(layer.id, { value })} /></label>
           <div className="grid grid-cols-2 gap-2">
-            <label><Lbl>Foreground</Lbl><input type="color" value={layer.foregroundColor || "#303839"} onChange={(event) => onLayerPatch(layer.id, { foregroundColor: event.target.value })} className="h-10 w-full rounded-lg border border-[#303839]/15" /></label>
-            <label><Lbl>Background</Lbl><input type="color" value={layer.backgroundColor || "#ffffff"} onChange={(event) => onLayerPatch(layer.id, { backgroundColor: event.target.value })} className="h-10 w-full rounded-lg border border-[#303839]/15" /></label>
+            <div className="col-span-2"><Lbl>Foreground</Lbl><ColourField ariaLabel="QR foreground colour" value={layer.foregroundColor} fallback="#303839" onChange={(foregroundColor) => onLayerPatch(layer.id, { foregroundColor })} /></div>
+            <div className="col-span-2"><Lbl>Background</Lbl><ColourField ariaLabel="QR background colour" value={layer.backgroundColor} fallback="#ffffff" onChange={(backgroundColor) => onLayerPatch(layer.id, { backgroundColor })} /></div>
             <div><Lbl>Quiet zone</Lbl><CarouselStepper ariaLabel="QR quiet zone" value={layer.margin ?? 4} min={0} max={16} onChange={(margin: number) => onLayerPatch(layer.id, { margin })} /></div>
             <div><Lbl>Error correction</Lbl><Sel ariaLabel="QR error correction" value={layer.errorCorrection || "M"} onChange={(errorCorrection: string) => onLayerPatch(layer.id, { errorCorrection })} options={[{ value: "L", label: "Low" }, { value: "M", label: "Medium" }, { value: "Q", label: "Quartile" }, { value: "H", label: "High" }]} /></div>
           </div>
@@ -677,7 +736,7 @@ export default function AdminPropertiesPanel({
 
       {inspectorTab === "design" && layer.type === "background" && (
         <Section title="Background">
-          <label><Lbl>Background colour</Lbl><input type="color" value={layer.color || "#ffffff"} onChange={(event) => onLayerPatch(layer.id, { color: event.target.value })} className="h-10 w-full rounded-lg border border-[#303839]/15" /></label>
+          <div><Lbl>Background colour</Lbl><ColourField ariaLabel="Background layer colour" value={layer.color} fallback="#ffffff" onChange={(color) => onLayerPatch(layer.id, { color })} /></div>
           <ImageSrcControl layer={layer} onLayerPatch={onLayerPatch} onReplaceImage={onReplaceImage} />
           <div><Lbl>Image fit</Lbl><Sel ariaLabel="Background image fit" value={layer.fitMode || "cover"} onChange={(value: string) => onLayerPatch(layer.id, { fitMode: value })} options={[{ value: "cover", label: "Cover" }, { value: "contain", label: "Contain" }]} /></div>
         </Section>
@@ -720,7 +779,7 @@ export default function AdminPropertiesPanel({
                 return (
                   <div>
                     {linkedLayers.length > 0 && (
-                      <div className="mb-2 rounded-md border border-[#303839]/12 bg-[#F8F6F1] p-2 text-[11px] leading-relaxed text-[#303839]/70">
+                      <div className="mb-2 rounded-md border border-[#303839]/12 bg-[#F2F3F5] p-2 text-[11px] leading-relaxed text-[#303839]/70">
                         <p className="font-bold text-[#303839]">
                           Shared with {linkedLayers.length} other layer{linkedLayers.length === 1 ? "" : "s"}
                         </p>
@@ -780,7 +839,7 @@ export default function AdminPropertiesPanel({
                       <textarea
                         value={(field.options || []).join("\n")}
                         onChange={(e) => onFieldPatch(layer.id, { options: e.target.value.split("\n").map((s: string) => s.trim()).filter(Boolean) })}
-                        className="min-h-16 w-full rounded-md border border-[#303839]/15 bg-white p-2 text-sm outline-none focus:border-[#303839]/45"
+                        className="min-h-16 w-full rounded-md border border-[#303839]/15 bg-white p-2 text-sm outline-none focus:border-[#27307A]"
                       />
                     </div>
                   )}
@@ -802,9 +861,9 @@ export default function AdminPropertiesPanel({
       )}
 
       {inspectorTab === "advanced" && layer.type !== "group" && (
-        <p className="text-xs leading-relaxed text-[#303839]/45">
-          This layer type has no advanced settings. Photo crop and opacity now sit with the
-          image itself under Design, and grouping behaviour appears here for groups.
+        <p className="rounded-[10px] bg-[#F2F3F5] px-3 py-3 text-[13px] leading-relaxed text-[#303839]/75">
+          This layer type has no advanced settings. Photo crop and opacity sit with the image
+          under Design, and grouping behaviour appears here for groups.
         </p>
       )}
     </div>

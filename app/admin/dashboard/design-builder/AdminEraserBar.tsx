@@ -55,10 +55,14 @@ export default function AdminEraserBar(props: Props) {
           step={1}
           largeStep={10}
           slider
-          sliderClassName="h-9 w-28 accent-[#303839]"
+          sliderClassName="h-9 w-28 cursor-pointer accent-[#303839]"
           onCommit={props.onBrushSize}
-          className="h-9 w-full rounded-full"
-          inputClassName="h-9 w-full rounded-full border border-[#303839]/12 bg-white text-center text-[13px] font-semibold tabular-nums text-[#303839] outline-none focus:border-[#303839]/50"
+          stepIcons="plusMinus"
+          stepButtonWidth={28}
+          className="mr-1 h-9 w-[112px] shrink-0 rounded-full"
+          buttonClassName="grid h-full place-items-center rounded-full text-[#303839] transition-colors hover:bg-[#303839]/[0.06] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#303839] disabled:cursor-not-allowed disabled:text-[#303839]/25"
+          inputClassName="h-full min-w-0 w-full rounded-md bg-transparent text-center text-[13px] font-semibold tabular-nums text-[#303839] outline-none focus:bg-[#303839]/[0.05]"
+          inputStyle={{ paddingLeft: 0, paddingRight: 0 }}
         />
       </div>
       <span aria-hidden className="mx-1 h-6 w-px shrink-0 bg-[#303839]/12" />

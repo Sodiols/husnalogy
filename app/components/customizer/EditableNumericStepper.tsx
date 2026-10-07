@@ -143,6 +143,10 @@ export default function EditableNumericStepper({
       : "grid-cols-1";
   const rowClass = showLabel ? `grid ${columns} grid-rows-[13px_1fr] items-center overflow-hidden` : `grid ${columns} items-center overflow-hidden`;
   const resolvedLabelClassName = showStepButtons ? labelClassName : labelClassName.replace("col-span-3", "");
+  // Under a label the value row is shorter than the default 40px button floor;
+  // a taller button overflows the clipped row, and focusing it scrolls the row
+  // and hides the label.
+  const resolvedButtonClassName = showLabel ? buttonClassName.replace(/(^|\s)min-h-10(?=\s|$)/, " ") : buttonClassName;
 
   const stepperBody = (
     <div
@@ -153,7 +157,7 @@ export default function EditableNumericStepper({
     >
       {showLabel && <span className={resolvedLabelClassName}>{label}</span>}
       {showStepButtons && (
-        <button type="button" aria-label={`Decrease ${label}`} onClick={() => applyStep(-1)} disabled={disabled || readOnly || value <= (minimum ?? -Infinity)} className={`${buttonClassName} ${stepIcons === "plusMinus" ? "" : "border-r border-[#303839]/10"}`}>
+        <button type="button" aria-label={`Decrease ${label}`} onClick={() => applyStep(-1)} disabled={disabled || readOnly || value <= (minimum ?? -Infinity)} className={`${resolvedButtonClassName} ${stepIcons === "plusMinus" ? "" : "border-r border-[#303839]/10"}`}>
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d={stepIcons === "plusMinus" ? "M5 12h14" : "m15 18-6-6 6-6"} /></svg>
         </button>
       )}
@@ -211,7 +215,7 @@ export default function EditableNumericStepper({
         style={inputStyle}
       />
       {showStepButtons && (
-        <button type="button" aria-label={`Increase ${label}`} onClick={() => applyStep(1)} disabled={disabled || readOnly || value >= (maximum ?? Infinity)} className={`${buttonClassName} ${stepIcons === "plusMinus" ? "" : "border-l border-[#303839]/10"}`}>
+        <button type="button" aria-label={`Increase ${label}`} onClick={() => applyStep(1)} disabled={disabled || readOnly || value >= (maximum ?? Infinity)} className={`${resolvedButtonClassName} ${stepIcons === "plusMinus" ? "" : "border-l border-[#303839]/10"}`}>
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d={stepIcons === "plusMinus" ? "M12 5v14M5 12h14" : "m9 18 6-6-6-6"} /></svg>
         </button>
       )}
@@ -241,7 +245,9 @@ export default function EditableNumericStepper({
         onKeyUp={(event) => onCommit(Number((event.target as HTMLInputElement).value))}
         className={sliderClassName}
       />
-      <div className="w-[74px] shrink-0">{stepperBody}</div>
+      {/* A bare value fits a fixed column; with step buttons the stepper sizes
+          itself (its className), so the buttons never squeeze the number out. */}
+      <div className={showStepButtons ? "shrink-0" : "w-[74px] shrink-0"}>{stepperBody}</div>
     </div>
   );
 }
