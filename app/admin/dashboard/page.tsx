@@ -1,6 +1,7 @@
 import { Suspense } from "react";
 import { notFound } from "next/navigation";
 import AdminDashboardClient from "./admin-dashboard-client";
+import { StudioActorProvider } from "./design-builder/studio-actor";
 import { getCurrentAdmin } from "@/lib/auth/admin-server";
 
 export const dynamic = "force-dynamic";
@@ -18,7 +19,9 @@ export default async function AdminDashboardPage() {
 
   return (
     <Suspense fallback={null}>
-      <AdminDashboardClient />
+      <StudioActorProvider actorId={admin.id}>
+        <AdminDashboardClient />
+      </StudioActorProvider>
     </Suspense>
   );
 }

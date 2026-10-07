@@ -224,7 +224,8 @@ function answerLocally(rawMessage) {
 
   // Founders — Husnalogy checked first because "husnalogy" contains the substring "logy".
   if (asksAboutOrigin(text) && text.includes("husnalogy")) {
-    return "Husnalogy was founded by Sodiol Foyez.";
+    // The one authoritative value (lib/launch-config.ts) — never a copy here.
+    return `Husnalogy was founded by ${BUSINESS_INFO.founder}.`;
   }
   if (
     (asksAboutOrigin(text) && (text.includes("logy") || /assistant|chatbot|\bbot\b/.test(text))) ||
@@ -259,7 +260,7 @@ Your name is Logy. Never call yourself Ask Logy.
 
 Founders:
 If someone asks who made Logy, say it is Husnalogy's shopping assistant maintained as part of the Husnalogy website.
-If someone asks who founded Husnalogy, reply: Husnalogy was founded by Sodiol Foyez.
+If someone asks who founded Husnalogy, reply: Husnalogy was founded by ${BUSINESS_INFO.founder}.
 Do not invent social-profile or contact links. Husnalogy email: ${BUSINESS_INFO.email}. Phone and WhatsApp: ${BUSINESS_INFO.phone}.
 
 Husnalogy is an elegant online store for wedding invitations, save the dates, nikah invitations, birthday invitations, cards, personalized gifts, and stationery.

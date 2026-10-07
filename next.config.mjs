@@ -17,6 +17,32 @@ function resolveSupabaseHost() {
 }
 
 const supabaseHost = resolveSupabaseHost();
+
+/**
+ * ONE canonical production host. The site is served only on the host of
+ * NEXT_PUBLIC_SITE_URL; its www / apex twin answers with a permanent redirect
+ * to the same path and query on the canonical host. Mutation requests are
+ * only accepted from the canonical origin (lib/security/same-origin), so
+ * serving both hosts independently would break every form on the other one.
+ */
+export function canonicalHostRedirects(siteUrl = process.env.NEXT_PUBLIC_SITE_URL) {
+  let site;
+  try {
+    site = new URL(String(siteUrl || "").trim());
+  } catch {
+    return [];
+  }
+  if (site.protocol !== "https:" || !site.hostname.includes(".") || /^[\d.]+$/.test(site.hostname) || site.hostname === "localhost") return [];
+  const twin = site.hostname.startsWith("www.") ? site.hostname.slice(4) : `www.${site.hostname}`;
+  return [
+    {
+      source: "/:path*",
+      has: [{ type: "host", value: twin }],
+      destination: `${site.origin}/:path*`,
+      permanent: true,
+    },
+  ];
+}
 if (!supabaseHost && process.env.NODE_ENV === "production") {
   throw new Error(
     "NEXT_PUBLIC_SUPABASE_URL must be set (https://<project-ref>.supabase.co) when building for production. " +
@@ -41,11 +67,26 @@ if (process.env.NODE_ENV === "production") {
 }
 
 // Development without Supabase configured keeps working against any project.
-const supabaseSource = supabaseHost ? `https://${supabaseHost}` : "https://*.supabase.co";
-const supabaseSocket = supabaseHost ? `wss://${supabaseHost}` : "wss://*.supabase.co";
+// In development the configured origin is used as-is, so a local stand-in
+// (http://127.0.0.1:…, see e2e/customer-stub.ts) is reachable; production
+// always requires https.
+function devSupabaseOrigin() {
+  try {
+    return isDev ? new URL(String(process.env.NEXT_PUBLIC_SUPABASE_URL || "").replace(/\/rest\/v1\/?$/i, "")).origin : "";
+  } catch {
+    return "";
+  }
+}
+const localSupabaseOrigin = devSupabaseOrigin().startsWith("http://") ? devSupabaseOrigin() : "";
+const supabaseSource = localSupabaseOrigin || (supabaseHost ? `https://${supabaseHost}` : "https://*.supabase.co");
+const supabaseSocket = localSupabaseOrigin ? localSupabaseOrigin.replace(/^http/, "ws") : supabaseHost ? `wss://${supabaseHost}` : "wss://*.supabase.co";
 
-// Next.js injects inline runtime scripts and Tailwind uses inline styles, so
-// 'unsafe-inline' stays; 'unsafe-eval' is only needed by the dev bundler.
+// Next.js injects inline runtime scripts (the RSC payload) and Tailwind uses
+// inline styles, so 'unsafe-inline' stays; 'unsafe-eval' is only needed by the
+// dev bundler. RESIDUAL HARDENING ITEM (documented in HOSTINGER_DEPLOYMENT.md):
+// a strict script-src needs per-request nonces, which force dynamic rendering
+// of every page and the proxy on every HTML request; SRI hashes only cover
+// external chunks, not the inline payload. Not done in this release.
 const contentSecurityPolicy = [
   "default-src 'self'",
   `script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ""}`,
@@ -55,9 +96,12 @@ const contentSecurityPolicy = [
   `connect-src 'self' ${supabaseSource} ${supabaseSocket}`,
   `media-src 'self' blob: ${supabaseSource}`,
   "object-src 'none'",
+  // Husnalogy embeds no frames (sign-in is a full-page redirect).
+  "frame-src 'none'",
   "base-uri 'self'",
   "form-action 'self'",
   "frame-ancestors 'none'",
+  ...(isDev ? [] : ["upgrade-insecure-requests"]),
 ].join("; ");
 
 const securityHeaders = [
@@ -83,6 +127,10 @@ const immutableAssetHeaders = [
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // Test infrastructure only: an isolated e2e server (stubbed Supabase, see
+  // e2e/customer-stub.ts) builds into its own folder, so it can run while a
+  // normal dev server holds `.next`. Never used by production builds.
+  ...(process.env.NEXT_DIST_DIR && process.env.NODE_ENV !== "production" ? { distDir: process.env.NEXT_DIST_DIR } : {}),
   allowedDevOrigins: ["192.168.0.206", "127.0.0.1"],
   reactStrictMode: true,
   poweredByHeader: false,
@@ -136,6 +184,7 @@ const nextConfig = {
   },
   async redirects() {
     return [
+      ...canonicalHostRedirects(),
       { source: "/best-seller", destination: "/products", permanent: true },
       { source: "/personalizations", destination: "/products", permanent: true },
       { source: "/homeandliving", destination: "/products", permanent: true },

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 
@@ -177,25 +178,26 @@ export default function Header({
         >
             {mainMenu.map((item) => {
               const isDropdownOpen = desktopDropdown === item.label;
-              const isWideDropdown = item.dropdownColumns === 2;
               const dropdownId = `desktop-menu-${item.label.toLowerCase().replace(/\s+/g, "-")}`;
               const isActiveParent = isActiveNavItem(pathname, item);
-              const dropdownItems = item.children
-                ? [
-                    {
-                      href: item.href,
-                      title: `Shop all ${item.label.toLowerCase()}`,
-                    },
-                    ...item.children,
-                  ]
-                : [];
+              const dropdownItems = item.children || [];
+              // Links fill each of the two columns top-to-bottom so reading
+              // and tab order run down a column.
+              const dropdownRows = Math.ceil(dropdownItems.length / 2);
 
               return item.children ? (
                 <div
                   key={item.label}
-                  className="group relative flex h-full items-center"
+                  // Not positioned: the full-width panel anchors to the sticky header.
+                  className="group flex h-full items-center"
                   onMouseEnter={() => setDesktopDropdown(item.label)}
                   onMouseLeave={() => setDesktopDropdown(false)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Escape" && isDropdownOpen) {
+                      setDesktopDropdown(false);
+                      event.currentTarget.querySelector("button")?.focus();
+                    }
+                  }}
                   onBlur={(event) => {
                     if (!event.currentTarget.contains(event.relatedTarget)) {
                       setDesktopDropdown(false);
@@ -223,31 +225,104 @@ export default function Header({
 
                   <div
                     id={dropdownId}
-                    className={`absolute left-0 top-full z-[2450] transition-all duration-200 ease-out ${
-                      isWideDropdown ? "w-[520px]" : "w-60"
-                    } ${
-                      isDropdownOpen
-                        ? "visible translate-y-0 opacity-100"
-                        : "invisible translate-y-2 opacity-0"
-                    }`}
+                    data-open={isDropdownOpen}
+                    data-switching={Boolean(desktopDropdown) && !isDropdownOpen}
+                    className="nav-curtain absolute inset-x-0 top-full z-[2450] -mt-px"
                   >
-                    <div className="relative overflow-hidden rounded-b-[10px] border border-line bg-white py-2 shadow-[var(--shadow-overlay)]">
-                      <div className={isWideDropdown ? "grid grid-cols-2 gap-0" : "grid gap-0"}>
-                        {dropdownItems.map((child) => (
+                    <div className="nav-curtain-sheet border-y border-line bg-white shadow-[var(--shadow-overlay)]">
+                      <div className="page-container grid grid-cols-[minmax(0,0.9fr)_minmax(0,1.35fr)_minmax(0,1fr)] gap-10 py-9 xl:gap-16 xl:py-10">
+                        <div className="nav-curtain-item flex flex-col items-start" style={{ "--i": 0 } as any}>
+                          <p className="eyebrow">Explore</p>
+                          <p className="mt-2 font-display text-[36px] font-medium leading-[1.05] text-ink">
+                            {item.label}
+                          </p>
+                          {item.description && (
+                            <p className="mt-3 max-w-[34ch] text-[15px] leading-relaxed text-muted">
+                              {item.description}
+                            </p>
+                          )}
                           <a
-                            key={`${child.href}-${child.title}`}
-                            href={child.href}
+                            href={item.href}
                             onClick={() => setDesktopDropdown(false)}
-                            className="group/dropdown flex min-h-11 items-center justify-between gap-2 px-5 py-2 text-left text-[#303839] transition-colors duration-200 ease-out hover:bg-cream active:bg-cream focus-visible:bg-cream focus-visible:outline-none"
+                            tabIndex={isDropdownOpen ? undefined : -1}
+                            className="btn btn-primary group/all mt-6"
                           >
-                            <span className="block text-[15px] font-medium text-[#303839]">
-                              {child.title}
-                            </span>
-                            <span className="grid w-0 shrink-0 place-items-center overflow-hidden opacity-0 transition-all duration-200 ease-out group-hover/dropdown:w-3.5 group-hover/dropdown:opacity-60">
-                              <NavIcon name="arrow" size={14} />
+                            Shop all {item.label.toLowerCase()}
+                            <span className="transition-transform duration-300 ease-out group-hover/all:translate-x-1">
+                              <NavIcon name="arrowRight" size={16} />
                             </span>
                           </a>
-                        ))}
+                        </div>
+
+                        <div>
+                          <p className="eyebrow nav-curtain-item" style={{ "--i": 0 } as any}>
+                            Browse by category
+                          </p>
+                          <ul
+                            className="mt-3 grid grid-flow-col grid-cols-2 gap-x-6 gap-y-1"
+                            style={{ gridTemplateRows: `repeat(${dropdownRows}, auto)` }}
+                          >
+                            {dropdownItems.map((child, index) => (
+                              <li
+                                key={`${child.href}-${child.title}`}
+                                className="nav-curtain-item"
+                                style={{ "--i": index + 1 } as any}
+                              >
+                                <a
+                                  href={child.href}
+                                  onClick={() => setDesktopDropdown(false)}
+                                  tabIndex={isDropdownOpen ? undefined : -1}
+                                  className="group/link relative -mx-3 flex min-h-12 cursor-pointer items-center justify-between gap-3 rounded-[6px] px-3 text-left text-ink transition-colors duration-200 ease-out hover:bg-cream active:bg-cream-deep focus-visible:bg-cream focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink/25"
+                                >
+                                  <span className="block text-[15px] font-medium leading-snug">
+                                    {child.title}
+                                  </span>
+                                  <span className="shrink-0 -translate-x-1 text-muted opacity-0 transition duration-300 ease-out group-hover/link:translate-x-0 group-hover/link:opacity-100 group-focus-visible/link:translate-x-0 group-focus-visible/link:opacity-100">
+                                    <NavIcon name="arrowRight" size={15} />
+                                  </span>
+                                </a>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+
+                        {item.featured && (
+                          <a
+                            href={item.featured.href}
+                            onClick={() => setDesktopDropdown(false)}
+                            tabIndex={isDropdownOpen ? undefined : -1}
+                            className="nav-curtain-item group/feat relative block aspect-[16/10] self-start overflow-hidden rounded-[10px] bg-cream-deep focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
+                            style={{ "--i": dropdownItems.length + 1 } as any}
+                          >
+                            <Image
+                              src={item.featured.image}
+                              alt=""
+                              fill
+                              sizes="(min-width: 1280px) 400px, 30vw"
+                              className="object-cover transition-transform duration-700 ease-out group-hover/feat:scale-[1.04]"
+                            />
+                            <span
+                              aria-hidden="true"
+                              className="absolute inset-0 bg-gradient-to-t from-[#303839]/70 via-[#303839]/10 to-transparent"
+                            />
+                            <span className="absolute inset-x-0 bottom-0 flex items-end justify-between gap-4 p-5 text-white">
+                              <span>
+                                <span className="block text-[12px] font-semibold uppercase tracking-[0.14em] text-white/85">
+                                  Featured
+                                </span>
+                                <span className="mt-1 block font-display text-[26px] font-medium leading-tight">
+                                  {item.featured.title}
+                                </span>
+                              </span>
+                              <span
+                                aria-hidden="true"
+                                className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-white text-ink transition-transform duration-300 ease-out group-hover/feat:translate-x-1"
+                              >
+                                <NavIcon name="arrowRight" size={16} />
+                              </span>
+                            </span>
+                          </a>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -266,6 +341,14 @@ export default function Header({
             })}
         </nav>
       </div>
+
+      {/* Dims the page while a menu is open; clicks pass straight through. */}
+      <div
+        aria-hidden="true"
+        className={`pointer-events-none absolute inset-x-0 top-full z-[2440] hidden h-screen bg-[#303839]/[0.12] transition-opacity duration-300 ease-out lg:block ${
+          desktopDropdown ? "opacity-100" : "opacity-0"
+        }`}
+      />
     </header>
 
     {/* Mobile bottom navigation — hidden on desktop, and while the menu is
@@ -390,15 +473,11 @@ function NavIcon({ name, className = "", size }: any) {
           <path d="m6 9 6 6 6-6" />
         </svg>
       );
-    case "arrow":
+    case "arrowRight":
       return (
-        <svg
-          {...base}
-          width={size || 11}
-          height={size || 11}
-          className={`transition duration-200 opacity-90 rotate-[270deg] ${className}`.trim() || undefined}
-        >
-          <path d="m6 9 6 6 6-6" />
+        <svg {...iconProps(16)}>
+          <path d="M5 12h14" />
+          <path d="m13 6 6 6-6 6" />
         </svg>
       );
     case "search":

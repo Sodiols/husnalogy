@@ -3,7 +3,8 @@ export const mainMenu = [
   {
     label: "Weddings",
     href: "/weddings",
-    dropdownColumns: 2,
+    description: "Invitations, stationery and keepsakes for every moment of the celebration.",
+    featured: { title: "Classic wedding suites", href: "/weddings", image: "/images/weddings/classic.png" },
     children: [
       {
         href: "/search?q=wedding%20invitations",
@@ -42,6 +43,8 @@ export const mainMenu = [
   {
     label: "Gifts",
     href: "/gifts",
+    description: "Thoughtful, personalized gifts for birthdays, milestones and everyone you love.",
+    featured: { title: "Personalized gifts", href: "/gifts", image: "/images/personalizedGifts.png" },
     children: [
       {
         href: "/search?q=personalized%20gifts",
@@ -65,6 +68,8 @@ export const mainMenu = [
    {
     label: "Personalizations",
     href: "/products",
+    description: "Add names, dates and photos to everyday pieces made just for them.",
+    featured: { title: "Made with your names", href: "/products", image: "/images/gifts.png" },
     children: [
       {
         href: "/search?q=personalized%20mugs",
@@ -88,6 +93,8 @@ export const mainMenu = [
   {
     label: "Invitations",
     href: "/stationery",
+    description: "Notecards, envelopes and finishing touches to complete your stationery.",
+    featured: { title: "Minimalist stationery", href: "/stationery", image: "/images/weddings/minimalist.png" },
     children: [
       {
         href: "/search?q=notecards",

@@ -555,6 +555,67 @@ textarea.input-bare {
   }
 }
 
+/* Header dropdowns open like a curtain: the panel is wiped open from its top
+   edge (clip-path, so nothing reflows) while the sheet drops a few pixels and
+   its links settle in a short stagger. Closing rolls back up, faster. The
+   negative bottom inset keeps the drop shadow from being clipped. */
+.nav-curtain {
+  visibility: hidden;
+  clip-path: inset(0 0 100% 0);
+  transition:
+    clip-path 240ms cubic-bezier(0.4, 0, 1, 1),
+    visibility 0s linear 240ms;
+}
+
+.nav-curtain[data-open="true"] {
+  visibility: visible;
+  clip-path: inset(0 0 -72px 0);
+  transition:
+    clip-path 520ms cubic-bezier(0.22, 1, 0.36, 1),
+    visibility 0s;
+}
+
+/* Moving straight from one menu to the next swaps panels without the old
+   one rolling up behind the new one. */
+.nav-curtain[data-switching="true"] {
+  transition: none;
+}
+
+.nav-curtain-sheet {
+  transform: translateY(-16px);
+  transition: transform 240ms cubic-bezier(0.4, 0, 1, 1);
+}
+
+.nav-curtain[data-open="true"] .nav-curtain-sheet {
+  transform: none;
+  transition: transform 560ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.nav-curtain-item {
+  opacity: 0;
+  transform: translateY(-8px);
+  transition:
+    opacity 140ms ease-in,
+    transform 140ms ease-in,
+    background-color 200ms ease-out;
+}
+
+.nav-curtain[data-open="true"] .nav-curtain-item {
+  opacity: 1;
+  transform: none;
+  transition:
+    opacity 360ms ease-out calc(110ms + var(--i, 0) * 32ms),
+    transform 480ms cubic-bezier(0.22, 1, 0.36, 1) calc(110ms + var(--i, 0) * 32ms),
+    background-color 200ms ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nav-curtain,
+  .nav-curtain * {
+    transition-delay: 0s !important;
+  }
+}
+
 /* Checkout uses the shared field and button system; these rules only cover
    checkout-specific markup (.checkout-field, .checkout-checkbox). */
 .checkout-scope .checkout-field {

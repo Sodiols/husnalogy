@@ -77,6 +77,7 @@ describe("a signed URL is not an image identity", () => {
 });
 
 describe("crash recovery never stores or restores a signed URL", () => {
+  const STUDIO_ACTOR = "aaaaaaaa-0000-4000-8000-00000000000a";
   const memory = () => {
     const data = new Map<string, string>();
     return { getItem: (key: string) => data.get(key) ?? null, setItem: (key: string, value: string) => void data.set(key, value), removeItem: (key: string) => void data.delete(key), raw: data };
@@ -84,28 +85,28 @@ describe("crash recovery never stores or restores a signed URL", () => {
 
   it("a snapshot is written without credentials and read back with every design property intact", () => {
     const storage = memory();
-    const key = studioRecoveryKey("prod-1");
-    writeStudioRecovery(storage, key, { productId: "prod-1", productName: "Card", template: { layers: [hydratedPhoto()] } });
+    const key = studioRecoveryKey(STUDIO_ACTOR, "prod-1");
+    writeStudioRecovery(storage, key, STUDIO_ACTOR, { productId: "prod-1", productName: "Card", template: { layers: [hydratedPhoto()] } });
     expect(storage.raw.get(key)).not.toContain("token=");
-    const restored = readStudioRecovery(storage, key)!;
+    const restored = readStudioRecovery(storage, key, STUDIO_ACTOR)!;
     expect(designOf((restored.template.layers as any[])[0])).toEqual(designOf(hydratedPhoto()));
     clearStudioRecovery(storage, key);
   });
 
   it("an old snapshot that still holds expired URLs is restored without them", () => {
     const storage = memory();
-    const key = studioRecoveryKey("prod-1");
-    storage.setItem(key, JSON.stringify({ productId: "prod-1", productName: "Card", savedAt: "2026-01-01", template: { layers: [hydratedPhoto(1_000)] } }));
-    const restored = readStudioRecovery(storage, key)!.template.layers as any[];
+    const key = studioRecoveryKey(STUDIO_ACTOR, "prod-1");
+    storage.setItem(key, JSON.stringify({ owner: STUDIO_ACTOR, productId: "prod-1", productName: "Card", savedAt: "2026-01-01", template: { layers: [hydratedPhoto(1_000)] } }));
+    const restored = readStudioRecovery(storage, key, STUDIO_ACTOR)!.template.layers as any[];
     expect(restored[0]).not.toHaveProperty("src");
     expect(restored[0].assetId).toBe(ASSET);
   });
 
   it("fresher credentials alone never make a design look different", () => {
     const storage = memory();
-    const key = studioRecoveryKey("prod-1");
-    writeStudioRecovery(storage, key, { productId: "prod-1", productName: "Card", template: { layers: [hydratedPhoto(1_000)] } });
-    const snapshot = readStudioRecovery(storage, key);
+    const key = studioRecoveryKey(STUDIO_ACTOR, "prod-1");
+    writeStudioRecovery(storage, key, STUDIO_ACTOR, { productId: "prod-1", productName: "Card", template: { layers: [hydratedPhoto(1_000)] } });
+    const snapshot = readStudioRecovery(storage, key, STUDIO_ACTOR);
     expect(studioRecoveryDiffers(snapshot, { layers: [hydratedPhoto(1_999_999_999)] })).toBe(false);
     expect(studioRecoveryDiffers(snapshot, { layers: [{ ...hydratedPhoto(), x: 421 }] })).toBe(true);
   });

@@ -10,17 +10,17 @@ import { logoutUser } from "../lib/auth";
 import { createClient } from "@/lib/supabase/client";
 import { formatCurrency } from "@/lib/currency";
 import ServerCustomizationImage from "@/app/components/customizer/ServerCustomizationImage";
+import { subscribeToUserWishlist, removeFromWishlist } from "../lib/customer-lists";
 import {
-  subscribeToUserWishlist,
-  removeFromWishlist,
-  subscribeToSavedAddresses,
-  saveCustomerAddress,
-  updateCustomerAddress,
-  setDefaultAddress,
-  removeCustomerAddress,
-  getLocalProfile,
-  saveLocalProfile,
-} from "../lib/customer-lists";
+  createAddress,
+  deleteAddress,
+  removeProfilePhoto,
+  saveProfile,
+  updateAddress,
+  uploadProfilePhoto,
+  useAccountProfile,
+  useSavedAddresses,
+} from "../lib/account-data";
 
 const NAV = [
   { id: "overview", label: "Overview", icon: "home" },
@@ -94,8 +94,10 @@ function filesFromOrder(order) {
   return out;
 }
 
-export default function AccountClient() {
-  const { user, authLoading } = useAuth();
+export default function AccountClient({ initialUser = undefined }: any) {
+  // The server's view of the session, so the server HTML and the first browser
+  // render agree (no hydration mismatch on a signed-in visit).
+  const { user, authLoading } = useAuth(initialUser);
   const router = useRouter();
 
   const [view, setView] = useState("overview");
@@ -105,8 +107,6 @@ export default function AccountClient() {
   const [personalized, setPersonalized] = useState([]);
   const [personalizedLoading, setPersonalizedLoading] = useState(true);
   const [wishlist, setWishlist] = useState([]);
-  const [addresses, setAddresses] = useState([]);
-  const [profile, setProfile] = useState({ name: "", email: "", phone: "", photoURL: "" });
   const [detailOrder, setDetailOrder] = useState(null);
   const [detailRequest, setDetailRequest] = useState(null);
   const [loggingOut, setLoggingOut] = useState(false);
@@ -115,18 +115,22 @@ export default function AccountClient() {
     if (authLoading) return undefined;
     return subscribeToUserWishlist(user, (i) => setWishlist(Array.isArray(i) ? i : []));
   }, [authLoading, user]);
-  useEffect(() => subscribeToSavedAddresses((i) => setAddresses(Array.isArray(i) ? i : [])), []);
+  // Addresses belong to the signed-in account (server + RLS), never to this browser.
+  const { addresses, reload: reloadAddresses, error: addressesError } = useSavedAddresses(user?.uid || user?.id || "");
 
-  useEffect(() => {
-    if (!user) return;
-    const local = getLocalProfile();
-    setProfile({
-      name: user.name || "",
-      email: user.email || "",
-      phone: local.phone || "",
-      photoURL: user.photoURL || local.photoURL || "",
-    });
-  }, [user]);
+  // Name, phone and photo come from the signed-in account on the server — the
+  // same on every device, and never another account's.
+  const { profile: accountProfile, setProfile: setAccountProfile } = useAccountProfile(user?.uid || user?.id || "");
+  const profile = {
+    name: accountProfile?.name || user?.name || "",
+    email: accountProfile?.email || user?.email || "",
+    phone: accountProfile?.phone || "",
+    photoURL: accountProfile ? accountProfile.avatarUrl : "",
+  };
+  const setProfile = (next: any) => {
+    const value = typeof next === "function" ? next(profile) : next;
+    setAccountProfile({ name: value.name, email: value.email, phone: value.phone, avatarUrl: value.photoURL });
+  };
 
   useEffect(() => {
     if (authLoading) return undefined;
@@ -349,9 +353,12 @@ export default function AccountClient() {
               <RequestsView requests={personalizedDesigns} loading={personalizedLoading} onOpen={setDetailRequest} />
             )}
             {view === "wishlist" && <WishlistView items={wishlist} onRemove={removeWish} />}
-            {view === "addresses" && <AddressesView addresses={addresses} />}
+            {view === "addresses" && <AddressesView addresses={addresses} loadError={addressesError} onChanged={reloadAddresses} />}
             {view === "history" && <HistoryView orders={sortedOrders} loading={ordersLoading} error={ordersError} onOpen={setDetailOrder} />}
-            {view === "profile" && <ProfileView profile={profile} setProfile={setProfile} addresses={addresses} />}
+            {view === "profile" && (
+              // Re-seeded once the account's profile has loaded (and per account).
+              <ProfileView key={`${user?.uid || user?.id || ""}:${accountProfile ? "ready" : "loading"}`} profile={profile} setProfile={setProfile} addresses={addresses} />
+            )}
           </div>
         </div>
       </div>
@@ -652,9 +659,20 @@ function WishlistView({ items, onRemove }) {
 
 /* ------------------------------ Saved Addresses ------------------------------ */
 
-function AddressesView({ addresses }) {
+function AddressesView({ addresses, loadError, onChanged }) {
   const [editing, setEditing] = useState(null); // address object or {} for new
+  const [actionError, setActionError] = useState("");
   const isOpen = editing !== null;
+
+  const run = async (work) => {
+    setActionError("");
+    try {
+      await work();
+      await onChanged();
+    } catch (error) {
+      setActionError(error?.message || "Something went wrong. Please try again.");
+    }
+  };
 
   return (
     <Panel
@@ -662,11 +680,15 @@ function AddressesView({ addresses }) {
       actionLabel={isOpen ? null : "Add Address"}
       onAction={isOpen ? null : () => setEditing({})}
     >
+      {(loadError || actionError) && <p className="mb-4 text-sm font-semibold text-red-600">{actionError || loadError}</p>}
       {isOpen ? (
         <AddressForm
           initial={editing}
           onCancel={() => setEditing(null)}
-          onSaved={() => setEditing(null)}
+          onSaved={async () => {
+            setEditing(null);
+            await onChanged();
+          }}
         />
       ) : addresses.length ? (
         <div className="grid gap-4 sm:grid-cols-2">
@@ -682,14 +704,14 @@ function AddressesView({ addresses }) {
               {a.note && <p className="mt-1 text-[11px] italic text-muted">Note: {a.note}</p>}
               <div className="mt-3 flex flex-wrap gap-2">
                 {!a.isDefault && (
-                  <button type="button" onClick={() => setDefaultAddress(a.id)} className="btn btn-secondary btn-sm">
+                  <button type="button" onClick={() => run(() => updateAddress(a.id, { isDefault: true }))} className="btn btn-secondary btn-sm">
                     Set as default
                   </button>
                 )}
                 <button type="button" onClick={() => setEditing(a)} className="btn btn-secondary btn-sm">
                   Edit
                 </button>
-                <button type="button" onClick={() => removeCustomerAddress(a.id)} className="btn btn-secondary btn-sm">
+                <button type="button" onClick={() => run(() => deleteAddress(a.id))} className="btn btn-secondary btn-sm">
                   Delete
                 </button>
               </div>
@@ -714,9 +736,10 @@ function AddressForm({ initial, onCancel, onSaved }) {
     note: initial.note || initial.deliveryNote || "",
   });
   const [errors, setErrors] = useState<any>({});
+  const [saving, setSaving] = useState(false);
   const set = (k, v) => setForm((c) => ({ ...c, [k]: v }));
 
-  const submit = (event) => {
+  const submit = async (event) => {
     event.preventDefault();
     const next: any = {};
     if (!form.fullName.trim()) next.fullName = "Full name is required.";
@@ -727,15 +750,24 @@ function AddressForm({ initial, onCancel, onSaved }) {
     if (Object.keys(next).length) return;
 
     const payload = {
-      ...form,
-      customerName: form.fullName,
-      customerPhone: form.phone,
+      fullName: form.fullName,
+      phone: form.phone,
       addressLine1: form.address,
-      deliveryNote: form.note,
+      area: form.area,
+      city: form.city,
+      district: form.district,
+      note: form.note,
     };
-    if (initial.id) updateCustomerAddress(initial.id, payload);
-    else saveCustomerAddress(payload);
-    onSaved();
+    setSaving(true);
+    try {
+      if (initial.id) await updateAddress(initial.id, payload);
+      else await createAddress(payload);
+      await onSaved();
+    } catch (error) {
+      setErrors({ form: error?.message || "The address could not be saved." });
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -747,9 +779,10 @@ function AddressForm({ initial, onCancel, onSaved }) {
       <Field label="District" value={form.district} onChange={(v) => set("district", v)} />
       <Field label="Full address" value={form.address} onChange={(v) => set("address", v)} error={errors.address} required className="sm:col-span-2" />
       <Field label="Note (optional)" value={form.note} onChange={(v) => set("note", v)} className="sm:col-span-2" />
+      {errors.form && <p className="text-sm font-semibold text-red-600 sm:col-span-2">{errors.form}</p>}
       <div className="flex gap-3 sm:col-span-2">
-        <button type="submit" className="btn btn-primary">
-          {initial.id ? "Update Address" : "Save Address"}
+        <button type="submit" disabled={saving} className="btn btn-primary">
+          {saving ? "Saving..." : initial.id ? "Update Address" : "Save Address"}
         </button>
         <button type="button" onClick={onCancel} className="btn btn-secondary">
           Cancel
@@ -801,47 +834,50 @@ function HistoryView({ orders, loading, error, onOpen }) {
 /* ------------------------------ Profile ------------------------------ */
 
 function ProfileView({ profile, setProfile, addresses }) {
-  const [form, setForm] = useState({ name: profile.name, phone: profile.phone, photoURL: profile.photoURL });
+  const [form, setForm] = useState({ name: profile.name, phone: profile.phone });
   const [status, setStatus] = useState({ saving: false, message: "", error: "" });
+  const [photoBusy, setPhotoBusy] = useState(false);
   const set = (k, v) => setForm((c) => ({ ...c, [k]: v }));
 
-  const onPickPhoto = (event) => {
-    const file = event.target.files?.[0];
+  // The photo is uploaded to the account straight away: validated and
+  // re-encoded on the server, stored privately, shown through a signed URL.
+  const onPickPhoto = async (event) => {
+    const input = event.target;
+    const file = input.files?.[0];
+    input.value = "";
     if (!file) return;
-    const url = URL.createObjectURL(file);
-    set("photoURL", url); // preview only; persistent photo needs a hosted URL
+    setPhotoBusy(true);
+    setStatus({ saving: false, message: "", error: "" });
+    try {
+      const avatarUrl = await uploadProfilePhoto(file);
+      setProfile((p) => ({ ...p, photoURL: avatarUrl }));
+      setStatus({ saving: false, message: "Photo updated.", error: "" });
+    } catch (error) {
+      setStatus({ saving: false, message: "", error: error.message || "Your photo could not be uploaded." });
+    } finally {
+      setPhotoBusy(false);
+    }
+  };
+
+  const onRemovePhoto = async () => {
+    setPhotoBusy(true);
+    setStatus({ saving: false, message: "", error: "" });
+    try {
+      await removeProfilePhoto();
+      setProfile((p) => ({ ...p, photoURL: "" }));
+      setStatus({ saving: false, message: "Photo removed.", error: "" });
+    } catch (error) {
+      setStatus({ saving: false, message: "", error: error.message || "Your photo could not be removed." });
+    } finally {
+      setPhotoBusy(false);
+    }
   };
 
   const save = async () => {
     setStatus({ saving: true, message: "", error: "" });
     try {
-      const photo = form.photoURL && form.photoURL.startsWith("http") ? form.photoURL : profile.photoURL || "";
-      const supabase = createClient();
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-
-      if (!user) throw new Error("Your session expired. Please sign in again.");
-
-      await supabase.auth.updateUser({
-        data: {
-          full_name: form.name || "",
-          avatar_url: photo || null,
-        },
-      });
-
-      const { error } = await supabase
-        .from("profiles")
-        .update({
-          full_name: form.name || "",
-          avatar_url: photo || null,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", user.id);
-
-      if (error) throw error;
-      saveLocalProfile({ phone: form.phone, photoURL: photo });
-      setProfile((p) => ({ ...p, name: form.name, phone: form.phone, photoURL: photo || p.photoURL }));
+      const saved = await saveProfile({ name: form.name, phone: form.phone });
+      setProfile((p) => ({ ...p, name: saved.name, phone: saved.phone, photoURL: saved.avatarUrl || p.photoURL }));
       setStatus({ saving: false, message: "Profile updated.", error: "" });
     } catch (error) {
       setStatus({ saving: false, message: "", error: error.message || "Could not update profile." });
@@ -853,18 +889,22 @@ function ProfileView({ profile, setProfile, addresses }) {
   return (
     <Panel title="Profile Settings">
       <div className="flex items-center gap-4">
-        <Avatar profile={{ ...profile, photoURL: form.photoURL }} size="h-16 w-16 text-xl" />
-        <label className="btn btn-secondary btn-sm cursor-pointer">
-          Change photo
-          <input type="file" accept="image/*" onChange={onPickPhoto} className="hidden" />
+        <Avatar profile={profile} size="h-16 w-16 text-xl" />
+        <label className={`btn btn-secondary btn-sm cursor-pointer ${photoBusy ? "pointer-events-none opacity-60" : ""}`}>
+          {photoBusy ? "Uploading..." : "Change photo"}
+          <input type="file" accept="image/jpeg,image/png,image/webp" onChange={onPickPhoto} disabled={photoBusy} className="hidden" data-testid="profile-photo-input" />
         </label>
+        {profile.photoURL && (
+          <button type="button" onClick={onRemovePhoto} disabled={photoBusy} className="btn btn-secondary btn-sm">
+            Remove photo
+          </button>
+        )}
       </div>
 
       <div className="mt-6 grid gap-4 sm:grid-cols-2">
         <Field label="Full name" value={form.name} onChange={(v) => set("name", v)} />
         <Field label="Phone number" value={form.phone} onChange={(v) => set("phone", v)} />
         <Field label="Email (read only)" value={profile.email} onChange={() => {}} readOnly className="sm:col-span-2" />
-        <Field label="Photo URL (for a permanent photo)" value={form.photoURL.startsWith("blob:") ? "" : form.photoURL} onChange={(v) => set("photoURL", v)} placeholder="https://..." className="sm:col-span-2" />
       </div>
 
       {defaultAddress && (
@@ -1049,22 +1089,49 @@ function RequestDetailModal({ request, onClose }) {
 /* ------------------------------ Shared UI ------------------------------ */
 
 function Modal({ title, onClose, children }) {
+  const titleId = "account-modal-title";
+
   useEffect(() => {
     const onKey = (e) => e.key === "Escape" && onClose();
     document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
+    // Lock the page behind the dialog, as the auth modal does.
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.body.style.overflow = previousOverflow;
+    };
   }, [onClose]);
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-end justify-center bg-ink/45 p-0 sm:items-center sm:p-4">
-      <div className="flex max-h-[92vh] w-full max-w-[560px] flex-col rounded-t-[20px] bg-white sm:rounded-[10px]">
-        <div className="flex items-center justify-between border-b border-line px-6 py-4">
-          <h3 className="font-display text-[1.5rem] font-medium leading-tight text-ink">{title}</h3>
-          <button type="button" onClick={onClose} aria-label="Close" className="grid h-9 w-9 place-items-center rounded-full text-muted transition hover:bg-cream">
+    // Sits on the site's overlay layer (auth modal 3000, side panels 3200) so
+    // the sticky header (2400) can never cover the dialog's title bar.
+    <div
+      className="fixed inset-0 z-[3000] flex items-end justify-center bg-ink/45 p-0 sm:items-center sm:p-6"
+      onMouseDown={(e) => e.target === e.currentTarget && onClose()}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        className="flex max-h-[92dvh] w-full max-w-[560px] flex-col overflow-hidden rounded-t-[20px] bg-white shadow-[var(--shadow-overlay)] sm:max-h-[min(88dvh,820px)] sm:rounded-[10px]"
+      >
+        <div className="flex shrink-0 items-start justify-between gap-4 border-b border-line px-6 py-4">
+          <h3 id={titleId} className="min-w-0 pt-1 font-display text-[1.5rem] font-medium leading-tight text-ink [overflow-wrap:anywhere]">
+            {title}
+          </h3>
+          <button
+            type="button"
+            onClick={onClose}
+            autoFocus
+            aria-label="Close"
+            data-shape="round"
+            className="-mr-2 grid h-11 w-11 shrink-0 cursor-pointer place-items-center text-muted transition-colors duration-200 hover:bg-cream hover:text-ink"
+          >
             <Icon name="close" className="h-5 w-5" />
           </button>
         </div>
-        <div className="overflow-y-auto px-6 py-5">{children}</div>
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-6 py-5">{children}</div>
       </div>
     </div>
   );
@@ -1108,9 +1175,9 @@ function Field({ label, value, onChange, error, required, readOnly, placeholder,
 
 function Row({ label, value, strong }: any) {
   return (
-    <p className={`flex justify-between gap-3 ${strong ? "text-base font-semibold" : "text-xs"}`}>
-      <span className="capitalize text-muted">{label}</span>
-      <span className={strong ? "text-ink" : "font-semibold text-ink"}>{value}</span>
+    <p className={`flex items-baseline justify-between gap-4 py-0.5 leading-5 ${strong ? "text-base font-semibold" : "text-xs"}`}>
+      <span className="min-w-0 shrink-0 basis-2/5 capitalize text-muted [overflow-wrap:anywhere]">{label}</span>
+      <span className={`min-w-0 text-right [overflow-wrap:anywhere] ${strong ? "text-ink" : "font-semibold text-ink"}`}>{value}</span>
     </p>
   );
 }

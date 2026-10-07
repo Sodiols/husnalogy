@@ -7,7 +7,8 @@ import { expect, test } from "@playwright/test";
  */
 test("public catalogue images are optimized; private, signed and foreign sources are refused", async ({ page, request }) => {
   await page.goto("/products");
-  const src = await page.locator("img[src*='/_next/image?url=']").first().getAttribute("src", { timeout: 30_000 });
+  // A storage-hosted catalogue image: the page also optimizes local /images files, which this spec is not about.
+  const src = await page.locator("img[src*='/_next/image?url='][src*='%2Fstorage%2Fv1%2Fobject%2Fpublic%2F']").first().getAttribute("src", { timeout: 30_000 });
   test.skip(!src, "No optimized product image on /products (empty catalogue).");
   const optimized = await request.get(src!);
   expect(optimized.status()).toBe(200);

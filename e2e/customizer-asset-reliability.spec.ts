@@ -5,11 +5,10 @@
  * can authorize it, and never at the cost of the customer's design.
  */
 import { expect, test, type Page } from "@playwright/test";
-import { openFixture } from "./customizer-fixture";
+import { openFixture, readDraft } from "./customizer-fixture";
 import { AssetStub, urlExpiry } from "./asset-reliability-stub";
 
 const ASSET = "8b3e3e70-5d4c-4b9a-9c32-2e6c4d9f1a33";
-const DRAFT_KEY = "husnalogy_customizer_draft:e2e-fixture-product:e2e-fixture-template-library-asset:1";
 
 const drawn = (page: Page) =>
   page.evaluate(() => {
@@ -18,11 +17,10 @@ const drawn = (page: Page) =>
   });
 
 /** The customer's design, without volatile bookkeeping. */
-const design = (page: Page) =>
-  page.evaluate((key) => {
-    const draft = JSON.parse(window.localStorage.getItem(key) || "null");
-    return draft ? JSON.stringify({ values: draft.values, editorState: draft.renderData?.editorState }) : "";
-  }, DRAFT_KEY);
+const design = async (page: Page) => {
+  const draft = await readDraft(page, "e2e-fixture-template-library-asset");
+  return draft ? JSON.stringify({ values: draft.values, editorState: draft.renderData?.editorState }) : "";
+};
 
 let stub: AssetStub;
 test.beforeEach(async ({ context, page }) => {

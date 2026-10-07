@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import useAuth from "../lib/useAuth";
-import { subscribeToLocalOrders } from "../lib/customer-lists";
+import { purgeLegacyAccountStorage } from "../lib/account-data";
 import { formatCurrency, normalizeCurrency } from "@/lib/currency";
 import ServerCustomizationImage from "@/app/components/customizer/ServerCustomizationImage";
 
@@ -66,9 +66,9 @@ export default function OrdersClient() {
   const { user, authLoading } = useAuth();
   const [serverOrders, setServerOrders] = useState([]);
   const [serverLoaded, setServerLoaded] = useState(false);
-  const [localOrders, setLocalOrders] = useState([]);
-
-  useEffect(() => subscribeToLocalOrders(setLocalOrders), []);
+  // Orders come only from the signed-in account on the server. A browser copy
+  // used to be merged in here — shared by every account on the browser.
+  useEffect(() => purgeLegacyAccountStorage(), []);
 
   // Live status straight from the admin source of truth.
   useEffect(() => {
@@ -114,8 +114,8 @@ export default function OrdersClient() {
   }, [authLoading, user?.uid]);
 
   const orders = useMemo(
-    () => mergeOrders(serverOrders, localOrders),
-    [serverOrders, localOrders]
+    () => mergeOrders(serverOrders),
+    [serverOrders]
   );
 
   const loadingOrders = authLoading || (!!user && !serverLoaded);

@@ -1,136 +1,90 @@
-"use client";
+import Image from "next/image";
+import Link from "next/link";
 
-import { useParallax } from "../hooks/useParallax";
 import Reveal from "./Reveal";
 
 const items = [
   {
     title: "Invitations",
     body: "The first impression of your day, designed to be kept long after the wedding ends.",
-    speed: 0.05,
-    icon: (
-      <>
-        <rect
-          x="6"
-          y="12"
-          width="44"
-          height="32"
-          rx="2"
-          fill="none"
-          stroke="#303839"
-          strokeWidth="2.5"
-        />
-        <path
-          d="M6 14 L28 32 L50 14"
-          fill="none"
-          stroke="#303839"
-          strokeWidth="2.5"
-        />
-      </>
-    ),
+    href: "/weddings",
+    cta: "Shop invitations",
+    image: "/images/weddings/classic.png",
+    alt: "A cream envelope closed with a monogrammed seal",
   },
   {
     title: "Save the Dates",
     body: "A small promise sent early, so the people you love can make time for your celebration.",
-    speed: 0.09,
-    icon: (
-      <>
-        <rect
-          x="8"
-          y="10"
-          width="40"
-          height="36"
-          rx="2"
-          fill="none"
-          stroke="#303839"
-          strokeWidth="2.5"
-        />
-        <path d="M8 20 H48" stroke="#303839" strokeWidth="2.5" />
-        <path
-          d="M18 6 V14 M38 6 V14"
-          stroke="#303839"
-          strokeWidth="2.5"
-          strokeLinecap="round"
-        />
-        <circle cx="28" cy="32" r="5" fill="#303839" />
-      </>
-    ),
+    href: "/save-the-dates",
+    cta: "Shop save the dates",
+    image: "/images/weddings/trendy.png",
+    alt: "A modern save the date card with bold serif names",
   },
   {
     title: "Gifts with intention",
-    body: "Keepsakes for bridal parties, parents, and couples, designed to feel thoughtful and lasting.",
-    speed: 0.05,
-    icon: (
-      <>
-        <rect
-          x="8"
-          y="20"
-          width="40"
-          height="26"
-          fill="none"
-          stroke="#303839"
-          strokeWidth="2.5"
-        />
-        <path
-          d="M8 20 H48 V12 H8 Z"
-          fill="none"
-          stroke="#303839"
-          strokeWidth="2.5"
-        />
-        <path d="M28 12 V46" stroke="#303839" strokeWidth="2.5" />
-      </>
-    ),
+    body: "Keepsakes for bridal parties, parents and couples, designed to feel thoughtful and lasting.",
+    href: "/gifts",
+    cta: "Shop gifts",
+    image: "/images/personalizedGifts.png",
+    alt: "A personalized photo mug held in two hands",
   },
 ];
 
-function DesignCard({ item, index }) {
-  const [ref, offset] = useParallax(item.speed);
-
+export default function AboutDesign() {
   return (
-    <Reveal delay={index * 120}>
-      <div
-        ref={ref}
-        style={{ transform: `translateY(${offset}px)` }}
-        className="h-full rounded-none border border-line/20 bg-cream-deep p-[clamp(1.5rem,3vw,2.5rem)]"
-      >
-        <svg
-          viewBox="0 0 56 56"
-          className="mb-[clamp(1rem,2.5vh,1.5rem)] h-[clamp(2.25rem,3vw,3rem)] w-[clamp(2.25rem,3vw,3rem)]"
-          aria-hidden="true"
-        >
-          {item.icon}
-        </svg>
+    <section aria-labelledby="about-make-heading" className="bg-white">
+      <div className="page-container section">
+        <Reveal className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+          <div className="max-w-[560px]">
+            <p className="eyebrow">What we make</p>
+            <h2 id="about-make-heading" className="heading-section mt-3">
+              Stationery and gifts, drawn around your story.
+            </h2>
+          </div>
+          <Link
+            href="/products"
+            className="group inline-flex min-h-11 items-center gap-2 text-[15px] font-semibold text-ink underline-offset-4 hover:underline"
+          >
+            Browse everything
+            <Arrow className="transition-transform duration-300 group-hover:translate-x-1" />
+          </Link>
+        </Reveal>
 
-        <h3 className="font-display text-[clamp(1.35rem,1.05rem+1.4vw,1.875rem)] text-[#303839]">{item.title}</h3>
-
-        <p className="mt-4 font-body text-[clamp(0.9rem,0.82rem+0.4vw,1rem)] leading-relaxed text-[#303839]/80">
-          {item.body}
-        </p>
+        <ul className="mt-10 grid gap-x-6 gap-y-10 sm:grid-cols-2 lg:mt-14 lg:grid-cols-3">
+          {items.map((item, index) => (
+            <Reveal as="li" key={item.title} delay={index * 100}>
+              <Link href={item.href} className="group block rounded-[10px] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ink">
+                <span className="relative block aspect-[4/5] overflow-hidden rounded-[10px] bg-cream-deep">
+                  <Image
+                    src={item.image}
+                    alt={item.alt}
+                    fill
+                    sizes="(min-width: 1024px) 30vw, (min-width: 640px) 50vw, 100vw"
+                    className="object-cover transition-transform duration-[1200ms] ease-out group-hover:scale-[1.03]"
+                  />
+                </span>
+                <span className="mt-5 block font-display text-[clamp(1.5rem,1.3rem+0.6vw,1.75rem)] font-medium leading-tight text-ink">
+                  {item.title}
+                </span>
+                <span className="mt-2 block max-w-[38ch] text-[15px] leading-[1.7] text-muted">{item.body}</span>
+                <span className="mt-4 inline-flex items-center gap-2 text-[14px] font-semibold text-ink underline-offset-4 group-hover:underline">
+                  {item.cta}
+                  <Arrow className="transition-transform duration-300 group-hover:translate-x-1" />
+                </span>
+              </Link>
+            </Reveal>
+          ))}
+        </ul>
       </div>
-    </Reveal>
+    </section>
   );
 }
 
-export default function AboutDesign() {
+function Arrow({ className = "" }) {
   return (
-    <section className="lg:sticky lg:top-0 z-[3] flex min-h-[100svh] flex-col justify-center bg-cream py-[clamp(2.5rem,7vh,7rem)]">
-      <div className="max-w-6xl px-6 mx-auto">
-        <Reveal className="max-w-xl">
-          <span className="font-body text-xs uppercase tracking-[0.25em] text-[#303839]">
-            What we make
-          </span>
-
-          <h2 className="mt-[clamp(0.75rem,2vh,1rem)] font-display text-[clamp(1.5rem,1.1rem+2vw,2.25rem)] leading-tight text-[#303839]">
-            Stationery and gifts, drawn around your story.
-          </h2>
-        </Reveal>
-
-        <div className="grid gap-[clamp(1rem,3vh,1.5rem)] mt-[clamp(2rem,5vh,4rem)] md:grid-cols-3">
-          {items.map((item, index) => (
-            <DesignCard key={item.title} item={item} index={index} />
-          ))}
-        </div>
-      </div>
-    </section>
+    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className={className}>
+      <path d="M5 12h14" />
+      <path d="m13 6 6 6-6 6" />
+    </svg>
   );
 }

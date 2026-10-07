@@ -11,11 +11,10 @@
  */
 import { expect, test, type Page } from "@playwright/test";
 import { getMaskPath } from "../lib/customizer/v2/masks";
-import { bodyPoint, canvasLayer, cropDrawBox, enterCrop, openFixture, panCrop, selectLayer } from "./customizer-fixture";
+import { bodyPoint, canvasLayer, cropDrawBox, enterCrop, openFixture, panCrop, readDraft, selectLayer } from "./customizer-fixture";
 import { STUB_PHOTO_URL, StubCustomizationServer, signInStubCustomer, supabaseIsStubbed } from "./customer-stub";
 
 const QUERY = "?adminClip=1&snap=0";
-const DRAFT_KEY = "husnalogy_customizer_draft:e2e-fixture-product:e2e-fixture-template-admin-clip:1";
 
 const CIRCLE = { x: 480, y: 760, width: 480, height: 480 };
 const ROUNDED = { x: 1030, y: 760, width: 400, height: 500 };
@@ -75,7 +74,7 @@ test.describe("Design Studio clips in the customer editor", () => {
 
     // A refresh restores the crop inside the same mask.
     const cropped = await cropDrawBox(page, "fx_photo_crop");
-    await expect.poll(() => page.evaluate((key) => Boolean(window.localStorage.getItem(key)), DRAFT_KEY)).toBe(true);
+    await expect.poll(() => readDraft(page, "e2e-fixture-template-admin-clip").then(Boolean)).toBe(true);
     await page.reload();
     await expect(canvasLayer(page, "fx_photo_crop")).toBeVisible({ timeout: 30_000 });
     await expect.poll(() => cropDrawBox(page, "fx_photo_crop"), { timeout: 15_000 }).toEqual(cropped);

@@ -193,3 +193,24 @@ describe("PATCH /api/customizations/[id] — ordered design writes", () => {
     expect(result.status).toBe(400);
   });
 });
+
+describe("PATCH /api/customizations/[id] — the account precondition (shared browser)", () => {
+  beforeEach(() => {
+    beforeUpdate = null;
+    seed();
+  });
+
+  it("refuses a save whose design belongs to another account, before reading or writing anything", async () => {
+    const before = structuredClone(table.get(DESIGN_ID));
+    const result = await patch({ ...fullBody(9, "from another account's screen"), expectedUserId: "33333333-3333-4333-8333-333333333333" });
+    expect(result.status).toBe(409);
+    expect(result.data.code).toBe("account-changed");
+    expect(table.get(DESIGN_ID)).toEqual(before);
+  });
+
+  it("accepts the save when the design's account is the signed-in account", async () => {
+    const result = await patch({ ...fullBody(9, "mine"), expectedUserId: USER_ID });
+    expect(result.status).toBe(200);
+    expect(table.get(DESIGN_ID)?.values).toEqual({ title: "mine" });
+  });
+});

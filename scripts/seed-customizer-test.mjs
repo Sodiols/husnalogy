@@ -41,6 +41,7 @@ const emails = {
   customerA: `${emailPrefix}+customer-a@${domain}`,
   customerB: `${emailPrefix}+customer-b@${domain}`,
   admin: `${emailPrefix}+admin@${domain}`,
+  designer: `${emailPrefix}+designer@${domain}`,
 };
 
 const supabase = createClient(url, serviceKey, { auth: { persistSession: false, autoRefreshToken: false } });
@@ -78,6 +79,7 @@ function gridSlots() {
 const customerA = await ensureUser(emails.customerA, "customer", "Customizer E2E Customer A");
 const customerB = await ensureUser(emails.customerB, "customer", "Customizer E2E Customer B");
 const admin = await ensureUser(emails.admin, "admin", "Customizer E2E Admin");
+const designer = await ensureUser(emails.designer, "designer", "Customizer E2E Designer");
 
 const productId = "e2e-customizer-v2-product";
 const slug = "e2e-customizer-v2";
@@ -195,6 +197,37 @@ if (mockupError) throw mockupError;
 const { error: publishMockupError } = await supabase.rpc("upsert_customizer_mockup", { p_product_id: productId, p_payload: mockup, p_publish: true });
 if (publishMockupError) throw publishMockupError;
 
+// Customer A's account data: a saved default address (customer_addresses,
+// migration 20261007120000) and an existing cart line. Fixed ids keep the seed
+// idempotent; Customer B deliberately has none (shared-browser privacy specs).
+const addressAId = "e2e00000-0000-4000-8000-00000000ad01";
+const { error: addressError } = await supabase.from("customer_addresses").upsert({
+  id: addressAId,
+  user_id: customerA.id,
+  full_name: "Customizer E2E Customer A",
+  phone: "+8801711000001",
+  address_line1: "House 7, Road 3, E2E Lane",
+  area: "Banani",
+  city: "Dhaka",
+  postal_code: "1213",
+  is_default: true,
+});
+if (addressError) throw addressError;
+const { error: phoneError } = await supabase.from("profiles").update({ phone: "+8801711000001" }).eq("id", customerA.id);
+if (phoneError) throw phoneError;
+const cartItemAId = "e2e00000-0000-4000-8000-0000000ca701";
+const { error: cartError } = await supabase.from("cart_items").upsert({
+  id: cartItemAId,
+  user_id: customerA.id,
+  product_id: normalProductId,
+  product_slug: normalProductSlug,
+  product_title: "Customizer E2E seeded cart line",
+  quantity: 1,
+  unit_price: 0,
+  metadata: { e2eSeed: true },
+});
+if (cartError) throw cartError;
+
 const appBaseUrl = (process.env.E2E_BASE_URL || process.env.NEXT_PUBLIC_SITE_URL || "http://127.0.0.1:3000").replace(/\/$/, "");
 const manifest = {
   version: 1,
@@ -212,6 +245,10 @@ const manifest = {
   customerAId: customerA.id,
   customerBId: customerB.id,
   adminId: admin.id,
+  designerId: designer.id,
+  designerEmail: emails.designer,
+  addressAId,
+  cartItemAId,
   customerAEmail: emails.customerA,
   customerBEmail: emails.customerB,
   adminEmail: emails.admin,

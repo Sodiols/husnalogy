@@ -4,9 +4,8 @@ import AboutValues from "./components/aboutValues";
 import AboutDesign from "./components/aboutDesign";
 import AboutProcess from "./components/aboutProcess";
 import AboutClosing from "./components/aboutClosing";
-import AboutScrollSeal from "./components/aboutScrollSeal";
-import Newslatter from "../components/newsletter";
 import AboutFAQ from "./components/aboutFAQ";
+import Newsletter from "../components/newsletter";
 import type { CSSProperties } from "react";
 
 export const metadata = {
@@ -18,26 +17,24 @@ export const metadata = {
 export default function AboutPage() {
   return (
     <main
-      className="bg-cream text-[#303839]"
+      className="bg-cream text-ink"
+      // The hero's own font variables resolve through these.
       style={{
         "--font-caveat": "var(--font-cormorant)",
         "--font-montserrat": "var(--font-inter)",
       } as CSSProperties}
     >
       <AboutHero />
-      {/* Sits above the pinned hero and scrolls up over it (opaque backstop hides the hero). */}
+      {/* Scrolls up over the pinned hero. Below it, sections alternate cream
+          and white like the home page, with one charcoal band for the note. */}
       <div className="relative z-10 bg-cream">
         <AboutStory />
         <AboutValues />
         <AboutDesign />
         <AboutProcess />
         <AboutClosing />
-        <AboutScrollSeal />
         <AboutFAQ />
-      </div>
-      {/* Above the sticky stack so it isn't hidden behind the pinned FAQ on desktop. */}
-      <div className="relative z-20 bg-cream">
-        <Newslatter />
+        <Newsletter />
       </div>
     </main>
   );

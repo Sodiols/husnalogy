@@ -772,13 +772,20 @@ export async function cancelRenderJob(jobId: string): Promise<RenderJobRow | nul
   if (["completed", "failed", "cancelled"].includes(current.status)) return jobFromRow(current);
   const now = new Date().toISOString();
   const immediate = ["queued", "retrying"].includes(current.status);
+  // Compare-and-set on the state just read: a job that a worker moved on in
+  // the meantime (started, completed, failed) is never overwritten from a
+  // stale reading. The caller then sees the job as it is now.
   const { data, error: updateError } = await supabase.from("customizer_render_jobs")
     .update({ cancel_requested_at: now, ...(immediate ? { status: "cancelled", completed_at: now } : {}) })
     .eq("id", jobId)
+    .eq("status", current.status)
     .select("*")
-    .single();
+    .maybeSingle();
   if (updateError) throw updateError;
-  return jobFromRow(data);
+  if (data) return jobFromRow(data);
+  const { data: latest, error: latestError } = await supabase.from("customizer_render_jobs").select("*").eq("id", jobId).maybeSingle();
+  if (latestError) throw latestError;
+  return latest ? jobFromRow(latest) : null;
 }
 
 export async function getRenderJob(jobId: string): Promise<RenderJobRow | null> {

@@ -23,9 +23,9 @@ const requests = (page: Page): Promise<Request[]> =>
   page.evaluate(() => (window as any).__adminFixture.requests.map((entry: any) => ({ method: entry.method, path: entry.path, body: entry.body })));
 const productSaves = (log: Request[]) => log.filter((entry) => /^\/api\/admin\/products(\/[^/]+)?$/.test(entry.path));
 
-async function startNewProduct(page: Page, title = "") {
+async function startNewProduct(page: Page, title = "", actor = "") {
   await page.setViewportSize({ width: 1440, height: 900 });
-  await page.goto("/__e2e/admin-dashboard?section=Products");
+  await page.goto(`/__e2e/admin-dashboard?section=Products${actor ? `&actor=${actor}` : ""}`);
   await expect(page.getByRole("button", { name: "Add product" }).first()).toBeVisible({ timeout: 60_000 });
   await page.getByRole("button", { name: "Add product" }).first().click();
   if (title) await page.getByPlaceholder("Describe the product the way a customer would search for it").fill(title);
@@ -49,6 +49,36 @@ async function addOval(page: Page) {
   }).not.toBe("");
   return id;
 }
+
+test.describe("Design Studio recovery is scoped to the studio account (shared browser)", () => {
+  const ADMIN_A = "e2e00000-0000-4000-8000-0000000000a1";
+  const DESIGNER_B = "e2e00000-0000-4000-8000-0000000000b2";
+
+  test("Admin A's unsaved new design is never offered to Admin/Designer B; A gets it back", async ({ page }) => {
+    // Admin A starts a new design and leaves it unsaved (recovery snapshot written).
+    await startNewProduct(page, "", ADMIN_A);
+    const baseline = await layerCount(page);
+    const shape = await addOval(page);
+    await expect(unsavedChip(page)).toBeVisible();
+    await page.waitForTimeout(700);
+    await expect.poll(() => page.evaluate(() => Object.keys(window.localStorage).filter((key) => key.startsWith("husnalogy_studio_draft")).length)).toBe(1);
+    const stored = await page.evaluate(() => Object.keys(window.localStorage).find((key) => key.startsWith("husnalogy_studio_draft"))!);
+    expect(stored).toContain(`:${ADMIN_A}:new`);
+
+    // A signs out; B signs in on the same browser and opens a new Studio.
+    await startNewProduct(page, "", DESIGNER_B);
+    await page.waitForTimeout(800);
+    await expect(banner(page)).toHaveCount(0);
+    expect(await layerCount(page)).toBe(baseline);
+    await expect(studio(page).locator(`[data-layer-id="${shape}"]`)).toHaveCount(0);
+
+    // A comes back: their own unsaved design is offered again.
+    await startNewProduct(page, "", ADMIN_A);
+    await expect(banner(page)).toBeVisible();
+    await banner(page).getByRole("button", { name: "Restore unsaved changes" }).click();
+    await expect(studio(page).locator(`[data-layer-id="${shape}"]`).first()).toBeAttached();
+  });
+});
 
 test.describe("Design Studio recovery", () => {
   test("a refresh before saving keeps the work: reopening offers it back, Restore brings it back as one undo step", async ({ page }) => {

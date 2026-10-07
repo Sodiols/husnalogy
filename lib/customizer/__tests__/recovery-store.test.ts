@@ -20,7 +20,8 @@ function memoryStorage(initial: Record<string, string> = {}): StorageLike & { da
   };
 }
 
-const KEY = recoveryStorageKey("product-1", "template-1", 3);
+const OWNER = "user:aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+const KEY = recoveryStorageKey(OWNER, "product-1", "template-1", 3);
 const identity = { productId: "product-1", templateId: "template-1", templateVersion: 3 };
 const state = (title: string, page = "front") => ({
   values: { title },
@@ -31,6 +32,7 @@ const state = (title: string, page = "front") => ({
 
 function write(storage: StorageLike, input: Partial<Parameters<typeof writeRecoverySnapshot>[2]> & { title?: string } = {}) {
   return writeRecoverySnapshot(storage, KEY, {
+    owner: OWNER,
     identity,
     state: state(input.title || "Ayesha & Rahim"),
     customizationId: input.customizationId ?? "",
@@ -43,10 +45,11 @@ function write(storage: StorageLike, input: Partial<Parameters<typeof writeRecov
 }
 
 describe("recovery snapshot storage", () => {
-  it("keeps the legacy key so guest drafts written before revisions still restore", () => {
-    expect(KEY).toBe("husnalogy_customizer_draft:product-1:template-1:3");
+  it("scopes the key to the owning account and restores drafts written before revisions as revision 0", () => {
+    expect(KEY).toBe(`husnalogy_customizer_draft:v2:${OWNER}:product:product-1:template:template-1:version:3`);
     const storage = memoryStorage({
       [KEY]: JSON.stringify({
+        owner: OWNER,
         id: "local_old",
         values: { title: "Legacy" },
         selectedOptions: { quantity: 2 },
@@ -54,7 +57,7 @@ describe("recovery snapshot storage", () => {
         updatedAt: "2026-01-01T00:00:00.000Z",
       }),
     });
-    const snapshot = readRecoverySnapshot(storage, KEY)!;
+    const snapshot = readRecoverySnapshot(storage, KEY, OWNER)!;
     expect(snapshot.id).toBe("local_old");
     expect(snapshot.customizationId).toBe("");
     expect(snapshot.values).toEqual({ title: "Legacy" });
@@ -67,7 +70,7 @@ describe("recovery snapshot storage", () => {
   it("stores the exact editor state, options and page in the shape the editor restores from", () => {
     const storage = memoryStorage();
     const written = write(storage, { clientRevision: 4 })!;
-    const read = readRecoverySnapshot(storage, KEY)!;
+    const read = readRecoverySnapshot(storage, KEY, OWNER)!;
     expect(read.values).toEqual({ title: "Ayesha & Rahim" });
     expect(read.renderData.editorState).toEqual(state("Ayesha & Rahim").editorState);
     expect(read.selectedOptions).toEqual({ paper: "Linen", quantity: 25 });
@@ -106,19 +109,19 @@ describe("recovery snapshot storage", () => {
       },
     };
     expect(write(full)).toBeNull();
-    expect(writeRecoverySnapshot(null, KEY, { identity, state: state("x"), customizationId: "", cartItemId: "", clientRevision: 1, ackedRevision: 0, guestSessionId: "" })).toBeNull();
+    expect(writeRecoverySnapshot(null, KEY, { owner: OWNER, identity, state: state("x"), customizationId: "", cartItemId: "", clientRevision: 1, ackedRevision: 0, guestSessionId: "" })).toBeNull();
   });
 
   it("ignores corrupt storage", () => {
-    expect(readRecoverySnapshot(memoryStorage({ [KEY]: "{not json" }), KEY)).toBeNull();
-    expect(readRecoverySnapshot(memoryStorage({ [KEY]: "[1,2]" }), KEY)).toBeNull();
+    expect(readRecoverySnapshot(memoryStorage({ [KEY]: "{not json" }), KEY, OWNER)).toBeNull();
+    expect(readRecoverySnapshot(memoryStorage({ [KEY]: "[1,2]" }), KEY, OWNER)).toBeNull();
   });
 
   it("acknowledgement updates only the server bookkeeping, never the stored state", () => {
     const storage = memoryStorage();
     write(storage, { clientRevision: 7, ackedRevision: 3 });
-    expect(acknowledgeRecoverySnapshot(storage, KEY, { customizationId: "c0ffee00-0000-4000-8000-000000000002", revision: 6 })).toBe(true);
-    const read = readRecoverySnapshot(storage, KEY)!;
+    expect(acknowledgeRecoverySnapshot(storage, KEY, OWNER, { customizationId: "c0ffee00-0000-4000-8000-000000000002", revision: 6 })).toBe(true);
+    const read = readRecoverySnapshot(storage, KEY, OWNER)!;
     expect(read.ackedRevision).toBe(6);
     expect(read.clientRevision).toBe(7);
     expect(read.customizationId).toBe("c0ffee00-0000-4000-8000-000000000002");
@@ -128,15 +131,15 @@ describe("recovery snapshot storage", () => {
   it("an acknowledgement can never claim more than the snapshot holds", () => {
     const storage = memoryStorage();
     write(storage, { clientRevision: 2 });
-    acknowledgeRecoverySnapshot(storage, KEY, { customizationId: "c0ffee00-0000-4000-8000-000000000003", revision: 9 });
-    expect(readRecoverySnapshot(storage, KEY)!.ackedRevision).toBe(2);
+    acknowledgeRecoverySnapshot(storage, KEY, OWNER, { customizationId: "c0ffee00-0000-4000-8000-000000000003", revision: 9 });
+    expect(readRecoverySnapshot(storage, KEY, OWNER)!.ackedRevision).toBe(2);
   });
 
   it("an acknowledgement for another design is ignored", () => {
     const storage = memoryStorage();
     write(storage, { clientRevision: 5, customizationId: "c0ffee00-0000-4000-8000-00000000000a" });
-    expect(acknowledgeRecoverySnapshot(storage, KEY, { customizationId: "c0ffee00-0000-4000-8000-00000000000b", revision: 5 })).toBe(false);
-    expect(readRecoverySnapshot(storage, KEY)!.ackedRevision).toBe(0);
+    expect(acknowledgeRecoverySnapshot(storage, KEY, OWNER, { customizationId: "c0ffee00-0000-4000-8000-00000000000b", revision: 5 })).toBe(false);
+    expect(readRecoverySnapshot(storage, KEY, OWNER)!.ackedRevision).toBe(0);
   });
 });
 
@@ -150,7 +153,7 @@ describe("chooseRestoreSource", () => {
   const localSnapshot = (overrides: Record<string, unknown>) => {
     const storage = memoryStorage();
     write(storage, { customizationId: id, clientRevision: 5, ackedRevision: 5, ...(overrides as any) });
-    return readRecoverySnapshot(storage, KEY)!;
+    return readRecoverySnapshot(storage, KEY, OWNER)!;
   };
 
   it("restores unconfirmed local edits over an older server copy of the SAME design", () => {

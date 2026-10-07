@@ -5410,10 +5410,15 @@ function SettingsSection({ onAction }) {
               <BackupButton label="Export Orders" onClick={() => exportEndpoint("orders", "/api/admin/order-requests", (data) => data.orders || [])} />
               <BackupButton label="Export Reviews" onClick={() => exportEndpoint("reviews", "/api/admin/products", (data) => (data.products || []).flatMap((product) => (product.reviews || []).map((review) => ({ ...review, productId: product.id, productTitle: product.title })) ))} />
               <BackupButton label="Export Customers" onClick={() => setStatus((current) => ({ ...current, notice: "", error: "Customer export is not available until a customer database is connected." }))} />
-              <BackupButton label="Export Full Backup" onClick={() => exportEndpoint("full-store-backup", "/api/admin/products", (data) => ({ settings: settings || draft, products: data.products || [] }))} />
+              {/* Settings + products only: a catalogue export, NOT a full backup. */}
+              <BackupButton label="Export Catalogue Backup" onClick={() => exportEndpoint("catalogue-backup", "/api/admin/products", (data) => ({ settings: settings || draft, products: data.products || [] }))} />
             </div>
             <p className="mt-4 text-xs font-semibold text-[#303839]/70">
               Backup actions require the active admin session and download JSON files directly to this device.
+            </p>
+            <p className="mt-2 text-xs text-[#303839]/70" data-backup-scope-note>
+              These exports are data copies, not a disaster-recovery backup: they do not include customer accounts, customer designs, uploaded files, production files or Storage.
+              Full recovery relies on the Supabase database and Storage backups described in HOSTINGER_DEPLOYMENT.md.
             </p>
           </Panel>
         )}

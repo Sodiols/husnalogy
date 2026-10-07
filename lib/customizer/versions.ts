@@ -273,30 +273,96 @@ export async function getLatestPublishedVersion(productId: string): Promise<Temp
 }
 
 /**
- * The template a PUBLIC customizer session must run against.
- *
- * `pinnedVersion` resumes an existing customization on the exact snapshot it
- * was started from, so a customer who began before a re-publish keeps working
- * on — and is rendered from — the design they actually chose. Without it, a
- * mid-session publish would silently change the artwork under them.
+ * The template a NEW public customizer session runs against: the latest
+ * published version. A saved customization never comes through here — it
+ * opens on its own exact version (`getExactPublishedVersion`).
  */
-export async function getPublicCustomizerTemplate(
-  productId: string,
-  pinnedVersion?: number | null,
-): Promise<{ template: any; snapshot: TemplateVersionRow } | null> {
-  const wanted = Number(pinnedVersion) || 0;
-  if (wanted > 0) {
-    const draft = await getCustomizerTemplateByProductId(productId);
-    if (draft?.id) {
-      const pinned = await getTemplateVersion(draft.id, wanted);
-      const template = templateFromVersionSnapshot(pinned);
-      if (template && pinned) return { template, snapshot: pinned };
-    }
-  }
+export async function getPublicCustomizerTemplate(productId: string): Promise<{ template: any; snapshot: TemplateVersionRow } | null> {
   const latest = await getLatestPublishedVersion(productId);
   const template = templateFromVersionSnapshot(latest);
   if (!template || !latest) return null;
   return { template, snapshot: latest };
+}
+
+export type ExactVersionResult =
+  | { status: "ok"; template: any; snapshot: TemplateVersionRow }
+  | { status: "unavailable"; reason: "missing" | "wrong-product" | "unreadable" };
+
+/**
+ * EXACTLY the immutable version a saved customization was made on — never a
+ * substitute. A version that is missing, belongs to another product or cannot
+ * be read right now is reported as unavailable; the caller blocks the editor
+ * rather than open the design on artwork the customer never chose (the next
+ * autosave would then rewrite their saved design against it).
+ */
+export async function getExactPublishedVersion(productId: string, templateId: string, version: number): Promise<ExactVersionResult> {
+  if (!productId || !templateId || !(Number(version) > 0)) return { status: "unavailable", reason: "missing" };
+  let snapshot: TemplateVersionRow | null;
+  try {
+    snapshot = await getTemplateVersion(templateId, Number(version));
+  } catch {
+    return { status: "unavailable", reason: "unreadable" };
+  }
+  if (!snapshot) return { status: "unavailable", reason: "missing" };
+  if (snapshot.productId !== productId) return { status: "unavailable", reason: "wrong-product" };
+  const template = templateFromVersionSnapshot(snapshot);
+  if (!template) return { status: "unavailable", reason: "missing" };
+  return { status: "ok", template, snapshot };
+}
+
+export type SessionTemplate =
+  | { kind: "latest"; template: any; snapshot: TemplateVersionRow }
+  | { kind: "pinned"; template: any; snapshot: TemplateVersionRow }
+  | { kind: "unavailable"; templateVersion: number }
+  | { kind: "none" };
+
+/**
+ * Which template the /personalize page opens.
+ *
+ *  - A `customizationId` the signed-in customer owns, for THIS product, opens
+ *    on that design's own template id and version — or is BLOCKED when that
+ *    exact version cannot be loaded (never the latest, never the draft).
+ *  - Anything else (no id, a local id, a guest, someone else's or a guessed
+ *    id) opens a new session on the latest published version, revealing
+ *    nothing about the id; the editor then reports the design as not found.
+ *  - "none" when nothing has been published.
+ */
+export async function resolveSessionTemplate(input: { productId: string; customizationId: string; userId: string }): Promise<SessionTemplate> {
+  const customizationId = String(input.customizationId || "");
+  if (customizationId && !customizationId.startsWith("local_") && input.userId) {
+    const supabase = createServiceRoleClient();
+    const { data, error } = await supabase
+      .from("product_customizations")
+      .select("template_id,template_version,product_id,user_id")
+      .eq("id", customizationId)
+      .maybeSingle();
+    // The design exists but cannot be read: its version is unknown, so no
+    // version may be assumed for it.
+    if (error) return { kind: "unavailable", templateVersion: 0 };
+    if (data && data.product_id === input.productId && data.user_id === input.userId) {
+      const templateVersion = Number(data.template_version) || 0;
+      if (templateVersion > 0) {
+        const exact = await getExactPublishedVersion(input.productId, String(data.template_id || ""), templateVersion);
+        if (exact.status === "ok") return { kind: "pinned", template: exact.template, snapshot: exact.snapshot };
+        return { kind: "unavailable", templateVersion };
+      }
+    }
+  }
+  const latest = await getPublicCustomizerTemplate(input.productId);
+  return latest ? { kind: "latest", ...latest } : { kind: "none" };
+}
+
+/** Whether any version of this template was ever published. */
+async function templateHasPublishedVersions(templateId: string): Promise<boolean> {
+  const supabase = createServiceRoleClient();
+  const { data, error } = await supabase
+    .from("customizer_template_versions")
+    .select("id")
+    .eq("template_id", templateId)
+    .limit(1)
+    .maybeSingle();
+  if (error) throw error;
+  return Boolean(data);
 }
 
 // The trusted template a customization must be validated and rendered
@@ -322,6 +388,11 @@ export async function getTrustedTemplateForCustomization(customization: {
     if (snapshot && snapshot.productId !== productId) return null;
     const template = templateFromVersionSnapshot(snapshot);
     if (template && snapshot) return { template, source: "version", versionId: snapshot.id };
+    // The exact snapshot is gone. Once a template has published versions, a
+    // design made on one of them is never validated or rendered against
+    // anything else — least of all the unreviewed working draft. Only a
+    // template that predates versioning still resolves to its live row.
+    if (await templateHasPublishedVersions(templateId)) return null;
   }
 
   const live = await getCustomizerTemplateByProductId(productId);

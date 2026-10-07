@@ -60,12 +60,13 @@ marked *secret* must never be given a `NEXT_PUBLIC_` prefix.
 | `ORDER_NOTIFICATION_EMAIL` | recommended | server | Where new-order alerts go. Defaults to the store email in Admin → Settings. |
 | `SENTRY_DSN` | **yes for monitoring** | **secret** | Sentry (or GlitchTip) DSN. Unhandled server errors and every error-level event (checkout, production task, render, worker, email failures) are reported; secrets and personal data are scrubbed. Without it, errors are only in the app log and startup warns. |
 | `SENTRY_ENVIRONMENT`, `SENTRY_RELEASE` | optional | server | Tags for monitoring events. |
-| `TRUSTED_PROXY_HOPS` | optional | server | Number of reverse proxies in front of Node that append to `X-Forwarded-For` (default **1** = Hostinger's proxy). Rate limits use the address that many entries from the RIGHT; the client-supplied leftmost entry is never trusted. Set to 2 if a CDN is added in front. |
+| `TRUSTED_PROXY_HOPS` | optional | server | Number of reverse proxies in front of Node that APPEND to `X-Forwarded-For` (default **1**). Rate limits use the address that many entries from the RIGHT; the client-supplied leftmost entry is never trusted. **The default is an assumption about Hostinger's topology, not a verified fact** — verify it after every deployment (section 9, "Rate limiting"). Never set `0` here (every anonymous visitor would share one bucket). |
 | `OPENAI_API_KEY` | optional | **secret** | Ask Logy. Falls back to local answers when absent. |
 | `OPENAI_MODEL`, `LOGY_USE_OPENAI` | optional | server | Ask Logy tuning. |
 | `ICONIFY_API_BASE_URL` | optional | server | Defaults to the public Iconify API. No key. |
 | `DELETE_ADMIN_EMAIL`, `DELETE_ADMIN_PASSWORD` | optional | **secret** | Enables permanent product deletion only. Leave unset to keep it disabled. |
 | `ENABLE_CUSTOMIZER_E2E_FIXTURE` | **must be unset** | server | Test fixture pages. Never set on the live site. |
+| `NEXT_DIST_DIR` | **must be unset** | server | Test infrastructure only (a separate build folder for the isolated e2e server). Ignored by production builds. |
 
 `NEXT_PUBLIC_SUPABASE_ANON_KEY` is accepted as a legacy alias for the
 publishable key. `STORAGE_DRIVER` in `.env.example` is informational only;
@@ -102,6 +103,11 @@ the database, and never drop tables. The migrations are written to be additive
 | 16 | **`20260930120000_checkout_integrity_hardening.sql`** | **BLOCKER — apply BEFORE deploying the matching app build.** The atomic `create_checkout_order` transaction (the new checkout calls it), durable order states, one-order-per-design, column guards on `product_customizations`, immutable order financials/snapshots, the customer-uploads storage IDOR fix, strict customer-id order visibility. See `docs/CHECKOUT_ARCHITECTURE.md`. |
 | 19 | **`20261003120000_worker_isolation_checkout_preparation.sql`** | **BLOCKER — apply together with the matching application build, after #18.** Checkout preparation leases (one expensive preparation per customer; the order transaction must consume a lease — the PREVIOUS app build is refused with `CHECKOUT_PREPARATION_REQUIRED`), cleanup-item lifecycle with dead-lettering, per-subsystem worker health, serialized reconciliation, asset/snapshot size backstops, `server_clock()`, and a fix to `guard_fulfillment_history_delete()` (real PostgreSQL refused every order delete). Pause checkout, apply, deploy, resume. |
 | 18 | **`20261002120000_snapshot_owned_production.sql`** | **BLOCKER — requires a coordinated checkout/worker pause and matching application deployment.** Versioned, order-owned rendering; pinned private originals/fonts/licenses; audited recovery; explicit manual mode; output verification and reconciliation. Read `docs/SNAPSHOT_PRODUCTION.md` before applying. |
+| 20 | `20261005120000_customizer_font_favourites.sql` | Husnalogy-wide favourite fonts. |
+| 21 | **`20261007120000_customer_addresses.sql`** | **BLOCKER — apply BEFORE deploying the matching app build.** Saved addresses move from a browser key shared by every account to `customer_addresses` (RLS: owner only; no admin/anon access; one default; max 10). The account page, checkout and `/saved-addresses` call `/api/account/addresses`. |
+| 22 | **`20261007130000_customer_profile_and_avatars.sql`** | **BLOCKER — apply BEFORE deploying the matching app build.** `profiles.avatar_path`, bounds on customer-writable profile columns (added `NOT VALID`: new writes only), and the PRIVATE `customer-avatars` bucket used by the real profile-photo upload. |
+| 23 | `20261007140000_admin_media_limits.sql` | `product-videos` bucket limit = the application's 30 MB video limit. |
+| 24 | **`20261007150000_rls_public_surface_hardening.sql`** | **Apply with this build.** Unreviewed customizer drafts are no longer readable with the public key (published versions still are, via `customizer_template_is_public()`); contact messages and newsletter sign-ups can only be written through the rate-limited API routes. |
 
 Run this query in the SQL editor. **Every row must be `true`:**
 
@@ -157,7 +163,20 @@ select * from (values
   ('serialized reconciliation',     position('husnalogy-reconcile-production' in pg_get_functiondef('public.reconcile_production(integer)'::regprocedure)) > 0),
   ('history delete guard fixed',    position('to_jsonb(old)' in pg_get_functiondef('public.guard_fulfillment_history_delete()'::regprocedure)) > 0),
   ('asset budget backstop',         exists (select 1 from pg_trigger where tgname='guard_order_production_asset_budget' and not tgisinternal)
-                                    and exists (select 1 from pg_constraint where conname='order_design_snapshots_serialized_size'))
+                                    and exists (select 1 from pg_constraint where conname='order_design_snapshots_serialized_size')),
+  ('customer addresses (RLS)',      to_regclass('public.customer_addresses') is not null
+                                    and (select relrowsecurity from pg_class where oid = 'public.customer_addresses'::regclass)
+                                    and not has_table_privilege('anon', 'public.customer_addresses', 'select')
+                                    and exists (select 1 from pg_trigger where tgname='guard_customer_address' and not tgisinternal)),
+  ('profile photo storage',         exists (select 1 from information_schema.columns where table_schema='public' and table_name='profiles' and column_name='avatar_path')
+                                    and exists (select 1 from storage.buckets where id='customer-avatars' and public = false)
+                                    and exists (select 1 from pg_constraint where conname='profiles_avatar_path_own_folder')),
+  ('video limit = app limit',       (select file_size_limit from storage.buckets where id='product-videos') = 31457280),
+  ('drafts not public',             not exists (select 1 from pg_policies where schemaname='public' and tablename='product_customizer_templates' and policyname='customizer_templates_public_read_active')
+                                    and not has_table_privilege('anon', 'public.product_customizer_templates', 'select')
+                                    and to_regprocedure('public.customizer_template_is_public(uuid)') is not null),
+  ('no direct public inserts',      not has_table_privilege('anon', 'public.contact_messages', 'insert')
+                                    and not has_table_privilege('anon', 'public.newsletter_subscribers', 'insert'))
 ) as checks(migration, applied);
 ```
 
@@ -165,8 +184,8 @@ Also check:
 
 - **RLS is enabled on every public table.** This query must return no rows:
   `select tablename from pg_tables where schemaname='public' and not rowsecurity;`
-- **Storage buckets.** `customer-uploads`, `customizer-renders`,
-  `customizer-elements` and `admin-assets` are **private**. `product-images`, `product-mockups`,
+- **Storage buckets.** `customer-uploads`, `customer-avatars`, `customizer-renders`,
+  `customizer-elements`, `order-production` and `admin-assets` are **private**. `product-images`, `product-mockups`,
   `product-videos` and `site-assets` are public, read-only for everyone and
   writable by admins only. Check with:
   `select id, public from storage.buckets;`
@@ -272,6 +291,26 @@ address the Node process sees behind Hostinger's proxy.
 
 Recommended: redirect `www.husnalogy.com` → `husnalogy.com` at DNS/hPanel so
 sessions live on one host.
+
+---
+
+### Canonical host (one production origin)
+
+The site is served on exactly ONE host: the host of `NEXT_PUBLIC_SITE_URL`
+(`https://husnalogy.com`). Its twin (`www.husnalogy.com`) answers with a
+**permanent redirect** to the same path and query on the canonical host
+(`canonicalHostRedirects` in `next.config.mjs`). This matters beyond SEO:
+mutation requests are only accepted from the canonical origin
+(`lib/security/same-origin.ts`), so a site reachable on both hosts would refuse
+every form, save and checkout on the other one.
+
+- In hPanel, attach BOTH `husnalogy.com` and `www.husnalogy.com` to the Node.js
+  app (with TLS certificates for both), so the app can issue the redirect.
+- If you prefer `www` as canonical, set `NEXT_PUBLIC_SITE_URL=https://www.husnalogy.com`,
+  rebuild, and update every Supabase/Google redirect URL to the www origin;
+  the apex then redirects to www.
+- Verify after deploy: `curl -sI https://www.husnalogy.com/products?x=1` →
+  `308` with `location: https://husnalogy.com/products?x=1`.
 
 ---
 
@@ -466,23 +505,77 @@ Emails**.
 10. Run the worker once by hand (curl command above). The response is 200 and the order's print PNG/PDF become available.
 11. The same curl without the header returns 401.
 12. Run the section 3 migration query. Every row is `true`.
+13. `curl -sI https://www.husnalogy.com/` → permanent redirect to `https://husnalogy.com/`.
+14. Signed in as admin, open `https://husnalogy.com/api/admin/production/client-ip`: `resolvedClientIp` is YOUR public IP (compare with any "what is my IP" page). If it shows a Hostinger/CDN address, `TRUSTED_PROXY_HOPS` is too low; if it shows `unknown` or an address you typed into a forged `X-Forwarded-For`, it is wrong. Fix the variable and restart.
+15. Shared-browser privacy check: customer A saves an address, phone and profile photo and signs out; customer B signs in on the same browser — B's account, checkout and orders show none of A's data, and a personalizable product opens without A's design. A signs back in and finds everything.
+16. Upload a product video under 30 MB in the admin (or with the API) and confirm one over 30 MB is refused with a message that names the limit.
 
 ---
 
 ## 9. Known limitations (not blockers)
 
-- **Rate limiting.** Without Upstash, limits are per process (fine for one
-  `npm start` process). Client IPs come from `x-forwarded-for`, read
-  `TRUSTED_PROXY_HOPS` entries from the right. Checkout, uploads and
-  customization saves are additionally limited per account.
+- **Rate limiting.**
+  - *Scope.* Without `UPSTASH_REDIS_REST_URL` + `UPSTASH_REDIS_REST_TOKEN`
+    the limiter is **in memory, per Node process**: each process counts on its
+    own and a restart resets the counts. That is exact for ONE `npm start`
+    process and is not a global/distributed limit. If Hostinger ever runs more
+    than one process or instance, configure Upstash and set
+    `REQUIRE_DISTRIBUTED_RATE_LIMIT=1`. Upstash has NOT been configured or
+    tested against a live Redis in this repository's verification (the
+    fail-open fallback and request shape are unit-tested only).
+  - *Client address.* Anonymous limits key on the client IP derived from
+    `X-Forwarded-For`, `TRUSTED_PROXY_HOPS` entries from the right; signed-in
+    limits (checkout, uploads, saves, account) key on the account. The hop
+    count depends on the hosting topology and is **not assumed verified**:
+    check it with `GET /api/admin/production/client-ip` (admin session) after
+    every deployment or proxy/CDN change — `resolvedClientIp` must equal your
+    own public IP, and adding a fake `X-Forwarded-For: 1.2.3.4` header to the
+    request must not change it.
 - **Customer photos.** The stored original is re-encoded at full resolution
   (JPEG q95 / lossless PNG and WebP): EXIF/GPS metadata and any trailing
   (polyglot) bytes are removed. Editor and thumbnail derivatives are WebP.
   Only the owner, admins and explicitly assigned designers can read them.
 - **Request body limits.** The app enforces per-route limits while streaming
   (checkout 64 KB, design saves 2 MB, product edits 5 MB, customer uploads
-  15 MB, admin media 150 MB per request). Hostinger's front proxy has its own
-  upload cap; if admins must upload 120 MB videos, confirm the plan's limit
-  allows it.
+  15 MB, profile photos 8 MB). **Admin product media: 35 MB per request, 15 MB
+  per image, 30 MB per video** — one set of numbers in
+  `lib/uploads/admin-media.ts`, used by the route, its error messages, the
+  product form and (for videos) the `product-videos` bucket. Uploads are
+  buffered in the Node process, so the limit is kept small; larger videos would
+  need a direct-to-Storage upload flow, which is not built. Hostinger's front
+  proxy has its own upload cap; confirm it is at least 35 MB.
+- **Content Security Policy (residual hardening item).** `script-src` still
+  allows `'unsafe-inline'`: Next.js injects inline runtime scripts, and a strict
+  policy needs per-request nonces, which force dynamic rendering of every page
+  and the proxy on every HTML request (SRI hashes only cover external chunks).
+  Not done in this release. All other protections are in place and pinned by
+  `lib/security/__tests__/security-headers.test.ts`: `default-src 'self'`,
+  scripts only from this origin, `object-src 'none'`, `frame-src 'none'`,
+  `frame-ancestors 'none'`, `base-uri`/`form-action 'self'`,
+  `upgrade-insecure-requests` (production), HSTS (2 years, subdomains),
+  `nosniff`, `X-Frame-Options: DENY`, strict Referrer-Policy,
+  Permissions-Policy and COOP.
 - **Sign-in rate limiting** is performed by Supabase Auth (the browser talks to
   it directly). Review Authentication → Rate Limits in the Supabase dashboard.
+
+---
+
+## 10. Backups and disaster recovery
+
+The admin dashboard's **"Export Catalogue Backup"** downloads settings and
+products as JSON. It is a convenience copy, **not** a disaster-recovery backup:
+it contains no orders, customers, designs, uploaded files, production files or
+Storage objects. Disaster recovery is planned here:
+
+| What | Where it lives | Backup |
+|---|---|---|
+| Database (orders, customers, profiles, addresses, designs, snapshots, settings) | Supabase Postgres | Supabase **daily backups** (Pro plan and above) and, recommended for a store, **Point-in-Time Recovery** (PITR). Confirm in Supabase → Database → Backups that backups exist and note the retention. Free-plan projects have no automatic backups: then schedule `pg_dump` (e.g. `supabase db dump`) to off-site storage. |
+| Storage objects (customer uploads, avatars, production files, renders, asset library, product media) | Supabase Storage buckets | **Not covered by database backups.** Schedule a periodic copy of every bucket (`supabase storage` CLI, the S3-compatible API, or rclone) to separate storage. Private buckets: `customer-uploads`, `customer-avatars`, `customizer-renders`, `customizer-elements`, `order-production`, `admin-assets`; public: `product-images`, `product-mockups`, `product-videos`, `site-assets`. |
+| Configuration | hPanel environment variables, Supabase Auth settings, Google OAuth client, Resend domain | Keep a private, access-controlled record (password manager / vault). Never in git. |
+| Application | git repository | Tags per release; the build is reproducible from `package-lock.json`. |
+
+A real restore must be **coordinated**: the database and Storage must come from
+the same point in time (orders reference stored files), and the application
+build must match the restored migrations (section 3). Test a restore into the
+staging project at least once before launch; until then, recovery is
+**unverified**.

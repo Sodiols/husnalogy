@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { cancelRenderJob, getRenderJob, getRenderOutputs } from "@/lib/customizer/render-jobs";
 import { rateLimit } from "@/lib/security/rate-limit";
+import { rejectCrossSiteRequest } from "@/lib/security/same-origin";
 
 async function authorizeJob(jobId: string, { forCancel = false } = {}) {
   const supabase = await createClient();
@@ -30,7 +31,12 @@ export async function GET(request: Request, { params }: any) {
   return Response.json({ ok: true, job, outputs });
 }
 
+// DELETE — cancel one of the caller's own render jobs. The same mutation
+// contract as every other customer write: same-origin first, then rate limit,
+// session, ownership, and the job's state (lib/customizer/render-jobs).
 export async function DELETE(request: Request, { params }: any) {
+  const crossSite = rejectCrossSiteRequest(request);
+  if (crossSite) return crossSite;
   const limited = rateLimit(request, { name: "customizer-render-cancel", limit: 30, windowMs: 10 * 60 * 1000 });
   if (limited) return limited;
   const { jobId } = await params;

@@ -44,6 +44,26 @@ export function sanitizeSelectedOptionsShape(value: unknown): Record<string, str
   return out;
 }
 
+/**
+ * The editor names the account the design ON ITS SCREEN belongs to
+ * (`expectedUserId`). On a shared browser the session can change underneath an
+ * open editor — another tab signs out and a different customer signs in — and
+ * a save still queued in the old page would then be written with the NEW
+ * session: a brand-new design would be created in someone else's account. Such
+ * a save is refused before anything is read or written. The field is a
+ * precondition only; ownership is always the session's user.
+ */
+export function rejectAccountMismatch(body: unknown, userId: string): Response | null {
+  if (!body || typeof body !== "object" || Array.isArray(body)) return null;
+  const expected = (body as Record<string, unknown>).expectedUserId;
+  if (expected === undefined || expected === null || expected === "") return null;
+  if (String(expected) === String(userId)) return null;
+  return Response.json(
+    { ok: false, code: "account-changed", error: "You are now signed in to a different account. This design was not saved to it." },
+    { status: 409 },
+  );
+}
+
 export function prepareCustomerWrite(
   body: Record<string, any>,
   existing: { productId: string; templateId: string; templateVersion: number } | null,

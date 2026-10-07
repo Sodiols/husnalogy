@@ -7,7 +7,13 @@
 import { expect, type Locator, type Page } from "@playwright/test";
 
 export const FIXTURE = "/__e2e/customizer";
-export const DRAFT_KEY = "husnalogy_customizer_draft:e2e-fixture-product:e2e-fixture-template:1";
+
+/**
+ * Recovery keys are scoped to their owner (a signed-in account or this
+ * browser's guest session — lib/customizer/recovery-store.ts), so specs match
+ * on the design part of the key and let the page name the owner.
+ */
+export const draftSuffix = (templateId = "e2e-fixture-template") => `:product:e2e-fixture-product:template:${templateId}:version:1`;
 
 export type Point = { x: number; y: number };
 
@@ -146,8 +152,18 @@ export async function panCrop(page: Page, surface: Locator, dx: number, dy: numb
   await page.waitForTimeout(450);
 }
 
-export async function readDraft(page: Page): Promise<any> {
-  return page.evaluate((key) => JSON.parse(window.localStorage.getItem(key) || "null"), DRAFT_KEY);
+/** The current actor's recovery key on this page: the one stored for this design, or the guest session's. */
+export async function draftKey(page: Page, templateId = "e2e-fixture-template"): Promise<string> {
+  return page.evaluate((suffix) => {
+    const stored = Object.keys(window.localStorage).find((key) => key.startsWith("husnalogy_customizer_draft:v2:") && key.endsWith(suffix));
+    if (stored) return stored;
+    return `husnalogy_customizer_draft:v2:guest:${window.localStorage.getItem("husnalogy_guest_session_id") || ""}${suffix}`;
+  }, draftSuffix(templateId));
+}
+
+export async function readDraft(page: Page, templateId = "e2e-fixture-template"): Promise<any> {
+  const key = await draftKey(page, templateId);
+  return page.evaluate((stored) => JSON.parse(window.localStorage.getItem(stored) || "null"), key);
 }
 
 export async function switchToAdvancedCustomize(page: Page): Promise<void> {

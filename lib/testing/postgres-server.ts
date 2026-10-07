@@ -61,7 +61,9 @@ export async function startPostgres(port = 55000 + Math.floor(Math.random() * 50
     async stop() {
       for (const client of clients) await client.end().catch(() => undefined);
       await server.stop();
-      rmSync(dir, { recursive: true, force: true });
+      // Windows keeps the data directory locked for a moment after the server
+      // process exits (EBUSY): retry the removal instead of failing teardown.
+      rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 250 });
     },
   };
 }

@@ -1,85 +1,51 @@
-"use client";
+import Image from "next/image";
 
-import { useParallax } from "../hooks/useParallax";
 import Reveal from "./Reveal";
+import { BUSINESS_INFO } from "@/lib/launch-config";
 
 export default function AboutStory() {
-  const [cardRef, cardOffset] = useParallax(0.12);
-
   return (
-    <section id="about-story" className="lg:sticky lg:top-0 z-[1] flex min-h-[100svh] scroll-mt-24 flex-col justify-center bg-[#fff] py-[clamp(2.5rem,7vh,7rem)]">
-      <div className="grid items-center max-w-6xl px-6 mx-auto gap-[clamp(2rem,5vh,5rem)] md:grid-cols-2">
-        <div
-          ref={cardRef}
-          style={{ transform: `translateY(${cardOffset}px)` }}
-          className="order-2 md:order-1"
-        >
-          <div className="relative max-w-sm mx-auto">
-            <div className="absolute -inset-3 rounded-none border border-line/40" />
-
-            <div className="relative rounded-none bg-cream-deep p-[clamp(1.5rem,4vw,2.5rem)] shadow-xl">
-              <svg
-                viewBox="0 0 80 80"
-                className="w-12 h-12 mb-6"
-                aria-hidden="true"
-              >
-                <path
-                  d="M40 70 C40 50 20 44 22 26 C23 14 34 6 40 2"
-                  fill="none"
-                  stroke="#303839"
-                  strokeWidth="2.5"
-                />
-                <path
-                  d="M40 30 C30 24 26 16 28 8"
-                  fill="none"
-                  stroke="#303839"
-                  strokeWidth="2.5"
-                />
-                <path
-                  d="M40 46 C50 40 54 32 52 24"
-                  fill="none"
-                  stroke="#303839"
-                  strokeWidth="2.5"
-                />
-              </svg>
-
-              <p className="font-display text-2xl italic text-[#303839]">
-                Est. with one favor
-              </p>
-
-              <p className="mt-2 font-body text-xs uppercase tracking-[0.2em] text-[#303839]/60">
-                A kitchen table, three weeks before a wedding
-              </p>
-            </div>
+    <section id="about-story" aria-labelledby="about-story-heading" className="bg-white">
+      <div className="page-container section grid items-center gap-10 lg:grid-cols-2 lg:gap-20">
+        <Reveal className="relative">
+          <div className="relative aspect-[4/3] overflow-hidden rounded-[10px] bg-cream-deep lg:aspect-[5/6]">
+            <Image
+              src="/images/weddings/WeddingHeroIMG.png"
+              alt="A deckle-edged invitation suite with gold wax seals and dried flowers"
+              fill
+              sizes="(min-width: 1024px) 50vw, 100vw"
+              className="object-cover object-[78%_center]"
+            />
           </div>
-        </div>
+        </Reveal>
 
-        <div className="order-1 md:order-2">
+        <div className="max-w-[560px]">
           <Reveal>
-            <span className="font-body text-xs uppercase tracking-[0.25em] text-[#303839]">
-              Our story
-            </span>
-          </Reveal>
-
-          <Reveal delay={100}>
-            <h2 className="mt-[clamp(0.75rem,2vh,1rem)] font-display text-[clamp(1.5rem,1.1rem+2vw,2.25rem)] leading-tight text-[#303839]">
+            <p className="eyebrow">Our story</p>
+            <h2 id="about-story-heading" className="heading-section mt-3">
               A studio for the occasions you want to remember.
             </h2>
           </Reveal>
 
-          <Reveal delay={200}>
-            <p className="mt-[clamp(1rem,2.5vh,1.5rem)] font-body text-[clamp(0.9rem,0.82rem+0.5vw,1.0625rem)] leading-relaxed text-[#303839]/80">
-              Husnalogy was founded by Foyez Ahmed to create invitations, cards,
-              gifts and stationery for life&rsquo;s meaningful occasions, with
-              clear typography and quiet, considered detail.
+          <Reveal delay={100}>
+            <p className="text-lead mt-6">
+              Husnalogy was founded by {BUSINESS_INFO.founder} to create invitations, cards, gifts and stationery for
+              life&rsquo;s meaningful occasions, with clear typography and quiet, considered detail.
+            </p>
+            <p className="text-lead mt-4">
+              Every design is made to be personalized. Add your names, dates and words, review the result,
+              and we prepare your order with care.
             </p>
           </Reveal>
 
-          <Reveal delay={300}>
-            <p className="mt-[clamp(0.75rem,2vh,1rem)] font-body text-[clamp(0.9rem,0.82rem+0.5vw,1.0625rem)] leading-relaxed text-[#303839]/80">
-              Every design is made to be personalized. Add your names, dates and
-              words, review the result, and we prepare your order with care.
-            </p>
+          <Reveal delay={200} className="mt-10 flex items-center gap-4 border-t border-line pt-6">
+            <span className="relative h-12 w-12 shrink-0 overflow-hidden rounded-full ring-1 ring-line">
+              <Image src="/Brand Kit/Logo-2.png" alt="" fill sizes="48px" className="object-cover" />
+            </span>
+            <span>
+              <span className="block font-display text-[22px] font-medium italic leading-tight text-ink">{BUSINESS_INFO.founder}</span>
+              <span className="text-caption block">Founder, Husnalogy</span>
+            </span>
           </Reveal>
         </div>
       </div>

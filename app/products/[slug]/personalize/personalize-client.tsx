@@ -64,13 +64,20 @@ import {
 } from "@/lib/customizer/v2/asset-references";
 import {
   acknowledgeRecoverySnapshot,
+  adoptGuestHandoff,
   chooseRestoreSource,
+  isGuestScope,
+  isUserScope,
+  offerGuestHandoff,
+  purgeLegacyRecoverySnapshots,
   readRecoverySnapshot,
+  recoveryOwnerScope,
   recoveryStorageKey,
   serverCustomizationId,
   writeRecoverySnapshot,
   type RecoverySnapshot,
 } from "@/lib/customizer/recovery-store";
+import { EXACT_VERSION_UNAVAILABLE_MESSAGE, savedDesignMatchesTemplate } from "@/lib/customizer/version-pin";
 import { anyGridSlotGrantsPhotoEditing, createGridSlotsFromPreset, GRID_PRESETS } from "@/lib/customizer/v2/grids";
 import CustomerCanvasContextMenu from "@/app/components/customizer/CustomerCanvasContextMenu";
 import { buildCustomerContextMenu, type ContextMenuActionId } from "@/lib/customizer/v2/context-menu";
@@ -153,6 +160,16 @@ function browserStorage(): Storage | null {
   if (typeof window === "undefined") return null;
   try {
     return window.localStorage || null;
+  } catch {
+    return null;
+  }
+}
+
+/** This tab's sessionStorage (the guest -> account handoff lives here), or null. */
+function browserSessionStorage(): Storage | null {
+  if (typeof window === "undefined") return null;
+  try {
+    return window.sessionStorage || null;
   } catch {
     return null;
   }
@@ -313,9 +330,18 @@ export default function PersonalizeClient({ product, template }: { product: any;
     searchParams.get("returnTo") || "",
     initialCartItemId ? "/cart" : `/products/${product.slug}`,
   );
+  // Who the local recovery copy belongs to: the signed-in account, or this
+  // browser's anonymous guest session. A snapshot is only ever read back by
+  // the same owner (lib/customizer/recovery-store.ts), so one customer's
+  // design never opens for another account on a shared browser.
+  const [guestSessionId] = useState(() => getGuestSessionId());
+  const signedInUserId = String(user?.id || user?.uid || "");
+  const recoveryOwner = signedInUserId
+    ? recoveryOwnerScope({ kind: "user", id: signedInUserId })
+    : recoveryOwnerScope({ kind: "guest", id: guestSessionId });
   const localDraftKey = useMemo(
-    () => recoveryStorageKey(product.id, template?.id || "", template?.version || 1),
-    [product.id, template?.id, template?.version],
+    () => recoveryStorageKey(recoveryOwner, product.id, template?.id || "", template?.version || 1),
+    [recoveryOwner, product.id, template?.id, template?.version],
   );
 
   /* ----- editor state ----- */
@@ -363,6 +389,8 @@ export default function PersonalizeClient({ product, template }: { product: any;
   const [restoreReady, setRestoreReady] = useState(false);
   /** Set when a saved design could not be loaded; editing stays blocked so nothing overwrites it. */
   const [restoreError, setRestoreError] = useState("");
+  /** The saved design needs a different template version than this page loaded: retrying reloads the page. */
+  const [restoreNeedsReload, setRestoreNeedsReload] = useState(false);
   const [restoreAttempt, setRestoreAttempt] = useState(0);
   const [dirty, setDirty] = useState(false);
   const [saveStatus, setSaveStatus] = useState<SaveQueueStatus>("idle");
@@ -398,7 +426,7 @@ export default function PersonalizeClient({ product, template }: { product: any;
     return () => media.removeEventListener("change", update);
   }, []);
 
-  const [options, setOptions] = useState(() => ({
+  const initialOptions = () => ({
     format: getDefaultOptionCartValue(product.formatOptions) || CUSTOMIZER_FORMAT_OPTIONS[0],
     size: getDefaultOptionCartValue(product.sizeOptions) || firstOf(product.sizeOptions),
     envelope: getDefaultOptionCartValue(product.envelopeOptions) || firstOf(product.envelopeOptions),
@@ -407,8 +435,10 @@ export default function PersonalizeClient({ product, template }: { product: any;
     paper: getDefaultOptionCartValue(product.paperOptions) || firstOf(product.paperOptions),
     printing: getDefaultOptionCartValue(product.printingOptions) || firstOf(product.printingOptions),
     logo: true,
-  }));
-  const [quantity, setQuantity] = useState(Number(firstOf(product.quantityOptions, "1")) || 1);
+  });
+  const initialQuantity = () => Number(firstOf(product.quantityOptions, "1")) || 1;
+  const [options, setOptions] = useState(initialOptions);
+  const [quantity, setQuantity] = useState(initialQuantity);
 
   const history = useCustomizerHistory<HistorySnapshot>(50);
 
@@ -441,6 +471,19 @@ export default function PersonalizeClient({ product, template }: { product: any;
     activePage: string;
   } | null>(null);
   const recoveryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /**
+   * The actor the design ON SCREEN belongs to, and its recovery key — set when
+   * a restore completes. Recovery writes and server saves use these, never the
+   * current session: after a sign-out or an account switch the screen still
+   * shows the previous owner's design until the next restore replaces it, and
+   * none of it may be written anywhere but that owner's own slot.
+   */
+  const restoredOwnerRef = useRef("");
+  const restoredKeyRef = useRef("");
+  const recoveryOwnerRef = useRef(recoveryOwner);
+  recoveryOwnerRef.current = recoveryOwner;
+  /** Ids from the address bar stop applying once the account they were opened under is gone. */
+  const urlRequestDiscardedRef = useRef(false);
   /** False when the browser refused the last recovery write: then unload must still warn. */
   const recoveryDurableRef = useRef(true);
   const restoreReadyRef = useRef(false);
@@ -2639,6 +2682,8 @@ export default function PersonalizeClient({ product, template }: { product: any;
      here runs per pointer move. */
 
   const ownerIdOf = () => user?.id || user?.uid || "";
+  /** The account the on-screen design belongs to — sent with every save as a precondition. */
+  const restoredUserIdOf = () => (isUserScope(restoredOwnerRef.current) ? restoredOwnerRef.current.slice("user:".length) : "");
 
   /** The persisted part of the editor, from refs so it is always the newest. */
   const currentPersistedState = () => ({
@@ -2687,7 +2732,9 @@ export default function PersonalizeClient({ product, template }: { product: any;
     if (!restoreReadyRef.current) return null;
     observePersistedState();
     const state = currentPersistedState();
-    const written = writeRecoverySnapshot(browserStorage(), localDraftKey, {
+    // Always into the slot of the owner the on-screen design was opened for.
+    const written = writeRecoverySnapshot(browserStorage(), restoredKeyRef.current, {
+      owner: restoredOwnerRef.current,
       identity: { productId: product.id, templateId: template?.id || "", templateVersion: Number(template?.version) || 1 },
       state: {
         values: state.values,
@@ -2699,7 +2746,7 @@ export default function PersonalizeClient({ product, template }: { product: any;
       cartItemId: cartItemIdRef.current,
       clientRevision: revisionRef.current,
       ackedRevision: ackedRevisionRef.current,
-      guestSessionId: getGuestSessionId(),
+      guestSessionId: isGuestScope(restoredOwnerRef.current) ? guestSessionId : "",
     });
     recoveryDurableRef.current = Boolean(written);
     return written;
@@ -2736,6 +2783,7 @@ export default function PersonalizeClient({ product, template }: { product: any;
     }, ownerId);
 
     return {
+      expectedUserId: restoredUserIdOf(),
       customizationId: serverCustomizationId(customizationIdRef.current),
       productId: product.id,
       templateId: template?.id || "",
@@ -2757,6 +2805,17 @@ export default function PersonalizeClient({ product, template }: { product: any;
   // just performs one write and reports what happened.
   const saveCustomizationDraft = async (status = "draft", { silent = false }: any = {}) => {
     if (!silent) setMessage("");
+    // The design on screen belongs to the actor it was opened for. After a
+    // sign-out or an account switch nothing of it may be sent with the new
+    // session's cookie — it would land in someone else's account. The restore
+    // that the switch triggers replaces the screen.
+    if (!restoredOwnerRef.current) {
+      // Still opening (or re-opening after a sign-in/out): retried once ready.
+      throw new CustomizationSaveError("Your design is still opening.", null, true);
+    }
+    if (restoredOwnerRef.current !== recoveryOwnerRef.current) {
+      throw new CustomizationSaveError("Your account changed. Your design was not saved to it.", 0, false);
+    }
     saveAttemptRef.current += 1;
     recordEditorEvent("saveStarted");
     const savingVersion = changeVersionRef.current;
@@ -2830,7 +2889,7 @@ export default function PersonalizeClient({ product, template }: { product: any;
     }
     if (saved.cartItemId) setCartItemId(saved.cartItemId);
     ackedRevisionRef.current = Math.max(ackedRevisionRef.current, savingRevision);
-    acknowledgeRecoverySnapshot(browserStorage(), localDraftKey, { customizationId: savedId, revision: savingRevision });
+    acknowledgeRecoverySnapshot(browserStorage(), restoredKeyRef.current, restoredOwnerRef.current, { customizationId: savedId, revision: savingRevision });
     settleDirty();
     return { ok: true, customization: saved, local: false };
   };
@@ -2845,6 +2904,7 @@ export default function PersonalizeClient({ product, template }: { product: any;
     observePersistedState();
     const ownerId = ownerIdOf();
     return {
+      expectedUserId: restoredUserIdOf(),
       values: stripEphemeralAssetUrls(valuesRef.current, ownerId),
       editorState: stripEphemeralAssetUrls(editorStateRef.current, ownerId),
       uploadedFiles: stripEphemeralAssetUrls(collectUploadedFiles(valuesRef.current), ownerId),
@@ -2857,6 +2917,7 @@ export default function PersonalizeClient({ product, template }: { product: any;
   /** Best-effort server write that survives the page being torn down. */
   const sendUnloadSave = () => {
     if (!user || !restoreReadyRef.current || template?.settings?.autosave === false) return;
+    if (restoredOwnerRef.current !== recoveryOwnerRef.current) return;
     // A brand-new design is only ever created by the queue: an unload request
     // racing it could create a second draft. The recovery snapshot holds the
     // design until the next visit creates it.
@@ -2993,6 +3054,36 @@ export default function PersonalizeClient({ product, template }: { product: any;
     }
   };
 
+  /**
+   * Put the editor back to the bare template: nothing of the previous owner's
+   * design, ids, options or history survives an account change.
+   */
+  const resetEditorForNewOwner = () => {
+    if (recoveryTimerRef.current) {
+      clearTimeout(recoveryTimerRef.current);
+      recoveryTimerRef.current = null;
+    }
+    const blankValues = buildInitialValues(template);
+    const blankEditorState = normalizeEditorState({});
+    valuesRef.current = blankValues;
+    editorStateRef.current = blankEditorState;
+    setValues(blankValues);
+    setEditorState(blankEditorState);
+    setOptions(initialOptions());
+    setQuantity(initialQuantity());
+    setActivePage(enabledPages[0]?.id || "front");
+    customizationIdRef.current = "";
+    setCustomizationId("");
+    cartItemIdRef.current = "";
+    setCartItemId("");
+    revisionRef.current = 0;
+    ackedRevisionRef.current = 0;
+    observedStateRef.current = null;
+    setDirty(false);
+    history.reset();
+    removeCustomizationIdFromUrl();
+  };
+
   const applySavedCustomization = (
     saved: any,
     { requireCurrentTemplateVersion = false }: { requireCurrentTemplateVersion?: boolean } = {},
@@ -3097,14 +3188,36 @@ export default function PersonalizeClient({ product, template }: { product: any;
     let retryTimer: ReturnType<typeof setTimeout> | null = null;
 
     async function restoreDraft() {
-      // A re-run (the customer signed in mid-session, or a retry) first makes
-      // sure the newest on-screen state is the recovery copy it will read.
+      // A re-run (a sign-in/out, a retry) first records the on-screen state —
+      // in the slot of the owner it belongs to, never the new session's.
+      const previousOwner = restoreReadyRef.current ? restoredOwnerRef.current : "";
       if (restoreReadyRef.current) lifecycleRef.current.persistRecoveryNow();
       restoreReadyRef.current = false;
       setRestoreReady(false);
 
-      const local = readRecoverySnapshot(browserStorage(), localDraftKey);
-      let requestedId = serverCustomizationId(initialCustomizationId);
+      const owner = recoveryOwner;
+      const key = localDraftKey;
+      const identity = { productId: product.id, templateId: template?.id || "", templateVersion: Number(template?.version) || 1 };
+      if (previousOwner && previousOwner !== owner) {
+        // The person at this editor signed in mid-design: their guest draft
+        // follows them into the account (see adoptGuestHandoff).
+        if (isGuestScope(previousOwner) && isUserScope(owner)) {
+          offerGuestHandoff(browserSessionStorage(), { guestOwner: previousOwner, identity });
+        }
+        // Whatever the screen shows belongs to the previous owner: clear it
+        // before anything of the new owner's is loaded. Ids in the address
+        // bar were opened under that owner too.
+        if (isUserScope(previousOwner)) urlRequestDiscardedRef.current = true;
+        resetEditorForNewOwner();
+      }
+      restoredOwnerRef.current = "";
+      restoredKeyRef.current = "";
+
+      const adopted = isUserScope(owner) ? adoptGuestHandoff(browserStorage(), browserSessionStorage(), { userOwner: owner, identity }) : null;
+      const local = adopted || readRecoverySnapshot(browserStorage(), key, owner);
+      const requestedFromUrl = !urlRequestDiscardedRef.current;
+      let requestedId = requestedFromUrl ? serverCustomizationId(initialCustomizationId) : "";
+      const requestedCartItemId = requestedFromUrl ? initialCartItemId : "";
       let server: any = null;
       let fromLatestDraft = false;
       let loadFailed = false;
@@ -3122,10 +3235,10 @@ export default function PersonalizeClient({ product, template }: { product: any;
           }
         }
 
-        if (!server && !loadFailed && user && initialCartItemId) {
+        if (!server && !loadFailed && user && requestedCartItemId) {
           const cart = await getUserCart(user);
           if (cancelled) return;
-          const item = cart.find((entry: any) => String(entry.id) === String(initialCartItemId));
+          const item = cart.find((entry: any) => String(entry.id) === String(requestedCartItemId));
           if (item) {
             setCartItemId(item.id);
             cartItemIdRef.current = item.id;
@@ -3183,6 +3296,24 @@ export default function PersonalizeClient({ product, template }: { product: any;
 
       if (cancelled) return;
 
+      // A saved design opens only on the exact template version it was made
+      // on. Never on this page's (newer) version: the next autosave would then
+      // rewrite it against artwork the customer never chose.
+      if (server && !loadFailed && !fromLatestDraft && serverCustomizationId(server.id) && !savedDesignMatchesTemplate(server, template)) {
+        const exactUrl = new URL(window.location.href);
+        if (exactUrl.searchParams.get("customizationId") !== String(server.id)) {
+          // Reached through the cart: ask the server for this design's own version.
+          exactUrl.searchParams.set("customizationId", String(server.id));
+          window.location.replace(`${exactUrl.pathname}${exactUrl.search}${exactUrl.hash}`);
+          return;
+        }
+        // The page could not provide that exact version: editing, autosave and
+        // local recovery all stay off, and nothing is written.
+        setRestoreNeedsReload(true);
+        setRestoreError(EXACT_VERSION_UNAVAILABLE_MESSAGE);
+        return;
+      }
+
       const decision = chooseRestoreSource({ requestedId, server: loadFailed ? null : server, local });
 
       if (loadFailed && decision.source !== "local") {
@@ -3233,6 +3364,9 @@ export default function PersonalizeClient({ product, template }: { product: any;
 
       revisionRef.current = decision.revision;
       observedStateRef.current = null;
+      // From here on the screen belongs to this owner.
+      restoredOwnerRef.current = owner;
+      restoredKeyRef.current = key;
       const reopenedId = restored ? serverCustomizationId(customizationIdRef.current) : "";
       if (user && reopenedId) syncCustomizationIdInUrl(reopenedId);
 
@@ -3256,7 +3390,13 @@ export default function PersonalizeClient({ product, template }: { product: any;
     // retry). Avoid depending on mutable form state, otherwise a field edit
     // would re-apply the draft.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [authLoading, user?.id, user?.uid, product.id, template?.id, template?.version, initialCustomizationId, initialCartItemId, localDraftKey, restoreAttempt]);
+  }, [authLoading, user?.id, user?.uid, product.id, template?.id, template?.version, initialCustomizationId, initialCartItemId, localDraftKey, recoveryOwner, restoreAttempt]);
+
+  // Recovery copies written before they were scoped to an account cannot be
+  // attributed to anyone; they are removed rather than ever shown.
+  useEffect(() => {
+    purgeLegacyRecoverySnapshots(browserStorage());
+  }, []);
 
   // Every committed change: number it, record it durably on this device, and
   // queue the server save. Restoring a design is not a change.
@@ -3672,6 +3812,8 @@ export default function PersonalizeClient({ product, template }: { product: any;
       />
     ) : activeTool === "uploads" ? (
       <CustomerUploadsPanel
+        // Remounted per owner: the photo library it lists belongs to one account.
+        key={recoveryOwner}
         template={template}
         values={values}
         errors={attemptedNext ? validation.errors : {}}
@@ -3874,7 +4016,7 @@ export default function PersonalizeClient({ product, template }: { product: any;
                 <p className="text-sm font-semibold text-[#303839]">{restoreError}</p>
                 <button
                   type="button"
-                  onClick={() => setRestoreAttempt((attempt) => attempt + 1)}
+                  onClick={() => (restoreNeedsReload ? window.location.reload() : setRestoreAttempt((attempt) => attempt + 1))}
                   className="mt-4 rounded-full bg-[#303839] px-5 py-2 text-xs font-bold text-white hover:bg-[#3d4748]"
                 >
                   Try again

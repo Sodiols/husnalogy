@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import Float from "./Float";
 import RightArrowIcon from "../../components/RightArrowIcon";
+import { BUSINESS_INFO } from "@/lib/launch-config";
 
 const HEADLINE_WORDS = [
   { text: "Every", script: false },
@@ -22,7 +23,7 @@ const HEADLINE_WORDS = [
 const STORY_NOTES = [
   {
     year: "Founded",
-    text: "Husnalogy was founded by Foyez Ahmed.",
+    text: `Husnalogy was founded by ${BUSINESS_INFO.founder}.`,
   },
   {
     year: "What we make",

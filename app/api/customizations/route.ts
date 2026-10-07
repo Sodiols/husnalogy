@@ -1,7 +1,7 @@
 import { createClient, createServiceRoleClient } from "@/lib/supabase/server";
 import { customizationFromRow, customizationInsertRow } from "@/lib/customizer/customizations";
 import { validateCustomizationSave } from "@/lib/customizer/save-validation";
-import { prepareCustomerWrite } from "@/lib/customizer/customization-write";
+import { prepareCustomerWrite, rejectAccountMismatch } from "@/lib/customizer/customization-write";
 import { resolvePrivateAssetsForDelivery } from "@/lib/customizer/server/private-assets";
 import { getCustomizerTemplateByProductId } from "@/lib/customizer/store";
 import { getTemplateVersion } from "@/lib/customizer/versions";
@@ -80,6 +80,9 @@ export async function POST(request: Request) {
   } catch (error) {
     return bodyErrorResponse(error) || Response.json({ ok: false, error: "The request body is invalid." }, { status: 400 });
   }
+
+  const accountChanged = rejectAccountMismatch(rawBody, user.id);
+  if (accountChanged) return accountChanged;
 
   const requestedId = String(rawBody?.customizationId || rawBody?.id || "").trim();
   if (requestedId && !requestedId.startsWith("local_")) {

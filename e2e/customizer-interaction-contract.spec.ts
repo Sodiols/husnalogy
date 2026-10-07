@@ -22,13 +22,13 @@
  */
 
 import { expect, test, type Locator, type Page } from "@playwright/test";
+import { readDraft } from "./customizer-fixture";
 
 const FIXTURE = "/__e2e/customizer";
 /** Must exceed CROP_SETTLE_MS (260) in CustomizerWorkspace. */
 const SETTLE_WAIT = 700;
 /** Must exceed the save queue debounce plus its minimum interval and a local write. */
 const AUTOSAVE_WAIT = 2200;
-const DRAFT_KEY = "husnalogy_customizer_draft:e2e-fixture-product:e2e-fixture-template:1";
 
 type Metrics = {
   documentCommits: number;
@@ -241,9 +241,6 @@ function draftCropOffsets(draft: any) {
   return { offsetX: Number(transform.offsetX) || 0, offsetY: Number(transform.offsetY) || 0 };
 }
 
-async function readDraft(page: Page): Promise<any> {
-  return page.evaluate((key) => JSON.parse(window.localStorage.getItem(key) || "null"), DRAFT_KEY);
-}
 
 /* -------------------------------------------------------------------------- */
 /* Suite                                                                      */

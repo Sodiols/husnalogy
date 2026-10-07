@@ -1,36 +1,22 @@
-"use client";
-
 import Reveal from "./Reveal";
+
+const stroke = { fill: "none", stroke: "currentColor", strokeWidth: 1.6, strokeLinecap: "round", strokeLinejoin: "round" } as const;
 
 const values = [
   {
     label: "Love",
     title: "Personal before it is pretty.",
-    body: "We ask about your colors, your story, and the details that make your celebration feel like you. Nothing leaves our studio until it feels personal, refined, and meaningful.",
-    icon: (
-      <path
-        d="M20 34 C8 24 8 10 20 8 C26 7 30 12 30 16 C30 12 34 7 40 8 C52 10 52 24 40 34 L30 42 Z"
-        fill="none"
-        stroke="#303839"
-        strokeWidth="2.5"
-      />
-    ),
+    body: "We ask about your colors, your story and the details that make your celebration feel like you. Nothing leaves our studio until it feels personal, refined and meaningful.",
+    icon: <path {...stroke} d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.29 1.49 4.04 3 5.5l7 7Z" />,
   },
   {
     label: "Determination",
     title: "Every detail matters until the end.",
-    body: "Wedding dates do not move easily, so our process is built around care, timing, and patience. We revise, refine, and prepare each piece with calm attention.",
+    body: "Wedding dates do not move easily, so our process is built around care, timing and patience. We revise, refine and prepare each piece with calm attention.",
     icon: (
       <>
-        <circle
-          cx="30"
-          cy="24"
-          r="18"
-          fill="none"
-          stroke="#303839"
-          strokeWidth="2.5"
-        />
-        <path d="M30 6 L34 22 L30 24 L26 22 Z" fill="#303839" />
+        <circle {...stroke} cx="12" cy="12" r="9" />
+        <path {...stroke} d="m15.5 8.5-2 5-5 2 2-5 5-2Z" />
       </>
     ),
   },
@@ -38,44 +24,36 @@ const values = [
 
 export default function AboutValues() {
   return (
-    <section className="lg:sticky lg:top-0 z-[2] flex min-h-[100svh] flex-col justify-center border-t border-[#303839]/8 bg-white py-[clamp(2.5rem,7vh,7rem)]">
-      <div className="max-w-6xl px-6 mx-auto">
-        <Reveal className="text-center">
-          <span className="font-body text-xs uppercase tracking-[0.25em] text-[#303839]/50">
-            What we build everything on
-          </span>
-
-          <h2 className="mt-[clamp(0.75rem,2vh,1rem)] font-display text-[clamp(1.5rem,1.1rem+2vw,2.25rem)] font-semibold text-[#303839]">
+    <section aria-labelledby="about-values-heading" className="bg-cream">
+      <div className="page-container section">
+        <Reveal className="mx-auto max-w-[640px] text-center">
+          <p className="eyebrow">What we build everything on</p>
+          <h2 id="about-values-heading" className="heading-section mt-3">
             Two values behind every design.
           </h2>
         </Reveal>
 
-        <div className="mt-[clamp(2rem,5vh,4rem)] grid gap-px overflow-hidden rounded-none border border-[#303839]/10 bg-[#303839]/10 md:grid-cols-2">
+        <div className="mt-10 grid gap-4 md:grid-cols-2 md:gap-6 lg:mt-14">
           {values.map((value, index) => (
             <Reveal
               key={value.label}
-              delay={index * 150}
-              className="bg-cream px-[clamp(1.5rem,4vw,3rem)] py-[clamp(2rem,4vh,4rem)]"
+              delay={index * 120}
+              className="flex flex-col rounded-[10px] border border-line bg-white p-7 sm:p-10"
             >
-              <svg
-                viewBox="0 0 60 48"
-                className="w-12 h-10 mb-6"
-                aria-hidden="true"
-              >
-                {value.icon}
-              </svg>
+              <div className="flex items-center justify-between">
+                <span className="grid h-12 w-12 place-items-center rounded-full bg-cream text-ink">
+                  <svg viewBox="0 0 24 24" className="h-[22px] w-[22px]" aria-hidden="true">
+                    {value.icon}
+                  </svg>
+                </span>
+                <span className="font-display text-[15px] text-muted">0{index + 1}</span>
+              </div>
 
-              <span className="font-display text-2xl italic text-[#303839]">
-                {value.label}
-              </span>
-
-              <h3 className="mt-3 font-display text-[clamp(1.35rem,1.05rem+1.4vw,1.875rem)] leading-snug text-[#303839]">
+              <p className="mt-8 font-display text-[26px] font-medium italic leading-none text-ink">{value.label}</p>
+              <h3 className="mt-4font-display text-[clamp(1.4rem,1.2rem+0.8vw,1.75rem)] font-medium leading-snug text-ink">
                 {value.title}
               </h3>
-
-              <p className="mt-4 font-body text-[clamp(0.9rem,0.82rem+0.4vw,1rem)] leading-relaxed text-[#303839]/80">
-                {value.body}
-              </p>
+              <p className="mt-3 text-[15px] leading-[1.75] text-muted">{value.body}</p>
             </Reveal>
           ))}
         </div>

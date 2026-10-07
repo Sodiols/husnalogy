@@ -2,10 +2,11 @@ import { redirect } from "next/navigation";
 import { getProductBySlug } from "@/lib/products";
 import { buildFallbackTemplateFromFields } from "@/lib/customizer";
 import PersonalizeClient from "./personalize-client";
-import { createClient, createServiceRoleClient } from "@/lib/supabase/server";
+import { createClient } from "@/lib/supabase/server";
 import { resolveFlagsIntoTemplate } from "@/lib/customizer/v2/feature-flags.server";
 import { loadNormalizedMockupTemplate } from "@/lib/customizer/mockup-store";
-import { getPublicCustomizerTemplate } from "@/lib/customizer/versions";
+import { resolveSessionTemplate } from "@/lib/customizer/versions";
+import { EXACT_VERSION_UNAVAILABLE_MESSAGE } from "@/lib/customizer/version-pin";
 import { logServerFailure } from "@/lib/core/server-errors";
 
 export const dynamic = "force-dynamic";
@@ -20,35 +21,27 @@ export async function generateMetadata({ params }: any) {
 }
 
 /**
- * The version an in-progress customization is PINNED to.
- *
- * A customer who started before a re-publish keeps the design they actually
- * chose — both on screen and, because the same number reaches the save
- * validator and the renderer, in print. Read with the service-role client and
- * then checked against the signed-in user, so a customization id guessed from
- * the URL cannot pin someone else's session or reveal that it exists.
+ * A saved design whose exact template version cannot be loaded right now.
+ * The editor is NOT mounted: nothing can be edited, autosaved or rewritten,
+ * and the design is never opened on another version. Retrying reloads it.
  */
-async function resolvePinnedVersion(
-  customizationId: string,
-  productId: string,
-  userId: string,
-): Promise<number | null> {
-  if (!customizationId || customizationId.startsWith("local_") || !userId) return null;
-  try {
-    const supabase = createServiceRoleClient();
-    const { data } = await supabase
-      .from("product_customizations")
-      .select("template_version,product_id,user_id")
-      .eq("id", customizationId)
-      .maybeSingle();
-    if (!data || data.product_id !== productId || data.user_id !== userId) return null;
-    return Number(data.template_version) || null;
-  } catch (error) {
-    // A pin we cannot read is not worth failing the page for — fall through to
-    // the latest published version, which is always a valid design.
-    logServerFailure("Could not resolve the pinned customizer version", error);
-    return null;
-  }
+function SavedDesignUnavailable({ slug, retryHref }: { slug: string; retryHref: string }) {
+  return (
+    <main className="flex min-h-[60vh] items-center justify-center bg-[#F3F1EC] px-4 py-24 text-center text-[#303839]" data-customizer-version-unavailable>
+      <div className="max-w-md rounded-2xl bg-white px-6 py-8 shadow-[0_18px_50px_rgba(48,56,57,0.16)]">
+        <h1 className="font-display text-2xl">Your saved design is safe</h1>
+        <p className="mt-3 text-sm leading-6">{EXACT_VERSION_UNAVAILABLE_MESSAGE}</p>
+        <div className="mt-6 flex flex-wrap justify-center gap-3">
+          <a href={retryHref} className="rounded-full bg-[#303839] px-5 py-2 text-xs font-bold text-white hover:bg-[#3d4748]">
+            Retry
+          </a>
+          <a href={`/products/${slug}`} className="rounded-full border border-[#303839]/20 px-5 py-2 text-xs font-bold hover:bg-[#F3F1EC]">
+            Back to product
+          </a>
+        </div>
+      </div>
+    </main>
+  );
 }
 
 export default async function PersonalizePage({ params, searchParams }: any) {
@@ -81,13 +74,28 @@ export default async function PersonalizePage({ params, searchParams }: any) {
    * customer design against one document while being sold another. The public
    * page now reads the same snapshot every downstream consumer does.
    */
+  //
+  // A SAVED design opens on the exact version it was made on, read from the
+  // customization row itself (its own template id and version) — or not at
+  // all. It is never moved onto the latest version: the next autosave would
+  // rewrite the customer's design against artwork they never chose.
   const rawCustomizationId = Array.isArray(query.customizationId) ? query.customizationId[0] : query.customizationId;
-  const pinnedVersion = await resolvePinnedVersion(
-    String(rawCustomizationId || ""),
-    product.id,
-    user?.id || "",
-  );
-  const published = await getPublicCustomizerTemplate(product.id, pinnedVersion);
+  let session;
+  try {
+    session = await resolveSessionTemplate({ productId: product.id, customizationId: String(rawCustomizationId || ""), userId: user?.id || "" });
+  } catch (error) {
+    logServerFailure("Could not resolve the customizer template", error);
+    if (rawCustomizationId) session = { kind: "unavailable" as const, templateVersion: 0 };
+    else throw error;
+  }
+  if (session.kind === "unavailable") {
+    const retry = new URLSearchParams();
+    for (const [key, value] of Object.entries(query)) {
+      if (typeof value === "string") retry.set(key, value);
+    }
+    return <SavedDesignUnavailable slug={slug} retryHref={`/products/${slug}/personalize?${retry.toString()}`} />;
+  }
+  const published = session.kind === "latest" || session.kind === "pinned" ? session : null;
 
   // Legacy products that never had a V2 template still personalize through the
   // fields fallback; it is derived from the product row, not from a draft.

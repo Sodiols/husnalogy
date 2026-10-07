@@ -157,9 +157,13 @@ export default function Logy({ askOpen, setAskOpen }) {
           role="dialog"
           aria-modal="false"
           aria-labelledby="logy-title"
-          className="fixed inset-x-3 bottom-[calc(128px+env(safe-area-inset-bottom))] z-50 mx-auto flex max-h-[72vh] w-auto max-w-[400px] flex-col overflow-hidden rounded-[10px] border border-line bg-white shadow-[var(--shadow-overlay)] sm:inset-x-auto sm:right-6 sm:w-[400px] lg:bottom-20"
+          // Layered above the sticky header (2400) but below the mobile menu,
+          // auth modal and side panels (2998+). The height cap keeps the panel
+          // between its launcher and the header (announcement bar + header ≈
+          // 157px on desktop, ≈ 121px on mobile) so its title is never covered.
+          className="fixed inset-x-3 bottom-[calc(128px+env(safe-area-inset-bottom))] z-[2500] mx-auto flex max-h-[min(620px,calc(100dvh-268px-env(safe-area-inset-bottom)))] w-auto max-w-[400px] flex-col overflow-hidden rounded-[10px] border border-line bg-white shadow-[var(--shadow-overlay)] sm:inset-x-auto sm:right-6 sm:w-[400px] lg:bottom-20 lg:max-h-[min(620px,calc(100dvh-248px))]"
         >
-          <header className="flex items-center gap-3 border-b border-line px-4 py-3">
+          <header className="flex shrink-0 items-center gap-3 border-b border-line px-4 py-3">
             <span aria-hidden="true" className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-ink text-white">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12Z" />
@@ -175,7 +179,7 @@ export default function Logy({ askOpen, setAskOpen }) {
               type="button"
               onClick={closeLogy}
               data-shape="round"
-              className="grid h-10 w-10 shrink-0 place-items-center rounded-full text-ink transition-colors hover:bg-cream"
+              className="-mr-1 grid h-11 w-11 shrink-0 place-items-center rounded-full text-ink transition-colors hover:bg-cream"
               aria-label="Close Logy"
             >
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true">
@@ -186,7 +190,7 @@ export default function Logy({ askOpen, setAskOpen }) {
           </header>
 
           <div className="flex min-h-0 flex-1 flex-col">
-            <div className="max-h-[46vh] flex-1 space-y-3 overflow-y-auto bg-cream/60 px-4 py-4 sm:max-h-[380px]" aria-live="polite">
+            <div className="min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain bg-cream/60 px-4 py-4" aria-live="polite">
               {messages.map((item, index) => {
                 const isUser = item.role === "user";
 
@@ -241,7 +245,7 @@ export default function Logy({ askOpen, setAskOpen }) {
             </div>
 
             <form
-              className="border-t border-line bg-white p-3"
+              className="shrink-0 border-t border-line bg-white p-3"
               onSubmit={(event) => {
                 event.preventDefault();
                 sendMessage();

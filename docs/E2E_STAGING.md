@@ -37,6 +37,9 @@ It creates, idempotently:
 | Entity | Manifest key (`.customizer-e2e.json`, git-ignored) |
 |---|---|
 | Admin test account | `adminEmail` |
+| Designer test account | `designerEmail`, `designerId` |
+| Customer A saved default address + phone | `addressAId` |
+| Customer A existing cart line | `cartItemAId` |
 | Customer A test account | `customerAEmail` |
 | Customer B test account | `customerBEmail` |
 | Shared password | `password` |
@@ -96,7 +99,20 @@ controlled 409 and is then shown the placed order); session expiry,
 cross-customer protection and unauthorized admin access
 (`storefront-staging.spec.ts`, `checkout-adversarial.spec.ts`,
 `admin-security-render.spec.ts`); option persistence
-(`product-option-persistence.spec.ts`, fixture-based).
+(`product-option-persistence.spec.ts`, fixture-based); **shared-browser
+privacy with real accounts** (`staging-shared-browser-privacy.spec.ts`:
+Customer A's address, phone, cart and saved design are never visible to
+Customer B on the same browser, and come back for A).
+
+Local (no project at all) equivalents of the privacy and version-integrity
+checks run against an in-browser stub:
+`customer-recovery-isolation.spec.ts`, `shared-browser-privacy.spec.ts`,
+`customizer-version-pinning.spec.ts`, `admin-studio-recovery.spec.ts`:
+
+```bash
+NEXT_PUBLIC_SUPABASE_URL=http://127.0.0.1:54399 E2E_FRESH_SERVER=1 E2E_PORT=3105 NEXT_DIST_DIR=.next/e2e-stub \
+  npx playwright test e2e/customer-recovery-isolation.spec.ts e2e/shared-browser-privacy.spec.ts --workers=1 --project=chromium
+```
 
 Without the seeded manifest the seeded specs stop with an explicit
 "Seeded Customizer V2 acceptance cannot run" error — they are never reported
@@ -118,3 +134,40 @@ the product and delete the temporary customer upload; run the worker once by
 hand and confirm the render completes from the order's own snapshot and pinned
 assets (automated equivalent: the "REGRESSION" test in
 `lib/customizer/__tests__/snapshot-production.test.ts`).
+
+## 6. Staging project setup checklist (before the first run)
+
+Use a project that holds NO real customer data, with its own credentials.
+Never reuse production keys; never commit `.env.staging`.
+
+1. **Project.** Create `husnalogy-staging` in Supabase (same region as
+   production). Record its ref in `STAGING_CONFIRM_PROJECT_REF`.
+2. **Migrations.** `npm run staging:migrate`, then run the
+   HOSTINGER_DEPLOYMENT.md §3 query in the staging SQL editor: every row `true`.
+3. **Storage.** The migrations create the buckets. Confirm
+   `select id, public, file_size_limit from storage.buckets;` matches §3
+   (private: `customer-uploads`, `customer-avatars`, `customizer-renders`,
+   `customizer-elements`, `order-production`, `admin-assets`).
+4. **RLS.** `npm run test:staging` (RLS on every table, cross-customer
+   isolation, anonymous access, privileged RPCs, signed URLs).
+5. **Auth URLs.** Supabase → Authentication → URL Configuration: Site URL =
+   the staging deployment origin; redirect URLs = `<staging origin>/auth/callback`
+   and `<staging origin>/reset-password`.
+6. **Google OAuth.** A separate OAuth client (or an added redirect URI) for
+   `https://<staging-ref>.supabase.co/auth/v1/callback`; enable Google in
+   Supabase with that client's id/secret.
+7. **Environment.** The HOSTINGER_DEPLOYMENT.md §2 variables with STAGING
+   values; `ENABLE_CUSTOMIZER_E2E_FIXTURE=1` only on the staging deployment;
+   `CRON_SECRET` unique to staging.
+8. **Seed.** `npm run staging:seed` → admin, designer, Customer A (address,
+   phone, cart line, saved design + upload), Customer B, products, published
+   template, mockup. Manifest: `.customizer-e2e.json` (git-ignored).
+9. **Render worker / cron.** Point a cron (or run by hand) at
+   `<staging origin>/api/admin/customizer/render/process` with
+   `Authorization: Bearer $CRON_SECRET`; `GET /api/admin/production/health`
+   must reach 200 after a run.
+10. **Email.** A Resend TEST key (or none — notification tasks then wait).
+    Never send to real customers from staging.
+11. **Backup drill.** Restore a staging backup (database + one Storage
+    bucket) at least once before launch and record the result.
+12. **Run.** `npm run test:e2e:staging`, then the controlled order (§5).

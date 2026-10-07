@@ -5,7 +5,7 @@ import { hasWorkerSecret } from "@/lib/security/worker-auth";
 import { bodyErrorResponse, readBodyBytes } from "@/lib/http/read-body";
 import { logEvent } from "@/lib/observability/logger";
 
-export function withAdminMutation<Args extends any[]>(handler: (request: Request, ...args: Args) => Promise<Response>, options: { maxBytes?: number; studio?: boolean; worker?: boolean; logout?: boolean } = {}): (request: Request, ...args: Args) => Promise<Response> {
+export function withAdminMutation<Args extends any[]>(handler: (request: Request, ...args: Args) => Promise<Response>, options: { maxBytes?: number; studio?: boolean; worker?: boolean; logout?: boolean; tooLargeMessage?: string } = {}): (request: Request, ...args: Args) => Promise<Response> {
   return async (request: Request, ...args: Args) => {
     try {
       if (!["POST", "PUT", "PATCH", "DELETE"].includes(request.method)) return Response.json({ ok: false, error: "Method not allowed." }, { status: 405 });
@@ -32,6 +32,7 @@ export function withAdminMutation<Args extends any[]>(handler: (request: Request
       return await handler(bounded, ...args);
     } catch (error) {
       const response = bodyErrorResponse(error);
+      if (response?.status === 413 && options.tooLargeMessage) return Response.json({ ok: false, error: options.tooLargeMessage }, { status: 413 });
       if (response) return response;
       logEvent("error", "admin.mutation_failed", { path: new URL(request.url).pathname, error });
       return Response.json({ ok: false, error: "The operation could not be completed." }, { status: 500 });

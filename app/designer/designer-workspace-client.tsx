@@ -14,6 +14,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import ProductUploadForm from "@/app/admin/dashboard/product-upload-form";
+import { StudioActorProvider } from "@/app/admin/dashboard/design-builder/studio-actor";
 import { WORKFLOW_LABELS, designerMayEdit, type WorkflowState } from "@/lib/products/workflow-states";
 
 type DesignerProduct = {
@@ -163,6 +164,7 @@ export default function DesignerWorkspaceClient({
               </p>
             </div>
           ) : (
+            <StudioActorProvider actorId={designer?.id || ""}>
             <ProductUploadForm
               key={editing?.id || "new-product"}
               product={editing}
@@ -187,6 +189,7 @@ export default function DesignerWorkspaceClient({
                 void load();
               }}
             />
+            </StudioActorProvider>
           )}
         </div>
       </main>

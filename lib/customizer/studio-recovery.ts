@@ -12,9 +12,14 @@
  * A snapshot exists only while the studio holds changes the server has not
  * confirmed; a confirmed save removes it. Restoring is always the admin's
  * choice — the studio offers it, it never silently replaces the saved draft.
+ *
+ * Every snapshot belongs to ONE studio account (admin or designer). Its id is
+ * part of the key and stamped inside the snapshot, and a read returns it only
+ * to that same account — on a shared browser one designer never receives
+ * another's unsaved work, not even the shared "new product" slot.
  */
 
-import type { StorageLike } from "./recovery-store";
+import type { EnumerableStorage, StorageLike } from "./recovery-store";
 import { stripRuntimeAssetUrls } from "./v2/asset-identity";
 
 /*
@@ -26,8 +31,13 @@ import { stripRuntimeAssetUrls } from "./v2/asset-identity";
  */
 
 export const STUDIO_RECOVERY_PREFIX = "husnalogy_studio_draft";
+/** Snapshots written before account scoping (`${prefix}:<product>`) are never read. */
+const SCOPED_PREFIX = `${STUDIO_RECOVERY_PREFIX}:v2:`;
+const ACTOR_ID = /^[A-Za-z0-9_-]{1,128}$/;
 
 export type StudioRecoverySnapshot = {
+  /** The studio account (admin or designer) whose unsaved work this is. */
+  owner: string;
   /** The product the template belongs to; "" for a product not saved yet. */
   productId: string;
   productName: string;
@@ -36,9 +46,16 @@ export type StudioRecoverySnapshot = {
   template: Record<string, unknown>;
 };
 
-/** One key per product; every not-yet-saved product shares the "new" slot. */
-export function studioRecoveryKey(productId: string | null | undefined): string {
-  return `${STUDIO_RECOVERY_PREFIX}:${String(productId || "") || "new"}`;
+/**
+ * One key per studio account and product (`…:v2:<account>:product:<id>`, or
+ * `…:new` for a product not saved yet); "" without a signed-in account, in
+ * which case nothing is read or written.
+ */
+export function studioRecoveryKey(actorId: string | null | undefined, productId: string | null | undefined): string {
+  const actor = String(actorId || "");
+  if (!ACTOR_ID.test(actor)) return "";
+  const product = String(productId || "");
+  return `${SCOPED_PREFIX}${actor}:${product ? `product:${product}` : "new"}`;
 }
 
 const isObject = (value: unknown): value is Record<string, any> =>
@@ -49,8 +66,8 @@ const isObject = (value: unknown): value is Record<string, any> =>
  * (blocked, private mode) and a value that is not a snapshot both read as "no
  * recovery available" — there is nothing to restore from either.
  */
-export function readStudioRecovery(storage: StorageLike | null, key: string): StudioRecoverySnapshot | null {
-  if (!storage) return null;
+export function readStudioRecovery(storage: StorageLike | null, key: string, actorId: string): StudioRecoverySnapshot | null {
+  if (!storage || !key || !actorId || !key.startsWith(`${SCOPED_PREFIX}${actorId}:`)) return null;
   let parsed: unknown;
   try {
     const raw = storage.getItem(key);
@@ -60,7 +77,11 @@ export function readStudioRecovery(storage: StorageLike | null, key: string): St
     return null;
   }
   if (!isObject(parsed) || !isObject(parsed.template) || !Array.isArray(parsed.template.layers)) return null;
+  // The stamp, not just the key, decides: a value copied under another
+  // account's key is still not that account's.
+  if (parsed.owner !== actorId) return null;
   return {
+    owner: actorId,
     productId: String(parsed.productId || ""),
     productName: String(parsed.productName || ""),
     savedAt: String(parsed.savedAt || ""),
@@ -72,13 +93,14 @@ export function readStudioRecovery(storage: StorageLike | null, key: string): St
 export function writeStudioRecovery(
   storage: StorageLike | null,
   key: string,
-  snapshot: Omit<StudioRecoverySnapshot, "savedAt"> & { savedAt?: string },
+  actorId: string,
+  snapshot: Omit<StudioRecoverySnapshot, "savedAt" | "owner"> & { savedAt?: string },
 ): boolean {
-  if (!storage) return false;
+  if (!storage || !key || !actorId || !key.startsWith(`${SCOPED_PREFIX}${actorId}:`)) return false;
   try {
     storage.setItem(
       key,
-      JSON.stringify({ ...snapshot, template: stripRuntimeAssetUrls(snapshot.template), savedAt: snapshot.savedAt || new Date().toISOString() }),
+      JSON.stringify({ ...snapshot, owner: actorId, template: stripRuntimeAssetUrls(snapshot.template), savedAt: snapshot.savedAt || new Date().toISOString() }),
     );
     return true;
   } catch {
@@ -87,7 +109,7 @@ export function writeStudioRecovery(
 }
 
 export function clearStudioRecovery(storage: (StorageLike & Pick<Storage, "removeItem">) | null, key: string): void {
-  if (!storage) return;
+  if (!storage || !key) return;
   try {
     storage.removeItem(key);
   } catch {
@@ -104,4 +126,23 @@ export function studioRecoveryDiffers(snapshot: StudioRecoverySnapshot | null, t
   if (!snapshot) return false;
   // Credentials are not content: a design that differs only by fresher URLs is the same design.
   return JSON.stringify(stripRuntimeAssetUrls(snapshot.template)) !== JSON.stringify(stripRuntimeAssetUrls(template ?? null));
+}
+
+/**
+ * Remove studio snapshots written before account scoping: they cannot be
+ * attributed to an account, so they are never offered to anyone.
+ */
+export function purgeLegacyStudioRecovery(storage: EnumerableStorage | null): number {
+  if (!storage) return 0;
+  const legacy: string[] = [];
+  try {
+    for (let index = 0; index < storage.length; index += 1) {
+      const key = storage.key(index);
+      if (key && key.startsWith(`${STUDIO_RECOVERY_PREFIX}:`) && !key.startsWith(SCOPED_PREFIX)) legacy.push(key);
+    }
+    legacy.forEach((key) => storage.removeItem(key));
+  } catch {
+    return 0;
+  }
+  return legacy.length;
 }

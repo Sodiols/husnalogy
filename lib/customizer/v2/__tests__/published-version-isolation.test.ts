@@ -71,6 +71,7 @@ vi.mock("@/lib/customizer/server/admin-assets", () => ({
 }));
 
 import {
+  getExactPublishedVersion,
   getLatestPublishedVersion,
   getPublicCustomizerTemplate,
   templateFromVersionSnapshot,
@@ -129,15 +130,18 @@ describe("a public customizer session runs on a published snapshot", () => {
   it("keeps an in-progress customization pinned to the version it started on", async () => {
     rows.versions = [versionRow(1, "Published V1"), versionRow(2, "Published V2")];
 
-    const pinned = await getPublicCustomizerTemplate("prod-1", 1);
-    expect(pinned!.snapshot.version).toBe(1);
-    expect(pinned!.template.layers[0].text).toBe("Published V1");
+    const pinned = await getExactPublishedVersion("prod-1", "tpl-1", 1);
+    expect(pinned.status).toBe("ok");
+    if (pinned.status !== "ok") return;
+    expect(pinned.snapshot.version).toBe(1);
+    expect(pinned.template.layers[0].text).toBe("Published V1");
   });
 
-  it("falls back to the latest version when the pin no longer exists", async () => {
+  it("NEVER falls back to the latest version when the pin no longer exists", async () => {
+    // A saved design opened on another version would be rewritten by the next
+    // autosave against artwork the customer never chose: it is blocked instead.
     rows.versions = [versionRow(2, "Published V2")];
-    const result = await getPublicCustomizerTemplate("prod-1", 99);
-    expect(result!.snapshot.version).toBe(2);
+    expect(await getExactPublishedVersion("prod-1", "tpl-1", 99)).toEqual({ status: "unavailable", reason: "missing" });
   });
 
   it("carries the snapshot version the save validator will resolve", async () => {
@@ -174,9 +178,9 @@ describe("the full publish / edit / republish sequence", () => {
     expect(customerC!.template.layers[0].text).toBe("Design B");
 
     // ...while Customer A, pinned to V1, still resumes on V1.
-    const customerAResumed = await getPublicCustomizerTemplate("prod-1", 1);
-    expect(customerAResumed!.snapshot.version).toBe(1);
-    expect(customerAResumed!.template.layers[0].text).toBe("Design A");
+    const customerAResumed = await getExactPublishedVersion("prod-1", "tpl-1", 1);
+    expect(customerAResumed.status === "ok" && customerAResumed.snapshot.version).toBe(1);
+    expect(customerAResumed.status === "ok" && customerAResumed.template.layers[0].text).toBe("Design A");
   });
 
   it("getLatestPublishedVersion ignores other products' versions", async () => {
@@ -225,7 +229,7 @@ describe("the public page wiring", () => {
   );
 
   it("resolves a published version instead of the product's draft template", () => {
-    expect(page).toContain("getPublicCustomizerTemplate");
+    expect(page).toContain("resolveSessionTemplate");
     // The old leak: handing `product.customizerTemplate` to the client.
     expect(page).not.toContain("product?.customizerTemplate?.enabled");
     expect(page).not.toContain("return product.customizerTemplate");
@@ -240,8 +244,10 @@ describe("the public page wiring", () => {
     expect(page).toContain("if (!baseTemplate) redirect(");
   });
 
-  it("only pins a customization that belongs to the signed-in customer", () => {
-    expect(page).toContain("data.user_id !== userId");
-    expect(page).toContain("data.product_id !== productId");
+  it("blocks a saved design whose exact version is unavailable instead of opening another version", () => {
+    // Ownership and product binding of the pin are covered behaviourally in
+    // lib/customizer/__tests__/template-version-pinning.test.ts.
+    expect(page).toContain('session.kind === "unavailable"');
+    expect(page).toContain("<SavedDesignUnavailable");
   });
 });

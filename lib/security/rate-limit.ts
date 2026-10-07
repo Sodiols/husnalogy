@@ -16,8 +16,13 @@ const buckets = new Map();
 
 /**
  * How many reverse proxies sit in front of Node and APPEND to
- * X-Forwarded-For. Hostinger's Node.js hosting runs the app behind one proxy,
- * so the default is 1. Set TRUSTED_PROXY_HOPS if a CDN is added in front.
+ * X-Forwarded-For. The default (1) assumes exactly one — it is an ASSUMPTION
+ * about the hosting topology, not a verified fact: confirm it after every
+ * deployment change with GET /api/admin/production/client-ip (see
+ * HOSTINGER_DEPLOYMENT.md, "Rate limiting"). Too low lets a client choose its
+ * own address; too high ignores real proxies. 0 is only for a server that
+ * receives client connections directly — and since route handlers cannot read
+ * the socket address, every anonymous client then shares ONE bucket.
  */
 function trustedProxyHops(): number {
   const hops = Number(process.env.TRUSTED_PROXY_HOPS ?? 1);
@@ -62,6 +67,22 @@ function tooManyRequests(retryAfterSeconds) {
     { ok: false, error: "Too many requests. Please try again soon." },
     { status: 429, headers: { "Retry-After": String(Math.max(1, retryAfterSeconds)) } }
   );
+}
+
+/** What the limiter sees for this request — for the operator's topology check, never for clients. */
+export function rateLimitDiagnostics(request: Request) {
+  return {
+    trustedProxyHops: trustedProxyHops(),
+    forwardedFor: String(request.headers.get("x-forwarded-for") || "")
+      .split(",")
+      .map((entry) => entry.trim())
+      .filter(Boolean),
+    resolvedClientIp: getClientIp(request),
+    distributed: isDistributedRateLimitConfigured(),
+    scope: isDistributedRateLimitConfigured()
+      ? "Shared across every Node process (Upstash Redis)."
+      : "Per Node process (in memory): each process counts on its own, and a restart resets the counts.",
+  };
 }
 
 export function isDistributedRateLimitConfigured() {

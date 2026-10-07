@@ -264,8 +264,31 @@ function tagCharacterCount(tags) {
   return tags.join(", ").length;
 }
 
+/** Mirrors lib/uploads/admin-media.ts: one upload request, and one image. */
+const UPLOAD_REQUEST_LIMIT_BYTES = 35 * 1024 * 1024;
+const UPLOAD_IMAGE_LIMIT_BYTES = 15 * 1024 * 1024;
+
+// Several images are sent in batches, each under the server's request limit.
+async function uploadImages(files, folder, onProgress): Promise<string[]> {
+  const oversized = files.find((file) => Number(file?.size || 0) > UPLOAD_IMAGE_LIMIT_BYTES);
+  if (oversized) throw new Error(`${oversized.name || "This image"} is larger than 15 MB.`);
+  const batches: any[][] = [];
+  for (const file of files) {
+    const last = batches[batches.length - 1];
+    const used = last ? last.reduce((sum, entry) => sum + Number(entry.size || 0), 0) : Infinity;
+    if (!last || used + Number(file.size || 0) > UPLOAD_REQUEST_LIMIT_BYTES - 512 * 1024) batches.push([file]);
+    else last.push(file);
+  }
+  const urls: string[] = [];
+  for (let index = 0; index < batches.length; index += 1) {
+    const part = await uploadBatch(batches[index], folder, (percent) => onProgress?.(Math.round(((index + percent / 100) / batches.length) * 100)));
+    urls.push(...part);
+  }
+  return urls;
+}
+
 // Uses XMLHttpRequest instead of fetch so real upload progress can be shown.
-function uploadImages(files, folder, onProgress): Promise<string[]> {
+function uploadBatch(files, folder, onProgress): Promise<string[]> {
   return new Promise((resolve, reject) => {
     const formData = new FormData();
     formData.append("folder", folder);

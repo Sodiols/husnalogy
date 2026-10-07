@@ -16,24 +16,66 @@ export const supabaseIsStubbed = /^http:\/\/(127\.0\.0\.1|localhost):\d+$/.test(
 export const STUB_USER_ID = "e2e00000-0000-4000-8000-0000000000a1";
 const STUB_EMAIL = "persistence.e2e@example.test";
 
+/** A stub customer account. Several can exist in one browser context (account switching). */
+export type StubIdentity = { id: string; email: string; name: string };
+export const STUB_CUSTOMER: StubIdentity = { id: STUB_USER_ID, email: STUB_EMAIL, name: "Persistence Tester" };
+const identities = new Map<string, StubIdentity>([[STUB_USER_ID, STUB_CUSTOMER]]);
+const routedContexts = new WeakSet<BrowserContext>();
+
+
 const b64url = (text: string) => Buffer.from(text).toString("base64url");
 
-function fakeSession() {
+/** The `sb-<ref>-auth-token` cookie / storage key the browser client uses. */
+export function stubAuthStorageKey(): string {
+  return `sb-${new URL(STUB_SUPABASE_URL).hostname.split(".")[0]}-auth-token`;
+}
+
+/** The account id of a stub access token (`Bearer <jwt>`), or "". */
+function subjectOfBearer(authorization: string | undefined): string {
+  const token = String(authorization || "").replace(/^Bearer\s+/i, "");
+  try {
+    return String(JSON.parse(Buffer.from(token.split(".")[1] || "", "base64url").toString("utf8")).sub || "");
+  } catch {
+    return "";
+  }
+}
+
+/** The signed-in stub account named by a request's auth cookie, or "" for a guest. */
+export function stubUserIdFromCookieHeader(cookieHeader: string | undefined): string {
+  const name = stubAuthStorageKey();
+  const raw = String(cookieHeader || "")
+    .split(/;\s*/)
+    .find((part) => part.startsWith(`${name}=`));
+  if (!raw) return "";
+  try {
+    const value = decodeURIComponent(raw.slice(name.length + 1)).replace(/^base64-/, "");
+    return String(JSON.parse(Buffer.from(value, "base64url").toString("utf8"))?.user?.id || "");
+  } catch {
+    return "";
+  }
+}
+
+export function stubSession(identity: StubIdentity = STUB_CUSTOMER) {
+  return fakeSession(identity);
+}
+
+function fakeSession(identity: StubIdentity = STUB_CUSTOMER) {
   const now = Math.floor(Date.now() / 1000);
   const expiresAt = now + 365 * 24 * 3600;
   const user = {
-    id: STUB_USER_ID,
+    id: identity.id,
     aud: "authenticated",
     role: "authenticated",
-    email: STUB_EMAIL,
+    email: identity.email,
     app_metadata: { provider: "email" },
-    user_metadata: { full_name: "Persistence Tester" },
+    user_metadata: { full_name: identity.name },
     created_at: "2026-01-01T00:00:00.000Z",
   };
   // Unsigned: only ever read by the browser client, never verified anywhere.
   const jwt = [
     b64url(JSON.stringify({ alg: "HS256", typ: "JWT" })),
-    b64url(JSON.stringify({ sub: STUB_USER_ID, aud: "authenticated", role: "authenticated", email: STUB_EMAIL, exp: expiresAt, iat: now })),
+    // The server-side stand-in (e2e/supabase-http-stub.ts) reads the account from these claims.
+    b64url(JSON.stringify({ sub: identity.id, aud: "authenticated", role: "authenticated", email: identity.email, user_metadata: { full_name: identity.name }, exp: expiresAt, iat: now })),
     "e2e-signature",
   ].join(".");
   return {
@@ -49,21 +91,30 @@ function fakeSession() {
   };
 }
 
-/** Make the browser client believe a customer is signed in. */
-export async function signInStubCustomer(context: BrowserContext, baseURL: string): Promise<void> {
+/**
+ * Make the browser client believe `identity` is signed in. Calling it again
+ * with another identity replaces the session cookie: the same browser, a
+ * different account. Auth and profile requests are answered for whichever
+ * account the request's own access token names.
+ */
+export async function signInStubCustomer(context: BrowserContext, baseURL: string, identity: StubIdentity = STUB_CUSTOMER): Promise<void> {
   if (!supabaseIsStubbed) throw new Error("Refusing to stub a customer: NEXT_PUBLIC_SUPABASE_URL is not a dead local address.");
-  const { user, session } = fakeSession();
-  const projectRef = new URL(STUB_SUPABASE_URL).hostname.split(".")[0];
-  await context.addCookies([
-    { name: `sb-${projectRef}-auth-token`, value: `base64-${b64url(JSON.stringify(session))}`, url: baseURL },
-  ]);
-  await context.route(`${STUB_SUPABASE_URL}/auth/v1/**`, (route) =>
-    route.request().url().includes("/auth/v1/user") ? route.fulfill({ json: user }) : route.fulfill({ json: {} }),
-  );
+  identities.set(identity.id, identity);
+  const { session } = fakeSession(identity);
+  await context.addCookies([{ name: stubAuthStorageKey(), value: `base64-${b64url(JSON.stringify(session))}`, url: baseURL }]);
+  if (routedContexts.has(context)) return;
+  routedContexts.add(context);
+  const caller = (route: Route) => identities.get(subjectOfBearer(route.request().headers()["authorization"])) || null;
+  await context.route(`${STUB_SUPABASE_URL}/auth/v1/**`, (route) => {
+    if (!route.request().url().includes("/auth/v1/user")) return route.fulfill({ json: {} });
+    const account = caller(route);
+    return account ? route.fulfill({ json: fakeSession(account).user }) : route.fulfill({ status: 401, json: { message: "invalid JWT" } });
+  });
   await context.route(`${STUB_SUPABASE_URL}/rest/v1/**`, (route) => {
     const url = route.request().url();
     if (url.includes("/rest/v1/profiles")) {
-      const profile = { full_name: "Persistence Tester", email: STUB_EMAIL, role: "customer", avatar_url: "" };
+      const account = caller(route) || STUB_CUSTOMER;
+      const profile = { full_name: account.name, email: account.email, role: "customer", avatar_url: "" };
       const wantsObject = String(route.request().headers()["accept"] || "").includes("vnd.pgrst.object");
       return route.fulfill({ json: wantsObject ? profile : [profile] });
     }
@@ -71,12 +122,20 @@ export async function signInStubCustomer(context: BrowserContext, baseURL: strin
   });
 }
 
+/** The browser's session cookie is gone: a signed-out browser. */
+export async function signOutStubCustomer(context: BrowserContext): Promise<void> {
+  const name = stubAuthStorageKey();
+  const kept = (await context.cookies()).filter((cookie) => cookie.name !== name);
+  await context.clearCookies();
+  if (kept.length) await context.addCookies(kept);
+}
+
 /** A data-URL photo the canvas can actually draw. */
 export const STUB_PHOTO_URL = `data:image/svg+xml;utf8,${encodeURIComponent(
   '<svg xmlns="http://www.w3.org/2000/svg" width="400" height="300"><rect width="400" height="300" fill="#7FA38B"/><text x="200" y="170" font-size="64" text-anchor="middle" fill="#fff">UP</text></svg>',
 )}`;
 
-type LoggedRequest = { method: string; id: string; revision: number | null; compact: boolean; status: number };
+type LoggedRequest = { method: string; id: string; revision: number | null; compact: boolean; status: number; owner: string; body: any };
 
 /**
  * An in-memory /api/customizations with the production route's ordering rules:
@@ -84,6 +143,13 @@ type LoggedRequest = { method: string; id: string; revision: number | null; comp
  * (editorState without renderData) merges into the stored render data.
  */
 export class StubCustomizationServer {
+  /**
+   * Per-account mode: every row belongs to the account whose session cookie
+   * created it, and an account can only list, read and write its own — the
+   * production route's ownership rule. Off by default (one stub customer).
+   */
+  constructor(private readonly options: { perAccount?: boolean } = {}) {}
+
   readonly rows = new Map<string, any>();
   readonly log: LoggedRequest[] = [];
   /** Respond with this status to the next N design writes (POST/PATCH). */
@@ -113,6 +179,7 @@ export class StubCustomizationServer {
     const id = row.id || this.newId();
     const stored = {
       id,
+      ownerId: STUB_USER_ID,
       productId: "e2e-fixture-product",
       templateId: "e2e-fixture-template",
       templateVersion: 1,
@@ -161,11 +228,24 @@ export class StubCustomizationServer {
     const body = method === "POST" || method === "PATCH" ? request.postDataJSON() || {} : {};
     const revision = typeof body.clientRevision === "number" ? body.clientRevision : null;
     const compact = body.editorState !== undefined && body.renderData === undefined;
-    const record = (status: number) => this.log.push({ method, id, revision, compact, status });
+    const owner = this.options.perAccount ? stubUserIdFromCookieHeader((await request.allHeaders())["cookie"]) : STUB_USER_ID;
+    const record = (status: number) => this.log.push({ method, id, revision, compact, status, owner, body });
+    const mine = (row: any) => Boolean(row) && (!this.options.perAccount || row.ownerId === owner);
+
+    if (this.options.perAccount && !owner) {
+      record(401);
+      return this.respond(route, 401, { ok: false, error: "Sign in required." });
+    }
+    // The production routes' account precondition (rejectAccountMismatch).
+    if (this.options.perAccount && (method === "POST" || method === "PATCH") && body.expectedUserId && body.expectedUserId !== owner) {
+      record(409);
+      return this.respond(route, 409, { ok: false, code: "account-changed", error: "Signed in to a different account." });
+    }
 
     if (method === "GET" && !id) {
       const productId = url.searchParams.get("productId");
       const rows = [...this.rows.values()]
+        .filter(mine)
         .filter((row) => !productId || row.productId === productId)
         .sort((a, b) => String(b.updatedAt).localeCompare(String(a.updatedAt)));
       record(200);
@@ -178,8 +258,8 @@ export class StubCustomizationServer {
         return this.respond(route, this.failReads.status, { ok: false, error: "Simulated outage." });
       }
       const row = this.rows.get(id);
-      record(row ? 200 : 404);
-      return row ? this.respond(route, 200, { ok: true, customization: this.signed(row) }) : this.respond(route, 404, { ok: false, error: "Not found." });
+      record(mine(row) ? 200 : 404);
+      return mine(row) ? this.respond(route, 200, { ok: true, customization: this.signed(row) }) : this.respond(route, 404, { ok: false, error: "Not found." });
     }
     if (this.failWrites && this.failWrites.remaining > 0) {
       this.failWrites.remaining -= 1;
@@ -188,6 +268,7 @@ export class StubCustomizationServer {
     }
     if (method === "POST") {
       const stored = this.seed({
+        ownerId: owner,
         values: body.values || {},
         selectedOptions: body.selectedOptions || {},
         uploadedFiles: body.uploadedFiles || {},
@@ -199,7 +280,7 @@ export class StubCustomizationServer {
     }
     if (method === "PATCH") {
       const row = this.rows.get(id);
-      if (!row) {
+      if (!mine(row)) {
         record(404);
         return this.respond(route, 404, { ok: false, error: "Not found." });
       }

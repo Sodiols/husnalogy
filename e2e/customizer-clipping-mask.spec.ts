@@ -8,7 +8,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import { getMaskPath } from "../lib/customizer/v2/masks";
 import {
-  DRAFT_KEY,
   anchorPoint,
   bodyPoint,
   canvasLayer,
@@ -17,6 +16,7 @@ import {
   openFixture,
   panCrop,
   readDraft,
+  draftKey,
   selectLayer,
   selectedIds,
   switchToAdvancedCustomize,
@@ -52,13 +52,14 @@ async function openWith(page: Page, shape: Record<string, unknown> = {}) {
   // so the seeded draft is written by an init script on the NEXT document —
   // after that save — and only once, so a later refresh restores real edits.
   const draft = await readDraft(page);
+  const key = await draftKey(page);
   draft.renderData.editorState.userLayers = seedLayers(shape);
   draft.clientRevision = Number(draft.clientRevision || 0) + 10;
   await page.addInitScript(({ key, value }) => {
     if (window.sessionStorage.getItem("clip-seeded")) return;
     window.sessionStorage.setItem("clip-seeded", "1");
     window.localStorage.setItem(key, value);
-  }, { key: DRAFT_KEY, value: JSON.stringify(draft) });
+  }, { key, value: JSON.stringify(draft) });
   await page.reload();
   await waitForEditor(page);
   await expect(canvasLayer(page, "u_shape")).toHaveCount(1);

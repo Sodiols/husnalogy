@@ -5,7 +5,7 @@ Deployment steps, environment variables, migrations, cron and staging:
 [`docs/E2E_STAGING.md`](E2E_STAGING.md).
 
 Statuses describe what is TRUE TODAY, re-checked against the code on
-2026-10-02:
+2026-10-07 (production stabilization pass):
 
 | Status | Meaning |
 |---|---|
@@ -32,7 +32,9 @@ dedicated staging project exists (see §8).
 | Migrations applied in order | IMPLEMENTED · PRODUCTION CONFIGURATION REQUIRED | Order: `schema.sql` → `hero_collections.sql` → timestamped files. All apply cleanly on real PostgreSQL 17 (`staging-tooling.test.ts`); not yet on Supabase. Never edit an applied migration. |
 | RLS on every public table | IMPLEMENTED · NOT FULLY VERIFIED | Asserted on real PostgreSQL 17; staging Supabase check pending. |
 | `site_settings` readable by admins only | IMPLEMENTED | `20260917120000_restrict_site_settings_read.sql`. |
-| Storage buckets + policies | IMPLEMENTED · NOT FULLY VERIFIED | Private: `customer-uploads`, `customizer-renders`, `order-production`, `admin-assets`. Supabase Storage behaviour (policies, signed URLs) is covered by `test:staging`, which has not run. |
+| Storage buckets + policies | IMPLEMENTED · NOT FULLY VERIFIED | Private: `customer-uploads`, `customer-avatars`, `customizer-renders`, `customizer-elements`, `order-production`, `admin-assets`. Supabase Storage behaviour (policies, signed URLs) is covered by `test:staging`, which has not run. |
+| Canonical host (www → apex) | IMPLEMENTED · PRODUCTION CONFIGURATION REQUIRED | Permanent redirect from the twin of `NEXT_PUBLIC_SITE_URL` (`canonicalHostRedirects`, tested with Next's config evaluator). Attach both hostnames + TLS in hPanel. HOSTINGER_DEPLOYMENT.md §4. |
+| Sharp ≥ 0.35.5 (GHSA-wq5f-xc86-pv6w) | IMPLEMENTED | Installed 0.35.5; lockfile and runtime version enforced by `sharp-upload-pipeline.test.ts`. Confirm the Hostinger build installs the linux-x64 0.35.5 binary (`npm ls sharp` on the host). |
 | Service-role key and worker secrets absent from client bundles | IMPLEMENTED | Build output scanned (no secret value in `.next/static`; no source maps shipped). |
 | Domain + SSL | PRODUCTION CONFIGURATION REQUIRED | |
 | Server clock synchronized | PRODUCTION CONFIGURATION REQUIRED | `npm run check:clock` on the Hostinger host must show < 2 s. A local dev machine was measured +14 s fast. |
@@ -50,6 +52,17 @@ dedicated staging project exists (see §8).
 | Designer-accessible authoring APIs | IMPLEMENTED | Nine admin API routes accept the `studio` capability for designers; ownership re-read server side. |
 | Designer cannot publish or see orders, customers, revenue, settings | IMPLEMENTED | `designer-authorization.test.ts`. |
 
+## 2a. Customer account privacy (shared browser) — **BLOCKER**
+
+| Check | Status | Notes |
+|---|---|---|
+| Customizer local recovery scoped to the account (or guest session) | IMPLEMENTED | Owner in the key AND stamped in the snapshot; legacy unscoped copies purged; signed URLs never stored. `recovery-isolation.test.ts`, `e2e/customer-recovery-isolation.spec.ts` (full reload + in-page switch + guest handoff). |
+| Saves refused when the session changed under an open editor | IMPLEMENTED | `expectedUserId` precondition → 409 `account-changed` (`customization-account-precondition.test.ts`). |
+| Saved addresses on the account (RLS owner-only) | IMPLEMENTED · NOT FULLY VERIFIED | `customer_addresses` + `/api/account/addresses`. PGlite RLS + route tests; stub browser test. Staging spec `e2e/staging-shared-browser-privacy.spec.ts` pending staging. |
+| Profile name/phone/photo on the account | IMPLEMENTED · NOT FULLY VERIFIED | `/api/account/profile`, `/api/account/avatar` (private bucket, re-encoded WebP). Same verification layers as addresses. |
+| No account data in global browser keys | IMPLEMENTED | Legacy `husnalogy_saved_addresses`, `husnalogy_profile`, `husnalogy_orders` are deleted, never shown. |
+| Design Studio recovery scoped to the studio account | IMPLEMENTED | `studio-recovery.test.ts`, `e2e/admin-studio-recovery.spec.ts`. |
+
 ## 3. Published design isolation — **BLOCKER**
 
 | Check | Status | Notes |
@@ -57,6 +70,8 @@ dedicated staging project exists (see §8).
 | Customers receive only immutable published versions | IMPLEMENTED | Working drafts are stripped from the client payload. |
 | Publishing creates an immutable version | IMPLEMENTED | Database trigger. |
 | Publishing refuses print sizes production cannot render | IMPLEMENTED | Automatic rendering: ≤ 36 MP per page incl. bleed, ≤ 8,000 px per side, ≤ 150 MP per design, ≤ 32 pages, 72–600 dpi (e.g. 24×36 in at 200 dpi). 24×36 in at 300 dpi is NOT supported. |
+| A saved design opens ONLY on its exact template version | IMPLEMENTED | Unavailable version → blocked with a safe message, never the latest/draft, never autosaved. `template-version-pinning*.test.ts` (incl. real schema + publish RPC), `e2e/customizer-version-pinning.spec.ts`. |
+| Unreviewed drafts not readable with the public key | IMPLEMENTED | Migration `20261007150000`; `rls-authorization-matrix.test.ts`. |
 | Every active personalizable product has a published version | PRODUCTION CONFIGURATION REQUIRED | `select p.slug from products p left join customizer_template_versions v on v.product_id = p.id where p.status = 'active' group by p.slug having count(v.id) = 0;` |
 
 ## 4. Orders and fulfilment
@@ -76,12 +91,15 @@ dedicated staging project exists (see §8).
 
 | Check | Status | Notes |
 |---|---|---|
-| Distributed rate limiting | PRODUCTION CONFIGURATION REQUIRED (only with > 1 process) | Upstash `UPSTASH_REDIS_REST_URL` + `_TOKEN`; single `npm start` process uses exact in-memory limits. |
+| Distributed rate limiting | PRODUCTION CONFIGURATION REQUIRED (only with > 1 process) · NOT VERIFIED EXTERNALLY | Without Upstash the limiter is in memory, per Node process (not global). Upstash has not been exercised against a live Redis. |
+| `TRUSTED_PROXY_HOPS` matches the real proxy topology | PRODUCTION CONFIGURATION REQUIRED · NOT VERIFIED EXTERNALLY | Default 1 is an assumption. Verify with `GET /api/admin/production/client-ip` after deploy (HOSTINGER_DEPLOYMENT.md §9). |
+| Admin media upload limits consistent | IMPLEMENTED | 35 MB/request, 15 MB/image, 30 MB/video everywhere (route, messages, form, bucket); content-verified media. |
+| Strict CSP (no `'unsafe-inline'` scripts) | NOT IMPLEMENTED (residual hardening item) | Needs nonces + dynamic rendering. All other headers pinned by `security-headers.test.ts`. |
 | Error monitoring | IMPLEMENTED · PRODUCTION CONFIGURATION REQUIRED | Sentry-protocol reporting without extra dependencies; set `SENTRY_DSN`. Without it errors are only in the app log. |
 | Uptime / production health monitoring | IMPLEMENTED · PRODUCTION CONFIGURATION REQUIRED | `/api/health` (public liveness) and `/api/admin/production/health` (Bearer `CRON_SECRET`) — point an uptime monitor at both. |
 | Analytics | NOT IMPLEMENTED | No analytics integration. |
-| Database backups / PITR | PRODUCTION CONFIGURATION REQUIRED | Configure in Supabase. |
-| "Export Full Backup" (admin) | IMPLEMENTED (catalogue export only) | Exports settings + products; NOT a database backup (no orders, customers, designs or files). |
+| Database backups / PITR | PRODUCTION CONFIGURATION REQUIRED · NOT VERIFIED | Supabase daily backups / PITR, plus a separate Storage backup (not covered by DB backups). HOSTINGER_DEPLOYMENT.md §10. A test restore has not been performed. |
+| "Export Catalogue Backup" (admin, formerly "Export Full Backup") | IMPLEMENTED | Settings + products only; labelled as such, with an in-app note that it is not disaster recovery. |
 | Actionable server logs | IMPLEMENTED | Structured JSON lines; secrets redacted. |
 
 ## 6. Public site
@@ -112,7 +130,7 @@ dedicated staging project exists (see §8).
 | Unit + PGlite integration (`npm test`) | IMPLEMENTED (passes on Node 22) | Includes worker isolation, checkout preparation, render limits, option persistence. |
 | Real PostgreSQL 17 concurrency + migration tooling | IMPLEMENTED (passes locally) | `postgres-concurrency.test.ts`, `staging-tooling.test.ts`. |
 | Real Supabase staging integration (`npm run test:staging`) | BLOCKED · NOT FULLY VERIFIED | PostgREST, Auth, Storage, RLS, RPC, concurrency, rollback, worker leases. Needs `.env.staging`. |
-| Playwright — public, security and fixture specs | IMPLEMENTED (pass locally) | No seeded data needed. |
+| Playwright — public, security and fixture specs | IMPLEMENTED (pass locally) | No seeded data needed. Signed-in specs run against an isolated stub (`NEXT_PUBLIC_SUPABASE_URL=http://127.0.0.1:54399`, `NEXT_DIST_DIR=.next/e2e-stub`) and can never reach a real project. |
 | Playwright — complete seeded suite incl. real multi-tab checkout (`npm run test:e2e:staging`) | BLOCKED · NOT FULLY VERIFIED | Needs the staging project, seeded with `npm run staging:seed`. |
 | Controlled staging order (docs/E2E_STAGING.md §5) | BLOCKED | Needs staging. |
 

@@ -29,6 +29,14 @@ const SIZE_TOLERANCE_RATIO = 0.98;
 
 export type VariantKind = "editor" | "thumbnail";
 
+/**
+ * The longest side each variant is generated at. The studio library uses the
+ * defaults; the customer photo pipeline generates smaller variants and must be
+ * judged against ITS bounds, not the studio's.
+ */
+export type VariantBounds = { editor: number; thumbnail: number };
+export const STUDIO_VARIANT_BOUNDS: VariantBounds = { editor: ASSET_EDITOR_MAX_PX, thumbnail: ASSET_THUMB_MAX_PX };
+
 export type AssetVariants = {
   editorBuffer: Buffer;
   thumbnailBuffer: Buffer;
@@ -103,12 +111,12 @@ export async function assertVariantsDecodable(editorBuffer: Buffer, thumbnailBuf
  * upload's variants are measured against what this source should produce
  * before anything is stored; a wrong size refuses the upload.
  */
-export async function assertVariantsSized(editorBuffer: Buffer, thumbnailBuffer: Buffer, sourceWidth: number, sourceHeight: number) {
-  const editor = await inspectVariantBuffer(editorBuffer, "editor", sourceWidth, sourceHeight);
+export async function assertVariantsSized(editorBuffer: Buffer, thumbnailBuffer: Buffer, sourceWidth: number, sourceHeight: number, bounds: VariantBounds = STUDIO_VARIANT_BOUNDS) {
+  const editor = await inspectVariantBuffer(editorBuffer, "editor", sourceWidth, sourceHeight, bounds.editor);
   if (!editor.ok) {
     throw new Error(`The optimized editor image is ${editor.width}x${editor.height}; this ${sourceWidth}x${sourceHeight} image needs about ${editor.expectedWidth}x${editor.expectedHeight}.`);
   }
-  const thumbnail = await inspectVariantBuffer(thumbnailBuffer, "thumbnail", sourceWidth, sourceHeight);
+  const thumbnail = await inspectVariantBuffer(thumbnailBuffer, "thumbnail", sourceWidth, sourceHeight, bounds.thumbnail);
   if (!thumbnail.ok) throw new Error("The generated thumbnail has the wrong size.");
 }
 
@@ -221,6 +229,7 @@ export async function inspectVariantBuffer(
   variant: VariantKind,
   sourceWidth: number,
   sourceHeight: number,
+  maxPx: number = variantMaxPx(variant),
 ): Promise<VariantInspection> {
   const decoded = await decodeImage(buffer);
   if (!decoded) return { ok: false, reason: "undecodable" };
@@ -230,7 +239,7 @@ export async function inspectVariantBuffer(
     return { ok: true, reason: "ok", width: decoded.width, height: decoded.height, format: decoded.format };
   }
 
-  const expected = expectedVariantSize(sourceWidth, sourceHeight, variantMaxPx(variant));
+  const expected = expectedVariantSize(sourceWidth, sourceHeight, maxPx);
   const longestActual = Math.max(decoded.width, decoded.height);
   const longestExpected = Math.max(expected.width, expected.height);
   // Only undersized variants are rejected: a larger-than-expected file still
@@ -257,11 +266,13 @@ export type StoredVariantOptions = {
   sourceHeight?: number;
   /** SVG editor variants are vector and exempt from raster size checks. */
   vector?: boolean;
+  /** Longest side the variant was generated at (defaults to the studio bound). */
+  maxPx?: number;
 };
 
 /** Download a stored variant and judge whether it is fit for its purpose. */
 export async function inspectStoredVariant(options: StoredVariantOptions): Promise<VariantInspection> {
-  const { supabase, bucket, storagePath, variant, sourceWidth = 0, sourceHeight = 0, vector = false } = options;
+  const { supabase, bucket, storagePath, variant, sourceWidth = 0, sourceHeight = 0, vector = false, maxPx } = options;
   if (!storagePath) return { ok: false, reason: "missing" };
 
   let buffer: Buffer;
@@ -277,7 +288,7 @@ export async function inspectStoredVariant(options: StoredVariantOptions): Promi
   if (vector || storagePath.endsWith(".svg")) {
     return buffer.byteLength > 0 ? { ok: true, reason: "ok" } : { ok: false, reason: "undecodable" };
   }
-  return inspectVariantBuffer(buffer, variant, sourceWidth, sourceHeight);
+  return inspectVariantBuffer(buffer, variant, sourceWidth, sourceHeight, maxPx ?? variantMaxPx(variant));
 }
 
 /** Back-compatible boolean wrapper. */

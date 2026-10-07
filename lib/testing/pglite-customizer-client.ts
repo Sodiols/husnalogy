@@ -16,7 +16,7 @@
 
 import type { TestDatabase } from "@/lib/testing/pglite-supabase";
 
-const TABLES = new Set(["product_customizer_templates", "customizer_template_versions", "customizer_assets"]);
+const TABLES = new Set(["product_customizer_templates", "customizer_template_versions", "customizer_assets", "product_customizations"]);
 const JSON_COLUMNS = new Set(["pages", "fields", "layers", "safe_area", "bleed", "assets", "settings", "document", "font_dependencies", "metadata"]);
 
 // PostgREST returns timestamps as ISO strings with microseconds; PGlite would

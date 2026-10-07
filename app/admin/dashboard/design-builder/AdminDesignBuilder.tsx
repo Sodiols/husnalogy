@@ -52,12 +52,14 @@ import { anchorGrownTextBox, normalizeTextGrowthDirection } from "@/lib/customiz
 import { buildCustomerContextMenu, type ContextMenuActionId } from "@/lib/customizer/v2/context-menu";
 import {
   clearStudioRecovery,
+  purgeLegacyStudioRecovery,
   readStudioRecovery,
   studioRecoveryDiffers,
   studioRecoveryKey,
   writeStudioRecovery,
   type StudioRecoverySnapshot,
 } from "@/lib/customizer/studio-recovery";
+import { useStudioActorId } from "./studio-actor";
 import CustomerCanvasContextMenu from "@/app/components/customizer/CustomerCanvasContextMenu";
 import {
   DEFAULT_LINE_HEIGHT,
@@ -1338,8 +1340,14 @@ export default function AdminDesignBuilder({
   // the server automatically once editing pauses. A new product is never
   // created by autosave — it is created by Save Draft or Publish.
   const productId = product?.id ? String(product.id) : "";
-  const recoveryKeyRef = useRef(studioRecoveryKey(productId));
-  if (productId) recoveryKeyRef.current = studioRecoveryKey(productId);
+  // Recovery copies belong to the signed-in studio account: another admin or
+  // designer on this browser never receives them (lib/customizer/studio-recovery).
+  const studioActorId = useStudioActorId();
+  const recoveryKeyRef = useRef(studioRecoveryKey(studioActorId, productId));
+  if (productId || !recoveryKeyRef.current) recoveryKeyRef.current = studioRecoveryKey(studioActorId, productId);
+  useEffect(() => {
+    purgeLegacyStudioRecovery(studioStorage());
+  }, []);
   const [recoveryOffer, setRecoveryOffer] = useState<StudioRecoverySnapshot | null>(null);
   const recoveryOfferRef = useRef<StudioRecoverySnapshot | null>(null);
   recoveryOfferRef.current = recoveryOffer;
@@ -1357,7 +1365,7 @@ export default function AdminDesignBuilder({
       clearStudioRecovery(studioStorage(), recoveryKeyRef.current);
       return;
     }
-    writeStudioRecovery(studioStorage(), recoveryKeyRef.current, { productId, productName: String(productName || ""), template: tRef.current });
+    writeStudioRecovery(studioStorage(), recoveryKeyRef.current, studioActorId, { productId, productName: String(productName || ""), template: tRef.current });
   };
   const persistRecoveryRef = useRef(persistRecoveryNow);
   persistRecoveryRef.current = persistRecoveryNow;
@@ -1397,10 +1405,10 @@ export default function AdminDesignBuilder({
   // Opening the studio: offer back anything a previous session left unsaved.
   useEffect(() => {
     if (!studioOpen) return;
-    const snapshot = readStudioRecovery(studioStorage(), recoveryKeyRef.current);
+    const snapshot = readStudioRecovery(studioStorage(), recoveryKeyRef.current, studioActorId);
     if (studioRecoveryDiffers(snapshot, tRef.current)) setRecoveryOffer(snapshot);
     else if (snapshot && !revisions.isDirty()) clearStudioRecovery(studioStorage(), recoveryKeyRef.current);
-  }, [studioOpen, revisions]);
+  }, [studioOpen, revisions, studioActorId]);
   const restoreRecovery = () => {
     const snapshot = recoveryOfferRef.current;
     if (!snapshot) return;
@@ -1539,7 +1547,7 @@ export default function AdminDesignBuilder({
       // only one. An edit made while the request was in flight is still
       // unsaved, so it is written again under the product's real id.
       clearStudioRecovery(studioStorage(), keyBefore);
-      recoveryKeyRef.current = studioRecoveryKey(result.productId);
+      recoveryKeyRef.current = studioRecoveryKey(studioActorId, result.productId);
       if (revisions.isDirty()) persistRecoveryNow();
       else clearStudioRecovery(studioStorage(), recoveryKeyRef.current);
     }

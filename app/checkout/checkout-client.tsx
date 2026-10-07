@@ -2,16 +2,16 @@
 
 import Link from "next/link";
 import { formatCurrency } from "@/lib/currency";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import useAuth from "../lib/useAuth";
 import {
   refreshCart,
   getCartTotals,
-  saveCustomerAddress,
   openCustomerLogin,
-  saveLocalOrder,
   subscribeToUserCart,
+  updateCartQuantity,
 } from "../lib/customer-lists";
+import { createAddress, useSavedAddresses, type SavedAddress } from "../lib/account-data";
 import ServerCustomizationImage from "@/app/components/customizer/ServerCustomizationImage";
 import { ORDER_POLICY } from "@/lib/launch-config";
 import { CURRENT_TERMS_VERSION } from "@/lib/orders/checkout-policy";
@@ -45,6 +45,19 @@ function attemptStore(): Storage | null {
   }
 }
 
+const normalized = (value: unknown) => String(value || "").trim().toLowerCase().replace(/\s+/g, " ");
+
+/** Whether the account already holds this delivery address (so checkout does not save it twice). */
+function sameSavedAddress(addresses: SavedAddress[], fullName: string, customer: { customerPhone: string; addressLine1: string; city: string }) {
+  return addresses.some(
+    (address) =>
+      normalized(address.addressLine1) === normalized(customer.addressLine1) &&
+      normalized(address.city) === normalized(customer.city) &&
+      normalized(address.phone) === normalized(customer.customerPhone) &&
+      normalized(address.fullName) === normalized(fullName),
+  );
+}
+
 // Server field names that map onto a differently named form input.
 const FIELD_ALIASES: Record<string, string> = { customerName: "firstName" };
 
@@ -61,6 +74,8 @@ export default function CheckoutClient({ initialUser = undefined }: any) {
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [placedOrder, setPlacedOrder] = useState<{ id: string } | null>(null);
   const [quote, setQuote] = useState<any>(null);
+  // The cart line whose quantity is being saved, so its stepper waits.
+  const [pendingQuantity, setPendingQuantity] = useState<string | null>(null);
   // Synchronous guard: React state updates are async, so a fast double click
   // or Enter + click could otherwise start two submissions before the button
   // re-renders as disabled. The server's idempotency key is the real
@@ -75,6 +90,27 @@ export default function CheckoutClient({ initialUser = undefined }: any) {
 
   const fingerprint = useMemo(() => cartFingerprint(items), [items]);
   const userId = user?.uid || user?.id || "";
+
+  // Saved addresses belong to the signed-in account (server + RLS). The form
+  // starts from this account's default address; another account's form is
+  // never prefilled with it, and a switch clears what was prefilled.
+  const { addresses: savedAddresses } = useSavedAddresses(userId);
+  const prefilledForRef = useRef("");
+  useEffect(() => {
+    if (prefilledForRef.current && prefilledForRef.current !== userId) {
+      setCustomer(initialCustomer);
+      prefilledForRef.current = "";
+    }
+    const preferred = savedAddresses.find((address) => address.isDefault) || savedAddresses[0];
+    if (!userId || !preferred || prefilledForRef.current === userId) return;
+    prefilledForRef.current = userId;
+    const [firstName, ...rest] = preferred.fullName.split(/\s+/);
+    setCustomer((current) =>
+      current.addressLine1 || current.customerPhone
+        ? current
+        : { ...current, firstName: firstName || "", lastName: rest.join(" "), customerPhone: preferred.phone, city: preferred.city, addressLine1: preferred.addressLine1, postalCode: preferred.postalCode },
+    );
+  }, [userId, savedAddresses]);
 
   // A checkout that already succeeded for exactly this cart (refresh after
   // success, a cart cleanup that failed, the back button) shows the
@@ -246,41 +282,16 @@ export default function CheckoutClient({ initialUser = undefined }: any) {
     setPlacedOrder({ id: orderId });
     setStatus({ loading: false, error: "", success: `Order request placed. Order ID: ${orderId || "created"}` });
 
-    try {
-      if (data?.order) {
-        saveLocalOrder({
-          id: orderId,
-          customerId: userId,
-          customerName: data.order.customerName,
-          customerEmail: data.order.customerEmail,
-          productTitle: data.order.productTitle,
-          items: data.order.items,
-          subtotal: data.order.subtotal,
-          deliveryCharge: data.order.deliveryCharge,
-          total: data.order.total,
-          currency: data.order.currency,
-          paymentStatus: data.order.paymentStatus,
-          paymentMethod: data.order.paymentMethod || ORDER_POLICY.paymentMethod,
-          deliveryMethod: data.order.deliveryMethod,
-          deliveryChargeConfirmed: Boolean(data.order.deliveryChargeConfirmed),
-          status: data.order.status,
-          createdAt: data.order.createdAt,
-          updatedAt: data.order.updatedAt,
-        });
-      }
-      if (deliveryMethod === "delivery" && saveAddress) {
-        saveCustomerAddress({
-          customerName,
-          customerPhone: customer.customerPhone,
-          addressLine1: customer.addressLine1,
-          addressLine2: "",
-          city: customer.city,
-          area: "",
-          postalCode: customer.postalCode,
-        });
-      }
-    } catch (error) {
-      console.warn("Could not save the order locally:", error);
+    // The order itself lives on the server (the orders page reads it there).
+    // The address is saved to THIS account's address book, once.
+    if (deliveryMethod === "delivery" && saveAddress && !sameSavedAddress(savedAddresses, customerName, customer)) {
+      void createAddress({
+        fullName: customerName,
+        phone: customer.customerPhone,
+        addressLine1: customer.addressLine1,
+        city: customer.city,
+        postalCode: customer.postalCode,
+      }).catch((error) => console.warn("Could not save the address to the account:", error));
     }
 
     // The server consumed exactly the ordered cart lines inside the order
@@ -298,126 +309,146 @@ export default function CheckoutClient({ initialUser = undefined }: any) {
 
   const money = (value, currency = totals.currency) => formatCurrency(value, currency);
   const itemCount = items.reduce((sum, item) => sum + Number(item.quantity || 1), 0);
+  const locked = status.loading || Boolean(placedOrder);
+  // Only a store pickup total is final; delivery adds a charge confirmed later.
+  const totalIsFinal = deliveryMethod === "store";
+
+  const changeQuantity = async (item, nextQuantity) => {
+    if (!user || nextQuantity < 1 || pendingQuantity || locked) return;
+    setPendingQuantity(String(item.id));
+    try {
+      await updateCartQuantity(user, item.id, nextQuantity);
+    } catch {
+      setStatus({ loading: false, error: "Could not update the quantity. Please try again.", success: "" });
+    } finally {
+      setPendingQuantity(null);
+    }
+  };
 
   return (
     <main className="checkout-scope bg-white text-ink">
-      <div className="page-container pb-16 pt-8 sm:pt-10 lg:pb-20 lg:pt-12">
-        <div className="mb-7 flex items-center gap-3 sm:mb-8 lg:mb-9">
+      <div className="page-container pb-16 pt-6 sm:pt-8 lg:pb-20 lg:pt-10">
+        <nav aria-label="Breadcrumb" className="mb-6 flex items-center gap-2 lg:mb-8">
           <Link
             href="/cart"
             aria-label="Back to cart"
-            className="grid h-11 w-11 place-items-center rounded-full border border-field bg-white text-ink transition-colors hover:border-ink/50"
+            data-shape="round"
+            className="-ml-2 grid h-10 w-10 place-items-center rounded-full text-ink transition-colors hover:bg-cream"
           >
-            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
               <path d="m15 18-6-6 6-6" />
             </svg>
           </Link>
-          <h1 className="heading-page">Checkout</h1>
-        </div>
+          <ol className="flex items-center gap-1.5 text-[14px] font-semibold text-ink">
+            <li>
+              <Link href="/" className="underline-offset-4 hover:underline">Home</Link>
+            </li>
+            <li aria-hidden="true" className="text-muted">/</li>
+            <li>
+              <Link href="/cart" className="underline-offset-4 hover:underline">Cart</Link>
+            </li>
+            <li aria-hidden="true" className="text-muted">/</li>
+            <li aria-current="page" className="text-muted">Checkout</li>
+          </ol>
+        </nav>
 
-        <form onSubmit={handleSubmit} className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_380px] lg:items-start lg:gap-12">
-          {/* Details */}
-          <div className="space-y-8 lg:space-y-9">
+        <form onSubmit={handleSubmit} className="grid gap-10 lg:grid-cols-[minmax(0,1fr)_minmax(0,480px)] lg:items-start lg:gap-0">
+          {/* Details: contact, delivery and payment on one page. */}
+          <div className="space-y-10 lg:border-r lg:border-line lg:pr-12 xl:pr-16">
+            <header>
+              <h1 className="heading-section">Check out your items</h1>
+              <p className="mt-2 text-[15px] leading-relaxed text-muted">
+                Check your details and choose how you&rsquo;d like to receive your order before placing it.
+              </p>
+            </header>
+
             {!authLoading && !user && (
               <div className="flex flex-col gap-3 rounded-[10px] bg-cream p-5 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <p className="text-[15px] font-semibold text-ink">Sign in before checkout</p>
                   <p className="mt-1 text-[14px] leading-6 text-muted">Your order can only be saved to your account when you are signed in.</p>
                 </div>
-                <button
-                  type="button"
-                  onClick={openCustomerLogin}
-                  className="checkout-primary-button btn btn-primary shrink-0"
-                >
+                <button type="button" onClick={openCustomerLogin} className="checkout-primary-button btn btn-primary shrink-0">
                   Sign in
                 </button>
               </div>
             )}
 
-            {/* 1. Contact Information */}
-            <Section n="1" title="Contact Information">
-              <div className="grid gap-x-5 gap-y-4 sm:grid-cols-2">
-                <Field label="First name" value={customer.firstName} onChange={(v) => updateCustomer("firstName", v)} error={fieldErrors.firstName} maxLength={60} autoComplete="given-name" required />
-                <Field label="Last name" value={customer.lastName} onChange={(v) => updateCustomer("lastName", v)} maxLength={60} autoComplete="family-name" required />
-                <Field label="Phone" type="tel" value={customer.customerPhone} onChange={(v) => updateCustomer("customerPhone", v)} placeholder="01XXXXXXXXX" error={fieldErrors.customerPhone} maxLength={20} autoComplete="tel" inputMode="tel" required />
-                <label className="block">
-                  <span className="field-label">Account email</span>
-                  <span className="flex min-h-12 w-full cursor-not-allowed items-center rounded-[6px] border border-line bg-cream px-4 text-[15px] text-muted">
-                    {user?.email || "—"}
+            <section aria-labelledby="checkout-contact" className="space-y-4">
+              <SectionHeading id="checkout-contact" title="Contact details" hint="We use these to confirm your order." />
+              <div className="grid gap-4 sm:grid-cols-2">
+                <Field label="First name" icon={<UserIcon />} value={customer.firstName} onChange={(v) => updateCustomer("firstName", v)} error={fieldErrors.firstName} maxLength={60} autoComplete="given-name" required />
+                <Field label="Last name" icon={<UserIcon />} value={customer.lastName} onChange={(v) => updateCustomer("lastName", v)} maxLength={60} autoComplete="family-name" required />
+                <Field label="Phone" icon={<PhoneIcon />} type="tel" value={customer.customerPhone} onChange={(v) => updateCustomer("customerPhone", v)} placeholder="01XXXXXXXXX" error={fieldErrors.customerPhone} maxLength={20} autoComplete="tel" inputMode="tel" required />
+                <div className="flex gap-3 rounded-[10px] border border-line bg-cream px-4 py-3" title="Orders are placed with your signed-in account email.">
+                  <span className="mt-0.5 shrink-0 text-muted"><MailIcon /></span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-[13px] leading-5 text-muted">Account email</span>
+                    <span className="mt-0.5 block truncate text-[15px] leading-6 text-ink">{user?.email || "—"}</span>
                   </span>
-                  <span className="field-hint block">Orders are placed with your signed-in account email and can&apos;t be changed here.</span>
-                </label>
+                </div>
               </div>
-            </Section>
+            </section>
 
-            {/* 2. Delivery method */}
-            <Section n="2" title="Delivery method">
-              <div className="grid max-w-[380px] grid-cols-2 gap-3">
-                <ChoiceTile
-                  selected={deliveryMethod === "store"}
-                  onClick={() => setDeliveryMethod("store")}
-                  label="Store"
-                  icon={
-                    <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M4 9 5 4h14l1 5" /><path d="M4 9a2.5 2.5 0 0 0 5 0 2.5 2.5 0 0 0 5 0 2.5 2.5 0 0 0 5 0" /><path d="M5 12v8h14v-8" /></svg>
-                  }
-                />
-                <ChoiceTile
+            <section aria-labelledby="checkout-delivery" className="space-y-4">
+              <SectionHeading id="checkout-delivery" title="Delivery method" hint="Have it delivered, or collect it from the store." />
+              <div className="grid gap-3 sm:grid-cols-2">
+                <OptionRow
                   selected={deliveryMethod === "delivery"}
-                  onClick={() => setDeliveryMethod("delivery")}
+                  onSelect={() => setDeliveryMethod("delivery")}
                   label="Delivery"
-                  icon={
-                    <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M3 7h11v9H3z" /><path d="M14 10h4l3 3v3h-7z" /><circle cx="7" cy="18" r="1.7" /><circle cx="17.5" cy="18" r="1.7" /></svg>
-                  }
+                  description="Delivered to your address"
+                  icon={<TruckIcon />}
+                />
+                <OptionRow
+                  selected={deliveryMethod === "store"}
+                  onSelect={() => setDeliveryMethod("store")}
+                  label="Store pickup"
+                  description="No delivery charge"
+                  icon={<StoreIcon />}
                 />
               </div>
 
               {deliveryMethod === "delivery" ? (
-                <>
-                  <p className="mt-4 rounded-[10px] bg-cream px-4 py-3 text-[14px] leading-6 text-muted">{ORDER_POLICY.deliveryCharge}</p>
-                  <div className="mt-4 grid gap-x-4 gap-y-4 sm:grid-cols-3">
-                    <Field label="City" value={customer.city} onChange={(v) => updateCustomer("city", v)} error={fieldErrors.city} maxLength={80} autoComplete="address-level2" required />
-                    <Field label="Address" value={customer.addressLine1} onChange={(v) => updateCustomer("addressLine1", v)} error={fieldErrors.addressLine1} maxLength={300} autoComplete="street-address" required />
-                    <Field label="Zip code" value={customer.postalCode} onChange={(v) => updateCustomer("postalCode", v)} error={fieldErrors.postalCode} maxLength={4} autoComplete="postal-code" inputMode="numeric" />
+                <div className="space-y-4">
+                  <Field label="Address" icon={<MapIcon />} value={customer.addressLine1} onChange={(v) => updateCustomer("addressLine1", v)} error={fieldErrors.addressLine1} maxLength={300} autoComplete="street-address" placeholder="House, road and area" multiline required />
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <Field label="City" icon={<CityIcon />} value={customer.city} onChange={(v) => updateCustomer("city", v)} error={fieldErrors.city} maxLength={80} autoComplete="address-level2" required />
+                    <Field label="Zip code" icon={<PinIcon />} value={customer.postalCode} onChange={(v) => updateCustomer("postalCode", v)} error={fieldErrors.postalCode} maxLength={4} autoComplete="postal-code" inputMode="numeric" />
                   </div>
-                  <label className="mt-4 block">
-                    <span className="field-label">
-                      Delivery note <span className="field-optional">(optional)</span>
+                  <Field label="Delivery note" icon={<NoteIcon />} value={customer.deliveryNote} onChange={(v) => updateCustomer("deliveryNote", v)} error={fieldErrors.deliveryNote} maxLength={500} placeholder="Preferred time or special delivery instructions" multiline rows={2} />
+                  <label className="flex cursor-pointer items-start gap-3 py-1">
+                    <input type="checkbox" checked={saveAddress} onChange={(event) => setSaveAddress(event.target.checked)} className="checkout-checkbox mt-0.5 h-5 w-5 shrink-0 accent-[#303839]" />
+                    <span className="flex min-w-0 flex-col">
+                      <span className="text-[14px] font-semibold text-ink">Save this address</span>
+                      <span className="text-[13px] leading-5 text-muted">Keep it on this device for faster checkout.</span>
                     </span>
-                    <textarea value={customer.deliveryNote} maxLength={500} onChange={(event) => updateCustomer("deliveryNote", event.target.value)} placeholder="Preferred time or special delivery instructions" aria-invalid={fieldErrors.deliveryNote ? true : undefined} className="checkout-field field min-h-24" />
-                    {fieldErrors.deliveryNote && <span className="field-error">{fieldErrors.deliveryNote}</span>}
                   </label>
-                  <label className="mt-4 flex cursor-pointer items-center gap-3 py-2 text-[14px] text-ink">
-                    <input type="checkbox" checked={saveAddress} onChange={(event) => setSaveAddress(event.target.checked)} className="checkout-checkbox h-5 w-5 shrink-0 accent-[#303839]" />
-                    <span className="flex min-w-0 flex-col"><span className="text-[14px] font-semibold text-ink">Save this address</span><span className="text-[13px] leading-5 text-muted">Keep it on this device for faster checkout.</span></span>
-                  </label>
-                </>
-              ) : (
-                <p className="mt-4 rounded-[10px] bg-cream px-4 py-3 text-[14px] leading-6 text-muted">No delivery address or delivery charge is required for store pickup. Husnalogy will confirm when your order is ready to collect.</p>
-              )}
-            </Section>
-
-            {/* 3. Payment method */}
-            <Section n="3" title="Payment method">
-              <div className="max-w-[380px]">
-                <div className="flex items-center gap-3 rounded-[10px] border border-ink/60 bg-white px-4 py-4">
-                  <span className="grid h-9 w-9 place-items-center rounded-full bg-[#303839] text-white">
-                    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="7" width="18" height="10" rx="2" /><circle cx="12" cy="12" r="2.2" /><path d="M6 12h.01M18 12h.01" /></svg>
-                  </span>
-                  <div className="flex-1">
-                    <p className="text-[15px] font-semibold text-ink">{ORDER_POLICY.paymentMethod}</p>
-                    <p className="text-[13px] leading-5 text-muted">Pay when a delivery order arrives or when collecting a store pickup order.</p>
-                  </div>
-                  <span className="grid h-5 w-5 place-items-center rounded-full bg-[#303839] text-white">
-                    <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="m5 12 5 5 9-11" /></svg>
-                  </span>
+                  <p className="rounded-[10px] bg-cream px-4 py-3 text-[14px] leading-6 text-muted">{ORDER_POLICY.deliveryCharge}</p>
                 </div>
+              ) : (
+                <p className="rounded-[10px] bg-cream px-4 py-3 text-[14px] leading-6 text-muted">
+                  No delivery address or delivery charge is required for store pickup. Husnalogy will confirm when your order is ready to collect.
+                </p>
+              )}
+            </section>
+
+            <section aria-labelledby="checkout-payment" className="space-y-4">
+              <SectionHeading id="checkout-payment" title="Payment method" hint="Pay when a delivery order arrives or when you collect a store pickup order." />
+              <div className="flex items-center gap-3 rounded-[10px] border border-ink bg-white px-4 py-4 shadow-[0_0_0_1px_var(--color-ink)]">
+                <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-cream text-ink"><CashIcon /></span>
+                <span className="min-w-0 flex-1">
+                  <span className="block text-[15px] font-semibold text-ink">{ORDER_POLICY.paymentMethod}</span>
+                  <span className="block text-[13px] leading-5 text-muted">The only payment method available right now.</span>
+                </span>
+                <RadioDot selected />
               </div>
-            </Section>
+            </section>
           </div>
 
           {/* Order summary */}
-          <aside className="lg:sticky lg:top-[140px]" aria-label="Order summary">
-            <div className="rounded-[10px] border border-line bg-white p-5 sm:p-6">
+          <aside className="lg:sticky lg:top-[140px] lg:pl-12 xl:pl-16" aria-label="Order summary">
+            <div className="rounded-[10px] border border-line bg-cream p-5 sm:p-6">
               {placedOrder && (
                 <div role="status" className="notice notice-success mb-5">
                   <p className="font-bold">Order placed</p>
@@ -425,64 +456,93 @@ export default function CheckoutClient({ initialUser = undefined }: any) {
                   <Link href="/orders" className="mt-2 inline-block font-semibold underline underline-offset-2">View your orders</Link>
                 </div>
               )}
-              <div className="flex items-center justify-between">
-                <h2 className="font-display text-[1.75rem] font-medium leading-none text-ink">Your order</h2>
-                {itemCount > 0 && (
-                  <span className="badge">
-                    {itemCount} {itemCount === 1 ? "item" : "items"}
-                  </span>
-                )}
-              </div>
 
-              <div className="mt-4 max-h-[300px] space-y-4 overflow-y-auto">
+              <h2 className="font-display text-[1.75rem] font-medium leading-none text-ink">Your order</h2>
+              <p className="mt-2 text-[14px] text-muted">Review your items before placing the order.</p>
+
+              <ul className="mt-5 max-h-[360px] space-y-3 overflow-y-auto overscroll-contain">
                 {items.map((item) => {
                   const options = item.selectedOptions || {};
                   const trusted = quoteLines.get(String(item.id || ""));
-                  const meta = [options.size ? `Size: ${options.size}` : "", options.color ? `Color: ${options.color}` : ""].filter(Boolean).join("   ");
+                  const quantity = Number(item.quantity || 1);
+                  const meta = [options.size ? `Size: ${options.size}` : "", options.color ? `Color: ${options.color}` : ""].filter(Boolean).join(" · ");
+                  const busy = pendingQuantity === String(item.id);
                   return (
-                    <div key={item.id} className="flex items-center gap-3">
-                      <ServerCustomizationImage customizationId={item.customizationId} outputPageId={item.mockupOutputRef?.pageId} fallbackSrc={item.image} alt={item.title} containerClassName="relative h-16 w-16 shrink-0 overflow-hidden rounded-[6px] bg-cream" />
-                      <div className="min-w-0 flex-1">
-                        <p className="line-clamp-2 text-[14px] font-semibold leading-snug text-ink">{item.title}</p>
+                    <li key={item.id} className="flex gap-3 rounded-[10px] border border-line bg-white p-3">
+                      <ServerCustomizationImage customizationId={item.customizationId} outputPageId={item.mockupOutputRef?.pageId} fallbackSrc={item.image} alt={item.title} containerClassName="relative h-[84px] w-[84px] shrink-0 overflow-hidden rounded-[6px] bg-cream" />
+                      <div className="flex min-w-0 flex-1 flex-col">
+                        <div className="flex items-start justify-between gap-3">
+                          <p className="line-clamp-2 text-[14px] font-semibold leading-snug text-ink">{item.title}</p>
+                          <p className="price shrink-0 text-[14px]">
+                            {trusted?.ok
+                              ? money(trusted.lineTotal, trusted.currency)
+                              : money(Number(item.price || 0) * quantity, item.currency)}
+                          </p>
+                        </div>
                         {meta && <p className="mt-0.5 text-[13px] text-muted">{meta}</p>}
-                        <p className="mt-0.5 text-[13px] text-muted">Qty {item.quantity || 1}</p>
                         {trusted && !trusted.ok && <p className="mt-0.5 text-[13px] font-medium text-error">{trusted.error}</p>}
+                        <div className="mt-auto flex items-center justify-between gap-3 pt-2">
+                          <span className="text-[13px] text-muted">Quantity</span>
+                          <div className={`flex items-center gap-1 ${busy ? "opacity-60" : ""}`} aria-busy={busy || undefined}>
+                            <StepButton label={`Decrease quantity of ${item.title}`} disabled={!user || locked || busy || quantity <= 1} onClick={() => changeQuantity(item, quantity - 1)}>
+                              <path d="M5 12h14" />
+                            </StepButton>
+                            <span className="min-w-7 text-center text-[14px] font-semibold tabular-nums" aria-live="polite">
+                              <span className="sr-only">Quantity </span>
+                              {quantity}
+                            </span>
+                            <StepButton label={`Increase quantity of ${item.title}`} disabled={!user || locked || busy} onClick={() => changeQuantity(item, quantity + 1)}>
+                              <path d="M5 12h14" />
+                              <path d="M12 5v14" />
+                            </StepButton>
+                          </div>
+                        </div>
                       </div>
-                      <p className="price shrink-0 text-[14px]">
-                        {trusted?.ok
-                          ? money(trusted.lineTotal, trusted.currency)
-                          : money(Number(item.price || 0) * Number(item.quantity || 1), item.currency)}
-                      </p>
-                    </div>
+                    </li>
                   );
                 })}
                 {!items.length && (
-                  <p className="rounded-[10px] bg-cream px-4 py-6 text-center text-[14px] text-muted">Your cart is empty.</p>
+                  <li className="rounded-[10px] bg-white px-4 py-6 text-center text-[14px] text-muted">Your cart is empty.</li>
                 )}
+              </ul>
+
+              <div className="mt-6 flex items-baseline justify-between gap-4 border-b border-line pb-4">
+                <span className="text-[17px] font-semibold text-ink">Subtotal</span>
+                <span className="price text-[1.25rem]">{money(totals.subtotal)}</span>
               </div>
 
-              <div className="mt-5 space-y-2.5 border-t border-line pt-5 text-[14px]">
-                <div className="flex justify-between gap-4 text-muted">
-                  <span>Subtotal</span>
-                  <span className="price">{money(totals.subtotal)}</span>
-                </div>
-                <div className="flex justify-between gap-4 text-muted">
-                  <span>Delivery charge</span>
-                  <span>{deliveryMethod === "store" ? "No charge" : "Confirmed after review"}</span>
-                </div>
-              </div>
+              <dl className="mt-4 space-y-3 text-[14px]">
+                <SummaryRow label="Items" value={`${itemCount}`} />
+                <SummaryRow label="Delivery" value={deliveryMethod === "store" ? "No charge" : "Confirmed after review"} />
+                <SummaryRow label="Payment" value={ORDER_POLICY.paymentMethod} />
+              </dl>
 
-              <div className="mt-4 flex items-baseline justify-between border-t border-line pt-4">
-                <span className="text-[16px] font-semibold text-ink">{deliveryMethod === "store" ? "Total" : "Order subtotal"}</span>
+              <div className="mt-4 flex items-baseline justify-between gap-4 border-t border-line pt-4">
+                <span className="text-[16px] font-semibold text-ink">{totalIsFinal ? "Total" : "Order subtotal"}</span>
                 <span className="price text-[1.5rem]">{money(totals.total)}</span>
               </div>
-              {deliveryMethod === "delivery" && <p className="mt-2 text-[13px] leading-5 text-muted">The confirmed delivery charge will be added to the amount due on delivery.</p>}
+              {!totalIsFinal && <p className="mt-2 text-[13px] leading-5 text-muted">The confirmed delivery charge will be added to the amount due on delivery.</p>}
               {pricesChanged && !placedOrder && (
-                <p className="notice mt-3 bg-cream text-[13px]">Prices have been updated to our current prices. The total above is what you will pay.</p>
+                <p className="notice mt-3 bg-white text-[13px]">Prices have been updated to our current prices. The total above is what you will pay.</p>
               )}
               {quoteBlocked && !placedOrder && (
                 <p role="alert" className="notice notice-error mt-3 text-[13px]">{quote?.error || "Some items in your cart need attention before you can check out."}</p>
               )}
+
+              <label className="mt-5 flex cursor-pointer items-start gap-3 text-[13px] leading-5 text-muted">
+                <input
+                  type="checkbox"
+                  checked={acceptTerms}
+                  onChange={(event) => setAcceptTerms(event.target.checked)}
+                  required
+                  aria-describedby="checkout-terms-label"
+                  className="checkout-checkbox mt-0.5 h-5 w-5 shrink-0 accent-[#303839]"
+                />
+                <span id="checkout-terms-label">
+                  I have read and accept the{" "}
+                  <Link href="/terms" className="font-semibold text-ink underline underline-offset-2">terms of the user agreement</Link>.
+                </span>
+              </label>
 
               <button
                 type="submit"
@@ -492,24 +552,16 @@ export default function CheckoutClient({ initialUser = undefined }: any) {
               >
                 {status.loading ? "Placing order…" : placedOrder ? "Order placed" : !user ? "Sign in to place order" : "Place order"}
                 {!status.loading && user && !placedOrder && (
-                  <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M5 12h13" /><path d="m12 5 7 7-7 7" /></svg>
+                  totalIsFinal && items.length ? (
+                    <span className="price text-white">
+                      <span aria-hidden="true" className="mr-2 opacity-60">·</span>
+                      {money(totals.total)}
+                    </span>
+                  ) : (
+                    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M5 12h13" /><path d="m12 5 7 7-7 7" /></svg>
+                  )
                 )}
               </button>
-
-              <label className="mt-4 flex cursor-pointer items-start gap-2.5 text-[13px] leading-5 text-muted">
-                <input
-                  type="checkbox"
-                  checked={acceptTerms}
-                  onChange={(event) => setAcceptTerms(event.target.checked)}
-                  required
-                  aria-describedby="checkout-terms-label"
-                  className="mt-0.5 h-5 w-5 shrink-0 accent-[#303839]"
-                />
-                <span id="checkout-terms-label">
-                  I have read and accept the{" "}
-                  <Link href="/terms" className="font-semibold text-[#303839] underline underline-offset-2">terms of the user agreement</Link>.
-                </span>
-              </label>
             </div>
           </aside>
         </form>
@@ -586,58 +638,147 @@ function CheckoutNotification({ status }: any) {
   );
 }
 
-function Section({ n, title, children }: any) {
+function SectionHeading({ id, title, hint }: any) {
   return (
-    <section>
-      <h2 className="mb-4 text-[17px] font-semibold text-ink">
-        <span className="text-muted">{n}.</span> {title}
-      </h2>
-      {children}
-    </section>
+    <div>
+      <h2 id={id} className="font-display text-[1.6rem] font-medium leading-tight text-ink">{title}</h2>
+      {hint && <p className="mt-1 text-[14px] leading-6 text-muted">{hint}</p>}
+    </div>
   );
 }
 
-function ChoiceTile({ selected, onClick, icon, label }: any) {
+/* A selectable row (icon, label, description, radio dot). Its accessible name
+   is the label alone, so "Delivery" stays an exact button name. */
+function OptionRow({ selected, onSelect, label, description, icon }: any) {
+  const descriptionId = useId();
   return (
     <button
       type="button"
-      onClick={onClick}
+      onClick={onSelect}
       aria-pressed={selected}
-      className={`relative flex min-h-[56px] items-center justify-center gap-2.5 border px-4 py-3.5 text-[15px] font-semibold transition-colors ${
-        selected
-          ? "border-ink/60 bg-cream text-ink"
-          : "border-field bg-white text-ink hover:border-ink/50"
+      aria-label={label}
+      aria-describedby={descriptionId}
+      className={`flex min-h-[64px] w-full items-center gap-3 border bg-white px-4 py-3 text-left transition-[border-color,box-shadow] duration-200 ${
+        selected ? "border-ink shadow-[0_0_0_1px_var(--color-ink)]" : "border-field hover:border-ink/50"
       }`}
     >
-      <span className={`grid h-7 w-7 place-items-center rounded-full ${selected ? "bg-ink text-white" : "bg-cream text-ink"}`}>
-        {icon}
+      <span className={`grid h-10 w-10 shrink-0 place-items-center rounded-full transition-colors ${selected ? "bg-ink text-white" : "bg-cream text-ink"}`}>{icon}</span>
+      <span className="min-w-0 flex-1">
+        <span className="block text-[15px] font-semibold text-ink">{label}</span>
+        <span id={descriptionId} className="block text-[13px] leading-5 text-muted">{description}</span>
       </span>
-      {label}
-      {selected && <span className="sr-only">(selected)</span>}
+      <RadioDot selected={selected} />
     </button>
   );
 }
 
-function Field({ label, value, onChange, type = "text", required = false, placeholder = "", className = "", error = "", maxLength = undefined, autoComplete = undefined, inputMode = undefined }: any) {
+function RadioDot({ selected = false }) {
   return (
-    <label className={`block ${className}`}>
-      <span className="field-label">
-        {label} {required ? <span aria-hidden="true">*</span> : <span className="field-optional">(optional)</span>}
-      </span>
-      <input
-        type={type}
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        required={required}
-        placeholder={placeholder}
-        maxLength={maxLength}
-        autoComplete={autoComplete}
-        inputMode={inputMode}
-        aria-invalid={error ? true : undefined}
-        aria-required={required || undefined}
-        className="checkout-field field"
-      />
-      {error && <span className="field-error">{error}</span>}
-    </label>
+    <span aria-hidden="true" className={`grid h-5 w-5 shrink-0 place-items-center rounded-full border-[1.5px] transition-colors ${selected ? "border-ink" : "border-field"}`}>
+      <span className={`h-2.5 w-2.5 rounded-full bg-ink transition-transform duration-200 ${selected ? "scale-100" : "scale-0"}`} />
+    </span>
   );
+}
+
+function StepButton({ label, disabled, onClick, children }: any) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      aria-label={label}
+      data-shape="round"
+      className="grid h-8 w-8 place-items-center rounded-full border border-field bg-white text-ink transition-colors hover:border-ink/50 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-field"
+    >
+      <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+        {children}
+      </svg>
+    </button>
+  );
+}
+
+function SummaryRow({ label, value }: any) {
+  return (
+    <div className="flex justify-between gap-4">
+      <dt className="text-muted">{label}</dt>
+      <dd className="text-right font-semibold text-ink">{value}</dd>
+    </div>
+  );
+}
+
+/* A bordered field with its label and icon inside the box. The label is a real
+   <label> (accessible name starts with the label text); clicking anywhere in
+   the box focuses the input. */
+function Field({ label, icon = null, value, onChange, type = "text", required = false, placeholder = "", error = "", maxLength = undefined, autoComplete = undefined, inputMode = undefined, multiline = false, rows = 3 }: any) {
+  const id = useId();
+  const errorId = `${id}-error`;
+  const inputRef = useRef<any>(null);
+  const inputProps = {
+    id,
+    ref: inputRef,
+    value,
+    onChange: (event) => onChange(event.target.value),
+    required,
+    placeholder,
+    maxLength,
+    autoComplete,
+    "aria-invalid": error ? true : undefined,
+    "aria-required": required || undefined,
+    "aria-describedby": error ? errorId : undefined,
+    className: "input-bare mt-0.5 block w-full resize-none border-0 bg-transparent p-0 text-[15px] leading-6 text-ink outline-none placeholder:text-[#747b7c]",
+  };
+
+  return (
+    <div>
+      <div
+        onClick={() => inputRef.current?.focus()}
+        className={`flex cursor-text gap-3 rounded-[10px] border bg-white px-4 py-3 transition-[border-color,box-shadow] duration-200 focus-within:border-ink focus-within:shadow-[0_0_0_1px_var(--color-ink)] ${
+          error ? "border-error" : "border-field hover:border-[#aaa4a4]"
+        }`}
+      >
+        {icon && <span className="mt-0.5 shrink-0 text-muted">{icon}</span>}
+        <span className="min-w-0 flex-1">
+          <label htmlFor={id} className="block cursor-text text-[13px] leading-5 text-muted">
+            {label}
+            {required ? <span aria-hidden="true"> *</span> : <span> (optional)</span>}
+          </label>
+          {multiline ? <textarea rows={rows} {...inputProps} /> : <input type={type} inputMode={inputMode} {...inputProps} />}
+        </span>
+      </div>
+      {error && <p id={errorId} className="field-error">{error}</p>}
+    </div>
+  );
+}
+
+const iconProps = { viewBox: "0 0 24 24", width: 18, height: 18, fill: "none", stroke: "currentColor", strokeWidth: 1.7, strokeLinecap: "round", strokeLinejoin: "round", "aria-hidden": true } as const;
+
+function UserIcon() {
+  return <svg {...iconProps}><circle cx="12" cy="8" r="4" /><path d="M4 21a8 8 0 0 1 16 0" /></svg>;
+}
+function PhoneIcon() {
+  return <svg {...iconProps}><rect x="6" y="2.5" width="12" height="19" rx="2.5" /><path d="M11 18h2" /></svg>;
+}
+function MailIcon() {
+  return <svg {...iconProps}><rect x="3" y="5" width="18" height="14" rx="2" /><path d="m4 7 8 6 8-6" /></svg>;
+}
+function MapIcon() {
+  return <svg {...iconProps}><path d="m3 6 6-2 6 2 6-2v14l-6 2-6-2-6 2Z" /><path d="M9 4v14M15 6v14" /></svg>;
+}
+function CityIcon() {
+  return <svg {...iconProps}><path d="M4 21V8l6-3v16" /><path d="M10 21V10l10 3v8" /><path d="M3 21h18" /></svg>;
+}
+function PinIcon() {
+  return <svg {...iconProps}><path d="M12 21s7-6.1 7-11.5a7 7 0 0 0-14 0C5 14.9 12 21 12 21Z" /><circle cx="12" cy="9.5" r="2.5" /></svg>;
+}
+function NoteIcon() {
+  return <svg {...iconProps}><path d="M5 4h14v16H5z" /><path d="M9 9h6M9 13h6M9 17h3" /></svg>;
+}
+function TruckIcon() {
+  return <svg {...iconProps}><path d="M3 7h11v9H3z" /><path d="M14 10h4l3 3v3h-7z" /><circle cx="7" cy="18" r="1.7" /><circle cx="17.5" cy="18" r="1.7" /></svg>;
+}
+function StoreIcon() {
+  return <svg {...iconProps}><path d="M4 9 5 4h14l1 5" /><path d="M4 9a2.5 2.5 0 0 0 5 0 2.5 2.5 0 0 0 5 0 2.5 2.5 0 0 0 5 0" /><path d="M5 12v8h14v-8" /></svg>;
+}
+function CashIcon() {
+  return <svg {...iconProps}><rect x="3" y="7" width="18" height="10" rx="2" /><circle cx="12" cy="12" r="2.2" /><path d="M6 12h.01M18 12h.01" /></svg>;
 }

@@ -1,15 +1,22 @@
 import { withAdminMutation } from "@/lib/security/admin-mutation";
 import { requireDesignerOrAdmin } from "@/lib/auth/roles";
-import path from "node:path";
 import { canUseSupabaseStorage, uploadToSupabaseStorage } from "@/lib/storage/supabase-storage";
 import { readFormData } from "@/lib/http/read-body";
+import {
+  ADMIN_IMAGE_MAX_BYTES,
+  ADMIN_MEDIA_MAX_REQUEST_BYTES,
+  ADMIN_VIDEO_MAX_BYTES,
+  MediaRejected,
+  formatMegabytes,
+  normalizeAdminImage,
+  validateAdminVideo,
+} from "@/lib/uploads/admin-media";
+import { logEvent, requestIdFrom } from "@/lib/observability/logger";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const MAX_FILES = 20;
-const MAX_IMAGE_SIZE = 15 * 1024 * 1024;
-const MAX_VIDEO_SIZE = 120 * 1024 * 1024;
 
 const FOLDERS = {
   images: "product-images",
@@ -31,99 +38,42 @@ const FOLDERS = {
   hero: "hero-collection",
 };
 
-const IMAGE_MIME_TYPES = new Set([
-  "image/jpeg",
-  "image/jpg",
-  "image/png",
-  "image/webp",
-  "image/gif",
-  "image/avif",
-]);
-
-const IMAGE_EXTENSIONS = new Set([".jpg", ".jpeg", ".png", ".webp", ".gif", ".avif"]);
-
-const VIDEO_MIME_TYPES = new Set([
-  "video/mp4",
-  "video/webm",
-  "video/quicktime",
-  "video/mov",
-  "video/x-msvideo",
-]);
-
-const VIDEO_EXTENSIONS = new Set([".mp4", ".webm", ".mov", ".avi"]);
-
 function normalizeFolder(value) {
   return FOLDERS[String(value || "").trim()] || "";
 }
 
-function safeFileName(name) {
-  const originalName = String(name || "file");
-  const ext = path.extname(originalName).toLowerCase();
-  const base = path
-    .basename(originalName, ext)
+/** A readable, safe base name from the uploader's file name; the EXTENSION always comes from the verified content. */
+function safeBaseName(name: string) {
+  const base = String(name || "file")
+    .replace(/\.[^.]*$/, "")
     .replace(/[^a-z0-9]+/gi, "-")
     .replace(/^-+|-+$/g, "")
-    .toLowerCase();
-
-  return `${base || "file"}${ext}`;
+    .toLowerCase()
+    .slice(0, 60);
+  return base || "file";
 }
 
-function startsWith(bytes, signature) {
-  if (!bytes || bytes.length < signature.length) return false;
-  return signature.every((byte, index) => bytes[index] === byte);
-}
-
-function ascii(bytes, start, end) {
-  return bytes.subarray(start, end).toString("ascii");
-}
-
-function hasValidImageSignature(ext, bytes) {
-  if (ext === ".jpg" || ext === ".jpeg") return startsWith(bytes, [0xff, 0xd8, 0xff]);
-  if (ext === ".png") return startsWith(bytes, [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
-  if (ext === ".gif") return ascii(bytes, 0, 6) === "GIF87a" || ascii(bytes, 0, 6) === "GIF89a";
-  if (ext === ".webp") return ascii(bytes, 0, 4) === "RIFF" && ascii(bytes, 8, 12) === "WEBP";
-  if (ext === ".avif") return ascii(bytes, 4, 8) === "ftyp" && ascii(bytes, 8, 32).includes("avif");
-  return false;
-}
-
-function hasValidVideoSignature(ext, bytes) {
-  if (ext === ".webm") return startsWith(bytes, [0x1a, 0x45, 0xdf, 0xa3]);
-  if (ext === ".avi") return ascii(bytes, 0, 4) === "RIFF" && ascii(bytes, 8, 12) === "AVI ";
-  if (ext === ".mp4" || ext === ".mov") return ascii(bytes, 4, 8) === "ftyp";
-  return false;
-}
-
-function isValidUpload(file, folder, bytes) {
-  const fileName = file?.name || "";
-  const fileType = file?.type || "";
-  const fileSize = Number(file?.size || 0);
-  const ext = path.extname(fileName).toLowerCase();
-
-  if (folder === "product-videos") {
-    const typeOk = !fileType || VIDEO_MIME_TYPES.has(fileType);
-    return VIDEO_EXTENSIONS.has(ext) && typeOk && fileSize > 0 && fileSize <= MAX_VIDEO_SIZE && hasValidVideoSignature(ext, bytes);
-  }
-
-  const typeOk = !fileType || IMAGE_MIME_TYPES.has(fileType);
-  return IMAGE_EXTENSIONS.has(ext) && typeOk && fileSize > 0 && fileSize <= MAX_IMAGE_SIZE && hasValidImageSignature(ext, bytes);
-}
+const TOO_LARGE = `This upload is too large. Each upload request may be up to ${formatMegabytes(ADMIN_MEDIA_MAX_REQUEST_BYTES)} (images up to ${formatMegabytes(ADMIN_IMAGE_MAX_BYTES)} each, videos up to ${formatMegabytes(ADMIN_VIDEO_MAX_BYTES)}).`;
 
 /**
- * One request may carry several images or one video. 150 MB bounds the
- * memory a single request can use (one 120 MB video, or ten maximum-size
- * images); larger selections are uploaded in more than one request.
+ * Product media for admins and designers. One request carries several images
+ * or one video, bounded by ADMIN_MEDIA_MAX_REQUEST_BYTES — the same limit the
+ * request wrapper streams the body with, so the declared and enforced limits
+ * cannot disagree (lib/uploads/admin-media.ts).
+ *
+ * Every file is identified by its bytes, never by name or Content-Type; images
+ * are decoded and re-encoded (metadata and appended bytes removed); videos
+ * must be a complete MP4/MOV/WebM/AVI container. The stored Content-Type and
+ * extension come from that verification.
  */
-const MAX_REQUEST_BYTES = 150 * 1024 * 1024;
-
 export const POST = withAdminMutation(async function POST(request) {
   // Designers upload their own product media; the storage path is derived server side.
   const session = await requireDesignerOrAdmin();
   if (!session.ok) return session.response;
-  const admin = { ok: true, admin: session.actor } as const;
 
-  const upload = await readFormData(request, MAX_REQUEST_BYTES);
+  const upload = await readFormData(request, ADMIN_MEDIA_MAX_REQUEST_BYTES);
   if (upload.response?.status === 413) {
-    return Response.json({ ok: false, error: "This upload is too large. Upload fewer files at once (150 MB per upload)." }, { status: 413 });
+    return Response.json({ ok: false, success: false, error: TOO_LARGE }, { status: 413 });
   }
   const formData = upload.form;
 
@@ -164,56 +114,46 @@ export const POST = withAdminMutation(async function POST(request) {
     );
   }
 
-  try {
-    if (!canUseSupabaseStorage()) {
-      return Response.json(
-        {
-          ok: false,
-          success: false,
-          error: "Supabase Storage is not configured. Set NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY.",
-        },
-        { status: 500 }
-      );
-    }
-
-    const urls = [];
-
-    for (const file of files) {
-      const bytes = Buffer.from(await file.arrayBuffer());
-
-      if (!isValidUpload(file, folder, bytes)) {
-        const maxSize = folder === "product-videos" ? "120MB" : "15MB";
-        return Response.json(
-          {
-            ok: false,
-            success: false,
-            error: `File type or size is not allowed. Maximum size is ${maxSize}.`,
-          },
-          { status: 400 }
-        );
-      }
-
-      const uniqueName = `${Date.now()}-${Math.random().toString(36).slice(2)}-${safeFileName(file.name)}`;
-      const url = await uploadToSupabaseStorage({
-        buffer: bytes,
-        fileName: uniqueName,
-        folder,
-        contentType: file.type,
-      });
-      urls.push(url);
-    }
-
-    return Response.json({ ok: true, success: true, urls });
-  } catch (error) {
-    console.error("Admin upload error:", error);
-
+  if (!canUseSupabaseStorage()) {
     return Response.json(
       {
         ok: false,
         success: false,
-        error: error?.message || "Upload failed.",
+        error: "Supabase Storage is not configured. Set NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY.",
       },
       { status: 500 }
     );
   }
-}, { maxBytes: 35 * 1024 * 1024, studio: true });
+
+  // Verify EVERY file before storing ANY, so a bad file never leaves half an upload behind.
+  const prepared: Array<{ buffer: Buffer; contentType: string; fileName: string }> = [];
+  for (const file of files) {
+    const bytes = Buffer.from(await file.arrayBuffer());
+    try {
+      if (folder === "product-videos") {
+        const video = validateAdminVideo(bytes);
+        prepared.push({ buffer: bytes, contentType: video.contentType, fileName: `${safeBaseName(file.name)}.${video.extension}` });
+      } else {
+        const image = await normalizeAdminImage(bytes);
+        prepared.push({ buffer: image.data, contentType: image.contentType, fileName: `${safeBaseName(file.name)}.${image.extension}` });
+      }
+    } catch (error) {
+      if (error instanceof MediaRejected) {
+        return Response.json({ ok: false, success: false, error: `${String(file.name || "This file").slice(0, 120)}: ${error.message}` }, { status: 400 });
+      }
+      throw error;
+    }
+  }
+
+  try {
+    const urls = [];
+    for (const item of prepared) {
+      const uniqueName = `${Date.now()}-${Math.random().toString(36).slice(2)}-${item.fileName}`;
+      urls.push(await uploadToSupabaseStorage({ buffer: item.buffer, fileName: uniqueName, folder, contentType: item.contentType }));
+    }
+    return Response.json({ ok: true, success: true, urls });
+  } catch (error) {
+    logEvent("error", "admin.upload_failed", { requestId: requestIdFrom(request), folder, error });
+    return Response.json({ ok: false, success: false, error: "The upload could not be stored. Please try again." }, { status: 500 });
+  }
+}, { maxBytes: ADMIN_MEDIA_MAX_REQUEST_BYTES, studio: true, tooLargeMessage: TOO_LARGE });

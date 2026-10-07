@@ -472,6 +472,8 @@ const FORCED_FLAGS: Record<string, boolean> = {
 };
 
 export type E2ECustomizerFixtureOptions = {
+  /** The published version number the fixture template carries (default 1). */
+  templateVersion?: number;
   /**
    * Enable autosave. Off by default so interaction tests are not interleaved
    * with saves; the persistence tests turn it on.
@@ -624,7 +626,8 @@ export function buildE2ECustomizerFixture(options: E2ECustomizerFixtureOptions =
     id: "e2e-fixture-template",
     productId: "e2e-fixture-product",
     enabled: true,
-    version: 1,
+    // ?templateVersion=2 serves a newer published version of the same template.
+    version: Math.max(1, Math.floor(Number(options.templateVersion) || 1)),
     engine: "svg",
     canvasWidthPx: 1500,
     canvasHeightPx: 2100,

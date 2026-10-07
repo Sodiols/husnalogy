@@ -20,6 +20,14 @@ const PROTECTED_PREFIXES = [
   "/upload-from-phone",
 ];
 
+/**
+ * Studio pages that live outside /admin: the designer workspace and the
+ * Design Studio's phone upload page. Only admins and designers may reach them;
+ * anyone else gets the same 404 as the admin area. Defence in depth — each
+ * page checks the role again, and the upload APIs enforce it independently.
+ */
+const STUDIO_PAGE_PREFIXES = ["/designer", "/upload-from-phone"];
+
 const ADMIN_PREFIXES = [
   "/admin",
   "/admin/products",
@@ -171,6 +179,13 @@ export async function proxy(request) {
     return NextResponse.redirect(url);
   }
 
+  if (isPathMatch(pathname, STUDIO_PAGE_PREFIXES)) {
+    // A signed-out phone was already sent to sign in above (PROTECTED_PREFIXES).
+    if (!user) return notFoundPage(request);
+    const { data: profile } = await supabase.from("profiles").select("role").eq("id", user.id).maybeSingle();
+    if (profile?.role !== "admin" && profile?.role !== "designer") return notFoundPage(request);
+  }
+
   if (isPathMatch(pathname, ADMIN_PREFIXES)) {
     if (pathname === "/admin/login") {
       return notFoundPage(request);
@@ -235,5 +250,8 @@ export const config = {
     "/checkout",
     "/admin/:path*",
     "/api/admin/:path*",
+    // Studio pages outside /admin (see STUDIO_PAGE_PREFIXES).
+    "/designer/:path*",
+    "/upload-from-phone",
   ],
 };

@@ -51,6 +51,8 @@ export default async function CustomizerE2EFixturePage({
     // ?fonts=Inter,Caveat restricts the customer's fonts, like a template allowlist.
     // ?adminClip=1 turns the front photos into Design Studio clipping masks.
     adminClip: params.adminClip === "1",
+    // ?templateVersion=2 serves a newer version of the template (version-pinning tests).
+    templateVersion: Number(Array.isArray(params.templateVersion) ? params.templateVersion[0] : params.templateVersion) || undefined,
     // ?libraryAsset=8000 makes the croppable photo a library asset whose URL expires in 8s (negative: expired).
     libraryAssetExpiresInMs: params.libraryAsset !== undefined ? Number(Array.isArray(params.libraryAsset) ? params.libraryAsset[0] : params.libraryAsset) || 0 : undefined,
     allowedFonts: String((Array.isArray(params.fonts) ? params.fonts[0] : params.fonts) || "")

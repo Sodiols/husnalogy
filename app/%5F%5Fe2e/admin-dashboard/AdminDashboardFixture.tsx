@@ -12,6 +12,7 @@
 import { useEffect, useState } from "react";
 
 import AdminDashboardClient from "@/app/admin/dashboard/admin-dashboard-client";
+import { StudioActorProvider } from "@/app/admin/dashboard/design-builder/studio-actor";
 
 const DAY = 24 * 60 * 60 * 1000;
 const NOW = Date.now();
@@ -376,5 +377,11 @@ export default function AdminDashboardFixture() {
   }, []);
 
   if (!ready) return null;
-  return <AdminDashboardClient basePath="/__e2e/admin-dashboard" />;
+  // ?actor=<id> plays a different studio account on the same browser.
+  const actor = (typeof window !== "undefined" && new URLSearchParams(window.location.search).get("actor")) || "e2e00000-0000-4000-8000-0000000000ad";
+  return (
+    <StudioActorProvider actorId={actor}>
+      <AdminDashboardClient basePath="/__e2e/admin-dashboard" />
+    </StudioActorProvider>
+  );
 }

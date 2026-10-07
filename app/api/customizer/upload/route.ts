@@ -15,6 +15,10 @@ const MAX_DIMENSION = 12000; // per side
 const MAX_PIXELS = 60_000_000; // decompression-bomb guard (~60 MP)
 const EDITOR_MAX_PX = 1600;
 const THUMB_PX = 384;
+// Customer variants are smaller than the studio library's; they are verified
+// against THESE bounds (judging them by the studio's 2400px rejected every
+// photo larger than ~1600px).
+const CUSTOMER_VARIANT_BOUNDS = { editor: EDITOR_MAX_PX, thumbnail: THUMB_PX };
 const BUCKET = "customer-uploads";
 
 const EXTENSION: Record<string, string> = { "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp", "application/pdf": "pdf" };
@@ -133,7 +137,7 @@ export async function POST(request: Request) {
   const swapped = typeof meta.orientation === "number" && meta.orientation >= 5 && meta.orientation <= 8;
   try {
     await assertVariantsDecodable(editorBuffer, thumbBuffer);
-    await assertVariantsSized(editorBuffer, thumbBuffer, swapped ? height : width, swapped ? width : height);
+    await assertVariantsSized(editorBuffer, thumbBuffer, swapped ? height : width, swapped ? width : height, CUSTOMER_VARIANT_BOUNDS);
   } catch (cause) {
     logEvent("error", "upload.variant_invalid", { requestId, userId: user.id, error: cause });
     return Response.json({ ok: false, error: "This image could not be processed. Try another file." }, { status: 400 });
@@ -169,6 +173,7 @@ export async function POST(request: Request) {
     storagePath: editorPath,
     sourceWidth: swapped ? height : width,
     sourceHeight: swapped ? width : height,
+    maxPx: EDITOR_MAX_PX,
   });
   if (!stored.ok) {
     await service.storage.from(BUCKET).remove(uploadedPaths);
