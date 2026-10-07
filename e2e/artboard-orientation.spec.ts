@@ -6,6 +6,7 @@
  * a landscape card in its own coordinates.
  */
 import { expect, test, type Page } from "@playwright/test";
+import { addStudioFrame } from "./admin-studio-tools";
 import { bodyPoint, canvasLayer, drag, openFixture, rectAttrs, selectLayer, waitForEditor } from "./customizer-fixture";
 
 const ratioOf = (page: Page, selector: string) =>
@@ -29,7 +30,7 @@ test("Design Studio: Horizontal (Landscape) swaps the canvas to 2100 × 1500; on
   const studio = page.locator("[data-admin-customizer]");
   const header = studio.locator("header");
   await expect(header).toBeVisible();
-  await studio.getByRole("button", { name: "Frame", exact: true }).click();
+  await addStudioFrame(page);
 
   const pixels = studio.locator("[data-artboard-pixels]");
   const orientation = studio.getByLabel("Orientation");

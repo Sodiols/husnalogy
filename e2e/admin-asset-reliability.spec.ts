@@ -11,6 +11,7 @@
 import { expect, test, type Page } from "@playwright/test";
 import { bodyPoint, selectedIds } from "./customizer-fixture";
 import { AssetStub, assetUrl, urlExpiry } from "./asset-reliability-stub";
+import { openSidePanel } from "./admin-studio-tools";
 
 const TITLE = "Minimal Thank You Card";
 const ASSET = "6f1c1c5e-3b2a-4f7e-9a10-0c4a2b7d9e11";
@@ -241,6 +242,7 @@ test.describe("Design Studio image reliability", () => {
 
   test("every page's photos resolve, including pages opened later", async ({ page }) => {
     await openStudio(page, template(Date.now() - 60_000));
+    await openSidePanel(page, "Pages");
     await page.locator("#admin-pages-section button[aria-pressed]").nth(1).click();
     await expect.poll(async () => (await drawn(page, "p_back")).status).toBe("ready");
     expect(urlExpiry((await drawn(page, "p_back")).href)).toBeGreaterThan(Date.now());

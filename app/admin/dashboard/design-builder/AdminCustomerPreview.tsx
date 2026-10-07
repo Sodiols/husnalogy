@@ -31,10 +31,16 @@ import { getDefaultOptionCartValue } from "@/lib/products/options";
 import { getOptionsSurcharge } from "@/app/lib/customer-lists";
 import { uploadBuilderImage } from "./builder-utils";
 import {
+  becomesMultilineFromAutoWidth,
   canonicalTextLayerUpdate,
   getTextPlacementStyle,
+  widenForTypedLines,
   type TextPlacementPreset,
+  multilineTextPatch,
 } from "@/lib/customizer/v2/text-editing";
+import { createCanvasMeasure, isAutoWidthText } from "@/lib/customizer/v2/text-layout";
+
+const previewTextMeasure = createCanvasMeasure();
 
 export default function AdminCustomerPreview({ template, product }: { template: any; product: any }) {
   const enabledPages = useMemo(() => getEnabledPages(template), [template]);
@@ -59,7 +65,9 @@ export default function AdminCustomerPreview({ template, product }: { template: 
   const [approved, setApproved] = useState(false);
   const [selectedLayerId, setSelectedLayerId] = useState<string | null>(null);
   const [activeTool, setActiveTool] = useState<CustomerTool>("edit");
-  const [textPlacementPreset, setTextPlacementPreset] = useState<TextPlacementPreset>("body");
+  const [textPlacementPreset, setTextPlacementPreset] = useState<TextPlacementPreset>("text");
+  /** Text objects that became multi-line from auto width in the current editing session. */
+  const typedLineWidthRef = useRef(new Set<string>());
   const [editingTextLayerId, setEditingTextLayerId] = useState<string | null>(null);
   const [editTextRequest, setEditTextRequest] = useState<{ layerId: string; requestId: number; created?: boolean } | null>(null);
 
@@ -181,7 +189,7 @@ export default function AdminCustomerPreview({ template, product }: { template: 
   const addUserText = (preset: TextPlacementPreset = textPlacementPreset): string | null => {
     const canvasW = template?.canvasWidthPx || 1500;
     const canvasH = template?.canvasHeightPx || 2100;
-    const style = getTextPlacementStyle(preset, canvasW, canvasH);
+    const style = getTextPlacementStyle(preset, canvasW, canvasH, template?.dpi);
     const layer = normalizeUserLayer({
       page: activePage,
       name: style.name,
@@ -196,7 +204,7 @@ export default function AdminCustomerPreview({ template, product }: { template: 
         letterSpacing: style.letterSpacing,
         textAlign: style.textAlign,
         multiline: style.multiline,
-        autoSizeMode: style.multiline ? "height" : "width",
+        autoSizeMode: style.autoSizeMode,
       },
     });
     if (!layer) return null;
@@ -218,20 +226,17 @@ export default function AdminCustomerPreview({ template, product }: { template: 
     const update = canonicalTextLayerUpdate(rawText, layer.textStyle);
     const text = update.text;
     if (layer.isUserLayer) {
+      // Same rule as the live customer editor: a line break in auto-width
+      // text wraps at the widest typed line for the rest of the session.
+      if (becomesMultilineFromAutoWidth(layer.textStyle, layer.text, text)) typedLineWidthRef.current.add(layerId);
+      const widen = typedLineWidthRef.current.has(layerId);
       setEditorState((current) => ({
         ...current,
-        userLayers: current.userLayers.map((item: any) =>
-          item.id === layerId
-            ? {
-                ...item,
-                text,
-                textStyle: {
-                  ...(item.textStyle || {}),
-                  ...update.textStyle,
-                },
-              }
-            : item,
-        ),
+        userLayers: current.userLayers.map((item: any) => {
+          if (item.id !== layerId) return item;
+          const next = { ...item, text, textStyle: { ...(item.textStyle || {}), ...update.textStyle } };
+          return widen ? { ...next, ...widenForTypedLines(next, text, previewTextMeasure, Number(template?.canvasWidthPx) || undefined) } : next;
+        }),
       }));
     } else if (layer.fieldId) {
       setValues((current) => ({ ...current, [layer.fieldId]: text }));
@@ -286,15 +291,7 @@ export default function AdminCustomerPreview({ template, product }: { template: 
           setEditorState((current) => ({
             ...current,
             userLayers: current.userLayers.map((item: any) => item.id === layerId
-              ? {
-                  ...item,
-                  textStyle: {
-                    ...(item.textStyle || {}),
-                    multiline: true,
-                    autoSizeMode: "height",
-                    fitMode: "auto-height",
-                  },
-                }
+              ? { ...item, textStyle: { ...(item.textStyle || {}), ...multilineTextPatch(item.textStyle) } }
               : item),
           }))
         }
@@ -394,6 +391,7 @@ export default function AdminCustomerPreview({ template, product }: { template: 
               <div className="pointer-events-none absolute inset-x-2 top-2 z-40 flex justify-center">
                 <CustomerContextToolbar
                   layer={selectedLayer}
+                  dpi={template?.dpi}
                   permissions={selectedPermissions}
                   isUserLayer={selectedIsUser}
                   editingText={editingTextLayerId === selectedLayer.id}
@@ -414,30 +412,27 @@ export default function AdminCustomerPreview({ template, product }: { template: 
               onSelectLayer={setSelectedLayerId}
               onLayerTransform={onLayerTransform}
               onTextDraftChange={updateCanvasText}
-              onTextMultilineActivate={(layerId) =>
+              onTextMultilineActivate={(layerId) => {
+                const layer = editorState.userLayers.find((item: any) => item.id === layerId);
+                if (isAutoWidthText(layer?.textStyle)) typedLineWidthRef.current.add(layerId);
                 setEditorState((current) => ({
                   ...current,
                   userLayers: current.userLayers.map((item: any) =>
                     item.id === layerId
-                      ? {
-                          ...item,
-                          textStyle: {
-                            ...(item.textStyle || {}),
-                            multiline: true,
-                            autoSizeMode: "height",
-                            fitMode: "auto-height",
-                          },
-                        }
+                      ? { ...item, textStyle: { ...(item.textStyle || {}), ...multilineTextPatch(item.textStyle) } }
                       : item,
                   ),
-                }))
-              }
+                }));
+              }}
               onTextCommit={updateCanvasText}
               onTextDiscard={(layerId) => setEditorState((current) => ({
                 ...current,
                 userLayers: current.userLayers.filter((item: any) => item.id !== layerId),
               }))}
-              onEditingTextChange={setEditingTextLayerId}
+              onEditingTextChange={(layerId) => {
+                typedLineWidthRef.current.clear();
+                setEditingTextLayerId(layerId);
+              }}
               onExitTextTool={() => setActiveTool("edit")}
               editTextRequest={editTextRequest}
               showWatermark={template?.settings?.protectedPreview !== false}

@@ -155,15 +155,14 @@ describe("no dead tool state remains", () => {
 describe("admin tool rail", () => {
   const rail = read("app/admin/dashboard/design-builder/AdminToolRail.tsx");
 
-  it("lists Line last in the Shape menu", () => {
-    const menu = rail.slice(rail.indexOf("SHAPE_MENU_ITEMS = ["), rail.indexOf("] as const"));
-    for (const shape of ["rectangle", "rounded-rectangle", "circle", "oval", "triangle", "polygon", "arch", "line"]) {
-      expect(menu).toContain(`"${shape}"`);
-    }
-    expect(menu.indexOf('"line"')).toBeGreaterThan(menu.indexOf('"arch"'));
+  it("adds shapes from Elements; the rail itself creates nothing", () => {
+    expect(rail).not.toContain("onAddShape");
+    expect(read("app/admin/dashboard/design-builder/AdminDesignBuilder.tsx")).toContain("onAddShape={addShape}");
   });
 
   it("routes Line to the line creator, not the shape creator", () => {
-    expect(rail).toContain('shape === "line" ? props.onAddLine() : props.onAddShape(shape)');
+    const builder = read("app/admin/dashboard/design-builder/AdminDesignBuilder.tsx");
+    expect(builder).toContain("onAddLine={addLineStyle}");
+    expect(builder.slice(builder.indexOf("const addLineStyle"), builder.indexOf("const addLineStyle") + 300)).toContain('newShapeLayer(tRef.current, activePage, "line")');
   });
 });

@@ -173,7 +173,7 @@ export const userLayerSchema = z
         growthDirection: z.enum(["up", "center", "down"]).optional(),
         uppercase: z.boolean().optional(),
         multiline: z.boolean().optional(),
-        autoSizeMode: z.enum(["fixed", "width", "height", "shrink"]).optional(),
+        autoSizeMode: z.enum(["fixed", "width", "height", "shrink", "safe-width"]).optional(),
         fitMode: z.enum(["fixed", "auto-height", "shrink"]).optional(),
       })
       .optional(),

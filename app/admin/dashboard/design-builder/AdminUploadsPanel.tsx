@@ -1,18 +1,21 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { uploadBuilderImage, type BuilderAsset } from "./builder-utils";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import AdminMediaLibrary, { type AdminUploadAsset } from "./AdminMediaLibrary";
+import { uploadBuilderImage } from "./builder-utils";
+import { qrModuleRects } from "@/lib/customizer/v2/qr";
 
-export type AdminUploadAsset = BuilderAsset & {
-  displayName?: string;
-  fileSizeBytes?: number;
-  adminAvailable?: boolean;
-  archived?: boolean;
-  status?: string;
-  usageCount?: number;
-};
+export type { AdminUploadAsset } from "./AdminMediaLibrary";
 
-type UsageLocation = { type?: string; id?: string; label?: string };
+/**
+ * Uploads: the studio's image library at a glance. Upload from this computer
+ * or from a phone (both land in the one library, through the one upload
+ * pipeline), click a picture to add it to the page being edited, or open the
+ * media manager to browse, search and manage everything.
+ *
+ * A tile is only a picker preview (the library's thumbnail variant); inserting
+ * hands the ASSET to the studio, which places its editor/original variants.
+ */
 
 type Props = {
   onInsertAsset: (asset: AdminUploadAsset) => void;
@@ -20,222 +23,220 @@ type Props = {
 };
 
 const PAGE_SIZE = 24;
+const MOBILE_UPLOAD_PATH = "/upload-from-phone";
 
-function TrashIcon() {
+const OUTLINE_BUTTON =
+  "flex min-h-[52px] w-full items-center justify-center gap-3 rounded-full border-[1.5px] border-[#27307A] bg-white px-5 text-[16px] font-semibold text-[#27307A] transition-colors hover:bg-[#27307A]/[0.05] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#27307A] focus-visible:ring-offset-2 focus-visible:ring-offset-white disabled:cursor-wait disabled:opacity-60";
+
+const visible = (asset: AdminUploadAsset) => asset.adminAvailable !== false && !asset.archived && (asset.status || "ready") === "ready";
+
+async function fetchLibrary(page: number, signal?: AbortSignal): Promise<{ assets: AdminUploadAsset[]; total: number }> {
+  const query = new URLSearchParams({ page: String(page), pageSize: String(PAGE_SIZE) });
+  const response = await fetch(`/api/admin/customizer/assets?${query}`, { cache: "no-store", signal });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok || payload.ok === false) throw new Error(payload.error || "Could not load your images.");
+  const assets = (payload.assets || []).filter(visible);
+  return { assets, total: Number(payload.total) || assets.length };
+}
+
+/** A picture tile: the library thumbnail, or a clean empty tile if it cannot load. */
+function Thumb({ asset, onPick }: { asset: AdminUploadAsset; onPick: () => void }) {
+  const [failed, setFailed] = useState(false);
+  const src = asset.thumbnailUrl || asset.editorUrl || asset.url;
   return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-      <path d="M3 6h18" />
-      <path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2" />
-      <path d="m19 6-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
-      <path d="M10 11v6M14 11v6" />
-    </svg>
+    <button
+      type="button"
+      onClick={onPick}
+      aria-label={`Add ${asset.title} to the current page`}
+      title={asset.displayName || asset.title}
+      data-upload-tile
+      className="aspect-[4/5] overflow-hidden rounded-xl bg-[#F2F3F5] transition-opacity hover:opacity-85 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#27307A] focus-visible:ring-offset-2 focus-visible:ring-offset-white"
+    >
+      {src && !failed ? (
+        // eslint-disable-next-line @next/next/no-img-element -- a signed library thumbnail
+        <img src={src} alt="" loading="lazy" draggable={false} onError={() => setFailed(true)} className="h-full w-full object-cover" />
+      ) : (
+        <span className="grid h-full w-full place-items-center text-[#303839]/30" aria-hidden>
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="4" y="4" width="16" height="16" rx="2" /><circle cx="9" cy="9" r="1.5" /><path d="m4 17 5-5 4 4 2.5-2.5L20 18" /></svg>
+        </span>
+      )}
+    </button>
   );
 }
 
-function SearchIcon() {
+/** A centred dialog over the studio; Escape and the X close it. */
+function Dialog({ title, onClose, wide, children }: { title: string; onClose: () => void; wide?: boolean; children: ReactNode }) {
+  const panel = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    panel.current?.focus();
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.stopPropagation();
+        onClose();
+      }
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, [onClose]);
   return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden>
-      <circle cx="11" cy="11" r="7" />
-      <path d="m20 20-4-4" />
-    </svg>
+    <div className="fixed inset-0 z-[300] grid place-items-center bg-[#1f2425]/35 p-4" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
+      <div
+        ref={panel}
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
+        tabIndex={-1}
+        className={`flex max-h-[min(86vh,820px)] w-full flex-col overflow-hidden rounded-2xl bg-white shadow-[0_24px_60px_rgba(31,36,37,0.28)] outline-none ${wide ? "max-w-[720px]" : "max-w-[440px]"}`}
+      >
+        <div className="flex shrink-0 items-center justify-between px-6 pb-2 pt-5">
+          <h2 className="text-[20px] font-semibold text-[#1f2425]">{title}</h2>
+          <button data-shape="round" type="button" aria-label="Close" onClick={onClose} className="grid h-9 w-9 place-items-center rounded-full text-[#1f2425] hover:bg-[#303839]/[0.06] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839]">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden><path d="M6 6l12 12M18 6 6 18" /></svg>
+          </button>
+        </div>
+        <div className="min-h-0 flex-1 overflow-y-auto [scrollbar-width:thin]">{children}</div>
+      </div>
+    </div>
   );
 }
 
-function formatFileType(asset: AdminUploadAsset) {
-  const mime = String(asset.mimeType || "").replace("image/", "").replace("jpeg", "jpg").toUpperCase();
-  return mime || String(asset.assetType || "image").toUpperCase();
+/**
+ * Phone handoff: a QR code to the admin's mobile upload page. Photos sent
+ * from the phone go into the same library; this dialog watches the library
+ * and lists each new picture the moment it arrives.
+ */
+function PhoneUploadDialog({ onClose, onInsertAsset }: { onClose: () => void; onInsertAsset: (asset: AdminUploadAsset) => void }) {
+  const [url] = useState(() => `${window.location.origin}${MOBILE_UPLOAD_PATH}`);
+  const [qr] = useState(() => qrModuleRects({ value: url, margin: 2, errorCorrection: "M" }));
+  const [received, setReceived] = useState<AdminUploadAsset[]>([]);
+  const [copied, setCopied] = useState(false);
+  const [error, setError] = useState("");
+  const known = useRef<Set<string> | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    const poll = async () => {
+      try {
+        const { assets } = await fetchLibrary(1);
+        if (cancelled) return;
+        setError("");
+        // Everything already in the library when the dialog opened is old.
+        if (!known.current) {
+          known.current = new Set(assets.map((asset) => asset.id));
+          return;
+        }
+        const fresh = assets.filter((asset) => !known.current!.has(asset.id));
+        if (fresh.length) {
+          fresh.forEach((asset) => known.current!.add(asset.id));
+          setReceived((current) => [...fresh, ...current]);
+        }
+      } catch (caught: any) {
+        if (!cancelled) setError(caught?.message || "Could not check for new photos.");
+      }
+    };
+    void poll();
+    const timer = window.setInterval(poll, 4000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, []);
+
+  return (
+    <Dialog title="Upload from your phone" onClose={onClose}>
+      <div className="grid gap-4 px-6 pb-6" data-phone-upload>
+        <div className="flex items-start gap-4">
+          <svg
+            viewBox={`0 0 ${qr.totalSize} ${qr.totalSize}`}
+            width="148"
+            height="148"
+            role="img"
+            aria-label="QR code that opens the phone upload page"
+            data-phone-upload-qr={url}
+            className="shrink-0 rounded-lg border border-[#303839]/12"
+            shapeRendering="crispEdges"
+          >
+            <rect width={qr.totalSize} height={qr.totalSize} fill="#ffffff" />
+            {qr.rects.map((rect) => <rect key={`${rect.x}-${rect.y}`} x={rect.x} y={rect.y} width="1" height="1" fill="#1f2425" />)}
+          </svg>
+          <ol className="grid list-decimal gap-1.5 pl-4 text-[14px] leading-snug text-[#1f2425]">
+            <li>Scan the code with your phone&apos;s camera.</li>
+            <li>Sign in to the Husnalogy admin if your phone asks.</li>
+            <li>Take or choose photos — they appear below and in Uploads.</li>
+          </ol>
+        </div>
+        <div className="flex items-center gap-2 rounded-xl bg-[#F2F3F5] px-3 py-2">
+          <span className="min-w-0 flex-1 truncate text-[13px] text-[#303839]">{url}</span>
+          <button data-shape="round"
+            type="button"
+            onClick={() => {
+              void navigator.clipboard?.writeText(url).then(() => setCopied(true), () => setCopied(false));
+            }}
+            className="shrink-0 rounded-full px-3 py-1 text-[13px] font-semibold text-[#27307A] hover:bg-[#27307A]/[0.07] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#27307A]"
+          >
+            {copied ? "Copied" : "Copy link"}
+          </button>
+        </div>
+        <div aria-live="polite">
+          <p className="text-[13px] font-semibold text-[#1f2425]">{received.length ? "Received from your phone — click one to add it" : "Waiting for photos from your phone…"}</p>
+          {error && <p role="alert" className="mt-1 text-[12px] font-semibold text-red-700">{error}</p>}
+          {received.length > 0 && (
+            <div className="mt-2 grid grid-cols-4 gap-2">
+              {received.map((asset) => (
+                <Thumb
+                  key={asset.id}
+                  asset={asset}
+                  onPick={() => {
+                    onInsertAsset(asset);
+                    onClose();
+                  }}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </Dialog>
+  );
 }
 
 export default function AdminUploadsPanel({ onInsertAsset, currentAssetIds = [] }: Props) {
   const inputRef = useRef<HTMLInputElement>(null);
-  const requestId = useRef(0);
   const [assets, setAssets] = useState<AdminUploadAsset[]>([]);
-  const [search, setSearch] = useState("");
-  const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
-  const [uploading, setUploading] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState(0);
-  // Batch position for a multi-file selection ("Uploading 3 of 12").
-  const [batch, setBatch] = useState<{ index: number; total: number } | null>(null);
-  const [retryFiles, setRetryFiles] = useState<File[]>([]);
-  const [deletingId, setDeletingId] = useState("");
+  const [uploading, setUploading] = useState<{ index: number; total: number; progress: number } | null>(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
-  const [usage, setUsage] = useState<UsageLocation[]>([]);
-  const currentIds = new Set(currentAssetIds.filter(Boolean));
-
-  const loadPage = async (nextPage: number, append: boolean, signal?: AbortSignal) => {
-    const query = new URLSearchParams({ page: String(nextPage), pageSize: String(PAGE_SIZE) });
-    if (search.trim()) query.set("search", search.trim());
-    const response = await fetch(`/api/admin/customizer/assets?${query.toString()}`, { cache: "no-store", signal });
-    const payload = await response.json().catch(() => ({}));
-    if (!response.ok || payload.ok === false) throw new Error(payload.error || "Could not load uploaded images.");
-    const visible = (payload.assets || []).filter(
-      (asset: AdminUploadAsset) => asset.adminAvailable !== false && !asset.archived && asset.status === "ready",
-    );
-    setAssets((current) => {
-      const combined = append ? [...current, ...visible] : visible;
-      const byId = new Map<string, AdminUploadAsset>();
-      for (const asset of combined as AdminUploadAsset[]) byId.set(asset.id, asset);
-      return [...byId.values()];
-    });
-    setTotal(Number(payload.total) || visible.length);
-    setPage(nextPage);
-  };
+  const [dialog, setDialog] = useState<"media" | "phone" | null>(null);
 
   useEffect(() => {
     const controller = new AbortController();
-    const id = ++requestId.current;
     setLoading(true);
-    setError("");
-    const timer = window.setTimeout(() => {
-      loadPage(1, false, controller.signal)
-        .catch((caught: any) => {
-          if (caught?.name !== "AbortError" && id === requestId.current) {
-            setError(caught?.message || "Could not load uploaded images.");
-            setAssets([]);
-          }
-        })
-        .finally(() => {
-          if (id === requestId.current) setLoading(false);
-        });
-    }, search.trim() ? 250 : 0);
-    return () => {
-      controller.abort();
-      window.clearTimeout(timer);
-    };
-    // loadPage intentionally follows the current search value.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [search, reloadKey]);
-
-  /**
-   * Bulk upload (spec §1, §37). Files are sent one at a time so each keeps its
-   * own duplicate detection, variant generation and progress, and so a single
-   * rejected file can never cancel the ones that already succeeded. Every
-   * successful asset lands in the library immediately.
-   *
-   * Auto-inserting onto the page stays a SINGLE-image action: choosing twelve
-   * photos fills the library, it does not drop twelve layers on the card.
-   */
-  const uploadFiles = async (input?: File[] | FileList | null) => {
-    const files = Array.from(input || []).filter(Boolean) as File[];
-    if (!files.length) return;
-    setUploading(true);
-    setUploadProgress(0);
-    setRetryFiles([]);
-    setError("");
-    setNotice("");
-    setUsage([]);
-    setBatch(files.length > 1 ? { index: 1, total: files.length } : null);
-
-    const uploaded: AdminUploadAsset[] = [];
-    const failed: Array<{ file: File; message: string }> = [];
-    let duplicates = 0;
-
-    try {
-      for (let index = 0; index < files.length; index += 1) {
-        const file = files[index];
-        if (files.length > 1) setBatch({ index: index + 1, total: files.length });
-        setUploadProgress(0);
-        try {
-          const asset = await uploadBuilderImage(file, "image", { onProgress: setUploadProgress });
-          uploaded.push(asset);
-          if (asset.duplicate) duplicates += 1;
-          // Publish each success as it lands rather than at the end of the batch.
-          setAssets((current) => [asset, ...current.filter((item) => item.id !== asset.id)]);
-          if (!asset.duplicate) setTotal((current) => current + 1);
-        } catch (caught: any) {
-          failed.push({ file, message: caught?.message || "Could not upload this image." });
-        }
-      }
-    } finally {
-      setUploading(false);
-      setUploadProgress(0);
-      setBatch(null);
-      if (inputRef.current) inputRef.current.value = "";
-    }
-
-    if (files.length === 1) {
-      const asset = uploaded[0];
-      if (asset) {
-        setNotice(asset.duplicate ? asset.message || "This image already exists in your uploads." : `“${asset.title}” uploaded and added to this page.`);
-        onInsertAsset(asset);
-      }
-    } else if (uploaded.length) {
-      const added = uploaded.length - duplicates;
-      setNotice(
-        `${added} image${added === 1 ? "" : "s"} uploaded to your library${duplicates ? ` · ${duplicates} already existed` : ""}. Choose one to add it to this page.`,
-      );
-    }
-    if (failed.length) {
-      setRetryFiles(failed.map((entry) => entry.file));
-      setError(
-        failed.length === 1
-          ? `${failed[0].file.name}: ${failed[0].message}`
-          : `${failed.length} of ${files.length} images could not be uploaded (${failed.map((entry) => entry.file.name).join(", ")}).`,
-      );
-    }
-  };
-
-  const archiveAsset = async (asset: AdminUploadAsset) => {
-    const response = await fetch(`/api/admin/customizer/assets/${encodeURIComponent(asset.id)}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ archived: true }),
-    });
-    const payload = await response.json().catch(() => ({}));
-    if (!response.ok || payload.ok === false) throw new Error(payload.error || "Could not archive this image.");
-  };
-
-  const deleteAsset = async (asset: AdminUploadAsset) => {
-    const usedOnCurrentDesign = currentIds.has(asset.id);
-    const question = usedOnCurrentDesign
-      ? `“${asset.title}” is used on the current design. Archive it so it is hidden from new selections but remains available here?`
-      : `Delete “${asset.title}” permanently? Used images will be archived instead so existing designs keep working.`;
-    if (!window.confirm(question)) return;
-
-    setDeletingId(asset.id);
-    setError("");
-    setNotice("");
-    setUsage([]);
-    try {
-      await archiveAsset(asset);
-      setAssets((current) => current.filter((item) => item.id !== asset.id));
-      setTotal((current) => Math.max(0, current - 1));
-
-      if (usedOnCurrentDesign) {
-        setUsage([{ type: "current_template", id: asset.id, label: "Current design" }]);
-        setNotice(`“${asset.title}” was archived because the current design uses it.`);
-        return;
-      }
-
-      const response = await fetch(`/api/admin/customizer/assets/${encodeURIComponent(asset.id)}`, { method: "DELETE" });
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok || payload.ok === false) {
-        if (Array.isArray(payload.usage) && payload.usage.length) {
-          setUsage(payload.usage);
-          setNotice(`“${asset.title}” is in use, so it was archived instead of permanently deleted.`);
-          return;
-        }
-        throw new Error(payload.error || "Could not permanently delete this image. It remains archived.");
-      }
-      setNotice(`“${asset.title}” was permanently deleted.`);
-    } catch (caught: any) {
-      setError(caught?.message || "Could not delete this image.");
-      setReloadKey((current) => current + 1);
-    } finally {
-      setDeletingId("");
-    }
-  };
+    fetchLibrary(1, controller.signal)
+      .then(({ assets: first, total: count }) => {
+        setAssets(first);
+        setTotal(count);
+        setPage(1);
+        setError("");
+      })
+      .catch((caught: any) => {
+        if (caught?.name !== "AbortError") setError(caught?.message || "Could not load your images.");
+      })
+      .finally(() => setLoading(false));
+    return () => controller.abort();
+  }, [reloadKey]);
 
   const loadMore = async () => {
     setLoadingMore(true);
-    setError("");
     try {
-      await loadPage(page + 1, true);
+      const { assets: next, total: count } = await fetchLibrary(page + 1);
+      setAssets((current) => [...current, ...next.filter((asset) => !current.some((item) => item.id === asset.id))]);
+      setTotal(count);
+      setPage(page + 1);
     } catch (caught: any) {
       setError(caught?.message || "Could not load more images.");
     } finally {
@@ -243,101 +244,124 @@ export default function AdminUploadsPanel({ onInsertAsset, currentAssetIds = [] 
     }
   };
 
-  const hasMore = assets.length < total;
+  // The shared upload pipeline (storage, asset record, variants). One file is
+  // added to the page straight away; several fill the library to choose from.
+  const uploadFiles = async (input?: FileList | null) => {
+    const files = Array.from(input || []);
+    if (!files.length) return;
+    setError("");
+    setNotice("");
+    const uploaded: AdminUploadAsset[] = [];
+    const failed: string[] = [];
+    for (let index = 0; index < files.length; index += 1) {
+      setUploading({ index: index + 1, total: files.length, progress: 0 });
+      try {
+        const asset = await uploadBuilderImage(files[index], "image", {
+          onProgress: (progress) => setUploading({ index: index + 1, total: files.length, progress }),
+        });
+        uploaded.push(asset);
+        setAssets((current) => [asset, ...current.filter((item) => item.id !== asset.id)]);
+        if (!asset.duplicate) setTotal((current) => current + 1);
+      } catch (caught: any) {
+        failed.push(`${files[index].name}: ${caught?.message || "could not be uploaded"}`);
+      }
+    }
+    setUploading(null);
+    if (inputRef.current) inputRef.current.value = "";
+    if (files.length === 1 && uploaded[0]) {
+      setNotice(uploaded[0].duplicate ? uploaded[0].message || "This image was already in your library — added to the page." : "Uploaded and added to this page.");
+      onInsertAsset(uploaded[0]);
+    } else if (uploaded.length) {
+      setNotice(`${uploaded.length} images added to your library. Click one to add it to this page.`);
+    }
+    if (failed.length) setError(failed.join(" · "));
+  };
+
+  const closeDialog = useCallback(() => {
+    setDialog(null);
+    // The library may have changed there (uploads, archive, phone photos).
+    setReloadKey((key) => key + 1);
+  }, []);
+
+  const insertFromDialog = (asset: AdminUploadAsset) => {
+    onInsertAsset(asset);
+    closeDialog();
+  };
 
   return (
-    <div className="min-h-full bg-white">
-      <div className="sticky top-0 z-10 border-b border-[#303839]/10 bg-white px-4 pb-4 pt-4">
-        <p className="text-[10px] font-extrabold uppercase tracking-[0.16em] text-[#D4AF37]">Uploads</p>
-        <button
-          type="button"
-          onClick={() => inputRef.current?.click()}
-          disabled={uploading}
-          className="mt-3 flex min-h-11 w-full cursor-pointer items-center justify-center gap-2 rounded-xl bg-[#303839] px-4 text-sm font-extrabold text-white transition-colors duration-200 hover:bg-[#434c4d] disabled:cursor-not-allowed disabled:opacity-55 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] focus-visible:ring-offset-2"
-        >
-          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-            <path d="M12 16V4M7 9l5-5 5 5" />
-            <path d="M5 14v5h14v-5" />
+    <div className="grid gap-5 px-4 pb-6 pt-1" data-admin-uploads-panel>
+      <p className="text-[16px] leading-[1.55] text-[#1f2425]">
+        Click an image below to add it to your design, or use the{" "}
+        <button type="button" onClick={() => setDialog("media")} className="text-[#27307A] underline decoration-[1.5px] underline-offset-[5px] hover:decoration-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#27307A]">
+          media manager
+        </button>{" "}
+        to browse your image library.
+      </p>
+      <hr className="border-[#303839]/15" />
+
+      <div className="grid gap-3">
+        <button data-shape="round" type="button" className={OUTLINE_BUTTON} disabled={Boolean(uploading)} onClick={() => inputRef.current?.click()}>
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+            <path d="M3.5 18.5 8.5 12l3.5 4 2.5-3 2 2.5" /><path d="M3.5 18.5h11" /><circle cx="15" cy="6.5" r="1.6" /><path d="M19 14.5v6M16 17.5h6" />
           </svg>
-          {uploading
-            ? batch
-              ? `Uploading ${batch.index} of ${batch.total}`
-              : `Uploading ${uploadProgress}%`
-            : "Upload images"}
+          {uploading ? (uploading.total > 1 ? `Uploading ${uploading.index} of ${uploading.total}` : `Uploading ${uploading.progress}%`) : "Upload from computer"}
         </button>
-        <input ref={inputRef} type="file" multiple accept="image/svg+xml,image/png,image/jpeg,image/webp" className="sr-only" disabled={uploading} onChange={(event) => uploadFiles(event.target.files)} />
-        <p className="mt-1.5 text-center text-[10px] font-semibold text-[#303839]/45">Select several files at once — SVG, PNG, JPG or WebP.</p>
+        <button data-shape="round" type="button" className={OUTLINE_BUTTON} onClick={() => setDialog("phone")}>
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+            <rect x="7" y="2.5" width="10" height="19" rx="2.5" /><path d="M11 18.5h2" />
+          </svg>
+          Upload from your phone
+        </button>
+        <input
+          ref={inputRef}
+          type="file"
+          multiple
+          accept="image/svg+xml,image/png,image/jpeg,image/webp"
+          className="sr-only"
+          tabIndex={-1}
+          aria-label="Images to upload"
+          onChange={(event) => void uploadFiles(event.target.files)}
+        />
         {uploading && (
-          <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-[#F8F6F1]" role="progressbar" aria-label="Image upload progress" aria-valuemin={0} aria-valuemax={100} aria-valuenow={uploadProgress}>
-            <span className="block h-full rounded-full bg-[#D4AF37] transition-[width] duration-200" style={{ width: `${uploadProgress}%` }} />
+          <div className="h-1 overflow-hidden rounded-full bg-[#F2F3F5]" role="progressbar" aria-label="Image upload progress" aria-valuemin={0} aria-valuemax={100} aria-valuenow={uploading.progress}>
+            <span className="block h-full rounded-full bg-[#27307A] transition-[width]" style={{ width: `${uploading.progress}%` }} />
           </div>
         )}
-        {retryFiles.length > 0 && !uploading && (
-          <button type="button" onClick={() => uploadFiles(retryFiles)} className="mt-2 min-h-11 w-full rounded-xl border border-red-200 text-xs font-extrabold text-red-700 transition-colors hover:bg-red-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500">
-            {retryFiles.length === 1 ? `Retry ${retryFiles[0].name}` : `Retry ${retryFiles.length} failed images`}
-          </button>
-        )}
-        <label className="relative mt-3 block">
-          <span className="pointer-events-none absolute inset-y-0 right-3 grid place-items-center text-[#303839]/45"><SearchIcon /></span>
-          <span className="sr-only">Search previously uploaded images</span>
-          <input type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search uploads" className="min-h-11 w-full rounded-xl border border-[#303839]/12 bg-[#F8F6F1] pl-3 pr-10 text-sm font-semibold text-[#303839] outline-none transition-colors placeholder:text-[#303839]/40 focus:border-[#303839]/60 focus:bg-white focus:ring-2 focus:ring-[#303839]/15" />
-        </label>
       </div>
 
-      <div className="p-4">
-        <div className="mb-3 flex items-center justify-between gap-2">
-          <p className="text-[10px] font-extrabold uppercase tracking-[0.14em] text-[#303839]/55">Previously uploaded</p>
-          {!loading && total > 0 && <span className="text-[10px] font-bold text-[#303839]/40">{total} image{total === 1 ? "" : "s"}</span>}
-        </div>
-
-        <div aria-live="polite" className="grid gap-2">
-          {notice && <p className="rounded-xl border border-[#D4AF37]/35 bg-[#D4AF37]/10 px-3 py-2 text-xs font-semibold text-[#66551c]" role="status">{notice}</p>}
-          {error && (
-            <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700" role="alert">
-              <p>{error}</p>
-              <button type="button" onClick={() => setReloadKey((current) => current + 1)} className="mt-1 font-extrabold underline underline-offset-2">Try loading again</button>
-            </div>
-          )}
-          {usage.length > 0 && (
-            <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
-              <p className="font-extrabold">This image remains available in:</p>
-              <ul className="mt-1 list-disc pl-4">{usage.map((location, index) => <li key={`${location.type}-${location.id}-${index}`}>{location.label || location.type || "Saved design"}</li>)}</ul>
-            </div>
-          )}
-        </div>
-
-        {loading ? (
-          <div className="mt-3 grid grid-cols-2 gap-2" aria-label="Loading uploaded images">{Array.from({ length: 8 }).map((_, index) => <div key={index} className="aspect-[4/5] animate-pulse rounded-xl bg-[#F8F6F1]" aria-hidden />)}</div>
-        ) : assets.length === 0 ? (
-          <div className="mt-3 rounded-xl border border-dashed border-[#303839]/18 bg-[#F8F6F1] px-4 py-8 text-center">
-            <p className="text-sm font-extrabold text-[#303839]">{search ? "No uploaded images match your search." : "No uploaded images yet."}</p>
-            <p className="mt-1 text-xs leading-5 text-[#303839]/55">{search ? "Try a different display name, filename, keyword, or tag." : "Upload an image and it will remain available here for every product."}</p>
-          </div>
-        ) : (
-          <div className="mt-3 grid grid-cols-2 gap-2 2xl:gap-3">
-            {assets.map((asset) => (
-              <article key={asset.id} className="group relative min-w-0 overflow-hidden rounded-xl border border-[#303839]/10 bg-white transition-colors duration-200 hover:border-[#303839]/40">
-                <button type="button" onClick={() => onInsertAsset(asset)} className="block w-full cursor-pointer text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#303839]" aria-label={`Add ${asset.title} to the current page`}>
-                  <span className="grid aspect-square place-items-center overflow-hidden bg-[#F8F6F1] p-2"><img src={asset.thumbnailUrl || asset.editorUrl || asset.url} alt="" loading="lazy" draggable={false} className="max-h-full max-w-full object-contain" /></span>
-                  <span className="block p-2 pr-10">
-                    <span className="block truncate text-xs font-extrabold text-[#303839]" title={asset.title}>{asset.displayName || asset.title}</span>
-                    {asset.originalFilename && asset.originalFilename !== asset.title && <span className="mt-0.5 block truncate text-[9px] text-[#303839]/45" title={asset.originalFilename}>{asset.originalFilename}</span>}
-                    <span className="mt-1 block text-[9px] font-bold uppercase tracking-wide text-[#303839]/45">{formatFileType(asset)}{asset.width && asset.height ? ` · ${asset.width}×${asset.height}` : ""}</span>
-                    {Boolean(asset.usageCount) && <span className="mt-1 block text-[9px] font-bold text-[#303839]/50">Used {asset.usageCount} time{asset.usageCount === 1 ? "" : "s"}</span>}
-                  </span>
-                </button>
-                <button type="button" onClick={() => deleteAsset(asset)} disabled={deletingId === asset.id} aria-label={`Delete ${asset.title}`} title="Delete image" className="absolute bottom-1.5 right-1.5 grid h-9 w-9 cursor-pointer place-items-center rounded-lg bg-white text-red-600 shadow-[0_2px_10px_rgba(48,56,57,0.12)] transition-colors hover:bg-red-50 hover:text-red-700 disabled:cursor-wait disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500">
-                  {deletingId === asset.id ? <span className="h-4 w-4 animate-spin rounded-full border-2 border-red-200 border-t-red-600" aria-hidden /> : <TrashIcon />}
-                </button>
-              </article>
-            ))}
-          </div>
-        )}
-
-        {hasMore && !loading && (
-          <button type="button" onClick={loadMore} disabled={loadingMore} className="mt-4 min-h-11 w-full rounded-xl border border-[#303839]/15 bg-white text-xs font-extrabold text-[#303839] transition-colors hover:bg-[#F8F6F1] disabled:cursor-wait disabled:opacity-55 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white">{loadingMore ? "Loading…" : "Load more"}</button>
+      <div aria-live="polite" className="grid gap-2 empty:hidden">
+        {notice && <p role="status" className="text-[13px] text-[#303839]/75">{notice}</p>}
+        {error && (
+          <p role="alert" className="text-[13px] font-semibold text-red-700">
+            {error}{" "}
+            <button type="button" className="underline" onClick={() => setReloadKey((key) => key + 1)}>Try again</button>
+          </p>
         )}
       </div>
+
+      {loading ? (
+        <div className="grid grid-cols-3 gap-2.5" aria-label="Loading your images">
+          {Array.from({ length: 6 }).map((_, index) => <span key={index} className="aspect-[4/5] animate-pulse rounded-xl bg-[#F2F3F5]" aria-hidden />)}
+        </div>
+      ) : assets.length ? (
+        <div className="grid grid-cols-3 gap-2.5" data-upload-grid>
+          {assets.map((asset) => <Thumb key={asset.id} asset={asset} onPick={() => onInsertAsset(asset)} />)}
+        </div>
+      ) : (
+        !error && <p className="text-[14px] text-[#303839]/60">No images yet. Upload one and it stays here for every product.</p>
+      )}
+      {!loading && assets.length < total && (
+        <button data-shape="round" type="button" onClick={loadMore} disabled={loadingMore} className="justify-self-center rounded-full px-4 py-2 text-[14px] font-semibold text-[#27307A] hover:bg-[#27307A]/[0.06] disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#27307A]">
+          {loadingMore ? "Loading…" : "Show more"}
+        </button>
+      )}
+
+      {dialog === "media" && (
+        <Dialog title="Media manager" wide onClose={closeDialog}>
+          <AdminMediaLibrary onInsertAsset={insertFromDialog} currentAssetIds={currentAssetIds} />
+        </Dialog>
+      )}
+      {dialog === "phone" && <PhoneUploadDialog onClose={closeDialog} onInsertAsset={onInsertAsset} />}
     </div>
   );
 }

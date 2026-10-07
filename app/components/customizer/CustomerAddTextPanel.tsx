@@ -60,6 +60,7 @@ export default function CustomerAddTextPanel({
 
         <div className="mt-3 grid gap-2">
           {([
+            ["text", "Add Text", "Fits your words, wraps at the edge", "T"],
             ["heading", "Add Heading", "Large single-line title", "Aa"],
             ["subheading", "Add Subheading", "Refined supporting line", "Ag"],
             ["body", "Add Body Text", "Multiline invitation copy", "¶"],

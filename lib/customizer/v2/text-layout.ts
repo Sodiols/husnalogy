@@ -341,7 +341,7 @@ export function getTextResizeConstraints(input: TextLayoutInput, measure: Measur
  * persistently (see migrateTextAutoSizing), never inferred at render time.
  */
 
-export const AUTO_SIZE_MODES = ["fixed", "width", "height", "shrink"] as const;
+export const AUTO_SIZE_MODES = ["fixed", "width", "height", "shrink", "safe-width"] as const;
 export type AutoSizeMode = (typeof AUTO_SIZE_MODES)[number];
 
 export function getTextAutoSizeMode(style: Record<string, any> | null | undefined): AutoSizeMode {
@@ -357,6 +357,51 @@ export function getTextAutoSizeMode(style: Record<string, any> | null | undefine
 // Auto width only ever applies to genuine single-line text.
 export function isAutoWidthText(style: Record<string, any> | null | undefined): boolean {
   return !style?.multiline && getTextAutoSizeMode(style) === "width";
+}
+
+/**
+ * "safe-width" — the default for NEW text: the box is the words (its widest
+ * line), growing as they are typed, until it would cross the page's safe area;
+ * from there it keeps that maximum width and wraps at word boundaries, growing
+ * in height (in its growth direction). Manual line breaks are kept, and
+ * deleting text shrinks it back. It never freezes a width of its own, so no
+ * edit can leave it wrapping inside a narrow box.
+ *
+ * A separate mode rather than a change to "width", whose clamped text shrinks:
+ * layers and order snapshots made with "width" keep rendering exactly as made.
+ */
+export function isSafeWidthText(style: Record<string, any> | null | undefined): boolean {
+  return getTextAutoSizeMode(style) === "safe-width";
+}
+
+/**
+ * How a renderer lays out a text layer inside its RESOLVED box — one rule for
+ * the studio canvas, the customer editor, previews and the server render.
+ */
+export function resolvedTextLayoutMode(
+  style: Record<string, any> | null | undefined,
+  clampedBySafeArea: boolean,
+): { multiline: boolean; fitMode: "fixed" | "shrink" | "auto-height" } {
+  if (isSafeWidthText(style)) return { multiline: true, fitMode: "fixed" };
+  return {
+    multiline: Boolean(style?.multiline),
+    fitMode: clampedBySafeArea && !style?.multiline
+      ? "shrink"
+      : style?.fitMode === "shrink" ? "shrink" : style?.fitMode === "auto-height" ? "auto-height" : "fixed",
+  };
+}
+
+/** The page's safe area in document px: the one bound auto-sized text grows to. */
+export function templateSafeBounds(template: any): SafeBounds {
+  const safe = template?.safeArea || {};
+  const width = Number(template?.canvasWidthPx) || 1500;
+  const height = Number(template?.canvasHeightPx) || 2100;
+  return {
+    left: Number(safe.left) || 0,
+    top: Number(safe.top) || 0,
+    right: width - (Number(safe.right) || 0),
+    bottom: height - (Number(safe.bottom) || 0),
+  };
 }
 
 export type ResolvedTextBox = {
@@ -396,7 +441,7 @@ export type ResolveTextBoxInput = {
 export type SafeBounds = { left: number; top: number; right: number; bottom: number };
 
 // Breathing room so italic overhang and side bearings are never clipped.
-function autoWidthPadding(fontSize: number): number {
+export function autoWidthPadding(fontSize: number): number {
   return Math.max(2, Math.ceil(fontSize * 0.12));
 }
 
@@ -442,6 +487,7 @@ export function resolveTextBox(
     autoWidth: false,
     clampedBySafeArea: false,
   };
+  if (isSafeWidthText(input)) return resolveSafeWidthBox(input, measure, safeBounds);
   const canonicalText = canonicalLayoutText(input.text);
   const manualMultiline = canonicalText.includes("\n");
   const autoWidth = !manualMultiline && isAutoWidthText(input);
@@ -488,7 +534,10 @@ export function resolveTextBox(
   );
 
   const align = input.textAlign || "center";
-  let width = box.width + autoWidthPadding(fontSize);
+  // Renderers space after EVERY glyph, the last included, and centre or
+  // right-align on that full advance; the box makes room for that trailing
+  // gap so wide letter spacing never pushes the first glyph out of it.
+  let width = box.width + autoWidthPadding(fontSize) + Math.max(0, Number(input.letterSpacing) || 0);
   let clampedBySafeArea = false;
 
   if (safeBounds) {
@@ -522,6 +571,53 @@ export function resolveTextBox(
   else if (vAlign === "bottom") y = input.y + input.height / 2 - height / 2;
 
   return { x, y, width, height, autoWidth: true, clampedBySafeArea };
+}
+
+/**
+ * The "safe-width" box: the widest line's own width (plus the auto-width
+ * allowance), capped at the width the safe area leaves from this position and
+ * alignment; past the cap the words wrap and the box grows in height. The
+ * aligned edge holds horizontally, the growth direction vertically — the same
+ * anchoring as auto width and auto height.
+ */
+function resolveSafeWidthBox(input: ResolveTextBoxInput, measure: MeasureFn, safeBounds?: SafeBounds | null): ResolvedTextBox {
+  const fontSize = Math.max(4, Number(input.fontSize) || 16);
+  const widest = getSingleLineTextBox(
+    {
+      text: input.text,
+      fontFamily: input.fontFamily,
+      fontSize,
+      fontWeight: input.fontWeight,
+      fontStyle: input.fontStyle,
+      letterSpacing: input.letterSpacing,
+      lineHeight: input.lineHeight,
+      uppercase: input.uppercase,
+    },
+    measure,
+  ).width;
+  // Renderers space after the last glyph too: room for it, as for auto width.
+  const natural = widest + autoWidthPadding(fontSize) + Math.max(0, Number(input.letterSpacing) || 0);
+  const align = input.textAlign || "center";
+  const available = safeBounds ? availableTextWidth(input.x, input.width, align, safeBounds) : Number.POSITIVE_INFINITY;
+  const clampedBySafeArea = natural > available;
+  const width = Math.max(1, Math.round(Math.min(natural, available)));
+  const layout = layoutText(
+    { ...input, fontSize, width, height: Number.MAX_SAFE_INTEGER, multiline: true, fitMode: "fixed" },
+    measure,
+  );
+  const height = Math.max(1, Math.ceil(layout.totalHeight));
+
+  let x = input.x;
+  if (align === "left") x = input.x - input.width / 2 + width / 2;
+  else if (align === "right") x = input.x + input.width / 2 - width / 2;
+
+  const growth = normalizeTextGrowthDirection(input.growthDirection);
+  if (growth) {
+    const anchored = anchorGrownTextBox({ x, y: input.y, fromHeight: input.height, toHeight: height, rotation: input.rotation, growth });
+    return { x: anchored.x, y: anchored.y, width, height, autoWidth: true, clampedBySafeArea };
+  }
+  // No growth direction: the top edge holds, as for paragraphs.
+  return { x, y: input.y - input.height / 2 + height / 2, width, height, autoWidth: true, clampedBySafeArea };
 }
 
 /**

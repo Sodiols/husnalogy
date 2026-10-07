@@ -51,7 +51,8 @@ describe("resolveFontSizeBounds", () => {
 
 describe("the toolbar no longer hardcodes its numeric ranges", () => {
   it("derives font size from the layer's bounds", () => {
-    expect(toolbarSource).toContain("const fontSizeBounds = resolveFontSizeBounds(style);");
+    // The layer's own bounds, shown in points (type-units.ts).
+    expect(toolbarSource).toContain("const fontSizeBounds = fontSizeBoundsInPoints(resolveFontSizeBounds(style), dpi);");
     expect(toolbarSource).toContain("minimum={fontSizeBounds.minimum}");
     expect(toolbarSource).toContain("maximum={fontSizeBounds.maximum}");
     expect(toolbarSource).not.toContain("minimum={10}\n          maximum={400}");

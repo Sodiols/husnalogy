@@ -134,8 +134,9 @@ describe("admin text toolbar — numeric fields", () => {
     expect(stepperSource).toContain("if (shouldCommit) onCommit(next)");
     expect(stepperSource).toContain('event.key === "Escape"');
     expect(stepperSource).toContain("onCancel?.(originalValue.current)");
-    expect(toolbarSource).toContain("onPreview={(next) => props.onStylePreview({ fontSize: next })}");
-    expect(toolbarSource).toContain("onCommit={(next) => props.onStylePatch({ fontSize: next })}");
+    // The value is typed in points and previewed/committed in document px.
+    expect(toolbarSource).toContain("onPreview={(next) => props.onStylePreview({ fontSize: pointsToDocumentPx(next, props.dpi) })}");
+    expect(toolbarSource).toContain("onCommit={(next) => props.onStylePatch({ fontSize: pointsToDocumentPx(next, props.dpi) })}");
     // A shape's line weight follows the same preview → commit → cancel contract.
     expect(toolbarSource).toContain("onPreview={(next) => props.onLayerPropsPreview({ strokeWidth: next })}");
     expect(toolbarSource).toContain("onCancel={props.onLayerPropsCancel}");

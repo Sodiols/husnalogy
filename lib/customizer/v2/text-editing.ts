@@ -4,14 +4,29 @@
 // persistence/history, but both Admin and Customer use these exact placement
 // presets and newline rules.
 
-import { DEFAULT_LETTER_SPACING, DEFAULT_LINE_HEIGHT } from "./text-layout";
+import { newTextFontSize } from "./type-units";
+import {
+  DEFAULT_LETTER_SPACING,
+  DEFAULT_LINE_HEIGHT,
+  autoWidthPadding,
+  getSingleLineTextBox,
+  isAutoWidthText,
+  isSafeWidthText,
+  type MeasureFn,
+} from "./text-layout";
 
 export const TEXT_PLACEMENT_DRAG_THRESHOLD_PX = 4;
 
-export type TextPlacementPreset = "heading" | "subheading" | "body";
+/**
+ * "text" is the STANDARD new text: one line, auto width (its box hugs the
+ * words), 17 pt, centred. The others are the Add Text panel's explicit styles.
+ */
+export type TextPlacementPreset = "text" | "heading" | "subheading" | "body";
 
 export type TextPlacementStyle = {
   name: string;
+  /** How the new object sizes itself (text-layout AUTO_SIZE_MODES). */
+  autoSizeMode: "safe-width" | "width" | "height";
   fontSize: number;
   width: number;
   height: number;
@@ -169,12 +184,24 @@ export function promoteTextStyleForValue(
 ): Record<string, any> {
   const current = { ...(style || {}) };
   if (!hasManualTextLineBreak(value)) return current;
-  return {
-    ...current,
-    multiline: true,
-    autoSizeMode: "height",
-    fitMode: "auto-height",
-  };
+  return { ...current, ...multilineTextPatch(current) };
+}
+
+/**
+ * What turning a text object multi-line changes. "safe-width" text keeps its
+ * mode — its box already follows its widest line and wraps only at the safe
+ * area — so a line break never freezes it at the width of the line typed
+ * before it. Every other mode becomes an auto-height paragraph, as before.
+ */
+export function multilineTextPatch(style: Record<string, any> | null | undefined): Record<string, any> {
+  if (isSafeWidthText(style)) return { multiline: true };
+  return { multiline: true, autoSizeMode: "height", fitMode: "auto-height" };
+}
+
+/** True when the style is already multi-line in the sense `multilineTextPatch` gives it. */
+export function isMultilineTextStyle(style: Record<string, any> | null | undefined): boolean {
+  const patch = multilineTextPatch(style);
+  return Object.entries(patch).every(([key, value]) => style?.[key] === value);
 }
 
 export function canonicalTextLayerUpdate(
@@ -202,13 +229,32 @@ export function getTextPlacementStyle(
   preset: TextPlacementPreset,
   canvasWidth: number,
   canvasHeight: number,
+  dpi?: unknown,
 ): TextPlacementStyle {
   const width = Math.max(240, Number(canvasWidth) || 1500);
   const height = Math.max(240, Number(canvasHeight) || 2100);
+  if (preset === "text") {
+    // The width is only a starting value: auto-width text is always measured
+    // from its content, so the box hugs the words from the first keystroke.
+    const fontSize = newTextFontSize(dpi);
+    return {
+      name: "Text",
+      // The box is the words until the safe area, then it wraps.
+      autoSizeMode: "safe-width",
+      fontSize,
+      width: Math.round(fontSize),
+      height: Math.round(fontSize * DEFAULT_LINE_HEIGHT),
+      multiline: false,
+      textAlign: "center",
+      lineHeight: DEFAULT_LINE_HEIGHT,
+      letterSpacing: DEFAULT_LETTER_SPACING,
+    };
+  }
   if (preset === "heading") {
     const fontSize = Math.max(48, Math.round(width / 16));
     return {
       name: "Heading",
+      autoSizeMode: "width",
       fontSize,
       width: Math.round(width * 0.62),
       height: Math.round(fontSize * 1.3),
@@ -222,6 +268,7 @@ export function getTextPlacementStyle(
     const fontSize = Math.max(36, Math.round(width / 22));
     return {
       name: "Subheading",
+      autoSizeMode: "width",
       fontSize,
       width: Math.round(width * 0.56),
       height: Math.round(fontSize * 1.35),
@@ -234,6 +281,7 @@ export function getTextPlacementStyle(
   const fontSize = Math.max(28, Math.round(width / 28));
   return {
     name: "Body text",
+    autoSizeMode: "height",
     fontSize,
     width: Math.round(width * 0.48),
     height: Math.min(Math.round(height * 0.2), Math.round(fontSize * 4.8)),
@@ -252,4 +300,90 @@ export function textPlacementGestureIsClick(
   threshold = TEXT_PLACEMENT_DRAG_THRESHOLD_PX,
 ): boolean {
   return Math.hypot(endClientX - startClientX, endClientY - startClientY) <= threshold;
+}
+
+/* ---------------------------------------------- line breaks in auto width --
+ * Auto-width text has no wrap width of its own: its box is the words. When a
+ * line break turns it into a paragraph, the paragraph needs one — and the
+ * stored width is the last single line's, so wrapping at it would break every
+ * new word onto its own line. Instead, for the rest of that editing session,
+ * the box follows the widest typed line (plus the auto-width padding), never
+ * narrower than it was and never wider than the artboard.
+ */
+
+/** Whether this edit turns one-line auto-width text into multi-line text. */
+export function becomesMultilineFromAutoWidth(
+  style: Record<string, any> | null | undefined,
+  previousText: unknown,
+  nextText: unknown,
+): boolean {
+  return (
+    isAutoWidthText(style) &&
+    !hasManualTextLineBreak(previousText) &&
+    hasManualTextLineBreak(nextText)
+  );
+}
+
+/**
+ * Moves a box's centre so its ALIGNED edge holds while its width changes:
+ * left-aligned text grows rightward, right-aligned leftward, centred evenly.
+ * The shift is along the box's own (rotated) horizontal axis.
+ */
+export function alignedEdgeShift(
+  box: { x: number; y: number; width: number; rotation?: number },
+  nextWidth: number,
+  textAlign: unknown,
+): { x: number; y: number } {
+  const delta = nextWidth - box.width;
+  const local = textAlign === "left" ? delta / 2 : textAlign === "right" ? -delta / 2 : 0;
+  if (!local) return { x: box.x, y: box.y };
+  const radians = ((Number(box.rotation) || 0) * Math.PI) / 180;
+  return { x: box.x + local * Math.cos(radians), y: box.y + local * Math.sin(radians) };
+}
+
+/** The wrap box for text that became multi-line in this editing session. */
+export function widenForTypedLines(
+  layer: { x: number; y: number; width: number; rotation?: number; textStyle?: Record<string, any> | null },
+  text: unknown,
+  measure: MeasureFn,
+  maxWidth?: number,
+): { x: number; y: number; width: number } {
+  const style = layer.textStyle || {};
+  const fontSize = Math.max(4, Number(style.fontSize) || 16);
+  const widest = getSingleLineTextBox(
+    {
+      text: String(text ?? ""),
+      fontFamily: style.fontFamily,
+      fontSize,
+      fontWeight: style.fontWeight,
+      fontStyle: style.fontStyle === "italic" ? "italic" : "normal",
+      letterSpacing: Number(style.letterSpacing) || 0,
+      lineHeight: style.lineHeight,
+      uppercase: Boolean(style.uppercase),
+    },
+    measure,
+  ).width;
+  const cap = Number(maxWidth) > 0 ? Number(maxWidth) : Number.POSITIVE_INFINITY;
+  // The same allowance as an auto-width box: padding plus the trailing letter space.
+  const allowance = autoWidthPadding(fontSize) + Math.max(0, Number(style.letterSpacing) || 0);
+  const width = Math.ceil(Math.min(cap, Math.max(Number(layer.width) || 1, widest + allowance)));
+  return { ...alignedEdgeShift(layer, width, style.textAlign), width };
+}
+
+/**
+ * A gesture that changes a "safe-width" text's WIDTH by itself (a side
+ * handle — a corner drag scales the type and carries a font size) is the admin
+ * or customer choosing that width: the object becomes a fixed-width paragraph
+ * that wraps at it, and the next keystroke keeps it. Returns the style patch
+ * for that switch, or null when the gesture leaves the mode alone.
+ */
+export function manualWidthStylePatch(
+  style: Record<string, any> | null | undefined,
+  patch: { width?: unknown; textStyle?: Record<string, any> | null },
+  currentWidth: number,
+): Record<string, any> | null {
+  if (!isSafeWidthText(style)) return null;
+  if (patch.width === undefined || patch.textStyle?.fontSize !== undefined) return null;
+  if (Math.abs(Number(patch.width) - Number(currentWidth)) < 1) return null;
+  return { multiline: true, autoSizeMode: "height", fitMode: "auto-height" };
 }

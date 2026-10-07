@@ -21,11 +21,10 @@ const sources = new Map(files.map((name) => [name, read(name)]));
 const shell = sources.get("AdminDesignBuilder.tsx")!;
 
 describe("the studio shell keeps the canvas the hero", () => {
-  it("clamps the left workspace sidebar rather than fixing it wide", () => {
-    // The lower bound leaves room for the drag grip, the layer name and the
-    // three row controls, so a narrow panel truncates the name instead of
-    // overflowing and growing a horizontal scrollbar.
-    expect(shell).toContain("w-[clamp(200px,16vw,280px)]");
+  it("clamps the side panel rather than fixing it wide", () => {
+    // Wide enough for a layer row's name and controls, narrow enough that
+    // the canvas stays the largest thing on screen.
+    expect(shell).toContain("w-[clamp(280px,22vw,340px)]");
   });
 
   it("clamps the inspector and caps it well under half the viewport", () => {
@@ -53,14 +52,15 @@ describe("every admin component shows keyboard focus", () => {
   });
 });
 
-describe("dark-sidebar controls use an offset focus ring", () => {
-  // A plain gold ring on the charcoal sidebar has far less separation than one
-  // lifted off the surface, so the sidebar panels use the offset variant.
-  const DARK_PANELS = ["AdminLayersPanel.tsx", "AdminPagesPanel.tsx"];
+describe("side-panel controls use an offset focus ring", () => {
+  // The layers and pages panels sit on the white side panel, so their focus
+  // ring is lifted off a white surface.
+  const PANELS = ["AdminLayersPanel.tsx", "AdminPagesPanel.tsx"];
 
-  it.each(DARK_PANELS)("%s", (name) => {
+  it.each(PANELS)("%s", (name) => {
     const source = sources.get(name)!;
-    expect(source).toContain("focus-visible:ring-offset-[#2A3132]");
+    expect(source).toContain("focus-visible:ring-offset-white");
+    expect(source).not.toContain("ring-offset-[#2A3132]");
   });
 });
 
@@ -90,14 +90,15 @@ describe("destructive admin actions are not signalled by colour alone", () => {
   });
 });
 
-describe("dark-sidebar controls use an offset focus ring", () => {
-  // A plain gold ring on the charcoal sidebar has far less separation than one
-  // lifted off the surface, so the sidebar panels use the offset variant.
-  const DARK_PANELS = ["AdminLayersPanel.tsx", "AdminPagesPanel.tsx"];
+describe("side-panel controls use an offset focus ring", () => {
+  // The layers and pages panels sit on the white side panel, so their focus
+  // ring is lifted off a white surface.
+  const PANELS = ["AdminLayersPanel.tsx", "AdminPagesPanel.tsx"];
 
-  it.each(DARK_PANELS)("%s", (name) => {
+  it.each(PANELS)("%s", (name) => {
     const source = sources.get(name)!;
-    expect(source).toContain("focus-visible:ring-offset-[#2A3132]");
+    expect(source).toContain("focus-visible:ring-offset-white");
+    expect(source).not.toContain("ring-offset-[#2A3132]");
   });
 });
 

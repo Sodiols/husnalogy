@@ -371,9 +371,9 @@ describe("AdminDesignBuilder viewport wiring", () => {
     const panned = toolReducer(INITIAL_TOOL_STATE, { type: "togglePan" });
     expect(panned.mode).toBe("pan");
     expect(toolReducer(panned, { type: "togglePan" }).mode).toBe("select");
-    expect(toolRail).toContain('id="pan"');
-    expect(toolRail).toContain('props.activeTool === "pan"');
-    expect(toolRail).toContain("onClick={props.onPan}");
+    // The hand tool lives in the canvas bar, beside Snap.
+    expect(adminBuilder).toContain('aria-pressed={activeTool === "pan"}');
+    expect(adminBuilder).toContain("Pan the canvas (or hold Space)");
   });
 
   it("does not route pan through the template, history or dirty tracking", () => {

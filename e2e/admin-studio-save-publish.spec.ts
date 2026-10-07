@@ -18,6 +18,7 @@
  */
 
 import { expect, test, type Page } from "@playwright/test";
+import { addStudioFrame } from "./admin-studio-tools";
 
 type Request = { method: string; path: string; body: any };
 
@@ -50,7 +51,7 @@ async function openStudioFromForm(page: Page) {
 }
 
 async function addFrame(page: Page) {
-  await studio(page).getByRole("button", { name: "Frame", exact: true }).click();
+  await addStudioFrame(page);
 }
 
 async function startNewProduct(page: Page, title: string) {

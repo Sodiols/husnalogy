@@ -24,13 +24,16 @@ describe("admin properties sidebar contract", () => {
 
   it("keeps simple text content and direct font-size editing", () => {
     expect(panel).toContain("<Lbl>Text content</Lbl>");
-    expect(panel).toContain("<Lbl>Font size</Lbl>");
+    // Shown in points, stored in document px (type-units.ts).
+    expect(panel).toContain("<Lbl>Font size (pt)</Lbl>");
+    expect(panel).toContain("documentPxToPoints(px, dpi)");
+    expect(panel).toContain("pointsToDocumentPx(points, dpi)");
     expect(panel).toContain('ariaLabel="Font size"');
     expect(panel).toContain("showStepButtons={false}");
     expect(panel).toContain("<textarea");
     expect(panel).toContain('resolveTextEditorKeyAction(event, true)');
-    expect(panel).toContain('multiline: true');
-    expect(panel).toContain('autoSizeMode: "height"');
+    // Enter makes the text multi-line through the shared rule.
+    expect(panel).toContain("multilineTextPatch(style)");
   });
 
   it("uses the Husnalogy soft background for customer access", () => {

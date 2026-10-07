@@ -4,6 +4,7 @@
 // layer is selected; every control is gated by the layer's admin-configured
 // customer permissions. Customer-added text gets the full set.
 
+import { FONT_SIZE_POINT_RULES, documentPxToPoints, fontSizeBoundsInPoints, pointsToDocumentPx } from "@/lib/customizer/v2/type-units";
 import { useEffect } from "react";
 import EditableNumericStepper from "./EditableNumericStepper";
 import TextAlignmentDropdown from "./TextAlignmentDropdown";
@@ -26,6 +27,8 @@ import {
 
 type Props = {
   layer: any;
+  /** The artboard's DPI: font sizes are shown in points (lib/customizer/v2/type-units). */
+  dpi?: unknown;
   permissions: Record<string, boolean>;
   isUserLayer: boolean;
   editingText?: boolean;
@@ -37,6 +40,7 @@ type Props = {
 
 export default function CustomerContextToolbar({
   layer,
+  dpi,
   permissions,
   isUserLayer,
   editingText = false,
@@ -59,8 +63,9 @@ export default function CustomerContextToolbar({
   const canEditContent = isUserLayer || Boolean(permissions.editContent);
 
   const fontSize = Number(style.fontSize ?? 48);
-  // Honour the layer's own limits, exactly as the save validator does.
-  const fontSizeBounds = resolveFontSizeBounds(style);
+  // Honour the layer's own limits, exactly as the save validator does — shown
+  // in points, like every font-size control (type-units.ts).
+  const fontSizeBounds = fontSizeBoundsInPoints(resolveFontSizeBounds(style), dpi);
   const weight = String(style.fontWeight || "400");
   const italic = style.fontStyle === "italic";
   const align = style.textAlign || "center";
@@ -152,14 +157,14 @@ export default function CustomerContextToolbar({
       {canSize && (
         <EditableNumericStepper
           label="Font size"
-          value={fontSize}
+          value={documentPxToPoints(fontSize, dpi)}
           minimum={fontSizeBounds.minimum}
           maximum={fontSizeBounds.maximum}
-          step={1}
-          largeStep={10}
+          step={FONT_SIZE_POINT_RULES.step}
+          largeStep={FONT_SIZE_POINT_RULES.largeStep}
           allowNegative={false}
-          allowDecimal={false}
-          onCommit={(fontSize) => onStyleChange({ fontSize }, "fontSize")}
+          allowDecimal
+          onCommit={(points) => onStyleChange({ fontSize: pointsToDocumentPx(points, dpi) }, "fontSize")}
           showLabel
           showStepButtons={false}
           className="h-10 w-[68px] shrink-0 px-1"

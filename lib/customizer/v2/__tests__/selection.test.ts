@@ -158,7 +158,7 @@ describe("insertion tools are one-shot commands (spec §10–§12, §35)", () =>
     // creation mode.
     expect(builder).toContain("useReducer(toolReducer, INITIAL_TOOL_STATE)");
     expect(builder).toContain('const activeTool: "select" | "pan" = toolState.mode === "pan" ? "pan" : "select";');
-    expect(builder).toContain('useState<"properties" | "text" | "uploads" | "elements">("properties")');
+    expect(builder).toContain("useState<StudioSidePanel | null>(null)");
     expect(rail).toContain("activePanel");
   });
 
@@ -194,8 +194,9 @@ describe("bulk image upload (spec §1, §37)", () => {
     for (const panel of [adminPanel, customerPanel]) {
       expect(panel).toContain("type=\"file\"");
       expect(panel).toContain("multiple");
-      expect(panel).toContain("Uploading ${batch.index} of ${batch.total}");
     }
+    expect(adminPanel).toContain("Uploading ${uploading.index} of ${uploading.total}");
+    expect(customerPanel).toContain("Uploading ${batch.index} of ${batch.total}");
     // One failure must not cancel the files that already succeeded.
     expect(adminPanel).toContain("const failed:");
     expect(customerPanel).toContain("const failed:");

@@ -8,6 +8,7 @@
  * text.
  */
 import { expect, test, type Page } from "@playwright/test";
+import { addStudioShape, addStudioText } from "./admin-studio-tools";
 import { bodyPoint, docToScreen, hitAt, selectedIds } from "./customizer-fixture";
 
 const studio = (page: Page) => page.locator("[data-admin-customizer]");
@@ -42,8 +43,7 @@ async function inserted(page: Page, previous: string[]): Promise<string> {
 async function threeShapes(page: Page): Promise<string[]> {
   const ids: string[] = [];
   for (let index = 0; index < 3; index += 1) {
-    await studio(page).getByRole("button", { name: "Shape", exact: true }).click();
-    await page.getByRole("menu").getByRole("button", { name: "oval", exact: true }).click();
+    await addStudioShape(page, "oval");
     ids.push(await inserted(page, ids));
     const steps = [-14, 0, 14][index];
     for (let step = 0; step < Math.abs(steps); step += 1) await page.keyboard.press(steps < 0 ? "Shift+ArrowUp" : "Shift+ArrowDown");
@@ -115,7 +115,7 @@ test.describe("admin selection", () => {
     // Read before typing starts: while the editor is open the canvas hit graph
     // is paused and the press is routed by geometry instead.
     const point = await bodyPoint(page, shapes[2]);
-    await studio(page).getByRole("button", { name: "Text", exact: true }).click();
+    await addStudioText(page);
     const editor = page.locator('[aria-label="Edit text on canvas"]');
     await expect(editor).toBeVisible();
     await page.keyboard.type("Hello studio");

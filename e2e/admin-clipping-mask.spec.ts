@@ -6,6 +6,7 @@
  * the shared mask engine — one undo step, one redo step.
  */
 import { expect, test, type Page } from "@playwright/test";
+import { addStudioFrame, addStudioShape } from "./admin-studio-tools";
 import { getMaskPath } from "../lib/customizer/v2/masks";
 import { bodyPoint, selectedIds } from "./customizer-fixture";
 
@@ -69,13 +70,12 @@ test("admin: an oval and a photo area become one clipped photo; Undo and Redo re
   await page.setViewportSize({ width: 1440, height: 900 });
   await openNewStudio(page);
 
-  await studio(page).getByRole("button", { name: "Frame", exact: true }).click();
+  await addStudioFrame(page);
   const photo = await inserted(page);
   // Move the photo area off the centre so the shape has its own body to click.
   await nudgeDown(page);
 
-  await studio(page).getByRole("button", { name: "Shape", exact: true }).click();
-  await page.getByRole("menu").getByRole("button", { name: "oval", exact: true }).click();
+  await addStudioShape(page, "oval");
   const shape = await inserted(page, [photo]);
   const oval = (await drawn(page, shape)).ellipse!;
   expect(oval).not.toBeNull();
@@ -108,12 +108,10 @@ test("admin: an oval and a photo area become one clipped photo; Undo and Redo re
 test("admin: Clipping mask is unavailable for two shapes", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await openNewStudio(page);
-  await studio(page).getByRole("button", { name: "Shape", exact: true }).click();
-  await page.getByRole("menu").getByRole("button", { name: "rectangle", exact: true }).click();
+  await addStudioShape(page, "rectangle");
   const first = await inserted(page);
   await nudgeDown(page);
-  await studio(page).getByRole("button", { name: "Shape", exact: true }).click();
-  await page.getByRole("menu").getByRole("button", { name: "circle", exact: true }).click();
+  await addStudioShape(page, "circle");
   const second = await inserted(page, [first]);
   await click(page, first);
   await click(page, second, ["Shift"]);

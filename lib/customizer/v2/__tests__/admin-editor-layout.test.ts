@@ -13,30 +13,34 @@ const pages = read("app/admin/dashboard/design-builder/AdminPagesPanel.tsx");
 const rail = read("app/admin/dashboard/design-builder/AdminToolRail.tsx");
 
 /**
- * The admin editor redesign is a four-area layout: header, dark workspace
- * sidebar (tools + layers + pages), canvas, and a light inspector on the right.
+ * The admin editor is a four-area layout: header, a floating tool rail with
+ * one side panel beside it (layers + pages, uploads, elements…), canvas, and a
+ * light inspector on the right.
  * These assertions pin the structure so a later refactor cannot silently drop a
  * region or a feature back out of it.
  */
 
 describe("four-area editor layout", () => {
-  it("puts layers and pages together in the dark left sidebar", () => {
-    const sidebar = builder.slice(builder.indexOf("Left workspace sidebar"), builder.indexOf("<main"));
-    expect(sidebar).toContain("bg-[#2A3132]");
+  it("puts layers and pages in their own side panels, beside the tool rail", () => {
+    const sidebar = builder.slice(builder.indexOf("Left: the floating tool rail"), builder.indexOf("<main"));
+    expect(sidebar).toContain("<AdminToolRail");
+    expect(sidebar).toContain('sidePanel === "layers"');
+    expect(sidebar).toContain('sidePanel === "pages"');
     expect(sidebar).toContain("<AdminLayersPanel");
     expect(sidebar).toContain("<AdminPagesPanel");
+    // Uploads and the elements library open in the same side panel.
+    expect(sidebar).toContain("<AdminUploadsPanel");
+    expect(sidebar).toContain("CustomerElementsPanel");
   });
 
   it("puts the properties inspector on the right", () => {
     const inspector = builder.slice(builder.indexOf("Right inspector"));
     expect(inspector).toContain("border-l");
     expect(inspector).toContain("<AdminPropertiesPanel");
-    expect(inspector).toContain("<AdminUploadsPanel");
-    expect(inspector).toContain("CustomerElementsPanel");
   });
 
   it("keeps the canvas between the two sidebars", () => {
-    expect(builder.indexOf("Left workspace sidebar")).toBeLessThan(builder.indexOf("<main"));
+    expect(builder.indexOf("Left: the floating tool rail")).toBeLessThan(builder.indexOf("<main"));
     expect(builder.indexOf("<main")).toBeLessThan(builder.indexOf("Right inspector"));
   });
 
@@ -114,15 +118,17 @@ describe("inspector tabs route rather than remove settings", () => {
   });
 });
 
-describe("dark panels are readable on the sidebar surface", () => {
-  it("themes the layers list for a dark background", () => {
-    expect(layers).toContain("text-white/65");
-    expect(layers).not.toContain('bg-white text-[#303839] hover:bg-[#F8F6F1]');
+describe("layers and pages read on the white side panel", () => {
+  it("themes the layers list for a light background", () => {
+    // Light-grey layer cards with dark text, as in the reference.
+    expect(layers).toContain("bg-[#F2F3F5]");
+    expect(layers).toContain("text-[#1f2425]");
+    expect(layers).not.toMatch(/(?<![\w:-])text-white(?![\w-])/);
   });
 
-  it("themes the pages thumbnails for a dark background", () => {
-    expect(pages).toContain("border-white/12");
-    expect(pages).toContain("text-white/50");
+  it("themes the pages thumbnails for a light background", () => {
+    expect(pages).toContain("border-[#303839]/12");
+    expect(pages).not.toContain("border-white/");
   });
 
   it("keeps every page and layer action", () => {
@@ -138,33 +144,32 @@ describe("dark panels are readable on the sidebar surface", () => {
   });
 
   it("offers exactly hide, lock and copy on a layer row", () => {
-    expect(layers).toContain("aria-label={layer.hidden ? `Show ${layer.name}` : `Hide ${layer.name}`}");
-    expect(layers).toContain("aria-label={layer.locked ? `Unlock ${layer.name}` : `Lock ${layer.name}`}");
-    expect(layers).toContain("aria-label={`Duplicate ${layer.name}`}");
-    expect(layers).not.toContain("aria-label={`Delete ${layer.name}`}");
+    // Named as the row reads (layerDisplayName), never by a raw id.
+    expect(layers).toContain("aria-label={layer.hidden ? `Show ${label}` : `Hide ${label}`}");
+    expect(layers).toContain("aria-label={layer.locked ? `Unlock ${label}` : `Lock ${label}`}");
+    expect(layers).toContain("aria-label={`Duplicate ${label}`}");
+    expect(layers).not.toContain("aria-label={`Delete ${label}`}");
   });
 });
 
 describe("tool rail keeps every tool", () => {
-  it("retains the full tool set", () => {
-    // Line moved off the rail and into the Shape menu — one place for
-    // everything you can draw — so it is no longer a top-level button.
-    for (const tool of ["select", "text", "image", "photo", "shape", "qr", "elements", "background", "guide", "pan", "pages"]) {
-      expect(rail).toContain(`id="${tool}"`);
-    }
-    expect(rail).not.toContain('id="line"');
+  it("offers the reference tools in order", () => {
+    const order = ["edit", "text", "uploads", "background", "elements", "icons", "options", "moment", "layers", "pages"];
+    const positions = order.map((id) => rail.indexOf(`id: "${id}"`));
+    expect(positions.every((position) => position > 0)).toBe(true);
+    expect([...positions].sort((a, b) => a - b)).toEqual(positions);
   });
 
-  it("offers Line inside the Shape menu without changing the document model", () => {
-    expect(rail).toContain('"line",');
-    expect(rail).toContain("SHAPE_MENU_ITEMS");
-    // Still routed to the line creator, so the `line` object type survives.
-    expect(rail).toContain('shape === "line" ? props.onAddLine() : props.onAddShape(shape)');
-  });
-
-  it("gives the Pages button real behaviour now that pages are always visible", () => {
-    expect(builder).toContain("admin-pages-section");
-    expect(builder).toContain("scrollIntoView");
+  it("keeps every former rail tool reachable", () => {
+    // Shapes, lines, frames and QR codes are added from Elements…
+    expect(builder).toContain("onAddShape={addShape}");
+    expect(builder).toContain("onAddLine={addLineStyle}");
+    expect(builder).toContain("onAddFrame={addFrameWithMask}");
+    expect(builder).toContain("onAddQRCode={() => addQRCode()}");
+    // …guides and the hand tool sit in the canvas bar, pages with the layers.
+    expect(builder).toContain("addGuide(axis)");
+    expect(builder).toContain('dispatchTool({ type: "togglePan" })');
+    expect(builder).toContain('id="admin-pages-section"');
   });
 });
 

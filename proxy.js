@@ -16,6 +16,8 @@ const PROTECTED_PREFIXES = [
   "/saved-addresses",
   "/cart",
   "/checkout",
+  // The Design Studio's phone upload page: sign in on the phone, come back.
+  "/upload-from-phone",
 ];
 
 const ADMIN_PREFIXES = [

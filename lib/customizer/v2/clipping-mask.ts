@@ -13,6 +13,7 @@
 // takes the shape's geometry, stacking position and paint, and the shape is
 // removed. Callers apply the result as ONE history step.
 
+import { CUSTOM_PATH_BOX, sanitizeCustomPath } from "./shape-library";
 import { isTransparentPaint } from "./paint";
 import type { MaskShape } from "./types";
 
@@ -54,6 +55,10 @@ export function maskForShape(shape: AnyLayer | null | undefined): MaskShape | nu
       return { kind: "oval" };
     case "arch":
       return { kind: "arch" };
+    case "custom": {
+      const d = sanitizeCustomPath(shape.pathData);
+      return d ? { kind: "path", d, viewBoxWidth: CUSTOM_PATH_BOX, viewBoxHeight: CUSTOM_PATH_BOX } : null;
+    }
     case "triangle":
       return { kind: "polygon", points: TRIANGLE.map((point) => ({ ...point })) };
     case "polygon": {

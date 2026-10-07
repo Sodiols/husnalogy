@@ -7,6 +7,7 @@
  * and the studio stayed "inside" the group.
  */
 import { expect, test, type Page } from "@playwright/test";
+import { addStudioFrame } from "./admin-studio-tools";
 import { bodyPoint, selectedIds } from "./customizer-fixture";
 
 const studio = (page: Page) => page.locator("[data-admin-customizer]");
@@ -38,11 +39,12 @@ const expectSelection = (page: Page, ids: string[]) =>
 test("admin: selecting outside an entered group leaves it, and its members resolve to the group again", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await openNewStudio(page);
-  await studio(page).getByRole("button", { name: "Frame", exact: true }).click();
+  await addStudioFrame(page);
   const [a] = await selectedIds(page);
-  // Spread the copies out so each has a visible body to click.
+  // Spread the copies out sideways so each has a visible body to click (down
+  // would push the last one behind the canvas's floating bottom bar).
   const spread = async () => {
-    for (let index = 0; index < 12; index += 1) await page.keyboard.press("Shift+ArrowDown");
+    for (let index = 0; index < 12; index += 1) await page.keyboard.press("Shift+ArrowRight");
     await page.waitForTimeout(250);
   };
   await page.keyboard.press("Control+d");

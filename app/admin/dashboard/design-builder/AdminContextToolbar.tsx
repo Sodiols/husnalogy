@@ -1,5 +1,7 @@
 "use client";
 
+import { rememberRecentColor } from "@/lib/customizer/v2/studio-recent-colors";
+import { FONT_SIZE_POINT_RULES, documentPxToPoints, fontSizeBoundsInPoints, pointsToDocumentPx } from "@/lib/customizer/v2/type-units";
 import { useEffect, useRef, useState } from "react";
 import GoogleFontSelector from "@/app/components/customizer/GoogleFontSelector";
 import { ensureGoogleFontLoaded, reportGoogleFontLoadFailure, useFamilyCapabilities, useSelectableFamilies } from "@/app/components/customizer/useGoogleFonts";
@@ -28,6 +30,8 @@ type Action = { enabled: boolean; reason?: string };
 type Props = {
   /** The selected layers, in selection order (the toolbar does not depend on that order). */
   selectedLayers: any[];
+  /** The artboard's DPI: font sizes are shown in points (lib/customizer/v2/type-units). */
+  dpi?: unknown;
   editingText?: boolean;
   /** Every selected object may be moved, resized and restyled. */
   canTransform: boolean;
@@ -225,6 +229,7 @@ function LabelledStepper({
   value,
   mixed = false,
   rules,
+  allowDecimal = !Number.isInteger(rules.step),
   disabled,
   onPreview,
   onCommit,
@@ -235,6 +240,7 @@ function LabelledStepper({
   value: number;
   mixed?: boolean;
   rules: { minimum: number; maximum: number; step: number; largeStep: number };
+  allowDecimal?: boolean;
   disabled?: boolean;
   onPreview: (value: number) => void;
   onCommit: (value: number) => void;
@@ -251,7 +257,7 @@ function LabelledStepper({
         maximum={rules.maximum}
         step={rules.step}
         largeStep={rules.largeStep}
-        allowDecimal={!Number.isInteger(rules.step)}
+        allowDecimal={allowDecimal}
         disabled={disabled}
         onPreviewChange={onPreview}
         onCommit={onCommit}
@@ -298,7 +304,7 @@ function ColourControl({
   allowTransparent,
   caption,
   onPreview,
-  onCommit,
+  onCommit: commitColour,
 }: {
   title: string;
   value: string;
@@ -311,6 +317,11 @@ function ColourControl({
 }) {
   const none = isTransparentPaint(value);
   const [draft, setDraft] = useState(none ? "" : value);
+  // Every applied colour joins the studio's shared recent colours.
+  const onCommit = (color: string) => {
+    if (!isTransparentPaint(color)) rememberRecentColor(color);
+    commitColour(color);
+  };
   useEffect(() => setDraft(isTransparentPaint(value) ? "" : value), [value]);
   const trigger = caption ? `${TEXT_BUTTON}` : ICON_BUTTON;
   return (
@@ -566,14 +577,16 @@ function TextControls({ layer, props, swatches }: { layer: any; props: Props; sw
         manageFavourites
       />
       <Separator />
+      {/* Shown and typed in points; stored in document px (type-units.ts). */}
       <LabelledStepper
         caption="Font size"
         label="Font size"
-        value={Number(fontSize.value)}
-        rules={FONT_SIZE_RULES}
+        value={documentPxToPoints(Number(fontSize.value), props.dpi)}
+        rules={{ ...FONT_SIZE_POINT_RULES, ...fontSizeBoundsInPoints(FONT_SIZE_RULES, props.dpi) }}
+        allowDecimal
         disabled={!props.canTransform}
-        onPreview={(next) => props.onStylePreview({ fontSize: next })}
-        onCommit={(next) => props.onStylePatch({ fontSize: next })}
+        onPreview={(next) => props.onStylePreview({ fontSize: pointsToDocumentPx(next, props.dpi) })}
+        onCommit={(next) => props.onStylePatch({ fontSize: pointsToDocumentPx(next, props.dpi) })}
         onCancel={props.onStyleCancel}
       />
       <Separator />

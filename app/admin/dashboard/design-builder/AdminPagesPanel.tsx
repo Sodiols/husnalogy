@@ -1,8 +1,9 @@
 "use client";
 
-// Pages panel (Sections 27–28): live thumbnails via the shared renderer with
-// add / rename / duplicate / reorder / enable-disable / delete and per-page
-// settings (label, background, customer text permission).
+// Pages panel (Sections 27–28): one white card per page, stacked — a live
+// thumbnail from the shared renderer above the page's name — with add /
+// rename / duplicate / reorder / enable-disable / delete and per-page settings
+// (label, background, customer text permission) in each card's menu.
 
 import { useRef, useState } from "react";
 import CustomizerPreview from "@/app/components/customizer/CustomizerPreview";
@@ -47,25 +48,38 @@ export default function AdminPagesPanel({
     });
   };
 
+  const menuItem =
+    "rounded px-2 py-1.5 text-left text-xs font-bold hover:bg-[#F8F6F1] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white";
+
   return (
-    <div className="grid gap-3 p-3">
+    <div className="grid gap-3 px-4 pb-4 pt-1">
       {pages.map((page: any, index: number) => {
         const active = page.id === activePage;
         const disabled = page.enabled === false;
         return (
-          <div key={page.id} className="relative">
+          <div
+            key={page.id}
+            data-page-card={page.id}
+            data-active={active || undefined}
+            className={`group relative rounded-xl bg-white shadow-[0_1px_4px_rgba(31,36,37,0.14)] transition-shadow ${
+              active ? "ring-[1.5px] ring-[#27307A]" : "ring-1 ring-[#303839]/[0.06] hover:shadow-[0_2px_8px_rgba(31,36,37,0.18)]"
+            }`}
+          >
             <button
               type="button"
               onClick={() => onSelectPage(page.id)}
+              onDoubleClick={() => { setRenamingId(page.id); setRenameValue(page.label); }}
               aria-pressed={active}
-              className={`block w-full text-left transition ${disabled ? "opacity-45" : ""}`}
+              aria-label={`${page.label}${disabled ? " (off for customers)" : ""}`}
+              className="block w-full rounded-xl p-1.5 pb-0 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white"
             >
-              <div className={`overflow-hidden rounded-lg border-2 bg-white transition-colors ${active ? "border-[#D4AF37]" : "border-white/12 hover:border-white/30"}`}>
+              {/* The page itself, drawn by the shared renderer: what the canvas shows, small. */}
+              <span className={`block overflow-hidden rounded-md border border-[#303839]/10 bg-white ${disabled ? "opacity-45" : ""}`}>
                 <CustomizerPreview template={template} values={{}} page={page.id} showSafeArea={false} showBleed={false} />
-              </div>
+              </span>
             </button>
 
-            <div className="mt-1 flex items-center justify-between gap-1">
+            <div className="px-2 pb-2 pt-1.5 text-center">
               {renamingId === page.id ? (
                 <input
                   autoFocus
@@ -77,42 +91,42 @@ export default function AdminPagesPanel({
                     if (e.key === "Escape") setRenamingId(null);
                   }}
                   list="cz-page-label-presets"
-                  className="w-full rounded border border-white/20 bg-white/10 px-1 py-0.5 text-xs text-white outline-none focus:border-[#303839]/60"
+                  className="w-full rounded-md border border-[#303839]/20 bg-white px-1.5 py-0.5 text-center text-sm text-[#1f2425] outline-none focus:border-[#303839]/60"
                   aria-label="Page name"
                 />
               ) : (
-                <span className={`truncate text-[11px] font-medium ${active ? "text-white" : "text-white/50"}`}>
+                <span data-page-label className="block truncate text-[15px] text-[#1f2425]">
                   {page.label}
-                  {disabled ? " · off" : ""}
+                  {disabled && <span className="text-[#303839]/45"> · off</span>}
                 </span>
               )}
-              <button
-                type="button"
-                aria-label={`Page actions for ${page.label}`}
-                onClick={() => setMenuFor(menuFor === page.id ? null : page.id)}
-                className="grid h-6 w-6 shrink-0 place-items-center rounded text-white/45 transition-colors hover:bg-white/10 hover:text-white"
-              >
-                ⋯
-              </button>
             </div>
 
+            <button
+              type="button"
+              aria-label={`Page actions for ${page.label}`}
+              aria-expanded={menuFor === page.id}
+              onClick={() => setMenuFor(menuFor === page.id ? null : page.id)}
+              className={`absolute right-2.5 top-2.5 grid h-7 w-7 place-items-center rounded-full bg-white/95 text-[#303839] shadow-[0_1px_3px_rgba(31,36,37,0.25)] transition-opacity hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-1 focus-visible:ring-offset-white group-hover:opacity-100 focus-visible:opacity-100 ${
+                menuFor === page.id ? "opacity-100" : "opacity-0"
+              }`}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden><circle cx="5" cy="12" r="1.8" /><circle cx="12" cy="12" r="1.8" /><circle cx="19" cy="12" r="1.8" /></svg>
+            </button>
+
             {menuFor === page.id && (
-              <div className="absolute right-0 top-full z-30 mt-1 grid w-44 gap-0.5 rounded-lg border border-[#303839]/12 bg-white p-1 shadow-xl">
-                <button type="button" className="rounded px-2 py-1.5 text-left text-xs font-bold hover:bg-[#F8F6F1] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white" onClick={() => { setRenamingId(page.id); setRenameValue(page.label); setMenuFor(null); }}>
+              <div className="absolute right-1 top-11 z-30 grid w-44 gap-0.5 rounded-lg border border-[#303839]/12 bg-white p-1 shadow-xl">
+                <button type="button" className={menuItem} onClick={() => { setRenamingId(page.id); setRenameValue(page.label); setMenuFor(null); }}>
                   Rename
                 </button>
-                <button type="button" className="rounded px-2 py-1.5 text-left text-xs font-bold hover:bg-[#F8F6F1] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white" onClick={() => { onDuplicatePage(page.id); setMenuFor(null); }}>
+                <button type="button" className={menuItem} onClick={() => { onDuplicatePage(page.id); setMenuFor(null); }}>
                   Duplicate
                 </button>
-                <button
-                  type="button"
-                  className="rounded px-2 py-1.5 text-left text-xs font-bold hover:bg-[#F8F6F1] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white"
-                  onClick={() => { bgTarget.current = page.id; bgInput.current?.click(); setMenuFor(null); }}
-                >
+                <button type="button" className={menuItem} onClick={() => { bgTarget.current = page.id; bgInput.current?.click(); setMenuFor(null); }}>
                   Set background image
                 </button>
                 {page.backgroundImage && (
-                  <button type="button" className="rounded px-2 py-1.5 text-left text-xs font-bold hover:bg-[#F8F6F1] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white" onClick={() => { onPatchPage(page.id, { backgroundImage: "" }); setMenuFor(null); }}>
+                  <button type="button" className={menuItem} onClick={() => { onPatchPage(page.id, { backgroundImage: "" }); setMenuFor(null); }}>
                     Remove background image
                   </button>
                 )}
@@ -145,17 +159,17 @@ export default function AdminPagesPanel({
                   Allow customer text
                 </label>
                 <div className="flex gap-0.5 border-t border-[#303839]/8 pt-0.5">
-                  <button type="button" disabled={index === 0} className="flex-1 rounded px-2 py-1.5 text-xs font-bold hover:bg-[#F8F6F1] disabled:opacity-30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white" onClick={() => onMovePage(page.id, "up")}>
+                  <button type="button" disabled={index === 0} className={`flex-1 ${menuItem} text-center disabled:opacity-30`} onClick={() => onMovePage(page.id, "up")}>
                     ↑ Move
                   </button>
-                  <button type="button" disabled={index === pages.length - 1} className="flex-1 rounded px-2 py-1.5 text-xs font-bold hover:bg-[#F8F6F1] disabled:opacity-30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white" onClick={() => onMovePage(page.id, "down")}>
+                  <button type="button" disabled={index === pages.length - 1} className={`flex-1 ${menuItem} text-center disabled:opacity-30`} onClick={() => onMovePage(page.id, "down")}>
                     ↓ Move
                   </button>
                 </div>
                 <button
                   type="button"
                   disabled={pages.length <= 1}
-                  className="rounded px-2 py-1.5 text-left text-xs font-bold text-red-700 hover:bg-red-50 disabled:opacity-30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white"
+                  className={`${menuItem} text-red-700 hover:bg-red-50 disabled:opacity-30`}
                   onClick={() => {
                     setMenuFor(null);
                     onDeletePage(page.id);
@@ -172,9 +186,9 @@ export default function AdminPagesPanel({
       <button
         type="button"
         onClick={onAddPage}
-        className="flex items-center justify-center gap-1.5 rounded-lg border border-dashed border-white/20 px-2 py-3 text-xs font-semibold text-white/50 transition-colors hover:border-white/35 hover:bg-white/[0.06] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] focus-visible:ring-offset-1 focus-visible:ring-offset-[#2A3132]"
+        className="flex items-center justify-center gap-1.5 rounded-xl border border-dashed border-[#303839]/25 px-2 py-4 text-sm font-medium text-[#303839]/60 transition-colors hover:border-[#303839]/45 hover:bg-[#303839]/[0.03] hover:text-[#1f2425] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-1 focus-visible:ring-offset-white"
       >
-        + Add page
+        <span aria-hidden className="text-base leading-none">+</span> Add page
       </button>
 
       <datalist id="cz-page-label-presets">

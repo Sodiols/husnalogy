@@ -11,18 +11,18 @@ describe("administrator uploads panel contract", () => {
   it("opens as a persistent contextual tool instead of opening the picker from the rail", () => {
     const rail = read("app/admin/dashboard/design-builder/AdminToolRail.tsx");
     const builder = read("app/admin/dashboard/design-builder/AdminDesignBuilder.tsx");
-    expect(rail).toContain('label="Uploads"');
-    expect(rail).toContain('props.onSelectTool("uploads")');
+    expect(rail).toMatch(/id: "uploads",\s*label: "Uploads"/);
     expect(rail).not.toContain("imageInput");
-    // Uploads is inspector content, not a canvas mode: opening it must not
+    // Uploads is side-panel content, not a canvas mode: opening it must not
     // change what a click on the card does (spec §12).
-    expect(builder).toContain('activePanel === "uploads"');
+    expect(builder).toContain('sidePanel === "uploads"');
     expect(builder).not.toContain('activeTool === "uploads"');
     expect(builder).toContain("<AdminUploadsPanel");
   });
 
   it("loads the global library with search and pagination and reuses saved assets", () => {
-    const panel = read("app/admin/dashboard/design-builder/AdminUploadsPanel.tsx");
+    // The full library lives in the media manager the Uploads panel opens.
+    const panel = read("app/admin/dashboard/design-builder/AdminMediaLibrary.tsx");
     expect(panel).toContain("/api/admin/customizer/assets?");
     expect(panel).toContain('query.set("search"');
     expect(panel).toContain("page + 1");
@@ -33,7 +33,7 @@ describe("administrator uploads panel contract", () => {
   });
 
   it("uploads through the shared helper and exposes progress, retry, duplicate, and safe delete states", () => {
-    const panel = read("app/admin/dashboard/design-builder/AdminUploadsPanel.tsx");
+    const panel = read("app/admin/dashboard/design-builder/AdminMediaLibrary.tsx");
     expect(panel).toContain('uploadBuilderImage(file, "image"');
     expect(panel).toContain("onProgress: setUploadProgress");
     expect(panel).toContain("Retry ${retryFiles[0].name}");

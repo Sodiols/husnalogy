@@ -1,5 +1,6 @@
 "use client";
 
+import { SHAPE_LIBRARY_BY_ID, libraryShapeGeometry } from "@/lib/customizer/v2/shape-library";
 import { assetIdentityOf } from "@/lib/customizer/v2/asset-identity";
 import { DEFAULT_FONT_FAMILY } from "@/lib/customizer/v2/google-fonts";
 import {
@@ -98,22 +99,25 @@ export function newTextLayer(
   const cx = Math.round((template?.canvasWidthPx || 1500) / 2);
   const cy = Math.round((template?.canvasHeightPx || 2100) / 2);
   const placed = Number.isFinite(options.x) && Number.isFinite(options.y);
+  // Standard text unless a style preset was chosen: one line, auto width,
+  // 17 pt (type-units.ts), centred — the box hugs the words.
   const preset = getTextPlacementStyle(
-    options.preset || "body",
+    options.preset || "text",
     Number(template?.canvasWidthPx) || 1500,
     Number(template?.canvasHeightPx) || 2100,
+    template?.dpi,
   );
   return {
     id: genId("text"),
-    name: placed ? preset.name : "Text",
+    name: preset.name,
     page: pageId,
     type: "text",
     text: options.text ?? (placed ? "" : "Your text"),
     fieldId: "",
     x: placed ? Number(options.x) : cx,
     y: placed ? Number(options.y) : cy,
-    width: placed ? preset.width : 1000,
-    height: placed ? preset.height : 120,
+    width: preset.width,
+    height: preset.height,
     rotation: 0,
     zIndex: nextZIndex(template, pageId),
     opacity: 1,
@@ -123,20 +127,20 @@ export function newTextLayer(
     customerEditable: false,
     textStyle: {
       fontFamily: DEFAULT_FONT_FAMILY,
-      fontSize: placed ? preset.fontSize : 72,
+      fontSize: preset.fontSize,
       fontWeight: "400",
       color: "#303839",
-      letterSpacing: placed ? preset.letterSpacing : DEFAULT_LETTER_SPACING,
-      lineHeight: placed ? preset.lineHeight : DEFAULT_LINE_HEIGHT,
-      textAlign: placed ? preset.textAlign : "center",
+      letterSpacing: preset.letterSpacing,
+      lineHeight: preset.lineHeight,
+      textAlign: preset.textAlign,
       verticalAlign: "middle",
       // Paragraphs grow downward, single lines from the centre — what they
       // did before the property existed, now explicit and rotation-aware.
-      growthDirection: placed && preset.multiline ? "down" : "center",
+      growthDirection: preset.multiline ? "down" : "center",
       uppercase: false,
-      multiline: placed ? preset.multiline : false,
-      autoSizeMode: placed ? (preset.multiline ? "height" : "width") : "fixed",
-      fitMode: placed && preset.multiline ? "auto-height" : "fixed",
+      multiline: preset.multiline,
+      autoSizeMode: preset.autoSizeMode,
+      fitMode: preset.autoSizeMode === "height" ? "auto-height" : "fixed",
     },
   };
 }
@@ -167,6 +171,18 @@ export function newImageLayer(template: any, pageId: string, src = "") {
     allowZoom: true,
     allowReposition: true,
   };
+}
+
+/**
+ * A shape from the Shapes library (shape-library.ts) — or, for a plain kind
+ * such as "circle", the native shape itself. Library shapes are inserted at a
+ * third of the artboard's shorter side, centred, in their own proportions.
+ */
+export function newLibraryShapeLayer(template: any, pageId: string, shapeId: string) {
+  const entry = SHAPE_LIBRARY_BY_ID.get(shapeId);
+  if (!entry) return newShapeLayer(template, pageId, shapeId);
+  const longest = Math.round(Math.min(Number(template?.canvasWidthPx) || 1500, Number(template?.canvasHeightPx) || 2100) / 3);
+  return { ...newShapeLayer(template, pageId, entry.shape), ...libraryShapeGeometry(entry, longest) };
 }
 
 export function newShapeLayer(template: any, pageId: string, shape = "rectangle") {

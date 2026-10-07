@@ -6,6 +6,7 @@
  * result once, as one undo step.
  */
 import { expect, test, type Page } from "@playwright/test";
+import { addStudioFrame } from "./admin-studio-tools";
 import { bodyPoint, selectedIds } from "./customizer-fixture";
 
 /** Left half red, right half blue. */
@@ -34,7 +35,7 @@ async function openStudioWithPhoto(page: Page): Promise<string> {
   if ((await enable.isVisible()) && (await enable.getAttribute("aria-checked")) !== "true") await enable.click();
   await page.getByRole("button", { name: "Open Design Studio" }).click();
   await expect(studio(page).locator("header")).toBeVisible();
-  await studio(page).getByRole("button", { name: "Frame", exact: true }).click();
+  await addStudioFrame(page);
   let id = "";
   await expect.poll(async () => (id = (await selectedIds(page))[0] || "")).not.toBe("");
   // The Properties panel's "Layer image" input (the photo this frame shows).

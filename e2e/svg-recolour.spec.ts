@@ -7,6 +7,7 @@
  * copy-paste and a refresh.
  */
 import { expect, test, type Page } from "@playwright/test";
+import { openSidePanel, selectEditTool } from "./admin-studio-tools";
 import { bodyPoint, openFixture, selectedIds, switchToAdvancedCustomize, waitForEditor } from "./customizer-fixture";
 
 const MULTICOLOUR_SVG = `data:image/svg+xml;utf8,${encodeURIComponent(
@@ -108,13 +109,13 @@ test.describe("Design Studio", () => {
 
   async function insert(page: Page, title: string) {
     const before = await selectedIds(page);
-    await studio(page).getByRole("button", { name: "Elements", exact: true }).click();
+    await openSidePanel(page, "Elements");
     await studio(page).getByRole("button", { name: `Insert ${title}`, exact: true }).click();
     let id = "";
     await expect.poll(async () => (id = (await selectedIds(page)).find((candidate) => !before.includes(candidate)) || "")).not.toBe("");
     // Back to the inspector (the library stays open for further inserts), then
     // select the new element again.
-    await studio(page).getByRole("button", { name: "Select", exact: true }).click();
+    await selectEditTool(page);
     const point = await bodyPoint(page, id);
     await page.mouse.click(point.x, point.y);
     await expect.poll(() => selectedIds(page)).toEqual([id]);

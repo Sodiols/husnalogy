@@ -80,16 +80,20 @@ import { resolveImageCropCapabilities } from "@/lib/customizer/v2/image-permissi
 import { alignCustomerLayers, arrangeLayers, removeCustomerLayers, reorderLayerByDrop, type AlignAction, type ArrangeAction } from "@/lib/customizer/v2/customer-actions";
 import { evaluateGroupAction, getDescendantIds, groupLayers, transformGroupChildren, ungroupLayers } from "@/lib/customizer/v2/groups";
 import { clonedIdsFor, expandCloneSelection, relinkClones } from "@/lib/customizer/v2/clipboard";
-import { DEFAULT_LINE_HEIGHT, createCanvasMeasure, getSingleLineTextBox, isSingleLineAutoSizeText } from "@/lib/customizer/v2/text-layout";
+import { DEFAULT_LINE_HEIGHT, createCanvasMeasure, getSingleLineTextBox, isAutoWidthText, isSingleLineAutoSizeText } from "@/lib/customizer/v2/text-layout";
 import { resolveLayerSelectionGeometry } from "@/lib/customizer/v2/selection-geometry";
 import { resolveSelection, sanitizeSelection } from "@/lib/customizer/v2/selection";
 import { DEFAULT_FONT_FAMILY } from "@/lib/customizer/v2/google-fonts";
 import { ensureDesignFontsLoaded, reportGoogleFontLoadFailure } from "@/app/components/customizer/useGoogleFonts";
 import {
+  becomesMultilineFromAutoWidth,
   canonicalTextLayerUpdate,
+  widenForTypedLines,
   getTextPlacementStyle,
   normalizeCanonicalText,
   type TextPlacementPreset,
+  isMultilineTextStyle,
+  multilineTextPatch,
 } from "@/lib/customizer/v2/text-editing";
 import {
   buildInitialValues,
@@ -369,7 +373,7 @@ export default function PersonalizeClient({ product, template }: { product: any;
   const [editingGroupId, setEditingGroupId] = useState<string | null>(null);
   const [selectedGridSlotId, setSelectedGridSlotId] = useState<string | null>(null);
   const [activeTool, setActiveTool] = useState<CustomerTool>("edit");
-  const [textPlacementPreset, setTextPlacementPreset] = useState<TextPlacementPreset>("body");
+  const [textPlacementPreset, setTextPlacementPreset] = useState<TextPlacementPreset>("text");
   const [editingTextLayerId, setEditingTextLayerId] = useState<string | null>(null);
   const [editTextRequest, setEditTextRequest] = useState<{ layerId: string; requestId: number; created?: boolean } | null>(null);
   // Easy Personalize vs Advanced Customize (spec §1/§2): a display-only
@@ -454,6 +458,8 @@ export default function PersonalizeClient({ product, template }: { product: any;
   // selected, so paste can rebuild the group relationships exactly.
   const customerClipboardRef = useRef<{ rootIds: string[]; layers: any[] }>({ rootIds: [], layers: [] });
   const activeTextHistoryIdRef = useRef<string | null>(null);
+  /** Text objects that became multi-line from auto width in the current editing session. */
+  const typedLineWidthRef = useRef(new Set<string>());
   const activeTextSessionRef = useRef<{
     layerId: string;
     snapshot: HistorySnapshot;
@@ -747,7 +753,7 @@ export default function PersonalizeClient({ product, template }: { product: any;
     if (!pageAllowsCustomerText(template, activePage) || !canAddCustomerObject()) return null;
     const canvasW = template?.canvasWidthPx || 1500;
     const canvasH = template?.canvasHeightPx || 2100;
-    const style = getTextPlacementStyle(preset, canvasW, canvasH);
+    const style = getTextPlacementStyle(preset, canvasW, canvasH, template?.dpi);
     const placement = position || { x: Math.round(canvasW / 2), y: Math.round(canvasH / 2) };
     const maxZ = Math.max(
       999,
@@ -775,7 +781,7 @@ export default function PersonalizeClient({ product, template }: { product: any;
         lineHeight: style.lineHeight,
         letterSpacing: style.letterSpacing,
         multiline: style.multiline,
-        autoSizeMode: style.multiline ? "height" : "width",
+        autoSizeMode: style.autoSizeMode,
       },
     };
     const layer = normalizeUserLayer(applyCustomerObjectLimits(draft, draft));
@@ -2448,6 +2454,7 @@ export default function PersonalizeClient({ product, template }: { product: any;
   };
 
   const onCanvasTextEditStart = (layerId: string) => {
+    typedLineWidthRef.current.clear();
     if (activeTextHistoryIdRef.current === layerId) return;
     activeTextSessionRef.current = {
       layerId,
@@ -2468,20 +2475,19 @@ export default function PersonalizeClient({ product, template }: { product: any;
     const text = update.text;
     markDirty();
     if (layer.isUserLayer) {
+      // A line break in one-line auto-width text gives the new paragraph the
+      // widest typed line as its wrap width, for the rest of this session.
+      if (becomesMultilineFromAutoWidth(layer.textStyle, layer.text, text)) typedLineWidthRef.current.add(layerId);
+      const widen = typedLineWidthRef.current.has(layerId);
       setEditorState((current) => ({
         ...current,
-        userLayers: current.userLayers.map((item) =>
-          item.id === layerId
-            ? {
-                ...item,
-                text,
-                textStyle: {
-                  ...(item.textStyle || {}),
-                  ...update.textStyle,
-                },
-              }
-            : item,
-        ),
+        userLayers: current.userLayers.map((item) => {
+          if (item.id !== layerId) return item;
+          const next = { ...item, text, textStyle: { ...(item.textStyle || {}), ...update.textStyle } };
+          return widen
+            ? { ...next, ...widenForTypedLines(next as any, text, customerTextMeasure, Number(template?.canvasWidthPx) || undefined) }
+            : next;
+        }),
       }));
     } else if (layer.fieldId) {
       setValues((current) => ({ ...current, [layer.fieldId]: text }));
@@ -2506,20 +2512,13 @@ export default function PersonalizeClient({ product, template }: { product: any;
     const layer = effectiveLayers.find((item: any) => item.id === layerId);
     if (!layer?.isUserLayer || layer.type !== "text") return;
     const style = layer.textStyle || {};
-    if (style.multiline && style.autoSizeMode === "height" && style.fitMode === "auto-height") return;
+    if (isAutoWidthText(style)) typedLineWidthRef.current.add(layerId);
+    if (isMultilineTextStyle(style)) return;
     markDirty();
     setEditorState((current) => ({
       ...current,
       userLayers: current.userLayers.map((item) => item.id === layerId
-        ? {
-            ...item,
-            textStyle: {
-              ...(item.textStyle || {}),
-              multiline: true,
-              autoSizeMode: "height",
-              fitMode: "auto-height",
-            },
-          }
+        ? { ...item, textStyle: { ...(item.textStyle || {}), ...multilineTextPatch(item.textStyle) } }
         : item),
     }));
   };
@@ -3655,15 +3654,18 @@ export default function PersonalizeClient({ product, template }: { product: any;
         onUpdateText={(layerId, text) => {
           const layer = editorStateRef.current.userLayers.find((item) => item.id === layerId);
           const update = canonicalTextLayerUpdate(text, layer?.textStyle);
+          const widened = layer && becomesMultilineFromAutoWidth(layer.textStyle, layer.text, update.text)
+            ? widenForTypedLines({ ...layer, textStyle: update.textStyle } as any, update.text, customerTextMeasure, Number(template?.canvasWidthPx) || undefined)
+            : null;
           updateUserLayer(
             layerId,
-            update,
+            widened ? { ...update, ...widened } : update,
             `usertext-${layerId}`,
           );
         }}
         onEnableMultiline={(layerId) => updateUserLayerStyle(
           layerId,
-          { multiline: true, autoSizeMode: "height", fitMode: "auto-height" },
+          multilineTextPatch(editorStateRef.current.userLayers.find((item) => item.id === layerId)?.textStyle),
           `usertext-${layerId}`,
         )}
         onDeleteLayer={deleteUserLayer}
@@ -3987,6 +3989,7 @@ export default function PersonalizeClient({ product, template }: { product: any;
                   {showTextToolbar && selectedLayer && (
                     <CustomerContextToolbar
                       layer={selectedLayer}
+                      dpi={template?.dpi}
                       permissions={selectedPermissions as Record<string, boolean>}
                       isUserLayer={selectedIsUser}
                       editingText={editingTextLayerId === selectedLayer.id}

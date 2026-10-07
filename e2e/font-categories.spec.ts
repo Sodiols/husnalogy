@@ -6,6 +6,7 @@
  * Fonts API. The selector, its filtering, and the admin star are the real ones.
  */
 import { expect, test, type Page } from "@playwright/test";
+import { addStudioText } from "./admin-studio-tools";
 import { openFixture, selectLayer } from "./customizer-fixture";
 
 const CATALOG = [
@@ -143,7 +144,7 @@ test.describe("Design Studio favourites", () => {
     const studio = page.locator("[data-admin-customizer]");
     await expect(studio.locator("header")).toBeVisible();
 
-    await studio.getByRole("button", { name: "Text", exact: true }).first().click();
+    await addStudioText(page);
     // Commit the new text (an empty new text object is discarded) so its toolbar shows.
     await page.keyboard.type("Welcome");
     await page.keyboard.press("Control+Enter");

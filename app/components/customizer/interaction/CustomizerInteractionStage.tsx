@@ -28,7 +28,8 @@
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { flushSync } from "react-dom";
-import { Label, Layer, Line, Rect, Stage, Tag, Text, Transformer } from "react-konva";
+import { Circle, Group, Label, Layer, Line, Path, Rect, Stage, Tag, Text, Transformer } from "react-konva";
+import { isSmallText, type SelectionTheme } from "@/lib/customizer/v2/interaction/selection-theme";
 import type Konva from "konva";
 
 import {
@@ -203,6 +204,12 @@ export type InteractionStageProps = {
    */
   onContextMenuCanvas?: (position: { x: number; y: number }, point: { x: number; y: number }) => void;
   onGridSlotSelect?: (layerId: string, slotId: string) => void;
+  /**
+   * Selection chrome. Absent: the customer editor's gold chrome. The Design
+   * Studio passes its magenta theme, which also enables the small-text
+   * controls (selection-theme.ts).
+   */
+  selectionTheme?: SelectionTheme | null;
 };
 
 /**
@@ -264,6 +271,87 @@ function isLeadEvent(event: Konva.KonvaEventObject<DragEvent> | undefined, sessi
   return !target || target.name() === session.leadId;
 }
 
+/**
+ * Studio selection handles (selection-theme.ts): round corner handles, pill
+ * side handles, and a round rotate control with its icon. The Transformer is
+ * drawn in screen space, so these are plain screen pixels — the same size at
+ * every zoom — and the invisible grab margin keeps small handles easy to hit.
+ */
+function styleStudioAnchor(anchor: Konva.Rect, theme: SelectionTheme) {
+  const scale = 1;
+  const name = anchor.name();
+  const hit = (theme.hitPaddingScreen * 2) / scale;
+  anchor.stroke(theme.color);
+  anchor.fill(theme.handleFill);
+  anchor.strokeWidth(theme.strokeScreenWidth / scale);
+  anchor.hitStrokeWidth(hit);
+  if (anchor.hasName("rotater")) {
+    const size = theme.rotateControlScreenSize / scale;
+    anchor.width(size);
+    anchor.height(size);
+    anchor.offsetX(size / 2);
+    anchor.offsetY(size / 2);
+    anchor.cornerRadius(size / 2);
+    const stroke = theme.strokeScreenWidth / scale;
+    // A circle with a circular-arrow icon; the hit area stays a plain disc.
+    anchor.sceneFunc((context, shape) => {
+      const width = shape.width();
+      context.beginPath();
+      context.arc(width / 2, width / 2, width / 2, 0, Math.PI * 2, false);
+      context.closePath();
+      context.fillStrokeShape(shape);
+      const raw = (context as unknown as { _context: CanvasRenderingContext2D })._context;
+      const radius = width * 0.24;
+      const start = -Math.PI * 0.35;
+      const end = Math.PI * 1.25;
+      raw.beginPath();
+      raw.arc(width / 2, width / 2, radius, start, end, false);
+      raw.lineWidth = stroke * 1.1;
+      raw.strokeStyle = theme.color;
+      raw.lineCap = "round";
+      raw.stroke();
+      const tipX = width / 2 + radius * Math.cos(start);
+      const tipY = width / 2 + radius * Math.sin(start);
+      const head = width * 0.13;
+      raw.beginPath();
+      raw.moveTo(tipX - head, tipY - head * 0.2);
+      raw.lineTo(tipX, tipY);
+      raw.lineTo(tipX + head * 0.15, tipY - head);
+      raw.stroke();
+    });
+    anchor.hitFunc((context, shape) => {
+      context.beginPath();
+      context.arc(shape.width() / 2, shape.width() / 2, shape.width() / 2, 0, Math.PI * 2, false);
+      context.closePath();
+      context.fillStrokeShape(shape);
+    });
+    return;
+  }
+  const corner = /top-left|top-right|bottom-left|bottom-right/.test(name);
+  if (corner) {
+    const size = theme.cornerHandleScreenSize / scale;
+    anchor.width(size);
+    anchor.height(size);
+    anchor.offsetX(size / 2);
+    anchor.offsetY(size / 2);
+    anchor.cornerRadius(size / 2);
+    return;
+  }
+  // Side handles: a short pill along the edge they sit on.
+  const across = theme.sideHandleScreenThickness / scale;
+  const along = theme.sideHandleScreenLength / scale;
+  const vertical = /middle-left|middle-right/.test(name);
+  anchor.width(vertical ? across : along);
+  anchor.height(vertical ? along : across);
+  anchor.offsetX(anchor.width() / 2);
+  anchor.offsetY(anchor.height() / 2);
+  anchor.cornerRadius(across / 2);
+  // On a one-line text the box is barely taller than the corner handles'
+  // grab areas, which then cover the side handle completely. Side handles sit
+  // above the corners, so a press on the side always resizes the width.
+  if (vertical) anchor.moveToTop();
+}
+
 export default function CustomizerInteractionStage({
   documentWidth,
   documentHeight,
@@ -284,6 +372,7 @@ export default function CustomizerInteractionStage({
   onContextMenuNode,
   onContextMenuCanvas,
   onGridSlotSelect,
+  selectionTheme = null,
 }: InteractionStageProps) {
   const stageRef = useRef<Konva.Stage>(null);
   const transformerRef = useRef<Konva.Transformer>(null);
@@ -450,6 +539,16 @@ export default function CustomizerInteractionStage({
 
   const primary = selection.length === 1 ? nodeById.get(selection[0]) ?? null : null;
   const multiSelected = selection.length > 1;
+  const theme = selectionTheme;
+  const accent = theme?.color ?? GOLD;
+  const safeScale = Math.max(Math.abs(Number(scale) || 0), 1e-6);
+  /**
+   * Small text (studio): two corner handles plus dedicated rotate and move
+   * controls below it, so text too small to grab stays easy to move and turn.
+   * Read from the COMMITTED node, so a live resize never swaps the controls
+   * mid-gesture; the mode changes only once the new size is committed.
+   */
+  const smallText = Boolean(theme && primary && primary.type === "text" && primary.capabilities.movable && isSmallText(primary.fontSize, theme));
 
   const selectionCapabilities = useMemo<LayerCapabilities | null>(() => {
     if (!selection.length) return null;
@@ -472,13 +571,14 @@ export default function CustomizerInteractionStage({
 
   const visibleHandles: HandleId[] = useMemo(() => {
     if (!selectionCapabilities?.resizable || !interactive) return [];
+    if (smallText) return ["nw", "se"];
     if (multiSelected) return resolveVisibleHandles({ resizable: true, isText: false, singleLineAutoSize: false });
     return resolveVisibleHandles({
       resizable: true,
       isText: primary?.type === "text",
       singleLineAutoSize: Boolean(primary?.singleLineAutoSize),
     });
-  }, [selectionCapabilities, interactive, multiSelected, primary]);
+  }, [selectionCapabilities, interactive, multiSelected, primary, smallText]);
 
   /**
    * Attach the Transformer to the selected proxies.
@@ -509,6 +609,35 @@ export default function CustomizerInteractionStage({
   }, [selectionKey, interactive, visibleHandles]);
 
   useEffect(() => () => schedulerRef.current!.cancel(), []);
+
+  const moveControlRef = useRef<Konva.Group>(null);
+  useEffect(() => {
+    const control = moveControlRef.current;
+    if (!control) return;
+    if (!smallText || !interactive || !theme) {
+      control.visible(false);
+      control.getLayer()?.batchDraw();
+      return;
+    }
+    let frame = 0;
+    // Pinned beside the rotate control (which Konva keeps below the box at any
+    // rotation), along the box's own horizontal axis.
+    const sync = () => {
+      const transformer = transformerRef.current;
+      const rotater = transformer?.findOne(".rotater");
+      if (transformer && rotater && transformer.nodes().length) {
+        const centre = rotater.getAbsolutePosition();
+        const angle = (transformer.getAbsoluteRotation() * Math.PI) / 180;
+        const distance = (theme.rotateControlScreenSize + theme.moveControlScreenSize) / 2 + 8;
+        control.absolutePosition({ x: centre.x + distance * Math.cos(angle), y: centre.y + distance * Math.sin(angle) });
+        if (!control.visible()) control.visible(true);
+        control.getLayer()?.batchDraw();
+      }
+      frame = window.requestAnimationFrame(sync);
+    };
+    frame = window.requestAnimationFrame(sync);
+    return () => window.cancelAnimationFrame(frame);
+  }, [smallText, interactive, theme, selectionKey]);
 
   /**
    * Abandon a live gesture and put everything back exactly as it was.
@@ -1487,7 +1616,7 @@ export default function CustomizerInteractionStage({
                   offsetX={node.width / 2}
                   offsetY={node.height / 2}
                   rotation={Number(node.rotation) || 0}
-                  stroke={GOLD}
+                  stroke={accent}
                   opacity={0.45}
                   strokeWidth={metrics.strokeWidth}
                   listening={false}
@@ -1513,7 +1642,7 @@ export default function CustomizerInteractionStage({
                   offsetX={node.width / 2}
                   offsetY={node.height / 2}
                   rotation={Number(node.rotation) || 0}
-                  stroke={GOLD}
+                  stroke={accent}
                   opacity={0.4}
                   strokeWidth={metrics.strokeWidth}
                   listening={false}
@@ -1531,7 +1660,7 @@ export default function CustomizerInteractionStage({
               if (instance) guideNodesRef.current[index] = instance;
             }}
             points={[0, 0, 0, 0]}
-            stroke={GOLD}
+            stroke={accent}
             strokeWidth={metrics.strokeWidth}
             visible={false}
             listening={false}
@@ -1545,7 +1674,7 @@ export default function CustomizerInteractionStage({
           width={0}
           height={0}
           fill="rgba(212,175,55,0.10)"
-          stroke={GOLD}
+          stroke={accent}
           strokeWidth={metrics.strokeWidth}
           visible={false}
           listening={false}
@@ -1571,6 +1700,47 @@ export default function CustomizerInteractionStage({
       {/* Transform handles. Their own layer so a resize redraw never touches the
           proxy hit graph. */}
       <Layer>
+        {theme && (
+          <Group
+            ref={moveControlRef}
+            name="small-text-move-control"
+            visible={false}
+            onMouseEnter={() => setStageCursor("move")}
+            onMouseLeave={() => setStageCursor("default")}
+            // Dragging the control IS dragging the text: hand the press to the
+            // text's own proxy, so the existing transient drag runs and the
+            // release commits once — one undo step.
+            onPointerDown={(event) => {
+              event.cancelBubble = true;
+              if ((event.evt as PointerEvent)?.button !== 0 && (event.evt as PointerEvent)?.button !== undefined) return;
+              const proxy = primary ? proxyRefs.current.get(primary.id) : null;
+              if (!primary || !proxy || !proxy.draggable()) return;
+              // Exactly what pressing the text itself does: the same drag session…
+              handleNodePointerDown(event, primary);
+              // …and Konva's own drag of its proxy, so dragmove/dragend commit once.
+              proxy.startDrag();
+            }}
+          >
+            <Circle
+              radius={theme.moveControlScreenSize / 2 / safeScale}
+              fill={theme.handleFill}
+              stroke={accent}
+              strokeWidth={theme.strokeScreenWidth / safeScale}
+              hitStrokeWidth={(theme.hitPaddingScreen * 2) / safeScale}
+            />
+            <Path
+              // A four-way move arrow, drawn in a 24-unit box around its centre.
+              data="M12 3v18M3 12h18M12 3 9.5 5.5M12 3l2.5 2.5M12 21l-2.5-2.5M12 21l2.5-2.5M3 12l2.5-2.5M3 12l2.5 2.5M21 12l-2.5-2.5M21 12l-2.5 2.5"
+              stroke={accent}
+              strokeWidth={1.8}
+              lineCap="round"
+              lineJoin="round"
+              scale={{ x: (theme.moveControlScreenSize * 0.62) / 24 / safeScale, y: (theme.moveControlScreenSize * 0.62) / 24 / safeScale }}
+              offset={{ x: 12, y: 12 }}
+              listening={false}
+            />
+          </Group>
+        )}
         <Transformer
           ref={transformerRef}
           enabledAnchors={konvaAnchors(visibleHandles)}
@@ -1588,13 +1758,18 @@ export default function CustomizerInteractionStage({
           // Husnalogy chrome: a thin gold frame with white square handles. No
           // shadows, no glow — the design has to stay readable underneath.
           anchorSize={metrics.size}
-          anchorStroke={GOLD}
+          anchorStroke={accent}
           anchorFill={WHITE}
-          anchorStrokeWidth={metrics.strokeWidth}
+          anchorStrokeWidth={theme ? theme.strokeScreenWidth : metrics.strokeWidth}
           anchorCornerRadius={metrics.cornerRadius}
-          borderStroke={GOLD}
-          borderStrokeWidth={metrics.strokeWidth}
-          rotateAnchorOffset={metrics.rotateOffset}
+          borderStroke={accent}
+          // The Transformer draws in SCREEN space (Konva does not scale it with
+          // the stage), so the studio theme's pixel sizes apply as they are.
+          borderStrokeWidth={theme ? theme.strokeScreenWidth : metrics.strokeWidth}
+          rotateAnchorOffset={theme ? theme.controlGapScreen + theme.rotateControlScreenSize / 2 : metrics.rotateOffset}
+          // Studio: the rotate control sits BELOW the object, clear of the text,
+          // without the connecting line.
+          {...(theme ? { rotateAnchorAngle: 180, rotateLineVisible: false } : {})}
           /**
            * Small chrome, generous target.
            *
@@ -1608,6 +1783,10 @@ export default function CustomizerInteractionStage({
            * kind of control rather than a ninth resize handle.
            */
           anchorStyleFunc={(anchor) => {
+            if (theme) {
+              styleStudioAnchor(anchor, theme);
+              return;
+            }
             const isRotater = anchor.hasName("rotater");
             const size = isRotater ? metrics.rotateSize : metrics.size;
             anchor.width(size);

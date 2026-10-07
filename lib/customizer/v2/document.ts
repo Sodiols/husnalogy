@@ -6,6 +6,7 @@
 // V1 rows via migrateCustomizerDocument, and are persisted directly in
 // customizer_template_versions snapshots and order_design_snapshots.
 
+import { sanitizeCustomPath } from "./shape-library";
 import { normalizeEraseMask } from "./erase-mask";
 import { TRANSPARENT_PAINT, canonicalPaint, isExplicitTransparentPaint } from "./paint";
 import { DEFAULT_FONT_FAMILY, normalizeAllowedCustomerFonts } from "./google-fonts";
@@ -124,7 +125,7 @@ export function normalizeTextStyleV2(input: unknown): TextStyle {
   };
 }
 
-const TEXT_AUTO_SIZE_MODES = new Set(["fixed", "width", "height", "shrink"]);
+const TEXT_AUTO_SIZE_MODES = new Set(["fixed", "width", "height", "shrink", "safe-width"]);
 
 // Durable storage identity (see StorageProvenance in ./types). Copied only
 // when present so documents stay compact and older ones round-trip unchanged.
@@ -242,11 +243,14 @@ function migrateLayerV1(raw: Record<string, any>, pageIdFallback: string): Custo
 
   if (type === "shape") {
     const kind = str(raw.shape || raw.shapeKind).toLowerCase();
-    const supported = ["rectangle", "rounded-rectangle", "ellipse", "circle", "oval", "triangle", "polygon", "arch", "path", "line"];
+    const supported = ["rectangle", "rounded-rectangle", "ellipse", "circle", "oval", "triangle", "polygon", "arch", "path", "line", "custom"];
+    const customPath = kind === "custom" ? sanitizeCustomPath(raw.pathData) : null;
     return {
       ...base,
       type: "shape",
-      shape: (supported.includes(kind) ? kind : "rectangle") as any,
+      shape: (supported.includes(kind) && (kind !== "custom" || customPath) ? kind : "rectangle") as any,
+      ...(customPath ? { pathData: customPath } : {}),
+      ...(str(raw.libraryShapeId) ? { libraryShapeId: str(raw.libraryShapeId).slice(0, 60) } : {}),
       fill: isExplicitTransparentPaint(raw.fill) ? TRANSPARENT_PAINT : str(raw.fill) || "#F8F6F1",
       stroke: canonicalPaint(str(raw.stroke)),
       strokeWidth: Math.max(0, num(raw.strokeWidth, 0)),

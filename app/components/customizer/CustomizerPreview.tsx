@@ -11,6 +11,7 @@
 // editor, thumbnails, review, previews, and print files all break lines and
 // clip photos identically.
 
+import { customPathInBox, sanitizeCustomPath } from "@/lib/customizer/v2/shape-library";
 import { layerTransform } from "@/lib/customizer/v2/layer-flip";
 import { eraseMaskAppliesTo, eraseStrokePaths } from "@/lib/customizer/v2/erase-mask";
 import { CanvasImage, useCanvasImageSource } from "./canvas-image-source";
@@ -18,7 +19,7 @@ import { assetIdentityOf } from "@/lib/customizer/v2/asset-identity";
 import { memo, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { getLegacyMaskPath, getMaskPath } from "@/lib/customizer/v2/masks";
 import { getGridSlotRect, normalizeGridSlot } from "@/lib/customizer/v2/grids";
-import { DEFAULT_LINE_HEIGHT, layoutText, createCanvasMeasure, fallbackMeasure, resolveTextBox, type MeasureFn } from "@/lib/customizer/v2/text-layout";
+import { DEFAULT_LINE_HEIGHT, layoutText, createCanvasMeasure, fallbackMeasure, resolveTextBox, resolvedTextLayoutMode, type MeasureFn } from "@/lib/customizer/v2/text-layout";
 import { hasImageFilters, imageFilterSvgPrimitives } from "@/lib/customizer/v2/image-filters";
 import { resolveImageDrawBoxFromTransform } from "@/lib/customizer/v2/image-crop";
 import { normalizeQRCodeStyle, qrModuleRects } from "@/lib/customizer/v2/qr";
@@ -162,13 +163,11 @@ function TextLayer({ layer, field, values, fontsReady, idPrefix, safeBounds }: a
           lineHeight: Number(style.lineHeight) || DEFAULT_LINE_HEIGHT,
           textAlign: style.textAlign || "center",
           verticalAlign: style.verticalAlign || "middle",
-          multiline: Boolean(style.multiline),
           // Once auto width has hit the safe-area limit, fall back to the
           // configured behaviour: wrap when multiline is allowed, otherwise
           // shrink. Below that limit the font size is never touched.
-          fitMode: box.clampedBySafeArea && !style.multiline
-            ? "shrink"
-            : style.fitMode === "shrink" ? "shrink" : style.fitMode === "auto-height" ? "auto-height" : "fixed",
+          // ("safe-width" always wraps inside its resolved box.)
+          ...resolvedTextLayoutMode(style, box.clampedBySafeArea),
           maxLines: Number(layer.maxLines) > 0 ? Number(layer.maxLines) : undefined,
         },
         measure,
@@ -246,6 +245,11 @@ function ShapeLayer({ layer }: any) {
     return <path d={path.d} transform={transform} {...common} />;
   }
   if (layer.shape === "path" && layer.path) return <path d={layer.path} transform={transform} {...common} />;
+  if (layer.shape === "custom") {
+    // The same outline, mapped into the box the same way, as the print renderer.
+    const outline = sanitizeCustomPath(layer.pathData);
+    if (outline) return <path d={customPathInBox(outline, { x, y, width: layer.width, height: layer.height })} transform={transform} {...common} />;
+  }
   return <rect x={x} y={y} width={layer.width} height={layer.height} rx={layer.borderRadius || 0} ry={layer.borderRadius || 0} transform={transform} {...common} />;
 }
 

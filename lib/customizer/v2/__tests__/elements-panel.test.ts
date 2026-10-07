@@ -57,7 +57,9 @@ describe("header and panel navigation", () => {
 
   it("navigates within the same panel rather than to a route", () => {
     expect(panel).toContain('export type ElementsView = "home" | "graphics" | "text" | "borders" | "shapes" | "frames"');
-    expect(panel).toContain('useState<ElementsView>("home")');
+    // Opens on the overview unless told otherwise (the studio's Icons opens Graphics).
+    expect(panel).toContain('initialView = "home"');
+    expect(panel).toContain("useState<ElementsView>(initialView)");
     expect(panel).toContain("Back to Elements");
   });
 

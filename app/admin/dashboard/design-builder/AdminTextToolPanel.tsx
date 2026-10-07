@@ -13,6 +13,7 @@ const PRESETS: Array<{
   sample: string;
   description: string;
 }> = [
+  { id: "text", label: "Add Text", sample: "Your text", description: "17 pt — the box fits the words, then wraps at the safe area" },
   { id: "heading", label: "Add Heading", sample: "A Beautiful Beginning", description: "Large, single-line title" },
   { id: "subheading", label: "Add Subheading", sample: "Together with their families", description: "Refined supporting line" },
   { id: "body", label: "Add Body Text", sample: "Write your message here", description: "Multiline invitation copy" },
@@ -49,7 +50,7 @@ export default function AdminTextToolPanel({ preset, onSelectPreset }: Props) {
                     <span className="mt-0.5 block text-[10px] text-[#303839]/48">{item.description}</span>
                   </span>
                   <span className="shrink-0 font-display text-base text-[#303839]" aria-hidden>
-                    {item.sample.slice(0, item.id === "body" ? 8 : 3)}
+                    {item.sample.slice(0, item.id === "body" ? 8 : item.id === "text" ? 4 : 3)}
                   </span>
                 </span>
               </button>

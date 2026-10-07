@@ -7,6 +7,7 @@
  * saved survives only in the browser's recovery copy.
  */
 import { expect, test, type Page } from "@playwright/test";
+import { addStudioShape } from "./admin-studio-tools";
 import { selectedIds } from "./customizer-fixture";
 
 type Request = { method: string; path: string; body: any };
@@ -39,8 +40,7 @@ async function startNewProduct(page: Page, title = "") {
 
 async function addOval(page: Page) {
   const before = await selectedIds(page);
-  await studio(page).getByRole("button", { name: "Shape", exact: true }).click();
-  await page.getByRole("menu").getByRole("button", { name: "oval", exact: true }).click();
+  await addStudioShape(page, "oval");
   let id = "";
   await expect.poll(async () => {
     const [current] = await selectedIds(page);

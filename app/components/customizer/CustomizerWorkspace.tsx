@@ -12,6 +12,7 @@
 // permissions they resolve. Photo crop keeps its own DOM surface, because crop
 // is a modal gesture on a fixed frame rather than an object transform.
 
+import { manualWidthStylePatch } from "@/lib/customizer/v2/text-editing";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import CustomizerPreview from "./CustomizerPreview";
 import InlineCanvasTextEditor from "./InlineCanvasTextEditor";
@@ -37,6 +38,7 @@ import {
   fallbackMeasure,
   getTextResizeConstraints,
   layoutText,
+  resolvedTextLayoutMode,
   type MeasureFn,
   type SafeBounds,
 } from "@/lib/customizer/v2/text-layout";
@@ -365,6 +367,9 @@ export default function CustomizerWorkspace({
     });
   };
   const singleLineInteractionLayer = resolveLayerBox;
+  // Read through a ref so the gesture callbacks keep a stable identity.
+  const resolveLayerBoxRef = useRef(resolveLayerBox);
+  resolveLayerBoxRef.current = resolveLayerBox;
 
   // Wrapped so the gesture-commit callback below keeps a stable identity: an
   // unstable dependency there would re-render the whole interaction layer on
@@ -418,10 +423,7 @@ export default function CustomizerWorkspace({
       fontStyle: style.fontStyle === "italic" ? "italic" : "normal",
       letterSpacing: Number(style.letterSpacing) || 0,
       lineHeight: Number(style.lineHeight) || DEFAULT_LINE_HEIGHT,
-      multiline: Boolean(style.multiline),
-      fitMode: resolved.autoWidthClamped && !style.multiline
-        ? "shrink"
-        : style.fitMode === "shrink" ? "shrink" : style.fitMode === "auto-height" ? "auto-height" : "fixed",
+      ...resolvedTextLayoutMode(style, Boolean(resolved.autoWidthClamped)),
     }, textMeasureRef.current);
     return layout.overflowWidth || layout.overflowHeight || layout.truncatedLines;
   };
@@ -774,7 +776,11 @@ export default function CustomizerWorkspace({
         if (layer?.type !== "text" || (patch.width === undefined && patch.height === undefined)) {
           return { id: change.id, patch };
         }
-        const size = constrainTextSize(layer, Number(patch.width ?? layer.width), Number(patch.height ?? layer.height));
+        // A side drag on "safe-width" text chooses a width: fixed from now on.
+        const manual = manualWidthStylePatch(layer.textStyle, patch, resolveLayerBoxRef.current(layer).width);
+        if (manual) patch.textStyle = { ...(patch.textStyle || {}), ...manual };
+        const effective = manual ? { ...layer, textStyle: { ...(layer.textStyle || {}), ...manual } } : layer;
+        const size = constrainTextSize(effective, Number(patch.width ?? layer.width), Number(patch.height ?? layer.height));
         return { id: change.id, patch: { ...patch, width: size.width, height: size.height } };
       });
       // The whole gesture is one transaction: one history entry, one document

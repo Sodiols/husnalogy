@@ -1,131 +1,97 @@
 "use client";
 
-import { useState } from "react";
+/**
+ * The Design Studio's left sidebar: one compact, floating white capsule of
+ * tools, each opening an EXISTING studio surface in the side panel beside it.
+ *
+ * Order (reference): Edit · Add Text · Uploads · Background · Elements ·
+ * Icons · Options · Moment · Layers · Pages. "Templates" is deliberately
+ * absent until Husnalogy has a real template library; Template Settings stay
+ * in the Settings tab.
+ */
+
+export type StudioSidePanel = "text" | "uploads" | "background" | "elements" | "icons" | "options" | "moment" | "layers" | "pages";
+
+export type StudioRailItem = "edit" | StudioSidePanel;
 
 type Props = {
-  /** Canvas interaction mode: Select (the resting state) or Pan. */
-  activeTool: string;
-  /** Inspector content. Panels are not modes: they never create objects. */
-  activePanel?: string;
-  onSelectTool: (tool: string) => void;
-  onAddText: () => void;
-  onAddPhotoArea: () => void;
-  onAddShape: (shape: string) => void;
-  onAddLine: () => void;
-  onAddQRCode: () => void;
-  onOpenElements: () => void;
-  onAddBackground: () => void;
-  onAddGuide: (axis: "horizontal" | "vertical") => void;
-  onPan: () => void;
-  onOpenPanel: (panel: "pages") => void;
+  /** The side panel open now, or null (the Edit tool with no panel). */
+  activePanel: StudioSidePanel | null;
+  onSelect: (item: StudioRailItem) => void;
 };
 
 const icon = (paths: React.ReactNode) => (
-  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
     {paths}
   </svg>
 );
 
-const ICONS: Record<string, React.ReactNode> = {
-  select: icon(<path d="M4 3l7 17 2.5-6.5L20 11z" />),
-  text: icon(<><path d="M4 7V5h16v2" /><path d="M12 5v14" /><path d="M9 19h6" /></>),
-  image: icon(<><rect x="3" y="3" width="18" height="18" rx="2" /><circle cx="9" cy="9" r="2" /><path d="m21 15-4.5-4.5L6 21" /></>),
-  photo: icon(<><rect x="3" y="5" width="18" height="14" rx="2" /><circle cx="12" cy="12" r="3.5" /><path d="M3 5l2-2h3" /></>),
-  shape: icon(<><rect x="3" y="4" width="9" height="9" rx="2" /><circle cx="17" cy="17" r="4" /></>),
-  line: icon(<path d="M4 18 20 6" />),
-  qr: icon(<><rect x="3" y="3" width="7" height="7" /><rect x="14" y="3" width="7" height="7" /><rect x="3" y="14" width="7" height="7" /><path d="M14 14h3v3h-3zM19 14h2v7h-7v-2" /></>),
-  elements: icon(<path d="m12 3 2.2 4.5L19 8.2l-3.5 3.4.8 4.8-4.3-2.3-4.3 2.3.8-4.8L5 8.2l4.8-.7Z" />),
-  background: icon(<><rect x="3" y="4" width="18" height="16" rx="2" /><path d="m3 16 5-5 4 4 3-3 6 6" /></>),
-  guide: icon(<><path d="M4 5h16M7 3v4m5-4v4m5-4v4" /><path d="M12 9v12" /></>),
-  pan: icon(<path d="M8 11V6a2 2 0 0 1 4 0v4-6a2 2 0 0 1 4 0v7-4a2 2 0 0 1 4 0v7c0 4-3 7-7 7h-1c-3 0-5-2-7-5l-2-3a2 2 0 0 1 3-2l2 2" />),
-  pages: icon(<><rect x="7" y="3" width="14" height="18" rx="2" /><path d="M3 7v12a2 2 0 0 0 2 2h10" /></>),
-};
+export const STUDIO_RAIL_ITEMS: ReadonlyArray<{ id: StudioRailItem; label: string; icon: React.ReactNode }> = [
+  {
+    id: "edit",
+    label: "Edit",
+    // A wand with sparkles: the resting select / edit tool.
+    icon: icon(<><path d="m4 20 11-11" /><path d="m13 7 2-2 2 2-2 2" /><path d="M7 3v3M5.5 4.5h3M19 12v3M17.5 13.5h3M19.5 3.5l.01 0" /></>),
+  },
+  { id: "text", label: "Add Text", icon: icon(<><path d="M5 6V4h14v2" /><path d="M12 4v16" /><path d="M9 20h6" /></>) },
+  {
+    id: "uploads",
+    label: "Uploads",
+    icon: icon(<><path d="M7 18a4.5 4.5 0 0 1-.5-9A6 6 0 0 1 18 9.5 4 4 0 0 1 17.5 18" /><path d="M12 12v8" /><path d="m9 15 3-3 3 3" /></>),
+  },
+  {
+    id: "background",
+    label: "Background",
+    icon: icon(<><rect x="4" y="4" width="16" height="16" rx="1.5" /><path d="m4 15 11-11M4 20 20 4M9 20 20 9M14 20l6-6" /></>),
+  },
+  {
+    id: "elements",
+    label: "Elements",
+    icon: icon(<><path d="M6.5 3 10 9H3Z" /><circle cx="17" cy="6.5" r="3.5" /><rect x="3.5" y="13.5" width="7" height="7" rx="1" /><circle cx="17" cy="17" r="3.5" /></>),
+  },
+  { id: "icons", label: "Icons", icon: icon(<path d="m12 3.5 2.6 5.3 5.9.9-4.3 4.1 1 5.8-5.2-2.7-5.2 2.7 1-5.8-4.3-4.1 5.9-.9Z" />) },
+  {
+    id: "options",
+    label: "Options",
+    // A garment-like product with a picture on it: what the customer configures.
+    icon: icon(<><path d="M8 4 4 6.5l1.5 4L7 10v10h10V10l1.5.5 1.5-4L16 4c-.5 1.5-2 2.5-4 2.5S8.5 5.5 8 4Z" /><path d="m9.5 16 2-2.5 1.5 1.5 1-1 1 2" /></>),
+  },
+  {
+    id: "moment",
+    label: "Moment",
+    // A calendar with a person: the event and its details.
+    icon: icon(<><path d="M5 5h14v8.5" /><path d="M5 5v14h6" /><path d="M5 9h14M9 3v4M15 3v4" /><circle cx="16.5" cy="15.5" r="2" /><path d="M13 21a3.5 3.5 0 0 1 7 0" /></>),
+  },
+  { id: "layers", label: "Layers", icon: icon(<><path d="m12 3 9 5-9 5-9-5Z" /><path d="m3 12 9 5 9-5" /><path d="m3 16 9 5 9-5" /></>) },
+  // Two stacked page cards: the card's pages.
+  { id: "pages", label: "Pages", icon: icon(<><rect x="8" y="3" width="11" height="15" rx="1.5" /><path d="M5.5 6.5v12A1.5 1.5 0 0 0 7 20h9" /></>) },
+];
 
-function RailButton({ id, label, active = false, onClick, disabled = false, disabledHint = "" }: any) {
+export default function AdminToolRail({ activePanel, onSelect }: Props) {
   return (
-    <button
-      type="button"
-      aria-label={label}
-      aria-pressed={active}
-      onClick={onClick}
-      disabled={disabled}
-      title={disabled && disabledHint ? disabledHint : label}
-      className={`mx-1.5 flex min-h-[52px] cursor-pointer flex-col items-center justify-center gap-1 rounded-lg px-1 py-2 text-[9.5px] font-semibold leading-none transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white ${
-        active ? "bg-white/15 text-white shadow-[inset_3px_0_0_#D4AF37]" : "text-white/60 hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-25"
-      }`}
+    <nav
+      aria-label="Design tools"
+      data-admin-tool-rail
+      className="flex w-[76px] shrink-0 flex-col items-stretch gap-0.5 overflow-y-auto rounded-2xl bg-white px-1.5 py-3 shadow-[0_4px_20px_rgba(48,56,57,0.12)] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
     >
-      {ICONS[id]}
-      <span>{label}</span>
-    </button>
-  );
-}
-
-/**
- * One menu for everything you can draw. `line` is a Husnalogy object type of
- * its own, not a shape variant — it appears here purely as a UI grouping.
- */
-export const SHAPE_MENU_ITEMS = [
-  "rectangle",
-  "rounded-rectangle",
-  "circle",
-  "oval",
-  "triangle",
-  "polygon",
-  "arch",
-  "line",
-] as const;
-
-export default function AdminToolRail(props: Props) {
-  const [menu, setMenu] = useState<"shape" | "guide" | null>(null);
-  const closeAnd = (action: () => void) => {
-    action();
-    setMenu(null);
-  };
-
-  return (
-    <div className="relative flex w-[72px] shrink-0 flex-col gap-0.5 overflow-y-auto overflow-x-visible border-r border-white/10 bg-[#303839] py-2 2xl:w-24 2xl:py-3">
-      <RailButton id="select" label="Select" active={props.activeTool === "select"} onClick={() => props.onSelectTool("select")} />
-      <RailButton id="text" label="Text" active={props.activePanel === "text"} onClick={props.onAddText} />
-      <RailButton id="image" label="Uploads" active={props.activePanel === "uploads"} onClick={() => props.onSelectTool("uploads")} />
-      <RailButton id="photo" label="Frame" onClick={props.onAddPhotoArea} />
-      <RailButton id="shape" label="Shape" active={menu === "shape"} onClick={() => setMenu((value) => value === "shape" ? null : "shape")} />
-      <RailButton id="qr" label="QR Code" onClick={props.onAddQRCode} />
-      <RailButton id="elements" label="Elements" active={props.activePanel === "elements"} onClick={props.onOpenElements} />
-      <RailButton id="background" label="Background" onClick={props.onAddBackground} />
-      <RailButton id="guide" label="Guide" active={menu === "guide"} onClick={() => setMenu((value) => value === "guide" ? null : "guide")} />
-      <RailButton id="pan" label="Pan" active={props.activeTool === "pan"} onClick={props.onPan} />
-      <span className="mx-3 my-1 h-px bg-white/10" aria-hidden />
-      <RailButton id="pages" label="Pages" onClick={() => props.onOpenPanel("pages")} />
-
-      {menu && (
-        <div className="fixed left-[76px] top-24 z-[180] w-64 rounded-xl border border-[#303839]/12 bg-white p-2 text-[#303839] shadow-[0_18px_55px_rgba(48,56,57,0.22)] 2xl:left-[100px]" role="menu">
-          <p className="px-2 pb-2 pt-1 text-[10px] font-extrabold uppercase tracking-[0.14em] text-[#303839]/45">
-            {menu === "shape" ? "Shape" : "Canvas guide"}
-          </p>
-          <div className="grid grid-cols-2 gap-1.5">
-            {/* Line lives in the Shape menu rather than on the rail: it is one
-                more thing you can draw, not a separate mode. It still routes to
-                `onAddLine`, so the document keeps its own `line` object type
-                and existing templates are untouched. */}
-            {menu === "shape" && SHAPE_MENU_ITEMS.map((shape) => (
-              <button
-                key={shape}
-                type="button"
-                onClick={() => closeAnd(() => (shape === "line" ? props.onAddLine() : props.onAddShape(shape)))}
-                className="min-h-11 cursor-pointer rounded-lg border border-[#303839]/10 px-2 text-xs font-bold capitalize transition-colors hover:border-[#303839]/40 hover:bg-[#F8F6F1] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white"
-              >
-                {shape.replace("-", " ")}
-              </button>
-            ))}
-            {menu === "guide" && (["horizontal", "vertical"] as const).map((axis) => (
-              <button key={axis} type="button" onClick={() => closeAnd(() => props.onAddGuide(axis))} className="min-h-11 cursor-pointer rounded-lg border border-[#303839]/10 px-2 text-xs font-bold capitalize transition-colors hover:border-[#303839]/40 hover:bg-[#F8F6F1] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white">
-                {axis}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-
-    </div>
+      {STUDIO_RAIL_ITEMS.map((item) => {
+        const active = item.id === "edit" ? activePanel === null : activePanel === item.id;
+        return (
+          <button
+            key={item.id}
+            type="button"
+            aria-pressed={active}
+            data-rail-item={item.id}
+            onClick={() => onSelect(item.id)}
+            className={`flex min-h-[58px] w-full flex-col items-center justify-center gap-1 rounded-xl px-0.5 text-[11px] font-medium leading-tight text-[#1f2425] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] ${
+              active ? "bg-[#303839]/[0.07]" : "hover:bg-[#303839]/[0.04]"
+            }`}
+          >
+            {item.icon}
+            <span className="w-full truncate text-center">{item.label}</span>
+          </button>
+        );
+      })}
+    </nav>
   );
 }

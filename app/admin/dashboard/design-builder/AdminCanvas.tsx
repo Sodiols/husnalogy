@@ -10,6 +10,9 @@
 // canvases. What stays here is what is genuinely admin-only or genuinely DOM:
 // ruler guides, the inline text editor, panning, and the workspace fit maths.
 
+import { manualWidthStylePatch } from "@/lib/customizer/v2/text-editing";
+import { STUDIO_SELECTION_THEME } from "@/lib/customizer/v2/interaction/selection-theme";
+import { SMALL_TEXT_MAX_POINT_SIZE, pointsToDocumentPx } from "@/lib/customizer/v2/type-units";
 import { DEFAULT_FONT_FAMILY } from "@/lib/customizer/v2/google-fonts";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import CustomizerPreview from "@/app/components/customizer/CustomizerPreview";
@@ -24,6 +27,7 @@ import {
   createCanvasMeasure,
   getTextResizeConstraints,
   layoutText,
+  resolvedTextLayoutMode,
   type MeasureFn,
   type SafeBounds,
 } from "@/lib/customizer/v2/text-layout";
@@ -213,6 +217,12 @@ export default function AdminCanvas({
   // Re-derived on every render, including every pointermove of a drag. Same
   // cost profile as the customer workspace (spec §30).
   const layers = useMemo(() => layersForPage(template, pageId), [template, pageId]);
+  // Small text (compact handles, controls below) is 10 pt or less — in this
+  // artboard's own pixels, since stored font sizes are document px.
+  const selectionTheme = useMemo(
+    () => ({ ...STUDIO_SELECTION_THEME, smallTextMaxFontSize: pointsToDocumentPx(SMALL_TEXT_MAX_POINT_SIZE, documentDpi) }),
+    [documentDpi],
+  );
   const fontMetricsRevision = useGoogleFontMetricsRevision(
     layers.filter((layer: any) => layer?.type === "text").map((layer: any) => layer.textStyle?.fontFamily),
   );
@@ -243,6 +253,10 @@ export default function AdminCanvas({
       safeBounds,
     });
   };
+
+  // Read through a ref so the gesture callbacks below keep a stable identity.
+  const resolveLayerBoxRef = useRef(resolveLayerBox);
+  resolveLayerBoxRef.current = resolveLayerBox;
 
   // Wrapped so the gesture-commit callback keeps a stable identity: an unstable
   // dependency there would re-render the interaction layer on every render.
@@ -296,10 +310,7 @@ export default function AdminCanvas({
       fontStyle: style.fontStyle === "italic" ? "italic" : "normal",
       letterSpacing: Number(style.letterSpacing) || 0,
       lineHeight: Number(style.lineHeight) || DEFAULT_LINE_HEIGHT,
-      multiline: Boolean(style.multiline),
-      fitMode: resolved.autoWidthClamped && !style.multiline
-        ? "shrink"
-        : style.fitMode === "shrink" ? "shrink" : style.fitMode === "auto-height" ? "auto-height" : "fixed",
+      ...resolvedTextLayoutMode(style, Boolean(resolved.autoWidthClamped)),
     }, textMeasureRef.current!);
     return layout.overflowWidth || layout.overflowHeight || layout.truncatedLines;
   };
@@ -729,12 +740,16 @@ export default function AdminCanvas({
     (layerId: string, patch: Record<string, unknown>) => {
       const layer = layers.find((candidate: any) => candidate.id === layerId);
       if (layer?.type !== "text" || (patch.width === undefined && patch.height === undefined)) return patch;
+      // A side drag on "safe-width" text chooses a width: fixed from now on.
+      const manual = manualWidthStylePatch(layer.textStyle, patch as any, resolveLayerBoxRef.current(layer).width);
+      const textStyle = manual ? { ...((patch.textStyle as Record<string, unknown>) || {}), ...manual } : patch.textStyle;
+      const effective = manual ? { ...layer, textStyle: { ...(layer.textStyle || {}), ...manual } } : layer;
       const constrained = constrainTextSize(
-        layer,
+        effective,
         Number(patch.width ?? layer.width),
         Number(patch.height ?? layer.height),
       );
-      return { ...patch, width: constrained.width, height: constrained.height };
+      return { ...patch, ...(textStyle ? { textStyle } : {}), width: constrained.width, height: constrained.height };
     },
     [layers, constrainTextSize],
   );
@@ -999,6 +1014,9 @@ export default function AdminCanvas({
           editingGroupId={editingGroupId}
           textEditingId={editingTextId}
           disabled={panToolActive || isPanning || Boolean(crop) || Boolean(erase)}
+          // Studio selection chrome: thin magenta outline, round handles, rotate
+          // control below, and the small-text controls.
+          selectionTheme={selectionTheme}
           snapping={{
             enabled: snapEnabled,
             safeArea: template?.safeArea,

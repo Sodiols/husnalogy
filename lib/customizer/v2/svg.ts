@@ -5,6 +5,7 @@
 // same mask generator, and break lines through the same text layout service.
 // The output feeds @resvg/resvg-js for PNG production and pdf-lib for PDFs.
 
+import { customPathInBox, sanitizeCustomPath } from "./shape-library";
 import { svgPaint } from "./paint";
 import { DEFAULT_FONT_FAMILY } from "./google-fonts";
 import {
@@ -18,7 +19,7 @@ import {
 import { getLegacyMaskPath, getMaskPath } from "./masks";
 import { layerTransform } from "./layer-flip";
 import { eraseMaskAppliesTo, eraseStrokePaths } from "./erase-mask";
-import { DEFAULT_LINE_HEIGHT, layoutText, fallbackMeasure, resolveTextBox, type MeasureFn, type SafeBounds } from "./text-layout";
+import { DEFAULT_LINE_HEIGHT, layoutText, fallbackMeasure, resolveTextBox, resolvedTextLayoutMode, type MeasureFn, type SafeBounds } from "./text-layout";
 import { getGridSlotRect, normalizeGridSlot } from "./grids";
 import { hasImageFilters, imageFilterSvgPrimitives } from "./image-filters";
 import { resolveImageDrawBoxFromTransform } from "./image-crop";
@@ -136,10 +137,7 @@ function renderTextLayer(layer: any, field: any, values: Record<string, any>, me
       lineHeight: Number(style.lineHeight) || DEFAULT_LINE_HEIGHT,
       textAlign: style.textAlign || "center",
       verticalAlign: style.verticalAlign || "middle",
-      multiline: Boolean(style.multiline),
-      fitMode: box.clampedBySafeArea && !style.multiline
-        ? "shrink"
-        : style.fitMode === "shrink" ? "shrink" : style.fitMode === "auto-height" ? "auto-height" : "fixed",
+      ...resolvedTextLayoutMode(style, box.clampedBySafeArea),
       maxLines: Number(layer.maxLines) > 0 ? Number(layer.maxLines) : undefined,
     },
     measure,
@@ -201,6 +199,10 @@ function renderShapeLayer(layer: any): string {
     return `<path d="${esc(path.d)}"${rotate}${common}/>`;
   }
   if (layer.shape === "path" && layer.path) return `<path d="${esc(layer.path)}"${rotate}${common}/>`;
+  if (layer.shape === "custom") {
+    const outline = sanitizeCustomPath(layer.pathData);
+    if (outline) return `<path d="${esc(customPathInBox(outline, { x, y, width: layer.width, height: layer.height }))}"${rotate}${common}/>`;
+  }
   return `<rect x="${x}" y="${y}" width="${layer.width}" height="${layer.height}" rx="${layer.borderRadius || 0}" ry="${layer.borderRadius || 0}"${rotate}${common}/>`;
 }
 

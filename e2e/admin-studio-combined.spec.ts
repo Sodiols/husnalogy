@@ -6,6 +6,7 @@
  * be exactly what was saved.
  */
 import { expect, test, type Page } from "@playwright/test";
+import { addStudioFrame, addStudioText } from "./admin-studio-tools";
 import { bodyPoint, selectedIds } from "./customizer-fixture";
 
 const PHOTO = `data:image/svg+xml;utf8,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200"><rect width="100" height="200" fill="#ff0000"/><rect x="100" width="100" height="200" fill="#0000ff"/></svg>')}`;
@@ -199,14 +200,14 @@ test.describe("Design Studio: orientation, crop and multi-drag together", () => 
     expect((await snapshot(page)).viewBox).toBe("0 0 1500 1050");
 
     // A new text and a new photo.
-    await studio(page).getByRole("button", { name: "Text", exact: true }).click();
+    await addStudioText(page);
     await expect(page.locator('[aria-label="Edit text on canvas"]')).toBeVisible();
     await page.keyboard.type("Added");
     await page.keyboard.press("Control+Enter");
     let textId = "";
     await expect.poll(async () => (textId = (await selectedIds(page))[0] || "")).not.toBe("");
     for (let index = 0; index < 6; index += 1) await page.keyboard.press("Shift+ArrowUp");
-    await studio(page).getByRole("button", { name: "Frame", exact: true }).click();
+    await addStudioFrame(page);
     let photoId = "";
     await expect.poll(async () => (photoId = (await selectedIds(page)).find((id) => id !== textId) || "")).not.toBe("");
     for (let index = 0; index < 14; index += 1) await page.keyboard.press("Shift+ArrowDown");

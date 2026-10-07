@@ -333,7 +333,17 @@ function installMock(store: Store) {
 
     if (path === "/api/admin/hero-collections") return json({ collections: [] });
     if (path === "/api/admin/hero-collections/resolve") return json({ resolved: null });
-    if (path === "/api/admin/customizer/assets") return json({ ok: true, assets: controls.assets, total: controls.assets.length, categories: [], folders: [] });
+    if (path === "/api/admin/customizer/assets") {
+      // Like the real list: filtered by asset type and by a title/filename search, newest first.
+      const type = url.searchParams.get("type") || "";
+      const search = (url.searchParams.get("search") || "").toLowerCase();
+      const assets = controls.assets.filter(
+        (asset: any) =>
+          (!type || asset.assetType === type) &&
+          (!search || `${asset.title || ""} ${asset.originalFilename || ""}`.toLowerCase().includes(search)),
+      );
+      return json({ ok: true, assets, total: assets.length, categories: [], folders: [] });
+    }
     if (path === "/api/admin/customizer/fonts/favourites" && method === "PUT") {
       const family = String(body?.family || "");
       if (body?.favourite) store.fontFavourites.add(family);

@@ -6,6 +6,7 @@
  * back. Measured from what the canvas draws, in the box's own rotated frame.
  */
 import { expect, test, type Page } from "@playwright/test";
+import { addStudioText } from "./admin-studio-tools";
 import { anchorPoint, bodyPoint, selectedIds } from "./customizer-fixture";
 
 const studio = (page: Page) => page.locator("[data-admin-customizer]");
@@ -23,7 +24,7 @@ async function openStudioWithText(page: Page): Promise<string> {
   if ((await enable.isVisible()) && (await enable.getAttribute("aria-checked")) !== "true") await enable.click();
   await page.getByRole("button", { name: "Open Design Studio" }).click();
   await expect(studio(page).locator("header")).toBeVisible();
-  await studio(page).getByRole("button", { name: "Text", exact: true }).click();
+  await addStudioText(page);
   const editor = page.locator('[aria-label="Edit text on canvas"]');
   await expect(editor).toBeVisible();
   await page.keyboard.type("One");

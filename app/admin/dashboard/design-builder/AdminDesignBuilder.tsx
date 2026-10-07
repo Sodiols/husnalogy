@@ -8,6 +8,7 @@
 // Collapsed: a launch card with a live summary. Open: a full-screen
 // professional editor (fixed overlay, no site chrome).
 
+import ToolbarPopover, { ToolbarMenuItem, ToolbarMenuSection } from "./ToolbarPopover";
 import { configureAssetRuntime } from "@/app/components/customizer/canvas-image-source";
 import { DEFAULT_FONT_FAMILY } from "@/lib/customizer/v2/google-fonts";
 import { ensureDesignFontsLoaded, reportGoogleFontLoadFailure } from "@/app/components/customizer/useGoogleFonts";
@@ -27,7 +28,8 @@ import AdminBuilderHeader from "./AdminBuilderHeader";
 import AdminContextToolbar from "./AdminContextToolbar";
 import AdminAlignmentPanel from "./AdminAlignmentPanel";
 import type { AlignmentTarget } from "@/lib/customizer/v2/admin-toolbar-state";
-import AdminToolRail from "./AdminToolRail";
+import AdminToolRail, { type StudioRailItem, type StudioSidePanel } from "./AdminToolRail";
+import AdminBackgroundPanel from "./AdminBackgroundPanel";
 import AdminTextToolPanel from "./AdminTextToolPanel";
 import AdminCanvas from "./AdminCanvas";
 import AdminPropertiesPanel from "./AdminPropertiesPanel";
@@ -55,12 +57,26 @@ import {
   type StudioRecoverySnapshot,
 } from "@/lib/customizer/studio-recovery";
 import CustomerCanvasContextMenu from "@/app/components/customizer/CustomerCanvasContextMenu";
-import { DEFAULT_LINE_HEIGHT, createCanvasMeasure, getTextResizeConstraints, isSingleLineAutoSizeText } from "@/lib/customizer/v2/text-layout";
+import {
+  DEFAULT_LINE_HEIGHT,
+  createCanvasMeasure,
+  getTextResizeConstraints,
+  isAutoWidthText,
+  isSafeWidthText,
+  isSingleLineAutoSizeText,
+  resolveTextBox,
+  templateSafeBounds,
+} from "@/lib/customizer/v2/text-layout";
 import { resolveLayerSelectionGeometry } from "@/lib/customizer/v2/selection-geometry";
 import { resolveSelection, sanitizeSelection, selectionsEqual, type SelectionIntent } from "@/lib/customizer/v2/selection";
 import {
   canonicalTextLayerUpdate,
   type TextPlacementPreset,
+  alignedEdgeShift,
+  becomesMultilineFromAutoWidth,
+  widenForTypedLines,
+  isMultilineTextStyle,
+  multilineTextPatch,
 } from "@/lib/customizer/v2/text-editing";
 import { getFieldById, resolveLayerText } from "@/app/components/customizer/customizer-utils";
 import { formatCustomizerVersion, nextCustomizerVersion, type CustomizerUpdateType } from "@/lib/customizer/public-version";
@@ -102,6 +118,7 @@ import { applyCanvasLayerPatches,
   newImageLayerFromAdminAsset,
   newQRCodeLayer,
   newShapeLayer,
+  newLibraryShapeLayer,
   newTextLayer,
   patchPage,
   removeLayer,
@@ -127,6 +144,18 @@ import { applyCanvasLayerPatches,
 } from "./builder-utils";
 
 const builderTextMeasure = createCanvasMeasure();
+
+const SIDE_PANEL_TITLES: Record<StudioSidePanel, string> = {
+  text: "Add Text",
+  uploads: "Uploads",
+  background: "Background",
+  elements: "Elements",
+  icons: "Icons",
+  options: "Options",
+  moment: "Moment",
+  layers: "Layers",
+  pages: "Pages",
+};
 
 // The studio may fall back to a library asset's full-quality original when its
 // editor variant fails; set before any canvas image resolves.
@@ -165,6 +194,38 @@ function constrainTextLayerBox(template: any, layerId: string): any {
   const layer = getLayer(template, layerId);
   if (!layer || layer.type !== "text") return template;
   const style = layer.textStyle || {};
+  if (isSafeWidthText(style)) {
+    // The box IS what the renderers resolve (words, capped at the safe area,
+    // wrapped below it), stored so the aligned edge and the growth anchor
+    // carry over to the next edit.
+    const box = resolveTextBox(
+      {
+        x: layer.x,
+        y: layer.y,
+        width: layer.width,
+        height: layer.height,
+        text: String(layer.text || ""),
+        fontFamily: style.fontFamily || DEFAULT_FONT_FAMILY,
+        fontSize: Number(style.fontSize) || 48,
+        fontWeight: style.fontWeight || "400",
+        fontStyle: style.fontStyle === "italic" ? "italic" : "normal",
+        letterSpacing: Number(style.letterSpacing) || 0,
+        lineHeight: Number(style.lineHeight) || DEFAULT_LINE_HEIGHT,
+        uppercase: Boolean(style.uppercase),
+        multiline: Boolean(style.multiline),
+        textAlign: style.textAlign || "center",
+        verticalAlign: style.verticalAlign || "middle",
+        autoSizeMode: style.autoSizeMode,
+        fitMode: style.fitMode,
+        rotation: Number(layer.rotation) || 0,
+        growthDirection: style.growthDirection,
+      },
+      builderTextMeasure,
+      templateSafeBounds(template),
+    );
+    if (box.width === layer.width && box.height === layer.height && box.x === layer.x && box.y === layer.y) return template;
+    return updateLayer(template, layerId, { width: box.width, height: box.height, x: box.x, y: box.y });
+  }
   let constraints = getTextResizeConstraints({
     text: String(layer.text || ""),
     width: layer.width,
@@ -205,13 +266,15 @@ function constrainTextLayerBox(template: any, layerId: string): any {
   // The growth direction decides which edge holds as the height changes, in
   // the box's own rotated frame — the same rule every renderer resolves with.
   const growth = normalizeTextGrowthDirection(style.growthDirection);
+  // A one-line box that changes width keeps its aligned edge still.
+  const origin = autoSizedSingleLine ? alignedEdgeShift(layer, nextWidth, style.textAlign) : { x: layer.x, y: layer.y };
   const anchored = growth
-    ? anchorGrownTextBox({ x: layer.x, y: layer.y, fromHeight: layer.height, toHeight: nextHeight, rotation: layer.rotation, growth })
+    ? anchorGrownTextBox({ x: origin.x, y: origin.y, fromHeight: layer.height, toHeight: nextHeight, rotation: layer.rotation, growth })
     : {
-        x: layer.x,
+        x: origin.x,
         y: style.fitMode === "auto-height" || String(layer.text || "").includes("\n")
-          ? layer.y - layer.height / 2 + nextHeight / 2
-          : layer.y,
+          ? origin.y - layer.height / 2 + nextHeight / 2
+          : origin.y,
       };
   if (nextWidth === layer.width && nextHeight === layer.height && anchored.x === layer.x && anchored.y === layer.y) return template;
   return updateLayer(template, layerId, { width: nextWidth, height: nextHeight, x: anchored.x, y: anchored.y });
@@ -246,14 +309,17 @@ export default function AdminDesignBuilder({
   const activeTool: "select" | "pan" = toolState.mode === "pan" ? "pan" : "select";
   /** A one-shot insertion finished: hand the canvas back to Select. */
   const finishInsertion = () => dispatchTool({ type: "objectCreated" });
-  const [activePanel, setActivePanel] = useState<"properties" | "text" | "uploads" | "elements">("properties");
+  /** The side panel beside the tool rail (Add Text, Uploads, Elements, Layers…), or none. */
+  const [sidePanel, setSidePanel] = useState<StudioSidePanel | null>(null);
+  // The design as the studio opened it: the Background panel's original palette.
+  const [openedTemplate] = useState(template);
   /** The Alignment panel (opened from the toolbar) takes the inspector's place while open. */
   const [alignmentOpen, setAlignmentOpen] = useState(false);
   // Choosing another side panel from the tool rail replaces it.
   useEffect(() => {
     setAlignmentOpen(false);
-  }, [activePanel]);
-  const [textPlacementPreset, setTextPlacementPreset] = useState<TextPlacementPreset>("body");
+  }, [sidePanel]);
+  const [textPlacementPreset, setTextPlacementPreset] = useState<TextPlacementPreset>("text");
   const [editingTextLayerId, setEditingTextLayerId] = useState<string | null>(null);
   const [editTextRequest, setEditTextRequest] = useState<{ layerId: string; requestId: number; created: boolean } | null>(null);
   const [tab, setTab] = useState("design");
@@ -586,7 +652,7 @@ export default function AdminDesignBuilder({
     return layer.id;
   };
   const addText = () => {
-    setActivePanel("text");
+    setSidePanel("text");
     insertTextLayer();
   };
   const addPhotoArea = () => {
@@ -597,23 +663,67 @@ export default function AdminDesignBuilder({
     commit(next);
     setSelectedLayerId(layer.id);
     finishInsertion();
-    setActivePanel("properties");
   };
+  /** A native shape kind ("circle") or a Shapes-library id ("heart"): one commit, selected. */
   const addShape = (shape: string) => {
-    const layer = newShapeLayer(t, activePage, shape);
+    const layer: any = newLibraryShapeLayer(t, activePage, shape);
     if (shape === "rounded-rectangle") layer.borderRadius = 48;
     commit(addLayer(t, layer));
     setSelectedLayerId(layer.id);
     finishInsertion();
-    setActivePanel("properties");
   };
   const addLine = () => addShape("line");
+  /** A line in one of the library's styles (solid, dashed, dotted). */
+  const addLineStyle = (lineStyle: string) => {
+    const layer = { ...newShapeLayer(tRef.current, activePage, "line"), lineStyle: ["dashed", "dotted"].includes(lineStyle) ? lineStyle : "solid" };
+    commit(addLayer(tRef.current, layer));
+    setSelectedLayerId(layer.id);
+    finishInsertion();
+  };
+  /** A customer photo frame with one of the library's mask outlines. */
+  const addFrameWithMask = (maskShape: string) => {
+    const layer = { ...newImageLayer(tRef.current, activePage), maskShape };
+    const next = setCustomerEditable(addLayer(tRef.current, layer), layer.id, true);
+    commit(next);
+    setSelectedLayerId(layer.id);
+    finishInsertion();
+  };
+  /** Ready-made wording from the Elements panel: a real, editable text object. */
+  const insertPresetText = (text: string, preset: TextPlacementPreset) => {
+    const current = tRef.current;
+    const layer = newTextLayer(current, activePageRef.current, {
+      x: Math.round(Number(current?.canvasWidthPx || 1500) / 2),
+      y: Math.round(Number(current?.canvasHeightPx || 2100) / 2),
+      text,
+      preset,
+    });
+    commit(constrainTextLayerBox(addLayer(current, layer), layer.id));
+    setSelectedLayerIds([layer.id]);
+    finishInsertion();
+  };
+  /**
+   * The tool rail. Edit is the resting select tool and closes any side panel;
+   * Add Text adds a text object (the existing text tool) and opens its presets;
+   * every other item toggles its side panel.
+   */
+  const onRailSelect = (item: StudioRailItem) => {
+    if (item === "edit") {
+      dispatchTool({ type: "escape" });
+      setSidePanel(null);
+      return;
+    }
+    if (item === "text") {
+      if (sidePanel === "text") setSidePanel(null);
+      else addText();
+      return;
+    }
+    setSidePanel((current) => (current === item ? null : item));
+  };
   const addQRCode = () => {
     const layer = newQRCodeLayer(t, activePage);
     commit(addLayer(t, layer));
     setSelectedLayerId(layer.id);
     finishInsertion();
-    setActivePanel("properties");
   };
   const addElement = (element: LibraryElement) => {
     const layer = newElementLayer(tRef.current, activePage, element);
@@ -631,11 +741,10 @@ export default function AdminDesignBuilder({
       setSelectedLayerId(layer.id);
     }
     finishInsertion();
-    setActivePanel("properties");
   };
   const addGuide = (axis: "horizontal" | "vertical") => {
     const guide = {
-      id: `guide_${Math.random().toString(36).slice(2, 8)}`,
+      id: genId("guide"),
       pageId: activePage,
       axis,
       position: axis === "horizontal" ? Number(t.canvasHeightPx || 2100) / 2 : Number(t.canvasWidthPx || 1500) / 2,
@@ -684,6 +793,10 @@ export default function AdminDesignBuilder({
           ...(patch.textStyle || {}),
         }),
       };
+      // A line break in one-line auto-width text wraps at the widest line.
+      if (becomesMultilineFromAutoWidth(current.textStyle, current.text, patch.text)) {
+        patch = { ...patch, ...widenForTypedLines({ ...current, textStyle: patch.textStyle }, patch.text, builderTextMeasure, Number(tRef.current?.canvasWidthPx) || undefined) };
+      }
     }
     const next = constrainTextLayerBox(updateLayer(tRef.current, id, patch), id);
     if (activeTextHistoryIdRef.current === id) apply(next);
@@ -720,7 +833,20 @@ export default function AdminDesignBuilder({
     flushGestureHistory();
     apply(next);
   };
+  /** The text objects that became multi-line from auto width in the current editing session. */
+  const typedLineWidthRef = useRef(new Set<string>());
+  /** Patches an edit's text in, widening a box that a line break just turned into a paragraph. */
+  const withTypedText = (template: any, id: string, update: { text: string; textStyle: Record<string, any> }) => {
+    const current = getLayer(template, id);
+    if (current && becomesMultilineFromAutoWidth(current.textStyle, current.text, update.text)) typedLineWidthRef.current.add(id);
+    let next = updateLayer(template, id, update);
+    if (typedLineWidthRef.current.has(id)) {
+      next = updateLayer(next, id, widenForTypedLines(getLayer(next, id), update.text, builderTextMeasure, Number(next?.canvasWidthPx) || undefined));
+    }
+    return constrainTextLayerBox(next, id);
+  };
   const onCanvasTextEditStart = (id: string) => {
+    typedLineWidthRef.current.clear();
     if (activeTextHistoryIdRef.current === id) return;
     activeTextRevisionBeforeRef.current = revisions.current;
     snapshot();
@@ -736,18 +862,15 @@ export default function AdminDesignBuilder({
       current.textStyle?.autoSizeMode === update.textStyle.autoSizeMode &&
       current.textStyle?.fitMode === update.textStyle.fitMode
     ) return;
-    apply(constrainTextLayerBox(updateLayer(tRef.current, id, update), id));
+    apply(withTypedText(tRef.current, id, update));
   };
   const onCanvasTextMultilineActivate = (id: string) => {
     const current = getLayer(tRef.current, id);
     if (!current || current.type !== "text") return;
     const style = current.textStyle || {};
-    if (style.multiline && style.autoSizeMode === "height" && style.fitMode === "auto-height") return;
-    apply(constrainTextLayerBox(updateLayerStyle(tRef.current, id, {
-      multiline: true,
-      autoSizeMode: "height",
-      fitMode: "auto-height",
-    }), id));
+    if (isAutoWidthText(style)) typedLineWidthRef.current.add(id);
+    if (isMultilineTextStyle(style)) return;
+    apply(constrainTextLayerBox(updateLayerStyle(tRef.current, id, multilineTextPatch(style)), id));
   };
   const onCanvasTextCommit = (id: string, text: string) => {
     const current = getLayer(tRef.current, id);
@@ -762,10 +885,11 @@ export default function AdminDesignBuilder({
         if (activeTextHistoryIdRef.current === id) activeTextHistoryIdRef.current = null;
         return;
       }
-      const next = constrainTextLayerBox(updateLayer(tRef.current, id, update), id);
+      const next = withTypedText(tRef.current, id, update);
       if (activeTextHistoryIdRef.current === id) apply(next);
       else commit(next);
     }
+    typedLineWidthRef.current.delete(id);
     if (activeTextHistoryIdRef.current === id) activeTextHistoryIdRef.current = null;
   };
   const onCanvasTextCancel = (
@@ -1641,75 +1765,130 @@ export default function AdminDesignBuilder({
       <div className="relative flex min-h-0 min-w-0 flex-1 overflow-hidden">
         {tab === "design" && (
           <>
-            <AdminToolRail
-              activeTool={activeTool}
-              activePanel={activePanel}
-              onSelectTool={(tool) => {
-                if (tool === "select") {
-                  dispatchTool({ type: "escape" });
-                  setActivePanel("properties");
-                  setSelectedLayerId(null);
-                  return;
-                }
-                setActivePanel(tool as "uploads" | "elements");
-              }}
-              onAddText={addText}
-              onAddPhotoArea={addPhotoArea}
-              onAddShape={addShape}
-              onAddLine={addLine}
-              onAddQRCode={addQRCode}
-              onOpenElements={() => setActivePanel("elements")}
-              onAddBackground={addBackground}
-              onAddGuide={addGuide}
-              onPan={() => dispatchTool({ type: "togglePan" })}
-              // Pages now live permanently in the left sidebar, so the rail
-              // button brings that section into view rather than swapping panels.
-              onOpenPanel={() => {
-                document.getElementById("admin-pages-section")?.scrollIntoView({ block: "nearest", behavior: "smooth" });
-              }}
-            />
-
-            {/* Left workspace sidebar: layers over pages, sharing the tool
-                rail's dark surface so the editor reads as one unit. */}
-            <aside className="flex w-[clamp(200px,16vw,280px)] shrink-0 flex-col border-r border-white/8 bg-[#2A3132]">
-              <div className="flex min-h-0 flex-1 flex-col">
-                <p className="shrink-0 px-4 pb-2 pt-4 text-[10px] font-bold uppercase tracking-[0.14em] text-white/35">Layers</p>
-                <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden [scrollbar-color:rgba(255,255,255,0.18)_transparent] [scrollbar-width:thin]" data-admin-dark-panel>
-                  <AdminLayersPanel
-                    template={t}
-                    pageId={activePage}
-                    selectedLayerId={selectedLayerId}
-                    selectedLayerIds={selectedLayerIds}
-                    editingGroupId={editingGroupId}
-                    onSelect={onCanvasSelect}
-                    onEnterGroup={enterAdminGroup}
-                    onLayerPatch={onLayerPatch}
-                    onReorderToTarget={onReorderToTarget}
-                    onDuplicate={onDuplicate}
-                    onRemove={onRemove}
-                  />
-                </div>
-              </div>
-              <div id="admin-pages-section" className="flex max-h-[42%] min-h-0 shrink-0 flex-col border-t border-white/8">
-                <p className="shrink-0 px-4 pb-2 pt-3 text-[10px] font-bold uppercase tracking-[0.14em] text-white/35">Pages</p>
-                <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden [scrollbar-color:rgba(255,255,255,0.18)_transparent] [scrollbar-width:thin]" data-admin-dark-panel>
-                  <AdminPagesPanel
-                    template={t}
-                    activePage={activePage}
-                    onSelectPage={(pageId: string) => {
-                      setActivePage(pageId);
-                      setSelectedLayerId(null);
-                    }}
-                    onAddPage={handleAddPage}
-                    onDuplicatePage={handleDuplicatePage}
-                    onRenamePage={(pageId: string, label: string) => commit(renamePage(t, pageId, label))}
-                    onMovePage={(pageId: string, dir: "up" | "down") => commit(movePage(t, pageId, dir))}
-                    onDeletePage={handleDeletePage}
-                    onPatchPage={(pageId: string, patch: any) => commit(patchPage(t, pageId, patch))}
-                  />
-                </div>
-              </div>
-            </aside>
+            {/* Left: the floating tool rail and the one side panel it opens. */}
+            <div className="relative flex min-h-0 shrink-0 gap-3 bg-[#F3F1EC] py-3 pl-3">
+              <AdminToolRail activePanel={sidePanel} onSelect={onRailSelect} />
+              {sidePanel && (
+                <aside
+                  data-admin-side-panel={sidePanel}
+                  aria-label={SIDE_PANEL_TITLES[sidePanel]}
+                  // Pages is a narrow strip of page cards; every other panel is a full side panel.
+                  className={`flex min-h-0 flex-col overflow-hidden rounded-2xl bg-white shadow-[0_4px_20px_rgba(48,56,57,0.12)] ${sidePanel === "pages" ? "w-[188px]" : "w-[clamp(280px,22vw,340px)]"}`}
+                >
+                  {sidePanel !== "elements" && sidePanel !== "icons" && (
+                    <div className="flex shrink-0 items-center justify-between px-4 pb-2 pt-4">
+                      <h2 className="text-[19px] font-semibold text-[#1f2425]">{SIDE_PANEL_TITLES[sidePanel]}</h2>
+                      <button
+                        type="button"
+                        aria-label="Close panel"
+                        onClick={() => setSidePanel(null)}
+                        className="grid h-9 w-9 place-items-center rounded-full text-[#1f2425] hover:bg-[#303839]/[0.06] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839]"
+                      >
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden><path d="M6 6l12 12M18 6 6 18" /></svg>
+                      </button>
+                    </div>
+                  )}
+                  <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden [scrollbar-color:rgba(48,56,57,0.25)_transparent] [scrollbar-width:thin]">
+                    {sidePanel === "text" && (
+                      <AdminTextToolPanel
+                        preset={textPlacementPreset}
+                        onSelectPreset={(preset) => {
+                          setTextPlacementPreset(preset);
+                          insertTextLayer(preset);
+                        }}
+                      />
+                    )}
+                    {sidePanel === "uploads" && <AdminUploadsPanel onInsertAsset={addImageFromAdminAsset} currentAssetIds={currentAssetIds} />}
+                    {sidePanel === "background" && (
+                      <AdminBackgroundPanel
+                        template={t}
+                        paletteSource={openedTemplate}
+                        activePage={activePage}
+                        onPatchPage={(pageId: string, patch: Record<string, unknown>) => commit(patchPage(t, pageId, patch))}
+                        onBackgroundLayer={addBackground}
+                        hasBackgroundLayer={layersForPage(t, activePage).some((layer: any) => layer.type === "background")}
+                      />
+                    )}
+                    {(sidePanel === "elements" || sidePanel === "icons") && (
+                      <CustomerElementsPanel
+                        key={sidePanel}
+                        onInsertElement={addElement}
+                        adminMode
+                        initialView={sidePanel === "icons" ? "graphics" : "home"}
+                        onClose={() => setSidePanel(null)}
+                        // Native inserters: shapes, lines, frames, QR codes and
+                        // text stay real Husnalogy objects, created by the
+                        // studio's own commands.
+                        onAddShape={addShape}
+                        onAddLine={addLineStyle}
+                        onAddTextPreset={(preset, text) => insertPresetText(text, preset)}
+                        onAddFrame={addFrameWithMask}
+                        onAddQRCode={() => addQRCode()}
+                        allowShapes
+                        allowLines
+                        allowText
+                        allowFrames
+                        allowQRCode
+                      />
+                    )}
+                    {sidePanel === "options" && (
+                      <AdminProductOptionsPanel
+                        productOptions={productOptions}
+                        quantityOptions={quantityOptions}
+                        onOptionsChange={(key: string, entries: any[]) => onProductOptionsChange?.(key, entries)}
+                        onQuantityOptionsChange={(values: string[]) => onQuantityOptionsChange?.(values)}
+                      />
+                    )}
+                    {sidePanel === "moment" && (
+                      <AdminFieldsPanel
+                        template={t}
+                        onFieldPatch={onFieldPatch}
+                        onFieldReorder={onFieldReorder}
+                        onToggleRequired={(layerId: string, required: boolean) => onFieldPatch(layerId, { required })}
+                        onSelectLayer={(layerId: string) => {
+                          const layer = getLayer(t, layerId);
+                          if (layer) setActivePage(layer.page);
+                          setSelectedLayerId(layerId);
+                        }}
+                      />
+                    )}
+                    {sidePanel === "layers" && (
+                      <AdminLayersPanel
+                        template={t}
+                        pageId={activePage}
+                        selectedLayerId={selectedLayerId}
+                        selectedLayerIds={selectedLayerIds}
+                        editingGroupId={editingGroupId}
+                        onSelect={onCanvasSelect}
+                        onEnterGroup={enterAdminGroup}
+                        onLayerPatch={onLayerPatch}
+                        onReorderToTarget={onReorderToTarget}
+                        onDuplicate={onDuplicate}
+                        onRemove={onRemove}
+                      />
+                    )}
+                    {sidePanel === "pages" && (
+                      <div id="admin-pages-section">
+                        <AdminPagesPanel
+                          template={t}
+                          activePage={activePage}
+                          onSelectPage={(pageId: string) => {
+                            setActivePage(pageId);
+                            setSelectedLayerId(null);
+                          }}
+                          onAddPage={handleAddPage}
+                          onDuplicatePage={handleDuplicatePage}
+                          onRenamePage={(pageId: string, label: string) => commit(renamePage(t, pageId, label))}
+                          onMovePage={(pageId: string, dir: "up" | "down") => commit(movePage(t, pageId, dir))}
+                          onDeletePage={handleDeletePage}
+                          onPatchPage={(pageId: string, patch: any) => commit(patchPage(t, pageId, patch))}
+                        />
+                      </div>
+                    )}
+                  </div>
+                </aside>
+              )}
+            </div>
 
             <main className="relative min-h-0 min-w-[420px] flex-1 bg-[#F3F1EC]">
               {/* Page position, mirroring the customer editor's canvas label. */}
@@ -1727,6 +1906,7 @@ export default function AdminDesignBuilder({
                 <div className="pointer-events-none absolute inset-x-0 top-3 z-30 flex justify-center px-3">
                   <AdminContextToolbar
                     selectedLayers={selectedLayers}
+                    dpi={t.dpi}
                     editingText={editingTextLayerId === selectedLayerId}
                     canTransform={canTransformSelection()}
                     canDelete={selectedLayers.some((layer: any) => !layer.locked && layer.adminEditable !== false)}
@@ -1873,6 +2053,42 @@ export default function AdminDesignBuilder({
                     >
                       Bleed
                     </button>
+                    {/* Ruler guides and the hand tool: canvas aids, kept beside Snap. */}
+                    <ToolbarPopover
+                      label="Add guide"
+                      triggerTitle="Add a ruler guide"
+                      menuWidth={180}
+                      align="center"
+                      triggerClassName="min-h-9 rounded-full px-3.5 text-[11px] font-bold text-[#303839]/50 transition-colors hover:bg-[#F8F6F1] hover:text-[#303839] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839]"
+                      triggerActiveClassName="min-h-9 rounded-full bg-[#303839] px-3.5 text-[11px] font-bold text-white"
+                      trigger={<span>Guide</span>}
+                    >
+                      {(close) => (
+                        <ToolbarMenuSection title="Ruler guide">
+                          {(["horizontal", "vertical"] as const).map((axis) => (
+                            <ToolbarMenuItem
+                              key={axis}
+                              label={axis === "horizontal" ? "Horizontal guide" : "Vertical guide"}
+                              onSelect={() => {
+                                addGuide(axis);
+                                close();
+                              }}
+                            />
+                          ))}
+                        </ToolbarMenuSection>
+                      )}
+                    </ToolbarPopover>
+                    <button
+                      type="button"
+                      aria-pressed={activeTool === "pan"}
+                      title="Pan the canvas (or hold Space)"
+                      onClick={() => dispatchTool({ type: "togglePan" })}
+                      className={`min-h-9 rounded-full px-3.5 text-[11px] font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white ${
+                        activeTool === "pan" ? "bg-[#303839] text-white" : "text-[#303839]/50 hover:bg-[#F8F6F1] hover:text-[#303839]"
+                      }`}
+                    >
+                      Pan
+                    </button>
                   </div>
                   <div
                     role="radiogroup"
@@ -1923,24 +2139,6 @@ export default function AdminDesignBuilder({
                     onScale={runScale}
                     onRotateBy={runRotateBy}
                   />
-                ) : activePanel === "text" && !selectedLayer ? (
-                  <AdminTextToolPanel
-                    preset={textPlacementPreset}
-                    onSelectPreset={(preset) => {
-                      setTextPlacementPreset(preset);
-                      insertTextLayer(preset);
-                    }}
-                  />
-                ) : activePanel === "uploads" ? (
-                  <AdminUploadsPanel onInsertAsset={addImageFromAdminAsset} currentAssetIds={currentAssetIds} />
-                ) : activePanel === "elements" ? (
-                  <div className="h-full overflow-y-auto">
-                    <div className="border-b border-[#303839]/8 px-4 py-3.5">
-                      <p className="font-display text-[19px] leading-tight text-[#303839]">Elements library</p>
-                      <p className="mt-0.5 text-xs text-[#303839]/50">Choose an approved element to add it to this page.</p>
-                    </div>
-                    <CustomerElementsPanel onInsertElement={addElement} adminMode />
-                  </div>
                 ) : <AdminPropertiesPanel
                   template={t}
                   layer={selectedLayer}
@@ -1973,8 +2171,7 @@ export default function AdminDesignBuilder({
                 const layer = getLayer(t, layerId);
                 if (layer) setActivePage(layer.page);
                 setSelectedLayerId(layerId);
-                setActivePanel("properties");
-                setTab("design");
+                            setTab("design");
               }}
             />
           </div>

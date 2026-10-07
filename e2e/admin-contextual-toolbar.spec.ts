@@ -203,12 +203,13 @@ test.describe("text toolbar", () => {
     await openStudio(page);
     await select(page, "t_text");
 
+    // The field reads points (60 px on this 300 DPI card is 14.4 pt); + adds 1 pt.
     await toolbar(page).getByRole("button", { name: "Increase Font size" }).click();
-    await expect.poll(async () => layerIn({ layers: await liveLayers(page) }, "t_text")?.textStyle?.fontSize).toBe(61);
+    await expect.poll(async () => layerIn({ layers: await liveLayers(page) }, "t_text")?.textStyle?.fontSize).toBe(64.17);
     const field = toolbar(page).getByRole("textbox", { name: "Font size" }).or(toolbar(page).getByRole("spinbutton", { name: "Font size" })).first();
-    await field.fill("72");
+    await field.fill("17");
     await field.press("Enter");
-    await expect.poll(async () => layerIn({ layers: await liveLayers(page) }, "t_text")?.textStyle?.fontSize).toBe(72);
+    await expect.poll(async () => layerIn({ layers: await liveLayers(page) }, "t_text")?.textStyle?.fontSize).toBe(70.83);
     await toolbar(page).getByRole("button", { name: "Decrease Font size" }).click();
 
     await toolbar(page).getByRole("button", { name: "Bold" }).click();
@@ -228,7 +229,8 @@ test.describe("text toolbar", () => {
     await page.keyboard.press("Escape");
 
     const saved = layerIn(await savedTemplate(page), "t_text");
-    expect(saved.textStyle).toMatchObject({ fontSize: 71, fontStyle: "italic", color: "#7A1F2B", textAlign: "right", growthDirection: "up" });
+    // 17 pt − 1 pt = 16 pt = 66.67 px.
+    expect(saved.textStyle).toMatchObject({ fontSize: 66.67, fontStyle: "italic", color: "#7A1F2B", textAlign: "right", growthDirection: "up" });
     expect(Number(saved.textStyle.fontWeight)).toBeGreaterThanOrEqual(600);
 
     // Growth (up) and alignment (right) are single undo steps each.

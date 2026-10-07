@@ -7,6 +7,7 @@
  * toolbar's Copy and Delete buttons run.
  */
 import { expect, test, type Page } from "@playwright/test";
+import { addStudioFrame, addStudioShape } from "./admin-studio-tools";
 import { bodyPoint, docToScreen, hitAt, selectedIds } from "./customizer-fixture";
 
 const studio = (page: Page) => page.locator("[data-admin-customizer]");
@@ -41,8 +42,7 @@ async function inserted(page: Page, previous: string[] = []): Promise<string> {
 }
 
 async function addShape(page: Page, kind: string, previous: string[] = []) {
-  await studio(page).getByRole("button", { name: "Shape", exact: true }).click();
-  await page.getByRole("menu").getByRole("button", { name: kind, exact: true }).click();
+  await addStudioShape(page, kind);
   return inserted(page, previous);
 }
 
@@ -144,7 +144,7 @@ test.describe("admin object menu", () => {
   });
 
   test("two objects: Group, Clipping mask; a group: Ungroup and Edit group contents", async ({ page }) => {
-    await studio(page).getByRole("button", { name: "Frame", exact: true }).click();
+    await addStudioFrame(page);
     const photo = await inserted(page);
     await nudgeDown(page);
     const shape = await addShape(page, "oval", [photo]);

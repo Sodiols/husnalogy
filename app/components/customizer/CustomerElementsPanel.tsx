@@ -12,8 +12,11 @@
 // Husnalogy import endpoint, which stores a permanent sanitized copy; the
 // canvas only ever receives an ordinary Husnalogy asset (spec §39).
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { TextPlacementPreset } from "@/lib/customizer/v2/text-editing";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { GRAPHIC_CATEGORIES, remoteElementIdentity } from "@/lib/customizer/v2/iconify";
+import { SHAPE_LIBRARY, customPathInBox, searchShapeLibrary, type LibraryShape } from "@/lib/customizer/v2/shape-library";
+import { getMaskPath } from "@/lib/customizer/v2/masks";
 import { isValidQRValue } from "@/lib/customizer/v2/qr";
 
 export type LibraryElement = {
@@ -51,10 +54,12 @@ type Props = {
   onClose?: () => void;
   allowedElementIds?: string[];
   adminMode?: boolean;
+  /** The view the panel opens on: the overview, or straight into one library (the studio's Icons opens Graphics). */
+  initialView?: ElementsView;
   /** Native inserters — these keep shapes, lines and text as real objects. */
   onAddShape?: (shape: string) => void;
   onAddLine?: (lineStyle: string) => void;
-  onAddTextPreset?: (preset: "heading" | "subheading" | "body", text: string) => void;
+  onAddTextPreset?: (preset: TextPlacementPreset, text: string) => void;
   onAddFrame?: (maskShape: string) => void;
   onAddQRCode?: (value: string) => void;
   allowShapes?: boolean;
@@ -104,13 +109,14 @@ const LINES: Array<{ id: string; label: string; dash: string }> = [
   { id: "dotted", label: "Dotted line", dash: "1 5" },
 ];
 
-const TEXT_PRESETS: Array<{ id: "heading" | "subheading" | "body"; label: string; text: string }> = [
-  { id: "heading", label: "Thank You", text: "Thank You" },
-  { id: "heading", label: "Love", text: "Love" },
-  { id: "heading", label: "Just Married", text: "Just Married" },
-  { id: "subheading", label: "Mr & Mrs", text: "Mr & Mrs" },
-  { id: "subheading", label: "Merry Christmas", text: "Merry Christmas" },
-  { id: "subheading", label: "Happy Birthday", text: "Happy Birthday" },
+// Ready-made wording is ordinary new text: one line, auto width, 17 pt.
+const TEXT_PRESETS: Array<{ id: TextPlacementPreset; label: string; text: string }> = [
+  { id: "text", label: "Thank You", text: "Thank You" },
+  { id: "text", label: "Love", text: "Love" },
+  { id: "text", label: "Just Married", text: "Just Married" },
+  { id: "text", label: "Mr & Mrs", text: "Mr & Mrs" },
+  { id: "text", label: "Merry Christmas", text: "Merry Christmas" },
+  { id: "text", label: "Happy Birthday", text: "Happy Birthday" },
 ];
 
 const SEARCH_DEBOUNCE_MS = 300;
@@ -129,12 +135,59 @@ function writeIds(key: string, ids: string[]) {
   try { window.localStorage.setItem(key, JSON.stringify(ids)); } catch { /* private browsing */ }
 }
 
+/**
+ * A library shape drawn as its real geometry — the same outline the canvas and
+ * the print renderer draw — fitted inside a square thumbnail.
+ */
+function LibraryShapeThumb({ entry }: { entry: LibraryShape }) {
+  const width = entry.aspect >= 1 ? 92 : 92 * entry.aspect;
+  const height = entry.aspect >= 1 ? 92 / entry.aspect : 92;
+  const box = { x: (100 - width) / 2, y: (100 - height) / 2, width, height };
+  let drawing: React.ReactNode;
+  switch (entry.shape) {
+    case "rectangle":
+      drawing = <rect {...box} />;
+      break;
+    case "rounded-rectangle":
+      drawing = <rect {...box} rx={Math.min(width, height) * entry.radiusFraction} />;
+      break;
+    case "circle":
+    case "oval":
+      drawing = <ellipse cx={50} cy={50} rx={width / 2} ry={height / 2} />;
+      break;
+    case "triangle":
+      drawing = <path d={`M${50} ${box.y} L${box.x + width} ${box.y + height} L${box.x} ${box.y + height} Z`} />;
+      break;
+    case "arch":
+      drawing = <path d={getMaskPath({ kind: "arch" }, box).d} />;
+      break;
+    case "polygon":
+      drawing = <polygon points={entry.points.map((point) => `${box.x + point.x * width},${box.y + point.y * height}`).join(" ")} />;
+      break;
+    case "custom":
+      drawing = <path d={customPathInBox(entry.pathData, box)} />;
+      break;
+  }
+  return (
+    <svg viewBox="0 0 100 100" className="h-full w-full" aria-hidden>
+      <g fill="currentColor">{drawing}</g>
+    </svg>
+  );
+}
+
+const SHAPE_TILE =
+  "grid aspect-square place-items-center rounded-lg p-1.5 text-[#D3D3D3] transition hover:bg-[#303839]/[0.05] hover:text-[#C2C2C2] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#303839]";
+
+/** The Design Studio's Elements panel follows its own reference look; the customer panel keeps its own. */
+const StudioLook = createContext(false);
+
 function Section({ title, action, children }: { title: string; action?: React.ReactNode; children: React.ReactNode }) {
   const id = `elements-${title.toLowerCase().replace(/[^a-z]+/g, "-")}`;
+  const studio = useContext(StudioLook);
   return (
     <section aria-labelledby={id}>
       <div className="mb-2 flex items-center justify-between gap-2">
-        <h3 id={id} className="text-[10px] font-bold uppercase tracking-[0.16em] text-[#303839]/50">{title}</h3>
+        <h3 id={id} className={studio ? "text-[15px] font-bold text-[#1f2425]" : "text-[10px] font-bold uppercase tracking-[0.16em] text-[#303839]/50"}>{studio ? title.replace(" / ", "/") : title}</h3>
         {action}
       </div>
       {children}
@@ -155,6 +208,7 @@ export default function CustomerElementsPanel({
   onClose,
   allowedElementIds = NO_ALLOWLIST,
   adminMode = false,
+  initialView = "home",
   onAddShape,
   onAddLine,
   onAddTextPreset,
@@ -172,6 +226,8 @@ export default function CustomerElementsPanel({
   const [categories, setCategories] = useState<Category[]>([]);
   const [category, setCategory] = useState("");
   const [search, setSearch] = useState("");
+  /** The Shapes library's own search (its "Search in Shapes" field). */
+  const [shapeQuery, setShapeQuery] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
@@ -183,7 +239,7 @@ export default function CustomerElementsPanel({
   const [uploadProgress, setUploadProgress] = useState(0);
   const [uploadError, setUploadError] = useState("");
   const [retryFile, setRetryFile] = useState<File | null>(null);
-  const [view, setView] = useState<ElementsView>("home");
+  const [view, setView] = useState<ElementsView>(initialView);
   const [showAllRecent, setShowAllRecent] = useState(false);
   const [showAllFavourites, setShowAllFavourites] = useState(false);
   const [qrOpen, setQrOpen] = useState(false);
@@ -477,9 +533,14 @@ export default function CustomerElementsPanel({
   const seeMore = (target: ElementsView) => (
     <button
       type="button"
-      onClick={() => setView(target)}
+      onClick={() => {
+        setShapeQuery("");
+        setView(target);
+      }}
       aria-label={`See more ${target}`}
-      className="rounded px-1 py-0.5 text-[11px] font-semibold text-[#303839]/60 underline underline-offset-2 transition hover:text-[#303839] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#303839]"
+      className={adminMode
+        ? "rounded px-1 py-0.5 text-[13px] font-medium text-[#1f2425] underline underline-offset-2 transition hover:text-[#303839]/70 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#303839]"
+        : "rounded px-1 py-0.5 text-[11px] font-semibold text-[#303839]/60 underline underline-offset-2 transition hover:text-[#303839] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#303839]"}
     >
       See more
     </button>
@@ -520,7 +581,8 @@ export default function CustomerElementsPanel({
 
   return (
     // Header + search stay put; only the section list scrolls (spec §20).
-    <div className="flex h-full min-h-0 flex-col">
+    <StudioLook.Provider value={adminMode}>
+    <div className="flex h-full min-h-0 flex-col" data-elements-view={view}>
       <div className="shrink-0 border-b border-[#303839]/8 px-4 pb-3 pt-4">
         <div className="mb-3 flex items-center gap-2">
           {!onHome && (
@@ -533,7 +595,7 @@ export default function CustomerElementsPanel({
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="m15 18-6-6 6-6" /></svg>
             </button>
           )}
-          <h2 className="min-w-0 flex-1 truncate font-display text-[22px] leading-tight text-[#303839]">{VIEW_TITLES[view]}</h2>
+          <h2 className={`min-w-0 flex-1 truncate leading-tight ${adminMode ? "text-[20px] font-semibold text-[#1f2425]" : "font-display text-[22px] text-[#303839]"}`}>{VIEW_TITLES[view]}</h2>
           {onClose && (
             <button
               type="button"
@@ -546,6 +608,22 @@ export default function CustomerElementsPanel({
           )}
         </div>
 
+        {adminMode && view === "shapes" ? (
+          <label className="relative block">
+            <span className="sr-only">Search in Shapes</span>
+            <input
+              type="search"
+              value={shapeQuery}
+              onChange={(event) => setShapeQuery(event.target.value)}
+              placeholder="Search in Shapes"
+              aria-label="Search in Shapes"
+              className="h-11 w-full rounded-full border border-[#303839]/15 bg-white pl-4 pr-12 text-sm text-[#303839] outline-none placeholder:text-[#303839]/40 focus:border-[#303839]/40"
+            />
+            <span aria-hidden className="pointer-events-none absolute right-1.5 top-1/2 grid h-8 w-8 -translate-y-1/2 place-items-center rounded-full bg-[#303839] text-white">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg>
+            </span>
+          </label>
+        ) : (
         <label className="relative block">
           <span className="sr-only">Search for elements</span>
           <input
@@ -560,6 +638,7 @@ export default function CustomerElementsPanel({
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg>
           </span>
         </label>
+        )}
 
         {searching && (
           <button
@@ -573,20 +652,6 @@ export default function CustomerElementsPanel({
       </div>
 
       <div className="min-h-0 flex-1 space-y-5 overflow-y-auto overscroll-contain p-4 [scrollbar-width:thin]">
-      {adminMode && (
-        <div className="rounded-xl border border-[#D4AF37]/35 bg-white p-2.5">
-          <div className="flex items-center gap-2">
-            <button type="button" disabled={uploading} onClick={() => fileRef.current?.click()} className="min-h-11 flex-1 rounded-lg bg-[#303839] px-3 text-xs font-extrabold text-white transition hover:bg-[#434c4d] disabled:cursor-not-allowed disabled:opacity-50">
-              {uploading ? `Uploading ${uploadProgress}%` : "Upload to library"}
-            </button>
-            {retryFile && !uploading && <button type="button" onClick={() => uploadAdminElement(retryFile)} className="min-h-11 rounded-lg border border-red-200 bg-white px-3 text-xs font-bold text-red-700">Retry</button>}
-          </div>
-          {uploading && <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-white" aria-label={`Upload ${uploadProgress}% complete`}><span className="block h-full rounded-full bg-[#D4AF37] transition-[width]" style={{ width: `${uploadProgress}%` }} /></div>}
-          {uploadError && <p role="alert" className="mt-1.5 text-xs font-bold text-red-700">{uploadError}</p>}
-          <input ref={fileRef} type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" className="sr-only" onChange={(event) => { uploadAdminElement(event.target.files?.[0]); event.target.value = ""; }} />
-        </div>
-      )}
-
       {/* ---------------------------------------------- Dynamic Shapes -- */}
       {onHome && allowShapes && onAddShape && visibleShapes.length > 0 && !searching && (
         <Section title="Dynamic Shapes">
@@ -598,16 +663,22 @@ export default function CustomerElementsPanel({
                 onClick={() => onAddShape(shape.id)}
                 aria-label={`Add ${shape.label}`}
                 title={`Add ${shape.label}`}
-                className="grid aspect-square place-items-center rounded-lg bg-cream text-[#B9B9B9] transition hover:bg-[#DCDCDC] hover:text-[#A9A9A9] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#303839]"
+                className={adminMode ? SHAPE_TILE : "grid aspect-square place-items-center rounded-lg bg-cream text-[#B9B9B9] transition hover:bg-[#DCDCDC] hover:text-[#A9A9A9] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#303839]"}
               >
-                <svg width="34" height="34" viewBox="0 0 24 24" fill="currentColor" aria-hidden>{shape.render}</svg>
+                <svg width={adminMode ? "100%" : "34"} height={adminMode ? "100%" : "34"} viewBox="2.5 2.5 19 19" fill="currentColor" aria-hidden>{shape.render}</svg>
               </button>
             ))}
           </div>
+          {adminMode && allowLines && onAddLine && (
+            <button type="button" onClick={() => onAddLine("solid")} aria-label="Add line" title="Add line" className="mt-3 flex h-6 w-full items-center rounded px-1 text-[#D3D3D3] transition hover:bg-[#303839]/[0.05] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#303839]">
+              <span className="block h-[5px] w-full rounded-full bg-current" aria-hidden />
+            </button>
+          )}
         </Section>
       )}
 
       {/* ----------------------------------------------------- Graphics -- */}
+      {(onHome || searching) && (
       <Section
         title="Graphics"
         action={!searching ? seeMore("graphics") : undefined}
@@ -657,6 +728,7 @@ export default function CustomerElementsPanel({
           </button>
         )}
       </Section>
+      )}
 
       {/* --------------------------------------- Iconify online results -- */}
       {searching && canDiscoverOnline && (
@@ -707,14 +779,16 @@ export default function CustomerElementsPanel({
       {/* ----------------------------------------------- Borders / Lines -- */}
       {onHome && allowLines && onAddLine && !searching && (
         <Section title="Borders / Lines" action={seeMore("borders")}>
-          <div className="grid gap-1.5">
+          <div className={adminMode ? "grid grid-cols-3 gap-3" : "grid gap-1.5"}>
             {LINES.map((line) => (
               <button
                 key={line.id}
                 type="button"
                 onClick={() => onAddLine(line.id)}
                 aria-label={`Add ${line.label}`}
-                className="flex items-center rounded-lg border border-[#303839]/10 bg-white px-3 py-2.5 transition hover:border-[#303839]/40 hover:bg-[#303839]/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#303839]"
+                className={adminMode
+                  ? "flex h-10 items-center rounded-lg px-1 transition hover:bg-[#303839]/[0.05] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#303839]"
+                  : "flex items-center rounded-lg border border-[#303839]/10 bg-white px-3 py-2.5 transition hover:border-[#303839]/40 hover:bg-[#303839]/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#303839]"}
               >
                 <svg viewBox="0 0 100 4" className="h-1 w-full" aria-hidden preserveAspectRatio="none">
                   <line x1="0" y1="2" x2="100" y2="2" stroke="#303839" strokeWidth="2" strokeDasharray={line.dash || undefined} strokeLinecap="round" />
@@ -726,7 +800,18 @@ export default function CustomerElementsPanel({
       )}
 
       {/* --------------------------------------------------------- Shapes -- */}
-      {onHome && allowShapes && onAddShape && visibleMoreShapes.length > 0 && !searching && (
+      {onHome && adminMode && allowShapes && onAddShape && !searching && (
+        <Section title="Shapes" action={seeMore("shapes")}>
+          <div className="grid grid-cols-4 gap-2">
+            {SHAPE_LIBRARY.slice(0, 4).map((entry) => (
+              <button key={entry.id} type="button" onClick={() => onAddShape(entry.id)} aria-label={`Add ${entry.label.toLowerCase()} shape`} title={entry.label} className={SHAPE_TILE}>
+                <LibraryShapeThumb entry={entry} />
+              </button>
+            ))}
+          </div>
+        </Section>
+      )}
+      {onHome && !adminMode && allowShapes && onAddShape && visibleMoreShapes.length > 0 && !searching && (
         <Section title="Shapes" action={seeMore("shapes")}>
           <div className="grid grid-cols-4 gap-2">
             {visibleMoreShapes.slice(0, 4).map((shape) => (
@@ -831,6 +916,80 @@ export default function CustomerElementsPanel({
         </Section>
       )}
 
+      {adminMode && onHome && !searching && (
+        <div className="rounded-xl border border-[#D4AF37]/35 bg-white p-2.5">
+          <div className="flex items-center gap-2">
+            <button type="button" disabled={uploading} onClick={() => fileRef.current?.click()} className="min-h-11 flex-1 rounded-lg bg-[#303839] px-3 text-xs font-extrabold text-white transition hover:bg-[#434c4d] disabled:cursor-not-allowed disabled:opacity-50">
+              {uploading ? `Uploading ${uploadProgress}%` : "Upload to library"}
+            </button>
+            {retryFile && !uploading && <button type="button" onClick={() => uploadAdminElement(retryFile)} className="min-h-11 rounded-lg border border-red-200 bg-white px-3 text-xs font-bold text-red-700">Retry</button>}
+          </div>
+          {uploading && <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-white" aria-label={`Upload ${uploadProgress}% complete`}><span className="block h-full rounded-full bg-[#D4AF37] transition-[width]" style={{ width: `${uploadProgress}%` }} /></div>}
+          {uploadError && <p role="alert" className="mt-1.5 text-xs font-bold text-red-700">{uploadError}</p>}
+          <input ref={fileRef} type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" className="sr-only" onChange={(event) => { uploadAdminElement(event.target.files?.[0]); event.target.value = ""; }} />
+        </div>
+      )}
+
+      {/* ------------------------------- studio search: native elements -- */}
+      {searching && adminMode && (() => {
+        const query = debouncedSearch.toLowerCase();
+        const shapes = allowShapes && onAddShape ? searchShapeLibrary(debouncedSearch).slice(0, 9) : [];
+        const frames = allowFrames && onAddFrame ? visibleFrames.filter((frame) => frame.label.toLowerCase().includes(query) || "frame photo".includes(query)) : [];
+        const lines = allowLines && onAddLine ? LINES.filter((line) => `${line.label} border divider`.toLowerCase().includes(query)) : [];
+        const texts = allowText && onAddTextPreset ? TEXT_PRESETS.filter((preset) => preset.label.toLowerCase().includes(query)) : [];
+        if (!shapes.length && !frames.length && !lines.length && !texts.length) return null;
+        return (
+          <>
+            {shapes.length > 0 && (
+              <Section title="Shapes">
+                <div className="grid grid-cols-3 gap-x-4 gap-y-3">
+                  {shapes.map((entry) => (
+                    <button key={entry.id} type="button" onClick={() => onAddShape?.(entry.id)} aria-label={`Add ${entry.label.toLowerCase()} shape`} title={entry.label} className={SHAPE_TILE}>
+                      <LibraryShapeThumb entry={entry} />
+                    </button>
+                  ))}
+                </div>
+              </Section>
+            )}
+            {frames.length > 0 && (
+              <Section title="Frames">
+                <div className="grid grid-cols-4 gap-2">
+                  {frames.map((frame) => (
+                    <button key={frame.id} type="button" onClick={() => onAddFrame?.(frame.id)} aria-label={`Add ${frame.label}`} className="rounded-lg border border-[#303839]/10 px-2 py-2 text-[11px] font-semibold text-[#303839] hover:bg-[#303839]/[0.05]">
+                      {frame.label}
+                    </button>
+                  ))}
+                </div>
+              </Section>
+            )}
+            {lines.length > 0 && (
+              <Section title="Borders/Lines">
+                <div className="grid grid-cols-3 gap-2">
+                  {lines.map((line) => (
+                    <button key={line.id} type="button" onClick={() => onAddLine?.(line.id)} aria-label={`Add ${line.label}`} className="flex h-10 items-center rounded-lg px-2 hover:bg-[#303839]/[0.05]">
+                      <svg viewBox="0 0 100 4" className="h-1 w-full" aria-hidden preserveAspectRatio="none">
+                        <line x1="0" y1="2" x2="100" y2="2" stroke="#303839" strokeWidth="2" strokeDasharray={line.dash || undefined} strokeLinecap="round" />
+                      </svg>
+                    </button>
+                  ))}
+                </div>
+              </Section>
+            )}
+            {texts.length > 0 && (
+              <Section title="Text">
+                <div className="grid gap-1.5">
+                  {texts.map((preset) => (
+                    <button key={preset.label} type="button" onClick={() => onAddTextPreset?.(preset.id, preset.text)} aria-label={`Add text: ${preset.label}`} className="rounded-lg border border-[#303839]/10 px-3 py-2 text-left text-sm font-semibold text-[#303839] hover:bg-[#303839]/[0.05]">
+                      {preset.label}
+                    </button>
+                  ))}
+                </div>
+              </Section>
+            )}
+          </>
+        );
+      })()}
+
       {/* --------------------------------------- Recently used / Favourites -- */}
       {onHome && !searching && recentElements.length > 0 && (
         <Section title="Recently used" action={showMore(recentElements.length, showAllRecent, setShowAllRecent)}>
@@ -902,7 +1061,24 @@ export default function CustomerElementsPanel({
         </div>
       )}
 
-      {view === "shapes" && onAddShape && (
+      {view === "shapes" && onAddShape && adminMode && (
+        (() => {
+          const matches = searchShapeLibrary(shapeQuery);
+          return matches.length ? (
+            <div className="grid grid-cols-3 gap-x-4 gap-y-3" data-shape-library>
+              {matches.map((entry) => (
+                <button key={entry.id} type="button" onClick={() => onAddShape(entry.id)} aria-label={`Add ${entry.label.toLowerCase()} shape`} title={entry.label} className={SHAPE_TILE}>
+                  <LibraryShapeThumb entry={entry} />
+                </button>
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm text-[#303839]/55">No shapes match “{shapeQuery}”.</p>
+          );
+        })()
+      )}
+
+      {view === "shapes" && onAddShape && !adminMode && (
         <div className="grid grid-cols-4 gap-2">
           {[...visibleShapes, ...visibleMoreShapes].map((shape) => (
             <button
@@ -948,5 +1124,6 @@ export default function CustomerElementsPanel({
 
       </div>
     </div>
+    </StudioLook.Provider>
   );
 }

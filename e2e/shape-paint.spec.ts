@@ -5,6 +5,7 @@
  * and must survive Undo, Redo and a refresh exactly like any other colour.
  */
 import { expect, test, type Page } from "@playwright/test";
+import { addStudioShape } from "./admin-studio-tools";
 import { openFixture, selectLayer, waitForEditor } from "./customizer-fixture";
 
 const shapePaint = (page: Page, layerId: string, selector = "rect") =>
@@ -97,8 +98,7 @@ test.describe("Design Studio shape paint", () => {
     const studio = page.locator("[data-admin-customizer]");
     await expect(studio.locator("header")).toBeVisible();
 
-    await studio.getByRole("button", { name: "Shape", exact: true }).click();
-    await studio.getByRole("menu").getByRole("button", { name: /^rectangle$/i }).click();
+    await addStudioShape(page, "rectangle");
     const fill = studio.getByRole("group", { name: "Fill Colour", exact: true });
     await expect(fill).toBeVisible();
     const rectFill = () =>
@@ -127,8 +127,7 @@ test.describe("Design Studio paint, end to end", () => {
     await page.getByRole("button", { name: "Open Design Studio" }).click();
     const studio = page.locator("[data-admin-customizer]");
     await expect(studio.locator("header")).toBeVisible();
-    await studio.getByRole("button", { name: "Shape", exact: true }).click();
-    await studio.getByRole("menu").getByRole("button", { name: /^rectangle$/i }).click();
+    await addStudioShape(page, "rectangle");
 
     const paint = () =>
       page.evaluate(() => {

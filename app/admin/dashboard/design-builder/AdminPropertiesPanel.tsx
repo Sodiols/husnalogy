@@ -3,6 +3,8 @@
 // The selected layer's content, styling, and customer-facing template settings.
 // Transform geometry remains available on the canvas rather than in this panel.
 
+import { FONT_SIZE_RULES } from "@/lib/customizer/v2/text-toolbar";
+import { FONT_SIZE_POINT_RULES, documentPxToPoints, fontSizeBoundsInPoints, pointsToDocumentPx } from "@/lib/customizer/v2/type-units";
 import PaintControl from "@/app/components/customizer/PaintControl";
 import { useRef, useState } from "react";
 import { getConnectedField, uploadBuilderImage, type BuilderAsset } from "./builder-utils";
@@ -14,6 +16,7 @@ import {
   countTextLines,
   insertTextNewline,
   resolveTextEditorKeyAction,
+  multilineTextPatch,
 } from "@/lib/customizer/v2/text-editing";
 import { isSvgElement } from "@/lib/customizer/v2/element-colour";
 import { useFamilyCapabilities, useSelectableFamilies } from "@/app/components/customizer/useGoogleFonts";
@@ -46,6 +49,11 @@ function Lbl({ children }: any) {
 }
 function Num({ value, onChange, min, max, step = 1, ariaLabel = "Numeric value" }: any) {
   return <EditableNumericStepper label={ariaLabel} value={Number(value) || 0} minimum={min} maximum={max} step={step} largeStep={step * 10} allowNegative={min === undefined || min < 0} allowDecimal={step < 1} showStepButtons={false} onCommit={onChange} className="h-11 w-full" inputClassName={controlClass} />;
+}
+/** A font size: shown and typed in points, stored in document px (type-units.ts). */
+function PointSize({ px, dpi, minPx = FONT_SIZE_RULES.minimum, maxPx = FONT_SIZE_RULES.maximum, onChange, ariaLabel }: { px: number; dpi: unknown; minPx?: number; maxPx?: number; onChange: (px: number) => void; ariaLabel: string }) {
+  const bounds = fontSizeBoundsInPoints({ minimum: minPx, maximum: maxPx }, dpi);
+  return <EditableNumericStepper label={ariaLabel} value={documentPxToPoints(px, dpi)} minimum={bounds.minimum} maximum={bounds.maximum} step={FONT_SIZE_POINT_RULES.step} largeStep={FONT_SIZE_POINT_RULES.largeStep} allowNegative={false} allowDecimal showStepButtons={false} onCommit={(points) => onChange(pointsToDocumentPx(points, dpi))} className="h-11 w-full" inputClassName={controlClass} />;
 }
 function CarouselStepper({ value, onChange, min = -Infinity, max = Infinity, step = 1, ariaLabel }: any) {
   return <EditableNumericStepper label={ariaLabel} value={Number(value) || 0} minimum={Number.isFinite(min) ? min : undefined} maximum={Number.isFinite(max) ? max : undefined} step={step} largeStep={step < 1 ? step * 10 : Math.max(step * 5, 10)} allowNegative={!Number.isFinite(min) || min < 0} allowDecimal={step < 1} showStepButtons={false} onCommit={onChange} className="h-11 w-full" inputClassName={controlClass} />;
@@ -437,19 +445,15 @@ export default function AdminPropertiesPanel({
                   event.preventDefault();
                   return;
                 }
-                if (!style.multiline) onStylePatch(layer.id, {
-                  multiline: true,
-                  autoSizeMode: "height",
-                  fitMode: "auto-height",
-                });
+                if (!style.multiline) onStylePatch(layer.id, multilineTextPatch(style));
               }}
               title="Enter adds a line. Ctrl/Cmd + Enter finishes editing."
               className="min-h-11 w-full resize-y rounded-xl border border-[#303839]/12 bg-white p-3 text-sm leading-relaxed text-[#303839] outline-none transition-colors focus:border-[#303839]/60 focus:ring-2 focus:ring-[#303839]/15"
             />
           </div>
           <div>
-            <Lbl>Font size</Lbl>
-            <Num ariaLabel="Font size" value={style.fontSize ?? 48} min={4} max={500} onChange={(fontSize: number) => onStylePatch(layer.id, { fontSize })} />
+            <Lbl>Font size (pt)</Lbl>
+            <PointSize ariaLabel="Font size" px={Number(style.fontSize ?? 48)} dpi={template?.dpi} onChange={(fontSize) => onStylePatch(layer.id, { fontSize })} />
           </div>
           <TextSpacingFields layer={layer} style={style} onStylePatch={onStylePatch} />
           <div>
@@ -472,6 +476,7 @@ export default function AdminPropertiesPanel({
                   fitMode: v === "height" ? "auto-height" : v === "shrink" ? "shrink" : "fixed",
                 })}
                 options={[
+                  { value: "safe-width", label: "Auto width, wraps at safe area" },
                   { value: "width", label: "Auto width (single line)" },
                   { value: "fixed", label: "Fixed width" },
                   { value: "height", label: "Auto height" },
@@ -481,8 +486,8 @@ export default function AdminPropertiesPanel({
             </div>
             {getTextAutoSizeMode(style) === "shrink" && (
               <div>
-                <Lbl>Min font size</Lbl>
-                <Num ariaLabel="Minimum font size" value={style.minFontSize || Math.max(8, Math.round((style.fontSize || 48) * 0.4))} min={4} onChange={(v: number) => onStylePatch(layer.id, { minFontSize: Math.max(4, v) })} />
+                <Lbl>Min font size (pt)</Lbl>
+                <PointSize ariaLabel="Minimum font size" px={Number(style.minFontSize || Math.max(8, Math.round((style.fontSize || 48) * 0.4)))} dpi={template?.dpi} onChange={(v) => onStylePatch(layer.id, { minFontSize: Math.max(FONT_SIZE_RULES.minimum, v) })} />
               </div>
             )}
           </div>

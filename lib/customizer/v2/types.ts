@@ -221,7 +221,7 @@ export type TextStyle = {
    * documents published before this field existed keep rendering exactly as
    * they did. Present only when the template set it explicitly.
    */
-  autoSizeMode?: "fixed" | "width" | "height" | "shrink";
+  autoSizeMode?: "fixed" | "width" | "height" | "shrink" | "safe-width";
 };
 
 /**
@@ -329,7 +329,11 @@ export type ShapeLayer = LayerBase & {
   /** Mirrored in its own frame (absent = not mirrored). */
   flipX?: boolean;
   flipY?: boolean;
-  shape: "rectangle" | "rounded-rectangle" | "ellipse" | "circle" | "oval" | "triangle" | "polygon" | "arch" | "path" | "line";
+  shape: "rectangle" | "rounded-rectangle" | "ellipse" | "circle" | "oval" | "triangle" | "polygon" | "arch" | "path" | "line" | "custom";
+  /** `custom` shapes: an outline of absolute M/L/C/Q/Z commands in a 100 x 100 box (shape-library.ts). */
+  pathData?: string;
+  /** The Shapes-library entry this shape was inserted from, for display only. */
+  libraryShapeId?: string;
   fill: string;
   stroke: string;
   strokeWidth: number;

@@ -7,6 +7,7 @@
  */
 import { expect, test, type Page } from "@playwright/test";
 import { bodyPoint, canvasLayer, drag, openFixture, readDraft, rectAttrs, selectLayer, waitForEditor } from "./customizer-fixture";
+import { addStudioFrame } from "./admin-studio-tools";
 
 const viewBoxOf = (page: Page) =>
   page.evaluate(() => document.querySelector('[data-customizer-canvas="main"] svg')?.getAttribute("viewBox") || "");
@@ -73,7 +74,7 @@ test.describe("Design Studio card size", () => {
 
   test("choosing 3.5 × 5 sets a 1050 × 1500 canvas and converts the design; one Undo restores 5 × 7", async ({ page }) => {
     await openStudio(page);
-    await studio(page).getByRole("button", { name: "Frame", exact: true }).click();
+    await addStudioFrame(page);
     await studio(page).locator("header").getByRole("button", { name: "Settings", exact: true }).click();
     await expect(pixels(page)).toHaveText("1500 × 2100");
 

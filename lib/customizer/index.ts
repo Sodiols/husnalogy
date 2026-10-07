@@ -1,6 +1,7 @@
 // Shared, dependency-light normalization for the product customizer.
 // Safe to import on both server and client (only pure helpers are used here).
 
+import { sanitizeCustomPath } from "./v2/shape-library";
 import { normalizeEraseMask, type EraseMask } from "./v2/erase-mask";
 import { createId } from "@/lib/core/id";
 import { TRANSPARENT_PAINT, canonicalPaint, isExplicitTransparentPaint } from "@/lib/customizer/v2/paint";
@@ -83,6 +84,7 @@ export const CUSTOMIZER_SHAPE_KINDS = new Set([
   "arch",
   "path",
   "line",
+  "custom",
 ]);
 export const CUSTOMIZER_MASK_SHAPES = new Set([
   "rectangle",
@@ -96,7 +98,7 @@ export const CUSTOMIZER_MASK_SHAPES = new Set([
 ]);
 export const CUSTOMIZER_FIT_MODES = new Set(["cover", "contain"]);
 export const CUSTOMIZER_TEXT_ALIGN = new Set(["left", "center", "right"]);
-export const CUSTOMIZER_AUTO_SIZE_MODES = new Set(["fixed", "width", "height", "shrink"]);
+export const CUSTOMIZER_AUTO_SIZE_MODES = new Set(["fixed", "width", "height", "shrink", "safe-width"]);
 
 export const DEFAULT_SAFE_AREA = { top: 90, right: 90, bottom: 90, left: 90 };
 export const DEFAULT_BLEED = { top: 45, right: 45, bottom: 45, left: 45 };
@@ -235,6 +237,18 @@ function toPositiveInt(value: any, fallback: number): number {
   return num > 0 ? num : fallback;
 }
 
+/**
+ * A font size in document px, to hundredths. Sizes are chosen in points
+ * (lib/customizer/v2/type-units), and 17 pt on a 300 DPI card is 70.83 px:
+ * rounding that to a whole pixel would show "17.0" as 17, but turn 10 pt into
+ * 10.1 pt. Whole-number sizes — every design saved before points — are
+ * unchanged.
+ */
+function toFontSize(value: any, fallback: number): number {
+  const num = Math.round(toNumber(value, fallback) * 100) / 100;
+  return num > 0 ? num : fallback;
+}
+
 function keyify(value: string): string {
   return cleanString(value)
     .replace(/[^a-z0-9]+/gi, "_")
@@ -280,7 +294,7 @@ function normalizeTextStyle(input: any = {}): any {
   const verticalAlign = cleanString(input.verticalAlign).toLowerCase();
   return {
     fontFamily: cleanString(input.fontFamily) || DEFAULT_TEXT_STYLE.fontFamily,
-    fontSize: toPositiveInt(input.fontSize, DEFAULT_TEXT_STYLE.fontSize),
+    fontSize: toFontSize(input.fontSize, DEFAULT_TEXT_STYLE.fontSize),
     fontWeight: cleanString(input.fontWeight) || DEFAULT_TEXT_STYLE.fontWeight,
     fontStyle: cleanString(input.fontStyle) === "italic" ? "italic" : "normal",
     underline: normalizeBoolean(input.underline),
@@ -307,8 +321,8 @@ function normalizeTextStyle(input: any = {}): any {
     ...(CUSTOMIZER_AUTO_SIZE_MODES.has(cleanString(input.autoSizeMode))
       ? { autoSizeMode: cleanString(input.autoSizeMode) }
       : {}),
-    ...(input.minFontSize !== undefined ? { minFontSize: toPositiveInt(input.minFontSize, 8) } : {}),
-    ...(input.maxFontSize !== undefined ? { maxFontSize: toPositiveInt(input.maxFontSize, 0) || undefined } : {}),
+    ...(input.minFontSize !== undefined ? { minFontSize: toFontSize(input.minFontSize, 8) } : {}),
+    ...(input.maxFontSize !== undefined ? { maxFontSize: toFontSize(input.maxFontSize, 0) || undefined } : {}),
   };
 }
 
@@ -505,7 +519,10 @@ export function normalizeCustomizerLayer(input: any = {}): any {
     const kind = cleanString(input.shape || input.shapeKind).toLowerCase();
     return {
       ...base,
-      shape: CUSTOMIZER_SHAPE_KINDS.has(kind) ? kind : "rectangle",
+      // A custom outline that does not validate falls back to a plain rectangle.
+      shape: CUSTOMIZER_SHAPE_KINDS.has(kind) && (kind !== "custom" || sanitizeCustomPath(input.pathData)) ? kind : "rectangle",
+      ...(kind === "custom" && sanitizeCustomPath(input.pathData) ? { pathData: sanitizeCustomPath(input.pathData) } : {}),
+      ...(cleanString(input.libraryShapeId) ? { libraryShapeId: cleanString(input.libraryShapeId).slice(0, 60) } : {}),
       // Transparent ("none", or the CSS synonym) is a real choice and is kept;
       // only a MISSING fill takes the default, exactly as before.
       fill: isExplicitTransparentPaint(input.fill) ? TRANSPARENT_PAINT : cleanString(input.fill) || "#F8F6F1",
@@ -607,7 +624,7 @@ export function normalizeUserLayer(input: any = {}): any | null {
   const text = normalizeCanonicalText(input.text).slice(0, 500);
   const textStyle = promoteTextStyleForValue({
     fontFamily: cleanString(input.textStyle?.fontFamily) || DEFAULT_TEXT_STYLE.fontFamily,
-    fontSize: toPositiveInt(input.textStyle?.fontSize, 48),
+    fontSize: toFontSize(input.textStyle?.fontSize, 48),
     fontWeight: cleanString(input.textStyle?.fontWeight) || "400",
     fontStyle: cleanString(input.textStyle?.fontStyle) === "italic" ? "italic" : "normal",
     color: cleanString(input.textStyle?.color) || DEFAULT_TEXT_STYLE.color,
@@ -657,7 +674,7 @@ function normalizeLayerOverride(input: any = {}): any | null {
     const style: any = {};
     const src = input.textStyle;
     if (src.fontFamily !== undefined) style.fontFamily = cleanString(src.fontFamily);
-    if (src.fontSize !== undefined) style.fontSize = toPositiveInt(src.fontSize, 0) || undefined;
+    if (src.fontSize !== undefined) style.fontSize = toFontSize(src.fontSize, 0) || undefined;
     if (src.fontWeight !== undefined) style.fontWeight = cleanString(src.fontWeight);
     if (src.fontStyle !== undefined) style.fontStyle = cleanString(src.fontStyle) === "italic" ? "italic" : "normal";
     if (src.color !== undefined) style.color = cleanString(src.color);
