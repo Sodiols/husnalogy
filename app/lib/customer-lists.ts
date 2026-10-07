@@ -4,9 +4,6 @@ import { createClient } from "@/lib/supabase/client";
 import { normalizeCurrency } from "@/lib/currency";
 
 const RECENT_KEY = "husnalogy_recently_viewed";
-const ADDRESS_KEY = "husnalogy_saved_addresses";
-const ORDER_KEY = "husnalogy_orders";
-const PROFILE_KEY = "husnalogy_profile";
 const EVENT_NAME = "husnalogy-commerce-change";
 const USER_REQUIRED_ERROR = "Sign in to use cart and wishlist.";
 const MAX_CUSTOMER_UPLOAD_SIZE = 15 * 1024 * 1024;
@@ -591,53 +588,6 @@ export function addRecentlyViewed(product) {
   safeWrite(RECENT_KEY, normalizeRecentlyViewedList([item, ...current]));
 }
 
-export function subscribeToSavedAddresses(callback) {
-  return subscribeLocal(ADDRESS_KEY, callback);
-}
-
-export function saveCustomerAddress(address) {
-  const current = safeRead(ADDRESS_KEY, []);
-  const item = {
-    id: typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `address_${Date.now()}`,
-    ...address,
-    createdAt: nowIso(),
-  };
-  safeWrite(ADDRESS_KEY, [item, ...current].slice(0, 10));
-  return item;
-}
-
-export function updateCustomerAddress(id, patch = {}) {
-  const next = safeRead(ADDRESS_KEY, []).map((item) =>
-    String(item.id) === String(id) ? { ...item, ...patch, updatedAt: nowIso() } : item
-  );
-  safeWrite(ADDRESS_KEY, next);
-}
-
-export function setDefaultAddress(id) {
-  const next = safeRead(ADDRESS_KEY, []).map((item) => ({
-    ...item,
-    isDefault: String(item.id) === String(id),
-  }));
-  safeWrite(ADDRESS_KEY, next);
-}
-
-export function removeCustomerAddress(id) {
-  safeWrite(
-    ADDRESS_KEY,
-    safeRead(ADDRESS_KEY, []).filter((item) => String(item.id) !== String(id))
-  );
-}
-
-export function getLocalProfile() {
-  const value = safeRead(PROFILE_KEY, {});
-  return value && !Array.isArray(value) ? value : {};
-}
-
-export function saveLocalProfile(patch = {}) {
-  const current = getLocalProfile();
-  safeWrite(PROFILE_KEY, { ...current, ...patch });
-}
-
 export function getCartTotals(items = []) {
   const subtotal = items.reduce(
     (sum, item) => sum + Number(item.price || 0) * Number(item.quantity || 1),
@@ -686,19 +636,4 @@ export async function uploadCustomerFile(user, file, folder = "product-customiza
     size: data.file.size,
     signedUrl: data.file.signedUrl || "",
   };
-}
-
-export function subscribeToLocalOrders(callback) {
-  return subscribeLocal(ORDER_KEY, callback);
-}
-
-export function saveLocalOrder(order) {
-  const current = safeRead(ORDER_KEY, []);
-  const item = {
-    id: order?.id || `local_order_${Date.now()}`,
-    ...order,
-    createdAt: order?.createdAt || nowIso(),
-  };
-  safeWrite(ORDER_KEY, [item, ...current].slice(0, 50));
-  return item;
 }

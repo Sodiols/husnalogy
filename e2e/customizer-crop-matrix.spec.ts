@@ -140,6 +140,25 @@ test.describe("crop matrix", () => {
     expect(Number((await savedTransform(page)).rotation) % 360).toBe(0);
   });
 
+  test("clicks faster than a re-render all count: two Rotate 90° and a double flip in one task", async ({ page }) => {
+    await enterCrop(page, PHOTO);
+    // Dispatched in the same task, before React can re-render: each click must
+    // build on the previous one, not on the stale rendered value.
+    await toolbar(page).evaluate((bar) => {
+      const button = (name: string) => bar.querySelector(`button[aria-label="${name}"]`) as HTMLButtonElement;
+      button("Rotate photo 90°").click();
+      button("Rotate photo 90°").click();
+      button("Flip horizontally").click();
+      button("Flip horizontally").click();
+      button("Flip vertically").click();
+    });
+    await done(page);
+    await expect.poll(async () => Number((await savedTransform(page)).rotation) % 360).toBe(180);
+    const saved = await savedTransform(page);
+    expect(Boolean(saved.flipX)).toBe(false);
+    expect(Boolean(saved.flipY)).toBe(true);
+  });
+
   test("a held crop pan never reaches the saved draft before it is released", async ({ page }) => {
     const savedBefore = await savedTransform(page);
     await enterCrop(page, PHOTO);

@@ -1,6 +1,7 @@
 "use client";
 
 import EditableNumericStepper from "@/app/components/customizer/EditableNumericStepper";
+import { useCompactToFit } from "@/app/components/customizer/useCompactToFit";
 
 /** Brush size limits, in artboard pixels. */
 export const ERASER_BRUSH = { minimum: 4, maximum: 400 } as const;
@@ -36,16 +37,21 @@ const BUTTON =
  * document until Apply.
  */
 export default function AdminEraserBar(props: Props) {
+  // Compact density when the workspace is narrow: the caption becomes the
+  // control's name only, the slider is shorter and Restore all is its icon.
+  const { ref, compact } = useCompactToFit<HTMLDivElement>();
   return (
     <div
+      ref={ref}
       data-admin-eraser-bar
+      data-eraser-density={compact ? "compact" : "comfortable"}
       role="toolbar"
       aria-label="Eraser"
       className="flex max-w-full items-center overflow-x-auto rounded-full border border-[#303839]/10 bg-white p-1 shadow-[0_4px_18px_rgba(48,56,57,0.12)] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
     >
-      <span className="shrink-0 pl-3 pr-2 text-[13px] font-semibold text-[#303839]">Eraser</span>
-      <div className="flex shrink-0 items-center gap-2 px-2 text-[13px] text-[#303839]/80">
-        <span aria-hidden className="whitespace-nowrap">Brush size</span>
+      <span className={`shrink-0 text-[13px] font-semibold text-[#303839] ${compact ? "pl-2 pr-1" : "pl-3 pr-2"}`}>Eraser</span>
+      <div className={`flex shrink-0 items-center ${compact ? "gap-1 px-1" : "gap-2 px-2"} text-[13px] text-[#303839]/80`}>
+        <span aria-hidden className={compact ? "sr-only" : "whitespace-nowrap"}>Brush size</span>
         {/* The shared numeric control, with its slider: drag, type or step. */}
         <EditableNumericStepper
           label="Brush size"
@@ -55,7 +61,7 @@ export default function AdminEraserBar(props: Props) {
           step={1}
           largeStep={10}
           slider
-          sliderClassName="h-9 w-28 cursor-pointer accent-[#303839]"
+          sliderClassName={`h-9 ${compact ? "w-20" : "w-28"} cursor-pointer accent-[#303839]`}
           onCommit={props.onBrushSize}
           stepIcons="plusMinus"
           stepButtonWidth={28}
@@ -72,8 +78,15 @@ export default function AdminEraserBar(props: Props) {
       <button type="button" aria-label="Redo erase" title="Redo (Ctrl+Y)" disabled={!props.canRedo} onClick={props.onRedo} className={`${BUTTON} w-9 px-0`}>
         <Icon path="m15 14 5-5-5-5M20 9H9.5a5.5 5.5 0 0 0 0 11H13" />
       </button>
-      <button type="button" title="Bring back everything erased on this photo" disabled={!props.canRestore} onClick={props.onRestore} className={BUTTON}>
-        Restore all
+      <button
+        type="button"
+        aria-label="Restore all"
+        title="Restore all — bring back everything erased on this photo"
+        disabled={!props.canRestore}
+        onClick={props.onRestore}
+        className={compact ? `${BUTTON} w-9 px-0` : BUTTON}
+      >
+        {compact ? <Icon path="M3 12a9 9 0 1 0 3-6.7M3 3v5h5" /> : "Restore all"}
       </button>
       <span aria-hidden className="mx-1 h-6 w-px shrink-0 bg-[#303839]/12" />
       <button type="button" title="Cancel (Escape) — discard this session's strokes" onClick={props.onCancel} className={BUTTON}>

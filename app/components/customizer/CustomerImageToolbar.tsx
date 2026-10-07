@@ -1,5 +1,7 @@
 "use client";
 
+import { useRef } from "react";
+import { useCompactToFit } from "./useCompactToFit";
 import EditableNumericStepper from "./EditableNumericStepper";
 import {
   resetImageTransformPatch,
@@ -42,6 +44,8 @@ type Props = {
    * Studio, which also keeps them in its inspector) can leave them out.
    */
   showPositionFields?: boolean;
+  /** Use a compact crop bar when the available width is too narrow (Design Studio). */
+  fitToWidth?: boolean;
 };
 
 const IconButton = ({
@@ -60,7 +64,7 @@ const IconButton = ({
     aria-label={label}
     title={label}
     onClick={onClick}
-    className={`grid h-11 w-11 shrink-0 place-items-center rounded-lg transition ${FOCUS_RING} ${
+    className={`grid h-[var(--crop-icon,44px)] w-[var(--crop-icon,44px)] shrink-0 place-items-center rounded-lg transition ${FOCUS_RING} ${
       active ? "bg-[#303839] text-white" : "text-[#303839] hover:bg-[#303839]/5"
     }`}
   >
@@ -83,10 +87,21 @@ export default function CustomerImageToolbar({
   onFilterPatch,
   allowedFilters = [],
   showPositionFields = true,
+  fitToWidth = false,
 }: Props) {
+  // The Design Studio's crop bar shares the workspace with two side panels:
+  // there it switches to a compact density rather than hide Done off-screen.
+  const { ref: cropRowRef, compact } = useCompactToFit<HTMLDivElement>(fitToWidth && cropping);
+  // Rotate 90° and the flips act on the value THEY last set, not only the
+  // rendered one: two clicks faster than a re-render each saw the same stale
+  // value, so a rotation step (or a flip) was silently lost. A new value from
+  // outside (the stepper, Reset, another session) is picked up as it arrives.
+  const latest = useRef({ rotation: 0, flipX: false, flipY: false, seen: { rotation: NaN as number, flipX: undefined as boolean | undefined, flipY: undefined as boolean | undefined } });
   const transform: ImageTransformState = layer?.imageTransform || {};
   const zoom = Number(transform.zoom) > 0 ? Number(transform.zoom) : 1;
   const imageRotation = Number(transform.rotation) || 0;
+  const flipX = Boolean(transform.flipX);
+  const flipY = Boolean(transform.flipY);
 
   const canReplace = Boolean(permissions.replaceImage);
   // Derived from the SAME rule the save validator applies, so no control here
@@ -102,23 +117,42 @@ export default function CustomerImageToolbar({
   const filterAllowed = (key: string) => !allowedFilters.length || allowedFilters.includes(key) || (key.startsWith("tint") && allowedFilters.includes("tint"));
   const resetFilters = Object.fromEntries(Object.entries({ brightness: 1, contrast: 1, saturation: 1, grayscale: 0, sepia: 0, tintAmount: 0 }).filter(([key]) => filterAllowed(key)));
 
+  if (latest.current.seen.rotation !== imageRotation) latest.current = { ...latest.current, rotation: imageRotation, seen: { ...latest.current.seen, rotation: imageRotation } };
+  if (latest.current.seen.flipX !== flipX) latest.current = { ...latest.current, flipX, seen: { ...latest.current.seen, flipX } };
+  if (latest.current.seen.flipY !== flipY) latest.current = { ...latest.current, flipY, seen: { ...latest.current.seen, flipY } };
+  const rotateQuarter = () => {
+    const rotation = (latest.current.rotation + 90) % 360;
+    latest.current.rotation = rotation;
+    onImagePatch({ rotation }, "crop-rotate");
+  };
+  const toggleFlip = (axis: "flipX" | "flipY") => {
+    const next = !latest.current[axis];
+    latest.current[axis] = next;
+    onImagePatch({ [axis]: next }, "crop-flip");
+  };
+
   const divider = <span className="mx-0.5 h-5 w-px shrink-0 bg-[#303839]/12" aria-hidden />;
 
   if (cropping) {
+    // The value fields keep their full width in both densities: a narrower one clips "100%".
+    const stepper = "h-11 w-32 shrink-0 rounded-lg bg-white px-1";
     return (
       <div
+        ref={cropRowRef}
+        data-crop-density={compact ? "compact" : "comfortable"}
+        style={compact ? ({ "--crop-pad": "8px", "--crop-done-pad": "12px", "--crop-icon": "36px" } as React.CSSProperties) : undefined}
         className="pointer-events-auto flex max-w-full items-center gap-1 overflow-x-auto rounded-2xl bg-white px-2 py-1.5 shadow-[0_4px_20px_rgba(48,56,57,0.12)] no-scrollbar"
         role="toolbar"
         aria-label="Crop photo"
       >
-        <span className="whitespace-nowrap px-1 text-[12.5px] font-semibold text-[#303839]/80">Crop</span>
+        <span className={compact ? "sr-only" : "whitespace-nowrap px-1 text-[12.5px] font-semibold text-[#303839]/80"}>Crop</span>
 
         {canZoom && (
-          <EditableNumericStepper stepIcons="plusMinus" label="Zoom photo" value={Math.round(zoom * 100)} minimum={100} maximum={500} step={1} largeStep={10} allowNegative={false} allowDecimal={false} formatValue={(value) => `${Math.round(value)}%`} onCommit={(value) => onImagePatch({ zoom: value / 100 }, "crop-zoom")} showLabel className="h-11 w-32 shrink-0 rounded-lg bg-white px-1" />
+          <EditableNumericStepper stepIcons="plusMinus" label="Zoom photo" value={Math.round(zoom * 100)} minimum={100} maximum={500} step={1} largeStep={10} allowNegative={false} allowDecimal={false} formatValue={(value) => `${Math.round(value)}%`} onCommit={(value) => onImagePatch({ zoom: value / 100 }, "crop-zoom")} showLabel className={stepper} />
         )}
 
         {canRotateImage && (
-          <EditableNumericStepper stepIcons="plusMinus" label="Image rotation" value={imageRotation} minimum={-360} maximum={360} step={1} largeStep={15} allowNegative allowDecimal={false} onCommit={(rotation) => onImagePatch({ rotation }, "crop-rotate")} showLabel className="h-11 w-32 shrink-0 rounded-lg bg-white px-1" />
+          <EditableNumericStepper stepIcons="plusMinus" label="Image rotation" value={imageRotation} minimum={-360} maximum={360} step={1} largeStep={15} allowNegative allowDecimal={false} onCommit={(rotation) => onImagePatch({ rotation }, "crop-rotate")} showLabel className={stepper} />
         )}
         {showPositionFields && (
           <>
@@ -130,7 +164,7 @@ export default function CustomerImageToolbar({
         {canRotateImage && (
           <IconButton
             label="Rotate photo 90°"
-            onClick={() => onImagePatch({ rotation: (imageRotation + 90) % 360 }, "crop-rotate")}
+            onClick={rotateQuarter}
           >
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
               <path d="M21 12a9 9 0 1 1-3-6.7" />
@@ -144,7 +178,7 @@ export default function CustomerImageToolbar({
             <IconButton
               label="Flip horizontally"
               active={Boolean(transform.flipX)}
-              onClick={() => onImagePatch({ flipX: !transform.flipX }, "crop-flip")}
+              onClick={() => toggleFlip("flipX")}
             >
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden>
                 <path d="M12 3v18M8 8 4 12l4 4M16 8l4 4-4 4" />
@@ -153,7 +187,7 @@ export default function CustomerImageToolbar({
             <IconButton
               label="Flip vertically"
               active={Boolean(transform.flipY)}
-              onClick={() => onImagePatch({ flipY: !transform.flipY }, "crop-flip")}
+              onClick={() => toggleFlip("flipY")}
             >
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden>
                 <path d="M3 12h18M8 8l4-4 4 4M8 16l4 4 4-4" />
@@ -179,14 +213,14 @@ export default function CustomerImageToolbar({
         <button
           type="button"
           onClick={onCancelCrop}
-          className="min-h-11 whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-bold text-[#303839]/70 hover:bg-[#303839]/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white"
+          className="min-h-11 whitespace-nowrap rounded-full px-[var(--crop-pad,12px)] py-1.5 text-xs font-bold text-[#303839]/70 hover:bg-[#303839]/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white"
         >
           Cancel
         </button>
         <button
           type="button"
           onClick={onConfirmCrop}
-          className="min-h-11 whitespace-nowrap rounded-full bg-[#303839] px-4 py-1.5 text-xs font-bold text-white hover:bg-[#1f2526] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white"
+          className="min-h-11 whitespace-nowrap rounded-full bg-[#303839] px-[var(--crop-done-pad,16px)] py-1.5 text-xs font-bold text-white hover:bg-[#1f2526] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white"
         >
           Done
         </button>

@@ -449,13 +449,13 @@ describe("grouping — toolbar surface", () => {
   it("offers Group on the multi-selection and image + shape toolbars", () => {
     expect(adminToolbarKind([box("a", 0, 0), box("b", 10, 10)])).toBe("multi");
     expect(adminToolbar).toContain('(kind === "multi" || kind === "mask") && (');
-    expect(adminToolbar).toContain('<LabelButton label="Group" path={ICONS.group} onClick={props.onGroup} disabled={!props.groupAction.group.enabled} reason={props.groupAction.group.reason} />');
+    expect(adminToolbar).toContain('<LabelButton label="Group" path={ICONS.group} collapsible={false} onClick={props.onGroup} disabled={!props.groupAction.group.enabled} reason={props.groupAction.group.reason} />');
   });
 
   it("offers Ungroup — not Group — when the selection is one group", () => {
     expect(adminToolbarKind([{ ...box("g", 0, 0), type: "group" }])).toBe("group");
     expect(adminToolbar).toContain('kind === "group" && (');
-    expect(adminToolbar).toContain('<LabelButton label="Ungroup" path={ICONS.ungroup} onClick={props.onUngroup} disabled={!props.groupAction.ungroup.enabled} reason={props.groupAction.ungroup.reason} />');
+    expect(adminToolbar).toContain('<LabelButton label="Ungroup" path={ICONS.ungroup} collapsible={false} onClick={props.onUngroup} disabled={!props.groupAction.ungroup.enabled} reason={props.groupAction.ungroup.reason} />');
   });
 
   it("never shows a grouping control for a single ordinary object", () => {

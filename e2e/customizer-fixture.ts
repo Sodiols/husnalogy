@@ -41,8 +41,23 @@ export async function centreOf(locator: Locator): Promise<Point> {
   return { x: box.x + box.width / 2, y: box.y + box.height / 2 };
 }
 
-/** A viewport point Konva's hit graph resolves to the layer's body (never a handle). */
+/**
+ * A viewport point Konva's hit graph resolves to the layer's body (never a
+ * handle). A picture becomes hit-testable only once it has loaded and drawn,
+ * so this waits (up to 10s) for the layer to be pressable instead of sampling
+ * the hit graph once — exactly as a person waits to see it before clicking.
+ */
 export async function bodyPoint(page: Page, layerId: string): Promise<Point> {
+  const deadline = Date.now() + 10_000;
+  for (;;) {
+    const point = await bodyPointNow(page, layerId);
+    if (point) return point;
+    if (Date.now() > deadline) throw new Error(`no pressable body point for ${layerId}`);
+    await page.waitForTimeout(100);
+  }
+}
+
+async function bodyPointNow(page: Page, layerId: string): Promise<Point | null> {
   const point = await page.evaluate((id) => {
     const K = (window as any).Konva;
     for (const stage of K?.stages || []) {
@@ -67,7 +82,6 @@ export async function bodyPoint(page: Page, layerId: string): Promise<Point> {
     }
     return null;
   }, layerId);
-  if (!point) throw new Error(`no pressable body point for ${layerId}`);
   return point;
 }
 

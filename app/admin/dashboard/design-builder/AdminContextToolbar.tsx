@@ -2,7 +2,7 @@
 
 import { rememberRecentColor } from "@/lib/customizer/v2/studio-recent-colors";
 import { FONT_SIZE_POINT_RULES, documentPxToPoints, fontSizeBoundsInPoints, pointsToDocumentPx } from "@/lib/customizer/v2/type-units";
-import { useEffect, useRef, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useRef, useState } from "react";
 import GoogleFontSelector from "@/app/components/customizer/GoogleFontSelector";
 import { ensureGoogleFontLoaded, reportGoogleFontLoadFailure, useFamilyCapabilities, useSelectableFamilies } from "@/app/components/customizer/useGoogleFonts";
 import EditableNumericStepper from "@/app/components/customizer/EditableNumericStepper";
@@ -99,20 +99,52 @@ const ICONS = {
   alignLeft: "M4 6h16M4 10h10M4 14h16M4 18h12",
   alignCenter: "M4 6h16M7 10h10M4 14h16M6 18h12",
   alignRight: "M4 6h16M10 10h10M4 14h16M8 18h12",
+  // Objects aligned to a shared edge: the Alignment panel.
+  alignObjects: "M4 3v18M8 6h10v4H8zM8 14h6v4H8z",
+  scrollLeft: "m15 6-6 6 6 6",
+  scrollRight: "m9 6 6 6-6 6",
 } as const;
+
+/* ------------------------------------------------------------- density ---- */
+
+/*
+ * The toolbar always shows EVERY approved control for the selection. How much
+ * room it gets depends on the workspace between the side panels, not on the
+ * window: at 1440px with both panels open the text bar needed ~770px of a
+ * ~700px column, and the overflow was scrolled sideways with a hidden
+ * scrollbar — Alignment was simply out of sight.
+ *
+ * So the bar has two densities, chosen from the space it actually has:
+ *   comfortable  36px controls, text labels beside icons;
+ *   compact      32px controls, tighter separators, a narrower font picker,
+ *                and secondary labels shown as their icon (each control keeps
+ *                its accessible name and tooltip, and all of its function).
+ * Only if even the compact bar cannot fit (narrower than the supported desktop
+ * sizes) does it scroll — intentionally, with visible scroll buttons.
+ */
+type Density = "comfortable" | "compact";
+const DensityContext = createContext<Density>("comfortable");
+const useCompact = () => useContext(DensityContext) === "compact";
 
 /* ----------------------------------------------------------- primitives ---- */
 
 // One look for every control in the capsule: compact, borderless, dark ink,
-// a soft grey hover and a light-blue "on" state.
+// a soft grey hover and a light-blue "on" state. Sizes come from the density
+// variables set on the toolbar (--tb-size, --tb-pad).
 const BUTTON =
-  "flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-full text-[13px] font-medium text-[#303839] transition-colors hover:bg-[#303839]/[0.06] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] disabled:cursor-not-allowed disabled:text-[#303839]/30 disabled:hover:bg-transparent";
+  "flex h-[var(--tb-size,36px)] shrink-0 items-center justify-center gap-1.5 rounded-full text-[13px] font-medium text-[#303839] transition-colors hover:bg-[#303839]/[0.06] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] disabled:cursor-not-allowed disabled:text-[#303839]/30 disabled:hover:bg-transparent";
 const BUTTON_ON = "bg-[#DCEBFA] text-[#12385C] hover:bg-[#CFE3F8]";
-const ICON_BUTTON = `${BUTTON} w-9`;
-const TEXT_BUTTON = `${BUTTON} px-3`;
+const ICON_BUTTON = `${BUTTON} w-[var(--tb-size,36px)]`;
+const TEXT_BUTTON = `${BUTTON} px-[var(--tb-pad,12px)]`;
 
 function Separator() {
-  return <span aria-hidden className="mx-1 h-6 w-px shrink-0 bg-[#303839]/12" />;
+  return <span aria-hidden className="mx-[var(--tb-sep,4px)] h-6 w-px shrink-0 bg-[#303839]/12" />;
+}
+
+/** A control's text label: beside its icon when there is room, its accessible name only when compact. */
+function ControlLabel({ children, collapsible = true }: { children: React.ReactNode; collapsible?: boolean }) {
+  const compact = useCompact();
+  return <span className={compact && collapsible ? "sr-only" : "whitespace-nowrap"}>{children}</span>;
 }
 
 function IconButton({ label, path, onClick, disabled, reason, pressed }: { label: string; path: string; onClick: () => void; disabled?: boolean; reason?: string; pressed?: boolean }) {
@@ -140,6 +172,7 @@ function LabelButton({
   pressed,
   ariaLabel,
   title,
+  collapsible = true,
 }: {
   label: string;
   path?: string;
@@ -149,7 +182,10 @@ function LabelButton({
   pressed?: boolean;
   ariaLabel?: string;
   title?: string;
+  /** False keeps the label visible in the compact density (short, decisive actions such as Mask). */
+  collapsible?: boolean;
 }) {
+  const iconOnly = useCompact() && collapsible && Boolean(path);
   return (
     <button
       type="button"
@@ -158,10 +194,10 @@ function LabelButton({
       title={disabled && reason ? `${label} — ${reason}` : title || label}
       disabled={disabled}
       onClick={onClick}
-      className={`${TEXT_BUTTON} ${pressed ? BUTTON_ON : ""}`}
+      className={`${iconOnly ? ICON_BUTTON : TEXT_BUTTON} ${pressed ? BUTTON_ON : ""}`}
     >
       {path && <Icon path={path} />}
-      <span className="whitespace-nowrap">{label}</span>
+      <ControlLabel collapsible={iconOnly}>{label}</ControlLabel>
     </button>
   );
 }
@@ -209,15 +245,18 @@ function ScalePair({ onScale, disabled }: { onScale: (factor: number) => void; d
 }
 
 function AlignmentButton({ open, onToggle }: { open: boolean; onToggle: () => void }) {
+  const compact = useCompact();
   return (
     <button
       type="button"
       aria-expanded={open}
       aria-controls="admin-alignment-panel"
+      title="Alignment"
       onClick={onToggle}
-      className={`${TEXT_BUTTON} ${open ? BUTTON_ON : ""}`}
+      className={`${compact ? ICON_BUTTON : TEXT_BUTTON} ${open ? BUTTON_ON : ""}`}
     >
-      Alignment
+      {compact && <Icon path={ICONS.alignObjects} />}
+      <ControlLabel>Alignment</ControlLabel>
     </button>
   );
 }
@@ -246,9 +285,10 @@ function LabelledStepper({
   onCommit: (value: number) => void;
   onCancel: () => void;
 }) {
+  const compact = useCompact();
   return (
-    <div className="flex shrink-0 items-center gap-1.5 pl-2">
-      <span className="whitespace-nowrap text-[13px] font-medium text-[#303839]/80">{caption}</span>
+    <div className={`flex shrink-0 items-center gap-1.5 ${compact ? "" : "pl-2"}`}>
+      <span className={compact ? "sr-only" : "whitespace-nowrap text-[13px] font-medium text-[#303839]/80"}>{caption}</span>
       <EditableNumericStepper
         label={label}
         value={value}
@@ -323,7 +363,8 @@ function ColourControl({
     commitColour(color);
   };
   useEffect(() => setDraft(isTransparentPaint(value) ? "" : value), [value]);
-  const trigger = caption ? `${TEXT_BUTTON}` : ICON_BUTTON;
+  const compact = useCompact();
+  const trigger = caption ? `${TEXT_BUTTON} ${compact ? "gap-1 !px-2" : ""}` : ICON_BUTTON;
   return (
     <ToolbarPopover
       label={`${title}: ${none ? "Transparent" : value}`}
@@ -335,7 +376,7 @@ function ColourControl({
       trigger={
         caption ? (
           <>
-            <span className="whitespace-nowrap">{caption}</span>
+            <ControlLabel>{caption}</ControlLabel>
             <ColourChip value={value} size={18} />
             <Icon path={ICONS.chevron} size={14} strokeWidth={2.2} />
           </>
@@ -570,7 +611,7 @@ function TextControls({ layer, props, swatches }: { layer: any; props: Props; sw
         label="Font"
         value={String(fontFamily.value)}
         onChange={applyFontFamily}
-        className="w-[164px]"
+        className={useCompact() ? "w-[132px]" : "w-[164px]"}
         triggerPrefix="Font:"
         triggerClassName="h-9 rounded-full px-3 text-[13px] hover:bg-[#303839]/[0.06]"
         portal
@@ -722,10 +763,13 @@ function ImageControls({ layer, props }: { layer: any; props: Props }) {
 }
 
 function FitFill({ props, fitMode }: { props: Props; fitMode?: "fit" | "fill" }) {
+  // Words when there is room; their icons only in the compact density.
+  const compact = useCompact();
   return (
     <>
       <LabelButton
         label="Fit"
+        path={compact ? ICONS.fit : undefined}
         title={fitMode ? "Fit — show the whole picture inside its frame" : "Fit — as large as fits on the artboard"}
         pressed={fitMode ? fitMode === "fit" : undefined}
         onClick={() => props.onFit("fit")}
@@ -734,6 +778,7 @@ function FitFill({ props, fitMode }: { props: Props; fitMode?: "fit" | "fill" })
       />
       <LabelButton
         label="Fill"
+        path={compact ? ICONS.fill : undefined}
         title={fitMode ? "Fill — cover the frame, cropping the overflow" : "Fill — cover the whole artboard"}
         pressed={fitMode ? fitMode === "fill" : undefined}
         onClick={() => props.onFit("fill")}
@@ -744,10 +789,81 @@ function FitFill({ props, fitMode }: { props: Props; fitMode?: "fit" | "fill" })
   );
 }
 
+/**
+ * The density for the space the bar actually has. Measured before paint, so a
+ * selection that needs the compact bar never flashes the comfortable one.
+ * Returns the density, the overflow state for the scroll buttons, and a
+ * scroll helper.
+ */
+function useToolbarFit(kind: string | null) {
+  const hostRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [density, setDensity] = useState<Density>("comfortable");
+  const [edges, setEdges] = useState({ left: false, right: false });
+  /** Width the comfortable bar needed when it last did not fit; it returns only once that fits. */
+  const comfortableNeedRef = useRef(0);
+  const lastKindRef = useRef(kind);
+
+  const evaluate = useCallback(() => {
+    const host = hostRef.current;
+    const strip = scrollRef.current;
+    if (!host || !strip) return;
+    const chrome = 10; // capsule padding + border
+    if (density === "comfortable") {
+      if (strip.scrollWidth > strip.clientWidth + 1) {
+        comfortableNeedRef.current = strip.scrollWidth + chrome;
+        setDensity("compact");
+        return;
+      }
+    } else if (comfortableNeedRef.current && host.clientWidth >= comfortableNeedRef.current) {
+      setDensity("comfortable");
+      return;
+    }
+    const left = strip.scrollLeft > 1;
+    const right = strip.scrollLeft + strip.clientWidth < strip.scrollWidth - 1;
+    setEdges((current) => (current.left === left && current.right === right ? current : { left, right }));
+  }, [density]);
+
+  // Runs after EVERY render on purpose: any prop (a font name, a colour
+  // swatch, a disabled state) can change the bar's width. It cannot loop —
+  // density only changes on a real overflow / fit transition, and the edge
+  // state keeps its identity when unchanged.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useLayoutEffect(() => {
+    // Another kind of selection has its own width: try its comfortable bar
+    // first. Both renders happen before paint, so nothing flickers.
+    if (lastKindRef.current !== kind) {
+      lastKindRef.current = kind;
+      comfortableNeedRef.current = 0;
+      if (density === "compact") {
+        setDensity("comfortable");
+        return;
+      }
+    }
+    evaluate();
+  });
+
+  useEffect(() => {
+    const host = hostRef.current;
+    const strip = scrollRef.current;
+    if (!host || !strip || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(() => evaluate());
+    observer.observe(host);
+    observer.observe(strip);
+    return () => observer.disconnect();
+  }, [evaluate, kind]);
+
+  const scrollBy = (direction: -1 | 1) => {
+    const strip = scrollRef.current;
+    if (strip) strip.scrollBy({ left: direction * Math.max(120, strip.clientWidth * 0.6), behavior: "smooth" });
+  };
+  return { hostRef, scrollRef, density, edges, evaluate, scrollBy };
+}
+
 export default function AdminContextToolbar(props: Props) {
   const layers = props.selectedLayers.filter(Boolean);
   const kind: AdminToolbarKind | null = adminToolbarKind(layers);
-  const scrollRef = useRef<HTMLDivElement>(null);
+  const { hostRef, scrollRef, density, edges, evaluate, scrollBy } = useToolbarFit(kind);
   if (!kind) return null;
 
   const layer = layers[0];
@@ -764,15 +880,16 @@ export default function AdminContextToolbar(props: Props) {
     <>
       <CopyDelete onCopy={props.onCopy} onDelete={props.onDelete} canDelete={props.canDelete} />
       {(kind === "multi" || kind === "mask") && (
-        <LabelButton label="Group" path={ICONS.group} onClick={props.onGroup} disabled={!props.groupAction.group.enabled} reason={props.groupAction.group.reason} />
+        <LabelButton label="Group" path={ICONS.group} collapsible={false} onClick={props.onGroup} disabled={!props.groupAction.group.enabled} reason={props.groupAction.group.reason} />
       )}
       {kind === "group" && (
-        <LabelButton label="Ungroup" path={ICONS.ungroup} onClick={props.onUngroup} disabled={!props.groupAction.ungroup.enabled} reason={props.groupAction.ungroup.reason} />
+        <LabelButton label="Ungroup" path={ICONS.ungroup} collapsible={false} onClick={props.onUngroup} disabled={!props.groupAction.ungroup.enabled} reason={props.groupAction.ungroup.reason} />
       )}
       {kind === "mask" && (
         <LabelButton
           label="Mask"
           path={ICONS.mask}
+          collapsible={false}
           title="Mask — show the photo inside the shape"
           onClick={props.onMask}
           disabled={!props.maskAction?.enabled}
@@ -796,34 +913,60 @@ export default function AdminContextToolbar(props: Props) {
   }
   sections.push(<AlignmentButton key="alignment" open={props.alignmentOpen} onToggle={props.onToggleAlignment} />);
 
+  const compact = density === "compact";
+  const densityStyle = (compact ? { "--tb-size": "32px", "--tb-pad": "8px", "--tb-sep": "2px" } : { "--tb-size": "36px", "--tb-pad": "12px", "--tb-sep": "4px" }) as React.CSSProperties;
+  const scrollButton = "pointer-events-auto absolute top-1/2 z-10 grid h-8 w-8 -translate-y-1/2 place-items-center rounded-full border border-[#303839]/10 bg-white text-[#303839] shadow-[0_2px_8px_rgba(48,56,57,0.18)] transition-colors hover:bg-[#F3F1EC] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839]";
+
   return (
-    <div className="pointer-events-none flex w-full justify-center">
-      <div
-        data-customizer-text-interaction
-        data-admin-text-toolbar
-        data-admin-toolbar={kind}
-        role="toolbar"
-        aria-label={kind === "multi" || kind === "mask" ? `${layers.length} objects selected` : "Selection tools"}
-        className="pointer-events-auto max-w-full rounded-full border border-[#303839]/10 bg-white p-1 shadow-[0_4px_18px_rgba(48,56,57,0.12)]"
-      >
-        {/* One row that scrolls sideways when the workspace is narrow — never wraps. */}
+    <DensityContext.Provider value={density}>
+      <div ref={hostRef} className="pointer-events-none flex w-full justify-center">
         <div
-          ref={scrollRef}
-          className="flex items-center overflow-x-auto overflow-y-hidden rounded-full [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-          onWheel={(event) => {
-            const strip = scrollRef.current;
-            if (!strip || strip.scrollWidth <= strip.clientWidth || Math.abs(event.deltaX) > Math.abs(event.deltaY)) return;
-            strip.scrollLeft += event.deltaY;
-          }}
+          data-customizer-text-interaction
+          data-admin-text-toolbar
+          data-admin-toolbar={kind}
+          data-admin-toolbar-density={density}
+          role="toolbar"
+          aria-label={kind === "multi" || kind === "mask" ? `${layers.length} objects selected` : "Selection tools"}
+          style={densityStyle}
+          className="pointer-events-auto relative max-w-full rounded-full border border-[#303839]/10 bg-white p-1 shadow-[0_4px_18px_rgba(48,56,57,0.12)]"
         >
-          {sections.map((section, index) => (
-            <div key={index} className="flex shrink-0 items-center">
-              {index > 0 && <Separator />}
-              {section}
-            </div>
-          ))}
+          {/* One row, never wrapped. It fits at the supported desktop sizes; only
+              a narrower workspace scrolls it, with visible scroll buttons. */}
+          <div
+            ref={scrollRef}
+            className="flex items-center overflow-x-auto overflow-y-hidden scroll-smooth rounded-full [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+            onScroll={evaluate}
+            onWheel={(event) => {
+              const strip = scrollRef.current;
+              if (!strip || strip.scrollWidth <= strip.clientWidth || Math.abs(event.deltaX) > Math.abs(event.deltaY)) return;
+              strip.scrollLeft += event.deltaY;
+            }}
+          >
+            {sections.map((section, index) => (
+              <div key={index} className="flex shrink-0 items-center">
+                {index > 0 && <Separator />}
+                {section}
+              </div>
+            ))}
+          </div>
+          {edges.left && (
+            <>
+              <span aria-hidden className="pointer-events-none absolute inset-y-1 left-1 w-10 rounded-l-full bg-white" />
+              <button type="button" data-shape="round" aria-label="Scroll tools left" title="More tools" onClick={() => scrollBy(-1)} className={`${scrollButton} left-1`}>
+                <Icon path={ICONS.scrollLeft} size={16} strokeWidth={2.2} />
+              </button>
+            </>
+          )}
+          {edges.right && (
+            <>
+              <span aria-hidden className="pointer-events-none absolute inset-y-1 right-1 w-10 rounded-r-full bg-white" />
+              <button type="button" data-shape="round" aria-label="Scroll tools right" title="More tools" onClick={() => scrollBy(1)} className={`${scrollButton} right-1`}>
+                <Icon path={ICONS.scrollRight} size={16} strokeWidth={2.2} />
+              </button>
+            </>
+          )}
         </div>
       </div>
-    </div>
+    </DensityContext.Provider>
   );
 }

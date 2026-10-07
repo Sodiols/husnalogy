@@ -78,6 +78,7 @@ import {
   type RecoverySnapshot,
 } from "@/lib/customizer/recovery-store";
 import { EXACT_VERSION_UNAVAILABLE_MESSAGE, savedDesignMatchesTemplate } from "@/lib/customizer/version-pin";
+import { safeReturnPath } from "@/lib/auth/redirects";
 import { anyGridSlotGrantsPhotoEditing, createGridSlotsFromPreset, GRID_PRESETS } from "@/lib/customizer/v2/grids";
 import CustomerCanvasContextMenu from "@/app/components/customizer/CustomerCanvasContextMenu";
 import { buildCustomerContextMenu, type ContextMenuActionId } from "@/lib/customizer/v2/context-menu";
@@ -236,9 +237,9 @@ function utf8Length(text: string): number {
   return typeof TextEncoder === "undefined" ? text.length * 3 : new TextEncoder().encode(text).length;
 }
 
+/** `?returnTo=` is attacker-controllable: only a same-origin path is ever used (lib/auth/redirects). */
 function safeInternalPath(value: string, fallback: string) {
-  if (!value || !value.startsWith("/") || value.startsWith("//")) return fallback;
-  return value;
+  return safeReturnPath(value, fallback);
 }
 
 /** The one object a crop session edits, and its value when the session opened. */

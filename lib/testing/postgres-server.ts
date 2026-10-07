@@ -32,7 +32,10 @@ export type PostgresServer = {
 export async function startPostgres(port = 55000 + Math.floor(Math.random() * 5000), options: { migrate?: boolean } = {}): Promise<PostgresServer> {
   const dir = mkdtempSync(join(tmpdir(), "husnalogy-pg-"));
   // UTF-8 like Supabase (Windows would otherwise default to a code page).
-  const server = new EmbeddedPostgres({ databaseDir: dir, user: "postgres", password: "postgres", port, persistent: false, initdbFlags: ["--encoding=UTF8", "--locale=C"], onLog: () => undefined, onError: () => undefined });
+  // `persistent: true` only means the library leaves the folder alone on
+  // stop: its own one-shot removal fails with EBUSY on Windows, so stop()
+  // below removes it with retries instead.
+  const server = new EmbeddedPostgres({ databaseDir: dir, user: "postgres", password: "postgres", port, persistent: true, initdbFlags: ["--encoding=UTF8", "--locale=C"], onLog: () => undefined, onError: () => undefined });
   await server.initialise();
   await server.start();
   const clients: pg.Client[] = [];
@@ -61,9 +64,15 @@ export async function startPostgres(port = 55000 + Math.floor(Math.random() * 50
     async stop() {
       for (const client of clients) await client.end().catch(() => undefined);
       await server.stop();
-      // Windows keeps the data directory locked for a moment after the server
-      // process exits (EBUSY): retry the removal instead of failing teardown.
-      rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 250 });
+      // Windows keeps the data directory locked for a while after the server
+      // process exits (EBUSY), longer under a loaded full run: retry, and if
+      // the OS still holds it, leave the throwaway temp folder behind rather
+      // than fail a test whose assertions all passed.
+      try {
+        rmSync(dir, { recursive: true, force: true, maxRetries: 40, retryDelay: 250 });
+      } catch (error) {
+        console.warn(`[postgres-server] could not remove ${dir} yet: ${(error as Error).message}`);
+      }
     },
   };
 }

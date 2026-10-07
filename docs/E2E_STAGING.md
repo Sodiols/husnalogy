@@ -104,19 +104,38 @@ privacy with real accounts** (`staging-shared-browser-privacy.spec.ts`:
 Customer A's address, phone, cart and saved design are never visible to
 Customer B on the same browser, and come back for A).
 
-Local (no project at all) equivalents of the privacy and version-integrity
-checks run against an in-browser stub:
-`customer-recovery-isolation.spec.ts`, `shared-browser-privacy.spec.ts`,
-`customizer-version-pinning.spec.ts`, `admin-studio-recovery.spec.ts`:
+### Local deterministic mode (the default)
+
+A plain `npx playwright test` (no `E2E_BASE_URL`, no `E2E_SUPABASE_URL`) never
+reaches a real Supabase project — not even the one in `.env.local`
+(`playwright.config.ts`):
+
+- the app under test is pointed at a dead local address
+  (`http://127.0.0.1:54399`);
+- the browser's Supabase calls are answered in-page (`e2e/customer-stub.ts`);
+- the server's Supabase calls (server-rendered pages, site settings,
+  `/account`, `/checkout`, `/orders`) are answered by a local stand-in started
+  in global setup (`e2e/global-setup.ts` → `e2e/supabase-http-stub.ts`), which
+  refuses any non-local URL;
+- the dev server runs on its own port (3105) and build folder
+  (`.next/e2e-stub`), fresh for every run, so it can sit beside a normal
+  `npm run dev`. `E2E_REUSE_SERVER=1` reuses an already running stub server.
 
 ```bash
-NEXT_PUBLIC_SUPABASE_URL=http://127.0.0.1:54399 E2E_FRESH_SERVER=1 E2E_PORT=3105 NEXT_DIST_DIR=.next/e2e-stub \
-  npx playwright test e2e/customer-recovery-isolation.spec.ts e2e/shared-browser-privacy.spec.ts --workers=1 --project=chromium
+npx playwright test --workers=1 --project=chromium
 ```
 
-Without the seeded manifest the seeded specs stop with an explicit
-"Seeded Customizer V2 acceptance cannot run" error — they are never reported
-as passed. `npm run test:e2e:public` runs only the public smoke specs.
+The local privacy, recovery and version-integrity checks include
+`customer-recovery-isolation.spec.ts`, `shared-browser-privacy.spec.ts`,
+`customizer-version-pinning.spec.ts`, `admin-studio-recovery.spec.ts` and
+`admin-recovery-matrix.spec.ts` (every kind of Design Studio edit survives a
+lost tab; Admin A's copy is never offered to Designer B).
+
+The ten seeded specs (they call `requireSeededAcceptance`) need the seeded
+staging project and stop the whole run with an explicit "Seeded Customizer V2
+acceptance cannot run" error otherwise — they are never reported as passed.
+List the other spec files explicitly to run everything else locally.
+`npm run test:e2e:public` runs only the public smoke specs.
 
 ## 5. Controlled staging order (before launch)
 

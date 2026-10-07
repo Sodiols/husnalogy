@@ -60,7 +60,7 @@ marked *secret* must never be given a `NEXT_PUBLIC_` prefix.
 | `ORDER_NOTIFICATION_EMAIL` | recommended | server | Where new-order alerts go. Defaults to the store email in Admin → Settings. |
 | `SENTRY_DSN` | **yes for monitoring** | **secret** | Sentry (or GlitchTip) DSN. Unhandled server errors and every error-level event (checkout, production task, render, worker, email failures) are reported; secrets and personal data are scrubbed. Without it, errors are only in the app log and startup warns. |
 | `SENTRY_ENVIRONMENT`, `SENTRY_RELEASE` | optional | server | Tags for monitoring events. |
-| `TRUSTED_PROXY_HOPS` | optional | server | Number of reverse proxies in front of Node that APPEND to `X-Forwarded-For` (default **1**). Rate limits use the address that many entries from the RIGHT; the client-supplied leftmost entry is never trusted. **The default is an assumption about Hostinger's topology, not a verified fact** — verify it after every deployment (section 9, "Rate limiting"). Never set `0` here (every anonymous visitor would share one bucket). |
+| `TRUSTED_PROXY_HOPS` | optional | server | Number of reverse proxies in front of Node that APPEND to `X-Forwarded-For` (default **1**). Rate limits use the address that many entries from the RIGHT (a port the proxy appended is ignored); the client-supplied leftmost entry is never trusted, and a chain SHORTER than this number resolves to `unknown` (one shared bucket) instead of a guess. **The default is an assumption about Hostinger's topology, not a verified fact** — verify it after every deployment (section 9, "Rate limiting"). Never set `0` here (every anonymous visitor would share one bucket). |
 | `OPENAI_API_KEY` | optional | **secret** | Ask Logy. Falls back to local answers when absent. |
 | `OPENAI_MODEL`, `LOGY_USE_OPENAI` | optional | server | Ask Logy tuning. |
 | `ICONIFY_API_BASE_URL` | optional | server | Defaults to the public Iconify API. No key. |
@@ -506,7 +506,7 @@ Emails**.
 11. The same curl without the header returns 401.
 12. Run the section 3 migration query. Every row is `true`.
 13. `curl -sI https://www.husnalogy.com/` → permanent redirect to `https://husnalogy.com/`.
-14. Signed in as admin, open `https://husnalogy.com/api/admin/production/client-ip`: `resolvedClientIp` is YOUR public IP (compare with any "what is my IP" page). If it shows a Hostinger/CDN address, `TRUSTED_PROXY_HOPS` is too low; if it shows `unknown` or an address you typed into a forged `X-Forwarded-For`, it is wrong. Fix the variable and restart.
+14. Signed in as admin, open `https://husnalogy.com/api/admin/production/client-ip`: `resolvedClientIp` is YOUR public IP (compare with any "what is my IP" page). If it shows a Hostinger/CDN address, `TRUSTED_PROXY_HOPS` is too low; if it shows `unknown` (the chain is shorter than the hop count — too high) or an address you typed into a forged `X-Forwarded-For`, it is wrong. Fix the variable and restart.
 15. Shared-browser privacy check: customer A saves an address, phone and profile photo and signs out; customer B signs in on the same browser — B's account, checkout and orders show none of A's data, and a personalizable product opens without A's design. A signs back in and finds everything.
 16. Upload a product video under 30 MB in the admin (or with the API) and confirm one over 30 MB is refused with a message that names the limit.
 

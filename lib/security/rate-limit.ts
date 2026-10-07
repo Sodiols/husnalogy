@@ -29,17 +29,56 @@ function trustedProxyHops(): number {
   return Number.isInteger(hops) && hops >= 0 && hops <= 5 ? hops : 1;
 }
 
-const IP_PATTERN = /^[0-9a-f.:]{3,45}$/i;
+const IPV4_PATTERN = /^(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}$/;
+
+function isIpv6(value: string): boolean {
+  if (value.length > 45 || !/^[0-9a-f:.]+$/.test(value) || !value.includes(":")) return false;
+  // An embedded IPv4 tail ("::ffff:192.0.2.1") stands for the last two groups.
+  let head = value;
+  let tailGroups = 0;
+  const lastColon = value.lastIndexOf(":");
+  if (value.slice(lastColon + 1).includes(".")) {
+    if (!IPV4_PATTERN.test(value.slice(lastColon + 1))) return false;
+    head = value[lastColon - 1] === ":" ? value.slice(0, lastColon + 1) : value.slice(0, lastColon);
+    tailGroups = 2;
+  }
+  const halves = head.split("::");
+  if (halves.length > 2) return false;
+  const groupsOf = (part: string) => (part === "" ? [] : part.split(":"));
+  const groups = halves.flatMap(groupsOf);
+  if (groups.some((group) => !/^[0-9a-f]{1,4}$/.test(group))) return false;
+  const count = groups.length + tailGroups;
+  // "::" stands for at least one zero group.
+  return halves.length === 2 ? count <= 7 : count === 8;
+}
+
+/**
+ * One X-Forwarded-For entry as a bucket key: a valid IPv4 or IPv6 address,
+ * without a port a proxy may have appended ("192.0.2.1:51234",
+ * "[2001:db8::1]:443") — the source port changes per connection, so keeping
+ * it would hand every new connection a fresh bucket.
+ */
+function normalizeAddress(entry: string): string | null {
+  let value = entry.trim().toLowerCase();
+  const bracketed = value.match(/^\[([^\]]+)\](?::\d{1,5})?$/);
+  if (bracketed) value = bracketed[1];
+  else if (/^[\d.]+:\d{1,5}$/.test(value)) value = value.slice(0, value.lastIndexOf(":"));
+  if (IPV4_PATTERN.test(value)) return value;
+  return isIpv6(value) ? value : null;
+}
 
 /**
  * The client address as seen by the LAST trusted proxy.
  *
  * The leftmost X-Forwarded-For entry is whatever the client typed: using it
- * (as this function previously did) let anyone pick a fresh "IP" per request
- * and bypass every rate limit. Proxies append the address they received the
+ * (as this function once did) let anyone pick a fresh "IP" per request and
+ * bypass every rate limit. Proxies append the address they received the
  * connection from, so the trustworthy entry is the one `hops` positions from
- * the RIGHT. `x-real-ip`/`cf-connecting-ip` are not consulted: without a
- * proxy guaranteed to overwrite them they are equally client controlled.
+ * the RIGHT. A chain SHORTER than `hops` means a trusted proxy was bypassed
+ * or the setting is wrong; its entries may all be client-typed, so the answer
+ * is "unknown" (one shared bucket) rather than a guess. `x-real-ip` /
+ * `cf-connecting-ip` are not consulted: without a proxy guaranteed to
+ * overwrite them they are equally client controlled.
  */
 export function getClientIp(request) {
   const hops = trustedProxyHops();
@@ -48,8 +87,8 @@ export function getClientIp(request) {
       .split(",")
       .map((entry) => entry.trim())
       .filter(Boolean);
-    const candidate = chain.length >= hops ? chain[chain.length - hops] : chain[0];
-    if (candidate && IP_PATTERN.test(candidate)) return candidate;
+    if (chain.length < hops) return "unknown";
+    return normalizeAddress(chain[chain.length - hops]) || "unknown";
   }
   return "unknown";
 }

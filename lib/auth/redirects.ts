@@ -55,6 +55,19 @@ export function getSafeRedirectPath(value: unknown = "/"): string {
 }
 
 /**
+ * A same-origin return path taken from the address bar (e.g. `?returnTo=`),
+ * or `fallback`. The same rules as getSafeRedirectPath: never another origin,
+ * never `//host`, `/\\host` or control characters that a browser would turn
+ * into one.
+ */
+export function safeReturnPath(value: unknown, fallback: string): string {
+  const raw = String(value || "");
+  if (!raw) return fallback;
+  const safe = getSafeRedirectPath(raw);
+  return safe === "/" && raw !== "/" ? fallback : safe;
+}
+
+/**
  * The destination after a successful sign-in.
  *
  * - admin    → an explicit admin/designer/storefront `next`, else /admin/dashboard

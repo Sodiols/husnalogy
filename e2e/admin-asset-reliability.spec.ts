@@ -198,6 +198,10 @@ test.describe("Design Studio image reliability", () => {
     stub.ttlMs = 60_000;
     await openStudio(page, template(Date.now() + 60_000));
     await expect.poll(async () => (await drawn(page)).status).toBe("ready");
+    // The tab is lost before the server confirmed the edit: hold the autosave
+    // in flight. (Left to run, it lands ~4 s after the edit, the server then
+    // has the work and — correctly — nothing is offered; a slow run raced it.)
+    await page.evaluate(() => ((window as any).__adminFixture.productSaveDelayMs = 10 * 60_000));
     await nudgeShape(page);
     await expect(unsavedChip(page)).toBeVisible();
     await expect.poll(() => page.evaluate(() => Object.keys(window.localStorage).filter((key) => key.startsWith("husnalogy_studio_draft")).length)).toBe(1);

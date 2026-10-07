@@ -506,8 +506,9 @@ describe("admin text toolbar — structure and accessibility", () => {
   it("builds every control from one shared style with an obvious on state", () => {
     expect(toolbarSource).toContain("const BUTTON =");
     expect(toolbarSource).toContain("const BUTTON_ON =");
-    expect(toolbarSource).toContain("const ICON_BUTTON = `${BUTTON} w-9`");
-    expect(toolbarSource).toContain("const TEXT_BUTTON = `${BUTTON} px-3`");
+    // Sizes come from the bar's density (comfortable 36px / 12px; compact smaller).
+    expect(toolbarSource).toContain("const ICON_BUTTON = `${BUTTON} w-[var(--tb-size,36px)]`");
+    expect(toolbarSource).toContain("const TEXT_BUTTON = `${BUTTON} px-[var(--tb-pad,12px)]`");
     expect(toolbarSource).not.toContain("gradient-to");
     expect(toolbarSource).not.toContain("drop-shadow-");
   });
@@ -536,6 +537,6 @@ describe("admin text toolbar — structure and accessibility", () => {
 
   it("keeps the toolbar centred over the canvas workspace, not the window", () => {
     expect(builderSource).toContain('<div className="pointer-events-none absolute inset-x-0 top-3 z-30 flex justify-center px-3">');
-    expect(toolbarSource).toContain('<div className="pointer-events-none flex w-full justify-center">');
+    expect(toolbarSource).toContain('<div ref={hostRef} className="pointer-events-none flex w-full justify-center">');
   });
 });

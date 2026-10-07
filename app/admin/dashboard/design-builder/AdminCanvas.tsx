@@ -990,11 +990,16 @@ export default function AdminCanvas({
           replaces while cropping sits. Every control only previews; Done
           writes once, Cancel restores. */}
       {crop && cropLayer && (
+        // Anchored to BOTH edges of the workspace, then centred: a box anchored
+        // at left:50% only gets the space right of its anchor when it sizes
+        // itself, which squeezed the bar and hid its last controls (Done).
+        // The full-width strip lets clicks through; only the bar takes them.
         <div
           data-admin-crop-bar
-          className="absolute left-1/2 top-3 z-50 flex max-w-[calc(100%-24px)] -translate-x-1/2 justify-center"
-          onPointerDown={(event) => event.stopPropagation()}
+          data-density-host
+          className="pointer-events-none absolute inset-x-3 top-3 z-50 flex justify-center"
         >
+          <div className="pointer-events-auto max-w-full" onPointerDown={(event) => event.stopPropagation()}>
           <CustomerImageToolbar
             layer={{ ...cropLayer, imageTransform: liveCropTransform(crop) }}
             permissions={ADMIN_CROP_PERMISSIONS}
@@ -1004,14 +1009,14 @@ export default function AdminCanvas({
             onConfirmCrop={() => finishCrop("commit")}
             onCancelCrop={() => finishCrop("discard")}
             showPositionFields={false}
+            fitToWidth
           />
+          </div>
         </div>
       )}
       {erase && eraseLayer && (
-        <div
-          className="absolute left-1/2 top-3 z-50 flex max-w-[calc(100%-24px)] -translate-x-1/2 justify-center"
-          onPointerDown={(event) => event.stopPropagation()}
-        >
+        <div data-density-host className="pointer-events-none absolute inset-x-3 top-3 z-50 flex justify-center">
+          <div className="pointer-events-auto max-w-full" onPointerDown={(event) => event.stopPropagation()}>
           <AdminEraserBar
             brushSize={brushSize}
             canUndo={erase.past.length > 0}
@@ -1024,6 +1029,7 @@ export default function AdminCanvas({
             onCancel={() => finishErase("discard")}
             onApply={() => finishErase("commit")}
           />
+          </div>
         </div>
       )}
       <div

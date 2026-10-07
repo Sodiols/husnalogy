@@ -42,6 +42,62 @@ describe("client address behind trusted proxies", () => {
     expect(getClientIp(request("6.6.6.6, 203.0.113.9"))).toBe("203.0.113.9");
   });
 
+  it("no X-Forwarded-For at all: unknown (one shared bucket), never a guess", () => {
+    vi.stubEnv("TRUSTED_PROXY_HOPS", "1");
+    expect(getClientIp(request())).toBe("unknown");
+    expect(getClientIp(request(" , ,"))).toBe("unknown");
+  });
+
+  it("a chain SHORTER than the configured hops fails safe: unknown, never the client-typed leftmost entry", () => {
+    // Two proxies each append, so a real request always carries >= 2 entries.
+    // One entry means a proxy was bypassed or the setting is wrong — and that
+    // one entry may be whatever the client typed.
+    vi.stubEnv("TRUSTED_PROXY_HOPS", "2");
+    expect(getClientIp(request("6.6.6.6"))).toBe("unknown");
+    vi.stubEnv("TRUSTED_PROXY_HOPS", "3");
+    expect(getClientIp(request("6.6.6.6, 203.0.113.9"))).toBe("unknown");
+    expect(getClientIp(request("6.6.6.6, 203.0.113.9, 10.0.0.2"))).toBe("6.6.6.6");
+  });
+
+  it("multi-hop: the configured hops pick the entry the outermost trusted proxy appended", () => {
+    vi.stubEnv("TRUSTED_PROXY_HOPS", "3");
+    expect(getClientIp(request("1.1.1.1, 2.2.2.2, 203.0.113.9, 10.0.0.2, 10.0.0.3"))).toBe("203.0.113.9");
+  });
+
+  it("a spoofed leftmost entry is ignored whatever it claims to be", () => {
+    vi.stubEnv("TRUSTED_PROXY_HOPS", "1");
+    for (const spoof of ["127.0.0.1", "::1", "10.0.0.1", "unknown", "203.0.113.9, 198.51.100.1"]) {
+      expect(getClientIp(request(`${spoof}, 192.0.2.44`))).toBe("192.0.2.44");
+    }
+  });
+
+  it("IPv4: only real dotted quads", () => {
+    vi.stubEnv("TRUSTED_PROXY_HOPS", "1");
+    expect(getClientIp(request("192.0.2.1"))).toBe("192.0.2.1");
+    expect(getClientIp(request("999.1.1.1"))).toBe("unknown");
+    expect(getClientIp(request("1.2.3"))).toBe("unknown");
+    expect(getClientIp(request("..."))).toBe("unknown");
+  });
+
+  it("IPv6: compressed, full and IPv4-mapped forms; one canonical case", () => {
+    vi.stubEnv("TRUSTED_PROXY_HOPS", "1");
+    expect(getClientIp(request("6.6.6.6, 2001:db8::1"))).toBe("2001:db8::1");
+    expect(getClientIp(request("2001:DB8::1"))).toBe("2001:db8::1");
+    expect(getClientIp(request("2001:0db8:0000:0000:0000:0000:0000:0001"))).toBe("2001:0db8:0000:0000:0000:0000:0000:0001");
+    expect(getClientIp(request("::ffff:192.0.2.1"))).toBe("::ffff:192.0.2.1");
+    expect(getClientIp(request("2001:db8::1::2"))).toBe("unknown");
+    expect(getClientIp(request(":::"))).toBe("unknown");
+  });
+
+  it("a port the proxy appended is not part of the address (a new source port is not a new client)", () => {
+    vi.stubEnv("TRUSTED_PROXY_HOPS", "1");
+    expect(getClientIp(request("192.0.2.1:51234"))).toBe("192.0.2.1");
+    expect(getClientIp(request("[2001:db8::1]:443"))).toBe("2001:db8::1");
+    const limit = { name: `port-${Math.random()}`, limit: 2, windowMs: 60_000 };
+    const statuses = [1, 2, 3].map((port) => rateLimit(request(`192.0.2.1:${50000 + port}`), limit)?.status ?? 200);
+    expect(statuses).toEqual([200, 200, 429]);
+  });
+
   it("the operator readout states the hops, the chain, the resolved address and the limiter scope", () => {
     vi.stubEnv("TRUSTED_PROXY_HOPS", "1");
     vi.stubEnv("UPSTASH_REDIS_REST_URL", "");
