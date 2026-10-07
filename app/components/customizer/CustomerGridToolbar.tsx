@@ -38,7 +38,7 @@ export default function CustomerGridToolbar({
   if (!slot) return null;
 
   return (
-    <div className="pointer-events-auto flex max-w-[calc(100vw-1rem)] items-center gap-1.5 overflow-x-auto rounded-2xl border border-[#303839]/12 bg-white/95 p-1.5 shadow-[0_16px_45px_rgba(48,56,57,0.16)] backdrop-blur-md">
+    <div className="pointer-events-auto flex max-w-[calc(100vw-1rem)] items-center gap-1.5 overflow-x-auto rounded-2xl bg-white p-1.5 shadow-[0_4px_20px_rgba(48,56,57,0.12)] backdrop-blur-md">
       <div className="flex items-center gap-1 border-r border-[#303839]/10 pr-1.5">
         {(layer.slots || []).map((item: any, index: number) => (
           // The visible label is just a number; assistive technology needs to

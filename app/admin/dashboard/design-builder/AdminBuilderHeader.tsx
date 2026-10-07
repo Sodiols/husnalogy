@@ -46,7 +46,6 @@ type Props = {
   productName: string;
   statusChips: string[];
   saveStatusLabel: string;
-  publicVersion?: string;
   tab: string;
   onTabChange: (tab: string) => void;
   canUndo: boolean;
@@ -65,7 +64,6 @@ export default function AdminBuilderHeader({
   productName,
   statusChips,
   saveStatusLabel,
-  publicVersion = "2",
   tab,
   onTabChange,
   canUndo,
@@ -95,7 +93,6 @@ export default function AdminBuilderHeader({
           <p className="truncate text-[12px] leading-tight text-[#303839]/60">{productName}</p>
         </div>
         <div className="hidden items-center gap-1.5 xl:flex">
-          <span className="rounded-full bg-[#F2F3F5] px-2 py-0.5 text-[11px] font-semibold text-[#303839]/75">V{publicVersion}</span>
           {statusChips.map((chip) => (
             <span key={chip} className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${CHIP_TONES[chip] || "bg-[#F2F3F5] text-[#303839]/75"}`}>
               {chip}

@@ -32,7 +32,7 @@ const OPTION_LABELS: Record<string, string> = {
 function DetailRow({ label, value }: any) {
   return (
     <div className="flex justify-between gap-4 border-b border-[#303839]/6 py-2 text-sm last:border-b-0">
-      <span className="text-[#303839]/50">{label}</span>
+      <span className="text-[#303839]/70">{label}</span>
       <span className="text-right font-semibold text-[#303839]">{value}</span>
     </div>
   );
@@ -41,7 +41,7 @@ function DetailRow({ label, value }: any) {
 function ReviewCard({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <section className="rounded-xl border border-[#303839]/8 bg-white p-5">
-      <h3 className="mb-1 font-display text-[22px] leading-tight text-[#303839]">{title}</h3>
+      <h3 className="mb-1 text-[19px] font-semibold leading-tight text-[#1f2425]">{title}</h3>
       {children}
     </section>
   );
@@ -103,7 +103,7 @@ export default function CustomizerReviewStep({
         <CustomerMockupPreview template={template} values={values} editorState={editorState} customizationId={customizationId} saveStatus={saveStatus} />
         {pages.map((page: any) => (
           <div key={page.id}>
-            <p className="mb-2 text-[11px] font-bold uppercase tracking-[0.11em] text-[#303839]/45">{page.label}</p>
+            <p className="mb-2 text-[12.5px] font-semibold text-[#303839]/80">{page.label}</p>
             <div className="overflow-hidden rounded-xl border border-[#303839]/8 bg-white p-2 shadow-[0_4px_20px_rgba(48,56,57,0.05)]">
               <CustomizerPreview
                 template={template}
@@ -143,7 +143,7 @@ export default function CustomizerReviewStep({
                         className="text-left font-semibold underline decoration-red-300 underline-offset-2 transition-colors hover:text-red-900 hover:decoration-red-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400"
                       >
                         {issue.message}
-                        <span className="ml-1 whitespace-nowrap text-[11px] font-bold">
+                        <span className="ml-1 whitespace-nowrap text-[12.5px] font-semibold">
                           {issue.pageLabel ? `Fix on ${issue.pageLabel} →` : "Fix this →"}
                         </span>
                       </button>
@@ -222,7 +222,7 @@ export default function CustomizerReviewStep({
         </div>
 
         {requireApproval && (
-          <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-[#303839]/10 bg-white p-4 text-sm transition-colors hover:border-[#303839]/25 has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-[#D4AF37]">
+          <label className="flex cursor-pointer items-start gap-3 rounded-[10px] bg-[#F8F6F1] p-4 text-sm transition-colors has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-[#D4AF37]">
             <input
               type="checkbox"
               checked={Boolean(approved)}

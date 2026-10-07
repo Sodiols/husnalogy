@@ -77,7 +77,7 @@ export default function EditableNumericStepper({
   inputClassName = "h-full min-w-0 w-full bg-transparent px-1 text-center text-xs font-extrabold tabular-nums text-[#303839] outline-none focus:bg-white focus:ring-2 focus:ring-inset focus:ring-[#303839] disabled:cursor-not-allowed disabled:opacity-40",
   inputStyle,
   showLabel = false,
-  labelClassName = "col-span-3 text-center text-[8px] font-extrabold uppercase tracking-[0.12em] text-[#303839]/45",
+  labelClassName = "col-span-3 truncate text-center text-[10px] font-semibold text-[#303839]/70",
   compact = false,
   showStepButtons = true,
   mixed = false,

@@ -45,15 +45,11 @@ export default function CustomizerPageThumbnails({
             // width — `sm:w-full` used to apply to both, so on a 768px tablet
             // each "thumbnail" grew to ~744px wide and ~1040px tall, collapsing
             // the canvas to a 64px sliver.
-            className={`group shrink-0 rounded-md text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white ${
+            className={`group shrink-0 cursor-pointer rounded-xl bg-white p-1.5 pb-0 text-left shadow-[0_1px_4px_rgba(31,36,37,0.14)] transition-shadow focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white ${
               orientation === "horizontal" ? "w-24 sm:w-28" : "w-24 sm:w-full"
-            } ${active ? "" : "opacity-75 hover:opacity-100"}`}
+            } ${active ? "ring-[1.5px] ring-[#303839]" : "ring-1 ring-[#303839]/[0.06] hover:shadow-[0_2px_8px_rgba(31,36,37,0.18)]"}`}
           >
-            <div
-              className={`overflow-hidden rounded-md border-2 bg-white transition ${
-                active ? "border-[#303839]" : "border-[#303839]/12 group-hover:border-[#303839]/35"
-              }`}
-            >
+            <div className="overflow-hidden rounded-md border border-[#303839]/10 bg-white">
               <CustomizerPreview
                 template={template}
                 values={values}
@@ -64,7 +60,7 @@ export default function CustomizerPageThumbnails({
               />
             </div>
             <span
-              className={`mt-1 block text-center text-[11px] font-bold ${active ? "text-[#303839]" : "text-[#303839]/55"}`}
+              className={`block truncate px-1 py-1.5 text-center text-[13px] ${active ? "font-semibold text-[#1f2425]" : "text-[#303839]/75"}`}
             >
               {page.label}
             </span>

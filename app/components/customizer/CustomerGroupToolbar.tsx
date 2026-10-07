@@ -67,7 +67,7 @@ export default function CustomerGroupToolbar({
       data-customer-group-toolbar
       role="toolbar"
       aria-label="Selection grouping"
-      className="pointer-events-auto flex max-w-full items-center gap-1 rounded-xl border border-[#303839]/12 bg-white p-1.5 shadow-[0_6px_20px_rgba(48,56,57,0.10)]"
+      className="pointer-events-auto flex max-w-full items-center gap-1 rounded-2xl bg-white p-1.5 shadow-[0_4px_20px_rgba(48,56,57,0.12)]"
     >
       {selectionCount > 1 && !compact && (
         <span className="shrink-0 rounded-full bg-[#F8F6F1] px-2.5 py-1 text-[10px] font-bold text-[#303839]/70">

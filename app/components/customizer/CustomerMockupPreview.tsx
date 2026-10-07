@@ -70,8 +70,8 @@ export default function CustomerMockupPreview({ template, values, editorState, c
     <aside className="pointer-events-auto w-56 overflow-hidden rounded-2xl border border-[#303839]/12 bg-white/95 shadow-[0_14px_40px_rgba(48,56,57,0.16)] backdrop-blur-md" aria-label="Product mockup preview" aria-busy={loading}>
       <div className="flex items-center justify-between border-b border-[#303839]/8 px-3 py-2">
         <div>
-          <p className="text-[10px] font-extrabold uppercase tracking-[0.12em] text-[#303839]/55">Product preview</p>
-          <p className="mt-0.5 text-[9px] font-semibold text-[#303839]/40">{serverOutput ? "Server rendered" : "Live preview"}</p>
+          <p className="text-[12.5px] font-semibold text-[#303839]/80">Product preview</p>
+          <p className="mt-0.5 text-[12.5px] font-semibold text-[#303839]/70">{serverOutput ? "Server rendered" : "Live preview"}</p>
         </div>
         {loading && <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-[#D4AF37]" aria-label="Updating preview" />}
       </div>
@@ -92,13 +92,13 @@ export default function CustomerMockupPreview({ template, values, editorState, c
       </div>
       {error && (
         <div className="flex items-center justify-between gap-2 border-t border-red-900/10 bg-red-50 px-3 py-2">
-          <p className="line-clamp-2 text-[10px] font-semibold text-red-800">{error}</p>
-          <button type="button" onClick={() => setRetry((value) => value + 1)} className="min-h-9 shrink-0 rounded-full border border-red-800/20 bg-white px-3 text-[10px] font-extrabold text-red-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white">Retry</button>
+          <p className="line-clamp-2 text-[12.5px] font-semibold text-red-800">{error}</p>
+          <button type="button" onClick={() => setRetry((value) => value + 1)} className="min-h-9 shrink-0 rounded-full border border-red-800/20 bg-white px-3 text-[12.5px] font-semibold text-red-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white">Retry</button>
         </div>
       )}
       {config.views.length > 1 && (
         <div className="flex gap-1 overflow-x-auto p-2">
-          {config.views.map((item: any) => <button key={item.id} type="button" onClick={() => setViewId(item.id)} className={`min-h-9 whitespace-nowrap rounded-full px-3 text-[10px] font-bold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white ${item.id === view.id ? "bg-[#303839] text-white" : "bg-white text-[#303839]"}`}>{item.name}</button>)}
+          {config.views.map((item: any) => <button key={item.id} type="button" onClick={() => setViewId(item.id)} className={`min-h-9 whitespace-nowrap rounded-full px-3 text-[12.5px] font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white ${item.id === view.id ? "bg-[#303839] text-white" : "bg-white text-[#303839]"}`}>{item.name}</button>)}
         </div>
       )}
     </aside>

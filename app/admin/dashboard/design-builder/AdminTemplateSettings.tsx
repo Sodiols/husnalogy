@@ -66,7 +66,7 @@ function SettingStepper({ label, value, onCommit, minimum, maximum, step = 1 }: 
   return <EditableNumericStepper label={label} value={Number(value) || 0} minimum={minimum} maximum={maximum} step={step} largeStep={step < 1 ? step * 10 : 10} allowNegative={minimum === undefined || minimum < 0} allowDecimal={step < 1} onCommit={onCommit} />;
 }
 
-export default function AdminTemplateSettings({ template, onChange, productName, productId, productType, templateVersion }: any) {
+export default function AdminTemplateSettings({ template, onChange, productName, productId, productType }: any) {
   const t = template || {};
   const safe = t.safeArea || {};
   const bleed = t.bleed || {};
@@ -196,8 +196,7 @@ export default function AdminTemplateSettings({ template, onChange, productName,
       <div className="xl:col-span-2">
         <h3 className="font-display text-2xl text-[#303839]">Template settings</h3>
         <p className="mt-1 text-sm text-[#303839]/55">
-          Connected product: <span className="font-semibold text-[#303839]">{productName}</span> · Version{" "}
-          <span className="font-semibold text-[#303839]">{templateVersion || t.version || 1}</span>
+          Connected product: <span className="font-semibold text-[#303839]">{productName}</span>
         </p>
       </div>
 

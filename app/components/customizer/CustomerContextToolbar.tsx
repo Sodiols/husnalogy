@@ -104,20 +104,20 @@ export default function CustomerContextToolbar({
   const divider = <span className="mx-1 h-6 w-px shrink-0 bg-[#303839]/10" aria-hidden />;
   // Shared compact field styling. Numeric fields stay fully keyboard editable.
   const numericInput =
-    "h-7 w-full rounded-md border border-[#303839]/10 bg-[#F3F1EC] px-2 text-center text-xs font-bold tabular-nums text-[#303839] outline-none transition-colors hover:border-[#303839]/20 focus:border-[#303839]/60 focus:bg-white focus:ring-2 focus:ring-[#303839]/15";
+    "h-7 w-full rounded-md border border-[#303839]/10 bg-[#F8F6F1] px-2 text-center text-[13px] font-semibold tabular-nums text-[#1f2425] outline-none transition-colors hover:border-[#303839]/25 focus:border-[#303839] focus:bg-white focus:ring-2 focus:ring-[#303839]/15";
   const iconButton =
-    "grid h-9 w-9 shrink-0 cursor-pointer place-items-center rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white";
+    "grid h-9 w-9 shrink-0 cursor-pointer place-items-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white";
 
   return (
     <div
       data-customizer-text-interaction
-      className="pointer-events-auto flex max-w-full items-center gap-0.5 overflow-x-auto rounded-xl border border-[#303839]/8 bg-white px-1.5 py-1.5 shadow-[0_6px_24px_rgba(48,56,57,0.10)] no-scrollbar"
+      className="pointer-events-auto flex max-w-full items-center gap-0.5 overflow-x-auto rounded-2xl bg-white px-2 py-1.5 shadow-[0_4px_20px_rgba(48,56,57,0.12)] no-scrollbar"
       role="toolbar"
       aria-label="Text formatting"
     >
       {editingText && (
         <>
-          <span className="shrink-0 rounded-lg bg-[#303839] px-3 py-2 text-[10px] font-extrabold uppercase tracking-[0.11em] text-white">
+          <span className="shrink-0 whitespace-nowrap rounded-full bg-[#303839] px-3 py-1.5 text-[12.5px] font-semibold text-white">
             Editing text
           </span>
           {divider}
@@ -128,7 +128,8 @@ export default function CustomerContextToolbar({
           <button
             type="button"
             onClick={onEditText}
-            className="flex h-9 shrink-0 cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-lg bg-[#303839] px-3 text-xs font-bold text-white transition-colors hover:bg-[#414b4c] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white"
+            data-shape="round"
+            className="flex h-9 shrink-0 cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-full bg-[#303839] px-3.5 text-[13px] font-semibold text-white transition-colors hover:bg-[#414b4c] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white"
           >
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
               <path d="M12 20h9" />
@@ -205,6 +206,7 @@ export default function CustomerContextToolbar({
               (spec §13) — production would otherwise have no cut to render. */}
           <button
             type="button"
+            data-shape="round"
             aria-label="Italic"
             aria-pressed={italic}
             disabled={!capabilities.hasItalic}
@@ -234,11 +236,11 @@ export default function CustomerContextToolbar({
       )}
 
       {canSpacing && (
-        <EditableNumericStepper label="Letter spacing" value={Number(style.letterSpacing ?? 0)} minimum={LETTER_SPACING_RULES.minimum} maximum={LETTER_SPACING_RULES.maximum} step={LETTER_SPACING_RULES.step} largeStep={LETTER_SPACING_RULES.largeStep} allowNegative allowDecimal onCommit={(letterSpacing) => onStyleChange({ letterSpacing }, "letterSpacing")} showLabel showStepButtons={false} className="h-10 w-[76px] shrink-0 px-1" inputClassName={numericInput} />
+        <EditableNumericStepper label="Letter spacing" value={Number(style.letterSpacing ?? 0)} minimum={LETTER_SPACING_RULES.minimum} maximum={LETTER_SPACING_RULES.maximum} step={LETTER_SPACING_RULES.step} largeStep={LETTER_SPACING_RULES.largeStep} allowNegative allowDecimal onCommit={(letterSpacing) => onStyleChange({ letterSpacing }, "letterSpacing")} showLabel showStepButtons={false} className="h-10 w-[88px] shrink-0 px-1" inputClassName={numericInput} />
       )}
 
       {canLineHeight && (
-        <EditableNumericStepper label="Line height" value={lineHeight} minimum={LINE_HEIGHT_RULES.minimum} maximum={LINE_HEIGHT_RULES.maximum} step={LINE_HEIGHT_RULES.step} largeStep={LINE_HEIGHT_RULES.largeStep} allowNegative={false} allowDecimal onCommit={(lineHeight) => onStyleChange({ lineHeight }, "line-height")} showLabel showStepButtons={false} className="h-10 w-[76px] shrink-0 px-1" inputClassName={numericInput} />
+        <EditableNumericStepper label="Line height" value={lineHeight} minimum={LINE_HEIGHT_RULES.minimum} maximum={LINE_HEIGHT_RULES.maximum} step={LINE_HEIGHT_RULES.step} largeStep={LINE_HEIGHT_RULES.largeStep} allowNegative={false} allowDecimal onCommit={(lineHeight) => onStyleChange({ lineHeight }, "line-height")} showLabel showStepButtons={false} className="h-10 w-[88px] shrink-0 px-1" inputClassName={numericInput} />
       )}
 
     </div>

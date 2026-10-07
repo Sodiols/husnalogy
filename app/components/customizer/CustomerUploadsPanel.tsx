@@ -133,19 +133,19 @@ function PhotoLibrary({
   };
 
   return (
-    <div className="rounded-lg border border-[#303839]/12 p-3">
+    <div className="rounded-[10px] bg-[#F8F6F1] p-3">
       <div className="flex items-center justify-between gap-2">
-        <p className="text-sm font-semibold text-[#303839]">Your photo library</p>
+        <p className="text-[14px] font-bold text-[#1f2425]">Your photo library</p>
         <button
           type="button"
           onClick={() => setSort((current) => (current === "newest" ? "oldest" : "newest"))}
-          className="text-xs font-bold text-[#303839]/60 underline-offset-2 hover:underline"
+          className="cursor-pointer text-[12.5px] font-semibold text-[#303839]/75 underline-offset-2 hover:underline"
           aria-label={`Sort by ${sort === "newest" ? "oldest" : "newest"} first`}
         >
           {sort === "newest" ? "Newest first" : "Oldest first"}
         </button>
       </div>
-      <label className="mt-2 flex min-h-11 cursor-pointer items-center justify-center gap-2 rounded-full bg-[#303839] px-3 text-xs font-extrabold text-white transition hover:bg-[#434c4d]">
+      <label className="mt-2 flex min-h-11 cursor-pointer items-center justify-center gap-2 rounded-full bg-[#303839] px-3 text-[13px] font-semibold text-white transition hover:bg-[#434c4d]">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
           <path d="M12 16V4M7 9l5-5 5 5" />
           <path d="M5 14v5h14v-5" />
@@ -163,14 +163,14 @@ function PhotoLibrary({
           }}
         />
       </label>
-      <p className="mt-1 text-center text-[10px] text-[#303839]/45">Select several photos at once · JPG, PNG or WebP</p>
+      <p className="mt-1.5 text-center text-[12px] text-[#303839]/70">Select several photos at once · JPG, PNG or WebP</p>
       <input
         type="search"
         value={search}
         onChange={(e) => setSearch(e.target.value)}
         placeholder="Search by filename…"
         aria-label="Search your photos"
-        className="mt-2 w-full rounded-full border border-[#303839]/12 px-3 py-1.5 text-xs text-[#303839] outline-none placeholder:text-[#303839]/40 focus:border-[#303839]/35"
+        className="mt-2 h-10 w-full rounded-md border border-[#303839]/20 bg-white px-3 text-[13.5px] text-[#1f2425] outline-none placeholder:text-[#303839]/55 focus:border-[#303839] focus:ring-2 focus:ring-[#303839]/15"
       />
       {batch && (
         <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-cream" role="progressbar" aria-label="Photo upload progress" aria-valuemin={0} aria-valuemax={batch.total} aria-valuenow={batch.index}>
@@ -178,12 +178,12 @@ function PhotoLibrary({
         </div>
       )}
       {uploadError && (
-        <p className="mt-2 text-xs font-bold text-red-700" role="alert">
+        <p className="mt-2 text-[13px] font-semibold text-red-700" role="alert">
           {uploadError}
         </p>
       )}
       {message && (
-        <p className="mt-2 text-xs font-bold text-[#303839]/70" role="status">
+        <p className="mt-2 text-[13px] font-semibold text-[#303839]/70" role="status">
           {message}
         </p>
       )}
@@ -194,7 +194,7 @@ function PhotoLibrary({
           ))}
         </div>
       ) : assets.length === 0 ? (
-        <p className="mt-2 text-xs text-[#303839]/50">
+        <p className="mt-2 text-xs text-[#303839]/70">
           {search ? "No photos match your search." : "Photos you upload will appear here for reuse."}
         </p>
       ) : (
@@ -287,16 +287,16 @@ function PhotoCard({ field, layer, value, error, busyGlobal, onChange, onUploadP
 
   return (
     <div
-      className={`rounded-lg border p-3 transition ${selected ? "border-[#D4AF37] bg-[#D4AF37]/5" : "border-[#303839]/12"}`}
+      className={`rounded-[10px] p-3 transition ${selected ? "bg-[#D4AF37]/10 ring-[1.5px] ring-[#D4AF37]" : "bg-[#F8F6F1]"}`}
       onClick={onSelect}
     >
-      <p className="text-sm font-semibold text-[#303839]">
+      <p className="text-[14px] font-bold text-[#1f2425]">
         {field.label}
         {field.required && <span className="text-[#303839]"> *</span>}
       </p>
 
       {!url ? (
-        <label className="mt-2 flex h-28 cursor-pointer flex-col items-center justify-center gap-1 rounded-md border border-dashed border-[#303839]/25 bg-white text-xs font-bold text-[#303839]/60 transition hover:bg-[#303839]/5">
+        <label className="mt-2 flex h-28 cursor-pointer flex-col items-center justify-center gap-1 rounded-[10px] border-[1.5px] border-dashed border-[#303839]/30 bg-white text-[13px] font-semibold text-[#303839]/80 transition hover:border-[#303839]/60">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
             <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
             <path d="m17 8-5-5-5 5M12 3v12" />
@@ -321,7 +321,7 @@ function PhotoCard({ field, layer, value, error, busyGlobal, onChange, onUploadP
             </div>
             <div className="grid gap-1.5">
               {allowReplace && (
-                <label className="cursor-pointer rounded-full border border-[#303839]/15 bg-white px-3 py-1 text-center text-xs font-bold text-[#303839] hover:bg-[#303839]/5">
+                <label className="cursor-pointer rounded-full border-[1.5px] border-[#303839] bg-white px-3 py-1 text-center text-[12.5px] font-semibold text-[#303839] hover:bg-[#303839]/[0.05]">
                   {busy ? progressText || "Uploading…" : "Replace photo"}
                   <input
                     type="file"
@@ -338,7 +338,7 @@ function PhotoCard({ field, layer, value, error, busyGlobal, onChange, onUploadP
               <button
                 type="button"
                 onClick={() => onChange(null)}
-                className="rounded-full px-3 py-1 text-xs font-bold text-red-700 hover:bg-red-50"
+                className="rounded-full px-3 py-1 text-[13px] font-semibold text-red-700 hover:bg-red-50"
               >
                 Remove photo
               </button>
@@ -360,7 +360,7 @@ function PhotoCard({ field, layer, value, error, busyGlobal, onChange, onUploadP
 
           {allowReposition && (
             <div className="mt-2 flex items-center gap-2">
-              <span className="w-12 text-xs font-bold text-[#303839]/70">Move</span>
+              <span className="w-12 text-[13px] font-semibold text-[#303839]/70">Move</span>
               <div className="flex gap-1">
                 {[
                   { label: "Move left", dx: -NUDGE, dy: 0, d: "M15 18l-6-6 6-6" },
@@ -373,7 +373,7 @@ function PhotoCard({ field, layer, value, error, busyGlobal, onChange, onUploadP
                     type="button"
                     aria-label={btn.label}
                     onClick={() => nudge(btn.dx, btn.dy)}
-                    className="grid h-8 w-8 place-items-center rounded-md border border-[#303839]/12 text-[#303839] hover:bg-[#303839]/5"
+                    className="grid h-8 w-8 cursor-pointer place-items-center rounded-md border border-[#303839]/20 bg-white text-[#303839] hover:bg-[#EFEBE1]"
                   >
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                       <path d={btn.d} />
@@ -384,7 +384,7 @@ function PhotoCard({ field, layer, value, error, busyGlobal, onChange, onUploadP
               <button
                 type="button"
                 onClick={() => patch({ zoom: 1, offsetX: 0, offsetY: 0 })}
-                className="ml-auto text-xs font-bold text-[#303839]/60 underline-offset-2 hover:underline"
+                className="ml-auto cursor-pointer text-[12.5px] font-semibold text-[#303839]/75 underline-offset-2 hover:underline"
               >
                 Reset
               </button>
@@ -393,10 +393,10 @@ function PhotoCard({ field, layer, value, error, busyGlobal, onChange, onUploadP
         </div>
       )}
 
-      <p className="mt-2 text-[11px] text-[#303839]/45">JPG, PNG, or WebP · up to 15MB</p>
-      {field.helpText && <p className="mt-0.5 text-xs text-[#303839]/55">{field.helpText}</p>}
+      <p className="mt-2 text-[12px] text-[#303839]/70">JPG, PNG, or WebP · up to 15MB</p>
+      {field.helpText && <p className="mt-0.5 text-xs text-[#303839]/70">{field.helpText}</p>}
       {(uploadError || error) && (
-        <p className="mt-1 text-xs font-bold text-red-700" role="alert">
+        <p className="mt-1 text-[13px] font-semibold text-red-700" role="alert">
           {uploadError || error}
         </p>
       )}
@@ -445,7 +445,7 @@ export default function CustomerUploadsPanel({
   const hasSelectedUserFrame = Boolean(selectedUserFrame?.isUserLayer && (selectedUserFrame.type === "frame" || selectedUserFrame.type === "image"));
 
   if (!photoEntries.length && !hasSelectedGridSlot && !hasSelectedUserFrame) {
-    return <p className="p-5 text-sm text-[#303839]/55">This design has no photo areas to fill.</p>;
+    return <p className="p-5 text-sm text-[#303839]/70">This design has no photo areas to fill.</p>;
   }
 
   // Reusing a library photo fills the selected photo area, else the first
@@ -485,16 +485,16 @@ export default function CustomerUploadsPanel({
   return (
     <div className="grid gap-3 p-4">
       {hasSelectedGridSlot && (
-        <div className="rounded-lg border border-[#D4AF37]/40 bg-[#D4AF37]/8 p-3 text-xs text-[#303839]">
-          <p className="font-extrabold">Photo grid slot selected</p>
-          <p className="mt-1 text-[#303839]/60">Choose a library photo below, drag one onto a slot, or use Replace above the canvas.</p>
+        <div className="rounded-[10px] bg-[#D4AF37]/10 p-3 text-[13px] text-[#1f2425]">
+          <p className="font-semibold">Photo grid slot selected</p>
+          <p className="mt-1 text-[#303839]/70">Choose a library photo below, drag one onto a slot, or use Replace above the canvas.</p>
         </div>
       )}
       {hasSelectedUserFrame && (
-        <div className="grid gap-2 rounded-lg border border-[#D4AF37]/40 bg-[#D4AF37]/8 p-3 text-xs text-[#303839]">
-          <p className="font-extrabold">Customer frame selected</p>
-          <p className="text-[#303839]/60">Choose a library photo or upload a new one.</p>
-          <label className="flex min-h-11 cursor-pointer items-center justify-center rounded-lg bg-[#303839] px-3 font-bold text-white">
+        <div className="grid gap-2 rounded-[10px] bg-[#D4AF37]/10 p-3 text-[13px] text-[#1f2425]">
+          <p className="font-semibold">Customer frame selected</p>
+          <p className="text-[#303839]/70">Choose a library photo or upload a new one.</p>
+          <label className="flex min-h-11 cursor-pointer items-center justify-center rounded-full bg-[#303839] px-3 font-semibold text-white hover:bg-[#434c4d]">
             Upload photo
             <input type="file" accept="image/jpeg,image/png,image/webp" className="sr-only" onChange={async (event) => { const file = event.target.files?.[0]; if (file && onPickUserFrame) { const uploaded = await onUploadPhoto(file); onPickUserFrame(uploaded); setLibraryRefresh((current) => current + 1); } event.target.value = ""; }} />
           </label>

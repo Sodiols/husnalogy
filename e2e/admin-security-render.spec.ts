@@ -36,7 +36,7 @@ test("administrator creates V2 objects, groups, guides, preflights and publishes
   const confirm = page.getByRole("dialog").getByRole("button", { name: /Publish anyway|Publish|Update Published/ }).last();
   await expect(confirm).toBeEnabled();
   await confirm.click();
-  await expect(page.getByText(/Published as version|Saved/i).first()).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByText(/Published\.|Saved/i).first()).toBeVisible({ timeout: 30_000 });
 });
 
 test("Customer B cannot access Customer A customization or render it", async ({ page }) => {

@@ -27,6 +27,15 @@ describe("the studio shell keeps the canvas the hero", () => {
     expect(shell).toContain("w-[clamp(280px,22vw,340px)]");
   });
 
+  it("keeps the side panel slot one width so switching panels never moves the artboard", () => {
+    expect(shell).toContain('<div className="flex min-h-0 w-[clamp(280px,22vw,340px)] shrink-0" data-admin-side-panel-slot>');
+  });
+
+  it("publishes in one step, with no minor / major choice", () => {
+    expect(shell).not.toContain("Minor Update");
+    expect(shell).not.toContain("Major Update");
+  });
+
   it("clamps the inspector and caps it well under half the viewport", () => {
     expect(shell).toContain("w-[clamp(300px,21vw,360px)]");
   });

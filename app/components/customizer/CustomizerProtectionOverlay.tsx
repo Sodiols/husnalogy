@@ -33,7 +33,7 @@ export default function CustomizerProtectionOverlay({ covered }: { covered: bool
       {covered && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center bg-white print:hidden">
           <div className="px-6 text-center">
-            <p className="font-display text-2xl text-[#303839]">Protected preview</p>
+            <p className="text-[19px] font-semibold text-[#1f2425]">Protected preview</p>
             <p className="mt-2 text-sm text-[#303839]/60">
               Your design is hidden while the window is inactive.
             </p>

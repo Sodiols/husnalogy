@@ -19,7 +19,7 @@ import { resolveTextEditorKeyAction } from "@/lib/customizer/v2/text-editing";
 // finishes editing this field (and never inserts a line break), while a plain
 // Enter in a multiline field stays a real line break.
 const inputClass =
-  "w-full rounded-md border border-[#303839]/15 bg-white px-3 py-2.5 text-sm text-[#303839] outline-none transition focus:border-[#303839]/60";
+  "w-full rounded-md border border-[#303839]/20 bg-white px-3 py-2.5 text-[14px] text-[#1f2425] outline-none transition focus:border-[#303839] focus:ring-2 focus:ring-[#303839]/15";
 
 // Fields shown here are the ones connected to a visible, customer-editable
 // layer on an enabled page. Image fields are summarized with a link to the
@@ -90,7 +90,7 @@ function TextField({
   const overLimit = editor.maxLength > 0 && textValue.length > editor.maxLength;
   const count =
     editor.maxLength > 0 && typeof value === "string" ? (
-      <span className={`text-[11px] font-bold ${overLimit ? "text-red-700" : "text-[#303839]/45"}`}>
+      <span className={`text-[12.5px] font-semibold ${overLimit ? "text-red-700" : "text-[#303839]/70"}`}>
         {textValue.length}/{editor.maxLength}
       </span>
     ) : null;
@@ -126,10 +126,10 @@ function TextField({
   return (
     <div
       data-field-anchor={field.id}
-      className={`rounded-lg border p-3 transition ${highlighted ? "border-[#D4AF37] bg-[#D4AF37]/5" : "border-transparent"}`}
+      className={`rounded-[10px] p-3 transition ${highlighted ? "bg-[#D4AF37]/10 ring-[1.5px] ring-[#D4AF37]" : "bg-[#F8F6F1]"}`}
     >
       <div className="mb-1.5 flex items-baseline justify-between gap-2">
-        <label htmlFor={`cz-field-${field.id}`} className="block text-sm font-semibold text-[#303839]">
+        <label htmlFor={`cz-field-${field.id}`} className="block text-[12.5px] font-semibold text-[#1f2425]">
           {field.label}
           {field.required && (
             <span className="text-[#303839]" aria-label="required">
@@ -180,7 +180,7 @@ function TextField({
       ) : (
         <input {...shared} ref={inputRef as any} type={customerFieldInputType(editor)} className={inputClass} />
       )}
-      <p id={`cz-field-${field.id}-hint`} className="mt-1 text-xs text-[#303839]/55">
+      <p id={`cz-field-${field.id}-hint`} className="mt-1 text-xs text-[#303839]/70">
         {field.helpText}
         {field.helpText && editor.multiline ? " " : ""}
         {editor.multiline && (
@@ -191,17 +191,17 @@ function TextField({
         )}
       </p>
       {atLineLimit && (
-        <p className="mt-1 text-xs font-bold text-[#303839]/70" role="status">
+        <p className="mt-1 text-[13px] font-semibold text-[#303839]/70" role="status">
           This design holds {editor.maxLines} {editor.maxLines === 1 ? "line" : "lines"}.
         </p>
       )}
       {keyboardMessage && (
-        <p className="mt-1 text-xs font-bold text-[#8a701d]" role="status" aria-live="polite">
+        <p className="mt-1 text-[13px] font-semibold text-[#8a701d]" role="status" aria-live="polite">
           {keyboardMessage}
         </p>
       )}
       {error && (
-        <p className="mt-1 text-xs font-bold text-red-700" role="alert">
+        <p className="mt-1 text-[13px] font-semibold text-red-700" role="alert">
           {error}
         </p>
       )}
@@ -258,7 +258,7 @@ export default function CustomerEditPanel({
 
   if (!entries.length) {
     return (
-      <p className="p-5 text-sm text-[#303839]/55">
+      <p className="p-5 text-sm text-[#303839]/70">
         This design has no editable details. Continue to Options when you are ready.
       </p>
     );
@@ -271,19 +271,19 @@ export default function CustomerEditPanel({
         if (!pageEntries.length) return null;
         return (
           <section key={page.id} aria-label={`${page.label} details`}>
-            <h3 className="mb-2 flex items-center justify-between font-display text-xl text-[#303839]">
+            <h3 className="mb-2.5 flex items-center justify-between text-[14px] font-bold text-[#1f2425]">
               {page.label}
               {pages.length > 1 && page.id !== activePage && (
                 <button
                   type="button"
                   onClick={() => onFocusPage?.(page.id)}
-                  className="rounded-md px-1 text-xs font-bold text-[#303839]/50 underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white"
+                  className="rounded-md px-1 text-[13px] font-semibold text-[#303839]/70 underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white"
                 >
                   View page
                 </button>
               )}
             </h3>
-            <div className="grid gap-1.5">
+            <div className="grid gap-2.5">
               {pageEntries.map(({ field, layer }) => {
                 // One shared resolver decides the control, the multiline rule
                 // and the limits — the same rule the server validates with.
@@ -297,29 +297,30 @@ export default function CustomerEditPanel({
                       ref={(el) => {
                         inputRefs.current[field.id] = el;
                       }}
-                      className={`rounded-lg border p-3 transition ${
-                        selectedLayerId === layer.id ? "border-[#D4AF37] bg-[#D4AF37]/5" : "border-[#303839]/10"
+                      className={`rounded-[10px] p-3 transition ${
+                        selectedLayerId === layer.id ? "bg-[#D4AF37]/10 ring-[1.5px] ring-[#D4AF37]" : "bg-[#F8F6F1]"
                       }`}
                     >
-                      <p className="text-sm font-semibold text-[#303839]">
+                      <p className="text-[12.5px] font-semibold text-[#1f2425]">
                         {field.label}
                         {field.required && <span className="text-[#303839]"> *</span>}
                       </p>
                       <div className="mt-1.5 flex items-center justify-between gap-2">
-                        <span className="text-xs text-[#303839]/55">{hasPhoto ? "Photo added" : "No photo yet"}</span>
+                        <span className="text-xs text-[#303839]/70">{hasPhoto ? "Photo added" : "No photo yet"}</span>
                         <button
                           type="button"
                           onClick={() => {
                             onSelectLayer?.(layer.id);
                             onOpenUploads?.();
                           }}
-                          className="min-h-11 rounded-full border border-[#303839]/15 px-3 py-1 text-xs font-bold text-[#303839] hover:bg-[#303839]/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white"
+                          data-shape="round"
+                          className="inline-flex min-h-10 shrink-0 cursor-pointer items-center rounded-full border-[1.5px] border-[#303839] bg-white px-3.5 text-[12.5px] font-semibold text-[#303839] transition-colors hover:bg-[#303839]/[0.05] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white"
                         >
                           {hasPhoto ? "Edit photo" : "Upload photo"}
                         </button>
                       </div>
                       {errors[field.id] && (
-                        <p className="mt-1 text-xs font-bold text-red-700" role="alert">
+                        <p className="mt-1 text-[13px] font-semibold text-red-700" role="alert">
                           {errors[field.id]}
                         </p>
                       )}

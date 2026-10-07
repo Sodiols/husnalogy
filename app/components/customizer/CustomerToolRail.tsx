@@ -139,7 +139,7 @@ export default function CustomerToolRail({ tools, activeTool, onSelect, orientat
       aria-orientation={vertical ? "vertical" : "horizontal"}
       className={
         vertical
-          ? "flex w-[76px] shrink-0 flex-col items-stretch gap-0.5 overflow-y-auto border-r border-[#303839]/8 bg-white py-2 [scrollbar-width:none]"
+          ? "flex w-[76px] shrink-0 flex-col items-stretch gap-0.5 overflow-y-auto rounded-2xl bg-white px-1.5 py-3 shadow-[0_4px_20px_rgba(48,56,57,0.12)] [scrollbar-width:none]"
           : "flex w-full items-stretch gap-1 overflow-x-auto border-t border-[#303839]/8 bg-white px-2 py-1.5 [scrollbar-width:none]"
       }
     >
@@ -152,15 +152,15 @@ export default function CustomerToolRail({ tools, activeTool, onSelect, orientat
             aria-label={tool.label}
             aria-pressed={active}
             onClick={() => onSelect(tool.id)}
-            className={`group relative flex flex-col items-center justify-center gap-1.5 rounded-xl text-[10px] font-semibold leading-none transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white ${
+            className={`group relative flex cursor-pointer flex-col items-center justify-center gap-1.5 rounded-xl text-[11.5px] font-medium leading-none transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white ${
               active
-                ? "bg-[#F3F1EC] text-[#303839]"
-                : "text-[#303839]/50 hover:bg-[#303839]/5 hover:text-[#303839]"
-            } ${vertical ? "mx-2 min-h-[60px] px-1 py-2.5" : "min-h-[56px] min-w-[68px] flex-1 px-1 py-2"}`}
+                ? "bg-[#F8F6F1] text-[#303839]"
+                : "text-[#303839]/75 hover:bg-[#F8F6F1] hover:text-[#303839]"
+            } ${vertical ? "min-h-[60px] px-1 py-2.5" : "min-h-[56px] min-w-[68px] flex-1 px-1 py-2"}`}
           >
             {/* Selected marker: a quiet accent rule, no glow */}
             {active && vertical && (
-              <span className="absolute left-[-8px] top-1/2 h-6 w-[3px] -translate-y-1/2 rounded-full bg-[#D4AF37]" aria-hidden />
+              <span className="absolute left-[-6px] top-1/2 h-6 w-[3px] -translate-y-1/2 rounded-full bg-[#D4AF37]" aria-hidden />
             )}
             {active && !vertical && (
               <span className="absolute inset-x-3 top-[-6px] h-[3px] rounded-full bg-[#D4AF37]" aria-hidden />

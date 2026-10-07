@@ -201,7 +201,7 @@ export default function CustomerCustomizerHeader({
         </button>
         <span className="hidden h-6 w-px shrink-0 bg-[#303839]/10 md:block" aria-hidden />
         <div className="hidden min-w-0 sm:block">
-          <h1 className="min-w-0 truncate font-display text-[19px] leading-tight text-[#303839]">{productTitle}</h1>
+          <h1 className="min-w-0 truncate text-[15px] font-bold leading-tight text-[#1f2425]">{productTitle}</h1>
           <div className="flex items-center gap-2 text-[11px] leading-tight">
             {activePageLabel && <span className="shrink-0 font-semibold text-[#303839]/45">{activePageLabel}</span>}
             {activePageLabel && (
@@ -259,7 +259,7 @@ export default function CustomerCustomizerHeader({
 
       {/* Mobile identity: product + save status, between Close and the actions. */}
       <div className="min-w-0 flex-1 sm:hidden">
-        <p className="truncate font-display text-[15px] leading-tight text-[#303839]">{productTitle}</p>
+        <p className="truncate text-[14px] font-bold leading-tight text-[#1f2425]">{productTitle}</p>
         <p
           className={`truncate text-[10px] font-semibold leading-tight ${
             saveStatus === "error" ? "text-red-600" : "text-[#303839]/50"

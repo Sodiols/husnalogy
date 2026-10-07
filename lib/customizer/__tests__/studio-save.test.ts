@@ -37,7 +37,7 @@ describe("saveThenPublish", () => {
       publish,
     });
     expect(publish).toHaveBeenCalledWith("product-new", "2026-10-04T07:00:00.123456+00:00");
-    expect(outcome).toMatchObject({ status: "published", message: "Published as Version 2.001." });
+    expect(outcome).toMatchObject({ status: "published", message: "Published. New customers now see this design." });
   });
 
   it("reports a saved draft whose publication failed truthfully", async () => {

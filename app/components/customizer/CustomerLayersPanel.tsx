@@ -106,8 +106,8 @@ export default function CustomerLayersPanel({ layers, selectedIds, selectedGridS
     const canDuplicate = layer.isUserLayer || Boolean(permissions.duplicate);
     const canReorder = !locked && !layer.customerInteractionDisabled
       && (layer.isUserLayer || Boolean(permissions.changeLayerOrder));
-    const selectedSurface = selected ? "border-[#303839] bg-[#303839] text-white" : "border-[#303839]/10 bg-white text-[#303839]";
-    const quietButton = selected ? "hover:bg-white/10" : "hover:bg-[#303839]/5";
+    const selectedSurface = selected ? "border-[#303839] bg-[#303839] text-white" : "border-transparent bg-[#F8F6F1] text-[#1f2425]";
+    const quietButton = selected ? "hover:bg-white/10" : "hover:bg-white";
     return (
       <div key={layer.id} className="grid gap-1.5">
         <article
@@ -125,7 +125,7 @@ export default function CustomerLayersPanel({ layers, selectedIds, selectedGridS
           }}
           onDragLeave={() => setDropTarget((current) => (current?.id === layer.id ? null : current))}
           onDrop={(event) => onDrop(event, layer)}
-          className={`relative grid min-w-0 gap-1.5 rounded-xl border p-1.5 transition ${selectedSurface} ${draggingId === layer.id ? "opacity-45" : "opacity-100"}`}
+          className={`relative grid min-w-0 gap-1.5 rounded-[10px] border p-1.5 transition ${selectedSurface} ${draggingId === layer.id ? "opacity-45" : "opacity-100"}`}
           style={{ marginLeft: depth * 14 }}
         >
           {dropTarget?.id === layer.id && (
@@ -142,12 +142,12 @@ export default function CustomerLayersPanel({ layers, selectedIds, selectedGridS
                 event.dataTransfer.effectAllowed = "move";
                 event.dataTransfer.setData("text/plain", layer.id);
               }}
-              className={`grid h-11 w-5 shrink-0 place-items-center text-xs font-black ${canReorder ? "cursor-grab active:cursor-grabbing" : "opacity-25"}`}
+              className={`grid h-11 w-5 shrink-0 place-items-center text-[13px] font-semibold ${canReorder ? "cursor-grab active:cursor-grabbing" : "opacity-25"}`}
               title={canReorder ? "Drag to reorder" : "Layer order is locked"}
               aria-hidden
             >⋮⋮</span>
             {expandable ? (
-              <button type="button" aria-label={`${isCollapsed ? "Expand" : "Collapse"} ${layer.name || layer.type}`} aria-expanded={!isCollapsed} onClick={() => toggleCollapsed(layer.id)} className={`grid h-11 w-8 shrink-0 place-items-center rounded-lg text-sm font-black focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white ${quietButton}`}>
+              <button type="button" aria-label={`${isCollapsed ? "Expand" : "Collapse"} ${layer.name || layer.type}`} aria-expanded={!isCollapsed} onClick={() => toggleCollapsed(layer.id)} className={`grid h-11 w-8 shrink-0 place-items-center rounded-lg text-sm font-bold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white ${quietButton}`}>
                 {isCollapsed ? "+" : "-"}
               </button>
             ) : <span className="w-2 shrink-0" />}
@@ -168,25 +168,25 @@ export default function CustomerLayersPanel({ layers, selectedIds, selectedGridS
               }}
               className="flex min-h-11 min-w-0 flex-1 items-center gap-2 rounded-lg text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white"
             >
-              <span className={`grid h-9 w-9 shrink-0 place-items-center rounded-lg text-[8px] font-black ${selected ? "bg-white/12" : "bg-white"}`}>{typeLabel[layer.type] || "OB"}</span>
+              <span className={`grid h-9 w-9 shrink-0 place-items-center rounded-md text-[9px] font-bold ${selected ? "bg-white/12" : "bg-white"}`}>{typeLabel[layer.type] || "OB"}</span>
               <span className="min-w-0 flex-1">
                 {renaming === layer.id ? (
                   <input autoFocus value={name} onChange={(event) => setName(event.target.value)} onBlur={() => commit(layer)} onKeyDown={(event) => { if (event.key === "Enter") commit(layer); if (event.key === "Escape") setRenaming(null); }} onClick={(event) => event.stopPropagation()} className="h-9 w-full rounded-md bg-white px-2 text-xs text-[#303839]" aria-label="Layer name" />
-                ) : <span className="block truncate text-xs font-bold">{layer.name || `Customer ${layer.type}`}</span>}
-                <span className={`block truncate text-[9px] font-semibold ${selected ? "text-white/60" : "text-[#303839]/45"}`}>
+                ) : <span className="block truncate text-[13px] font-semibold">{layer.name || `Customer ${layer.type}`}</span>}
+                <span className={`block truncate text-[11.5px] ${selected ? "text-white/70" : "text-[#303839]/70"}`}>
                   {layer.hidden ? "Hidden" : layer.isUserLayer ? locked ? "Customer created · locked" : "Customer created" : locked ? "Admin layer · position locked" : adminLocked ? "Admin lock · customer editable" : "Admin layer · editable"}
                 </span>
               </span>
             </button>
           </div>
           <div className={`grid grid-cols-3 gap-1 border-t pt-1 ${selected ? "border-white/10" : "border-[#303839]/8"}`}>
-            {canHide ? <button type="button" aria-label={layer.hidden ? "Show layer" : "Hide layer"} onClick={() => onToggleVisibility(layer.id, !layer.hidden)} className={`min-h-11 rounded-lg px-1 text-[9px] font-bold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white ${quietButton}`}>{layer.hidden ? "Show" : "Hide"}</button> : <span />}
-            {layer.isUserLayer ? <button type="button" aria-label={locked ? "Unlock layer" : "Lock layer"} onClick={() => onToggleLock(layer.id, !locked)} className={`min-h-11 rounded-lg px-1 text-[9px] font-bold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white ${quietButton}`}>{locked ? "Unlock" : "Lock"}</button> : <span />}
-            {canDuplicate ? <button type="button" aria-label="Duplicate layer" onClick={() => onDuplicate(layer.id)} className={`min-h-11 rounded-lg px-1 text-[9px] font-bold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white ${quietButton}`}>Copy</button> : <span />}
+            {canHide ? <button type="button" aria-label={layer.hidden ? "Show layer" : "Hide layer"} onClick={() => onToggleVisibility(layer.id, !layer.hidden)} className={`min-h-11 rounded-lg px-1 text-[12.5px] font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white ${quietButton}`}>{layer.hidden ? "Show" : "Hide"}</button> : <span />}
+            {layer.isUserLayer ? <button type="button" aria-label={locked ? "Unlock layer" : "Lock layer"} onClick={() => onToggleLock(layer.id, !locked)} className={`min-h-11 rounded-lg px-1 text-[12.5px] font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white ${quietButton}`}>{locked ? "Unlock" : "Lock"}</button> : <span />}
+            {canDuplicate ? <button type="button" aria-label="Duplicate layer" onClick={() => onDuplicate(layer.id)} className={`min-h-11 rounded-lg px-1 text-[12.5px] font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white ${quietButton}`}>Copy</button> : <span />}
           </div>
         </article>
         {!isCollapsed && layer.type === "grid" && (layer.slots || []).map((slot: any, index: number) => (
-          <button key={slot.id} type="button" aria-pressed={selectedGridSlotId === slot.id} onClick={() => { onSelectionChange(layer.id, false); onGridSlotSelect?.(layer.id, slot.id); }} className={`ml-7 flex min-h-11 items-center gap-2 rounded-lg border px-3 text-left text-[10px] font-bold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white ${selectedGridSlotId === slot.id ? "border-[#D4AF37] bg-white text-[#303839]" : "border-[#303839]/8 bg-white text-[#303839]/60"}`} style={{ marginLeft: 28 + depth * 14 }}>
+          <button key={slot.id} type="button" aria-pressed={selectedGridSlotId === slot.id} onClick={() => { onSelectionChange(layer.id, false); onGridSlotSelect?.(layer.id, slot.id); }} className={`ml-7 flex min-h-11 items-center gap-2 rounded-lg border px-3 text-left text-[12.5px] font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white ${selectedGridSlotId === slot.id ? "border-[#D4AF37] bg-white text-[#303839]" : "border-[#303839]/8 bg-white text-[#303839]/60"}`} style={{ marginLeft: 28 + depth * 14 }}>
             <span className="grid h-7 w-7 place-items-center rounded-md bg-white">{index + 1}</span>
             <span>{slot.src || slot.assetId ? `Photo slot ${index + 1}` : `Empty slot ${index + 1}`}</span>
           </button>
@@ -200,16 +200,16 @@ export default function CustomerLayersPanel({ layers, selectedIds, selectedGridS
   return (
     <div className="grid gap-3 p-4" aria-label="Customer layers">
       <div>
-        <label htmlFor="customer-layer-search" className="mb-1.5 block text-[10px] font-extrabold uppercase tracking-[0.12em] text-[#303839]/50">Find a layer</label>
+        <label htmlFor="customer-layer-search" className="mb-1.5 block text-[12.5px] font-semibold text-[#303839]/80">Find a layer</label>
         <div className="relative">
-          <svg className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[#303839]/40" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden><circle cx="11" cy="11" r="7" /><path d="m20 20-3.4-3.4" /></svg>
-          <input id="customer-layer-search" type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search name or type" className="h-11 w-full border border-[#303839]/12 bg-white pl-9 pr-12 text-xs font-semibold text-[#303839] outline-none transition placeholder:text-[#303839]/35 focus:border-[#303839]/60 focus:ring-2 focus:ring-[#303839]/15" />
-          <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[9px] font-extrabold text-[#303839]/40">{visibleLayers.length}</span>
+          <svg className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[#303839]/70" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden><circle cx="11" cy="11" r="7" /><path d="m20 20-3.4-3.4" /></svg>
+          <input id="customer-layer-search" type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search name or type" className="h-10 w-full rounded-md border border-[#303839]/20 bg-white pl-9 pr-12 text-[13.5px] text-[#1f2425] outline-none transition placeholder:text-[#303839]/55 focus:border-[#303839] focus:ring-2 focus:ring-[#303839]/15" />
+          <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[12.5px] font-semibold text-[#303839]/70">{visibleLayers.length}</span>
         </div>
       </div>
-      <p className="text-[10px] leading-4 text-[#303839]/45">Drag unlocked layers to reorder. Double-click a customer layer name to rename it.</p>
+      <p className="text-[12px] leading-5 text-[#303839]/70">Drag unlocked layers to reorder. Double-click a customer layer name to rename it.</p>
       <div className="grid gap-1.5">{roots.map((layer) => renderLayer(layer))}</div>
-      {!visibleLayers.length && <p className="rounded-xl bg-white p-4 text-xs leading-5 text-[#303839]/55">{query ? "No customer-visible layers match this search." : "This template has no customer-visible layers on this page."}</p>}
+      {!visibleLayers.length && <p className="rounded-[10px] bg-[#F8F6F1] p-4 text-[13px] leading-5 text-[#303839]/70">{query ? "No customer-visible layers match this search." : "This template has no customer-visible layers on this page."}</p>}
     </div>
   );
 }

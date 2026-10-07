@@ -98,7 +98,7 @@ export async function saveThenPublish(deps: {
     status: "published",
     save,
     publish,
-    message: `Published as Version ${publish.displayVersion}.`,
+    message: "Published. New customers now see this design.",
   };
 }
 

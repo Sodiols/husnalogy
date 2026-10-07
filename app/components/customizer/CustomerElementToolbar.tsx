@@ -23,11 +23,11 @@ export default function CustomerElementToolbar({ layer, onPatch, palette = [] }:
 
   return (
     <div
-      className="pointer-events-auto flex max-w-full items-center gap-1 overflow-x-auto rounded-full border border-[#303839]/12 bg-white px-2 py-1.5 shadow-[0_6px_24px_rgba(48,56,57,0.14)] no-scrollbar"
+      className="pointer-events-auto flex max-w-full items-center gap-1 overflow-x-auto rounded-2xl bg-white px-2 py-1.5 shadow-[0_4px_20px_rgba(48,56,57,0.12)] no-scrollbar"
       role="toolbar"
       aria-label="Element options"
     >
-      <span className="whitespace-nowrap px-1 text-[10px] font-bold uppercase tracking-wide text-[#303839]/50">Element</span>
+      <span className="whitespace-nowrap px-1 text-[12.5px] font-semibold text-[#303839]/80">Element</span>
 
       {recolourable && (
         <div role="group" aria-label="Element colour" className="flex shrink-0 items-center gap-1">

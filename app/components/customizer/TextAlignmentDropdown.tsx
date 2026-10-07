@@ -155,7 +155,7 @@ export default function TextAlignmentDropdown({
           </div>
           {growth && onGrowthChange && (
             <div role="group" aria-label="Text growth" className="mt-2 border-t border-[#303839]/8 pt-2">
-              <p className="px-1 pb-1 text-[10px] font-bold uppercase tracking-[0.12em] text-[#303839]/50">Text growth</p>
+              <p className="px-1 pb-1 text-[12.5px] font-semibold text-[#303839]/80">Text growth</p>
               <div className="grid grid-cols-3 gap-1">
                 {TEXT_GROWTH_OPTIONS.map((option) => {
                   const active = growth === option.value;

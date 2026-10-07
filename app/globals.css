@@ -479,11 +479,18 @@ textarea.input-bare {
 /* Defaults live in the base layer: unlayered CSS would beat every Tailwind
    utility and shared component class, whatever its specificity. */
 @layer base {
-  /* Breathing room for fields that don't set their own padding. */
-  input,
+  /* Breathing room for fields that don't set their own padding. Never on a
+     range slider: Chrome draws its track across the padding but keeps the
+     thumb inside it, so a padded slider's thumb stops short of both ends —
+     100% looked like ~95% and 0% like ~5%. */
+  input:not([type="range"]),
   textarea,
   select {
     padding: 0.6rem 0.85rem;
+  }
+
+  input[type="range"] {
+    padding: 0;
   }
 
   /* Consistent keyboard focus across the whole site; components and

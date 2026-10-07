@@ -308,7 +308,7 @@ export default function InlineCanvasTextEditor({
       <div className="mb-2 flex items-center justify-between gap-3">
         <label
           htmlFor="customizer-inline-text-editor"
-          className="text-[11px] font-extrabold uppercase tracking-[0.12em] text-[#303839]/65"
+          className="text-[12.5px] font-semibold text-[#1f2425]"
         >
           Edit your text
         </label>

@@ -146,6 +146,36 @@ test.describe("Layers panel", () => {
     await expect.poll(() => rowLabels(page)).toEqual(["hello", "wedding", "[picture]"]);
     await expect(sidePanel(page, "layers").getByRole("button", { name: "Show hello" })).toBeVisible();
   });
+
+  test("any row drags to a new place: the passed rows slide aside live, the drop restacks, Undo restores", async ({ page }) => {
+    await openStudio(page);
+    await openSidePanel(page, "Layers");
+    await expect.poll(() => rowLabels(page)).toEqual(["wedding", "[picture]"]);
+
+    // Press on the middle of the picture row (not a grip) and drag it up past the text row.
+    const picture = rows(page).nth(1);
+    const text = rows(page).nth(0);
+    const from = (await picture.boundingBox())!;
+    const to = (await text.boundingBox())!;
+    await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2 - 20, { steps: 4 });
+    await expect(picture).toHaveAttribute("data-dragging", "true");
+    await page.mouse.move(from.x + from.width / 2, to.y + 4, { steps: 10 });
+    // Before the drop, the text row has already slid down out of the way.
+    await expect.poll(async () => (await text.boundingBox())!.y).toBeGreaterThan(to.y + 20);
+    await page.mouse.up();
+
+    await expect.poll(() => rowLabels(page)).toEqual(["[picture]", "wedding"]);
+    await expect(rows(page).locator("[data-dragging]")).toHaveCount(0);
+    // The drag did not also count as a click on the dropped row.
+    await page.keyboard.press("Control+z");
+    await expect.poll(() => rowLabels(page)).toEqual(["wedding", "[picture]"]);
+
+    // A plain click still selects instead of dragging.
+    await rows(page).nth(0).getByRole("button", { name: "Text: wedding" }).click();
+    await expect(rows(page).nth(0)).toHaveAttribute("data-selected", "true");
+  });
 });
 
 test.describe("Pages panel", () => {

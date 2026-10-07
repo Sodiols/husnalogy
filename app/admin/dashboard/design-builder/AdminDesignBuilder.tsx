@@ -1723,7 +1723,6 @@ export default function AdminDesignBuilder({
         productName={productName}
         statusChips={statusChips}
         saveStatusLabel={studioBusy === "publishing" ? "Publishing…" : saving || studioBusy ? "Saving…" : ""}
-        publicVersion={currentDisplayVersion}
         tab={tab}
         onTabChange={setTab}
         canUndo={undoStack.current.length > 0}
@@ -1773,12 +1772,16 @@ export default function AdminDesignBuilder({
             {/* Left: the floating tool rail and the one side panel it opens. */}
             <div className="relative flex min-h-0 shrink-0 gap-3 bg-[#F3F1EC] py-3 pl-3">
               <AdminToolRail activePanel={sidePanel} onSelect={onRailSelect} />
+              {/* The panel slot keeps one width whether a panel is open, closed or
+                  the narrow Pages strip, so the canvas area — and the artboard's
+                  position and fit — never change when panels are switched. */}
+              <div className="flex min-h-0 w-[clamp(280px,22vw,340px)] shrink-0" data-admin-side-panel-slot>
               {sidePanel && (
                 <aside
                   data-admin-side-panel={sidePanel}
                   aria-label={SIDE_PANEL_TITLES[sidePanel]}
-                  // Pages is a narrow strip of page cards; every other panel is a full side panel.
-                  className={`flex min-h-0 flex-col overflow-hidden rounded-2xl bg-white shadow-[0_4px_20px_rgba(48,56,57,0.12)] ${sidePanel === "pages" ? "w-[188px]" : "w-[clamp(280px,22vw,340px)]"}`}
+                  // Pages is a narrow strip of page cards; every other panel fills the slot.
+                  className={`flex min-h-0 flex-col overflow-hidden rounded-2xl bg-white shadow-[0_4px_20px_rgba(48,56,57,0.12)] ${sidePanel === "pages" ? "w-[188px]" : "w-full"}`}
                 >
                   {sidePanel !== "elements" && sidePanel !== "icons" && (
                     <div className="flex shrink-0 items-center justify-between px-4 pb-2 pt-4">
@@ -1895,6 +1898,7 @@ export default function AdminDesignBuilder({
                   </div>
                 </aside>
               )}
+              </div>
             </div>
 
             <main className="relative min-h-0 min-w-[420px] flex-1 bg-[#F3F1EC]">
@@ -2128,43 +2132,37 @@ export default function AdminDesignBuilder({
               productName={productName}
               productId={product?.id}
               productType={product?.productType}
-              templateVersion={currentDisplayVersion}
             />
-            {/* Version history (spec §19) */}
+            {/* Publishing (spec §19): what is live, and when it was published. */}
             <div className="mx-auto w-full max-w-7xl px-4 pb-4 md:px-6 2xl:px-8">
-              <section className="rounded-lg border border-[#303839]/10 bg-white p-4">
-                <h4 className="text-[11px] font-extrabold uppercase tracking-wide text-[#303839]/70">Customizer publishing</h4>
-                <p className="mt-1 text-xs text-[#303839]/55">
-                  Publishing freezes an immutable snapshot. Existing customer designs, cart items, and orders keep the
-                  version they were created with; new customers always get the latest published version.
+              <section className="rounded-2xl bg-white p-5 shadow-[0_1px_4px_rgba(31,36,37,0.08)]">
+                <h4 className="text-[14px] font-bold text-[#1f2425]">Customizer publishing</h4>
+                <p className="mt-1 text-[13px] leading-relaxed text-[#303839]/75">
+                  Publishing makes the current design live for new customers. Customer designs, cart items and orders
+                  already made keep the design they were created with.
                 </p>
-                <div className="mt-4 grid gap-3 sm:grid-cols-3">
-                  <div className="rounded-md bg-[#F8F6F1] p-3">
-                    <p className="text-[10px] font-bold uppercase tracking-wide text-[#303839]/50">Current Published Version</p>
-                    <p className="mt-1 font-display text-xl text-[#303839]">Version {currentDisplayVersion}</p>
+                <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                  <div className="rounded-[10px] bg-[#F2F3F5] p-3">
+                    <p className="text-[12.5px] font-semibold text-[#303839]/75">Draft status</p>
+                    <p className="mt-1 text-[14px] font-semibold text-[#1f2425]">{dirtySinceSave ? "Unpublished changes" : currentPublished ? "Up to date" : "Not published yet"}</p>
                   </div>
-                  <div className="rounded-md bg-[#F8F6F1] p-3">
-                    <p className="text-[10px] font-bold uppercase tracking-wide text-[#303839]/50">Draft Status</p>
-                    <p className="mt-1 text-sm font-bold text-[#303839]">{dirtySinceSave ? "Unpublished changes" : `Draft based on Version ${currentDisplayVersion}`}</p>
-                  </div>
-                  <div className="rounded-md bg-[#F8F6F1] p-3">
-                    <p className="text-[10px] font-bold uppercase tracking-wide text-[#303839]/50">Last Published</p>
-                    <p className="mt-1 text-sm font-bold text-[#303839]">{currentPublished?.createdAt ? new Date(currentPublished.createdAt).toLocaleString() : "Not published yet"}</p>
+                  <div className="rounded-[10px] bg-[#F2F3F5] p-3">
+                    <p className="text-[12.5px] font-semibold text-[#303839]/75">Last published</p>
+                    <p className="mt-1 text-[14px] font-semibold text-[#1f2425]">{currentPublished?.createdAt ? new Date(currentPublished.createdAt).toLocaleString() : "Not published yet"}</p>
                   </div>
                 </div>
                 <div className="mt-3 flex flex-wrap gap-2">
-                  <button type="button" onClick={requestPublish} className="rounded-md bg-[#303839] px-4 py-2 text-xs font-bold text-white">Publish Minor Update</button>
-                  <button type="button" onClick={() => { setUpdateType("major"); setPublishCheck(validateCustomizerTemplateDetailed(tRef.current)); }} className="rounded-md border border-[#303839]/15 px-4 py-2 text-xs font-bold text-[#303839]">Publish Major Update</button>
+                  <button type="button" data-shape="round" onClick={requestPublish} className="h-9 cursor-pointer rounded-full bg-[#27307A] px-5 text-[13px] font-semibold text-white transition-colors hover:bg-[#1f2766]">Publish</button>
                 </div>
-                <h5 className="mt-5 text-[11px] font-extrabold uppercase tracking-wide text-[#303839]/70">Immutable version history</h5>
+                <h5 className="mt-6 text-[14px] font-bold text-[#1f2425]">Publish history</h5>
                 {versions.length === 0 ? (
-                  <p className="mt-3 text-sm text-[#303839]/50">No published versions yet. Draft based on Version {currentDisplayVersion}.</p>
+                  <p className="mt-2 text-[13px] text-[#303839]/70">Nothing published yet.</p>
                 ) : (
-                  <ul className="mt-3 grid gap-1.5">
-                    {versions.map((version: any) => (
-                      <li key={version.id} className="flex items-center justify-between rounded-md bg-[#F8F6F1] px-3 py-2 text-sm">
-                        <span className="font-bold text-[#303839]">Version {version.display}</span>
-                        <span className="text-xs text-[#303839]/55">
+                  <ul className="mt-2 grid gap-1.5">
+                    {versions.map((version: any, index: number) => (
+                      <li key={version.id} className="flex items-center justify-between rounded-[10px] bg-[#F2F3F5] px-3 py-2.5 text-[13px]">
+                        <span className="font-semibold text-[#1f2425]">{index === 0 ? "Live design" : "Published"}</span>
+                        <span className="text-[12.5px] text-[#303839]/70">
                           {version.createdAt ? new Date(version.createdAt).toLocaleString() : ""}
                         </span>
                       </li>
@@ -2186,23 +2184,38 @@ export default function AdminDesignBuilder({
         )}
       </div>
 
-      {/* Publish validation dialog */}
+      {/* Publish dialog: checks, then one Publish action. */}
       {publishCheck && (
-        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-[#303839]/40 p-4" onClick={() => setPublishCheck(null)}>
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-[#1f2425]/45 p-4" onClick={() => setPublishCheck(null)}>
           <div
             role="dialog"
             aria-modal="true"
             aria-label="Publish Changes"
-            className="w-full max-w-lg rounded-lg bg-white p-5 shadow-2xl"
+            className="w-full max-w-[440px] rounded-2xl bg-white p-6 shadow-[0_24px_60px_rgba(31,36,37,0.28)]"
             onClick={(e) => e.stopPropagation()}
           >
-            <h3 className="font-display text-2xl text-[#303839]">Publish Changes</h3>
-            <p className="mt-1 text-sm text-[#303839]/60">Choose update type. Minor Update is selected by default.</p>
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h3 className="text-[19px] font-semibold leading-tight text-[#1f2425]">Publish changes</h3>
+                <p className="mt-1.5 text-[13.5px] leading-relaxed text-[#303839]/75">
+                  Customers see the published design straight away. Orders already placed keep the design they were made with.
+                </p>
+              </div>
+              <button
+                type="button"
+                data-shape="round"
+                aria-label="Close"
+                onClick={() => setPublishCheck(null)}
+                className="-mr-2 -mt-1 grid h-9 w-9 shrink-0 cursor-pointer place-items-center rounded-full text-[#1f2425] transition-colors hover:bg-[#F2F3F5] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#27307A]"
+              >
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden><path d="M6 6l12 12M18 6 6 18" /></svg>
+              </button>
+            </div>
 
             {publishCheck.errors.length > 0 && (
-              <div className="mt-3 rounded-md border border-red-200 bg-red-50 p-3">
-                <p className="text-sm font-bold text-red-700">Fix these before publishing:</p>
-                <ul className="mt-1 grid gap-0.5 text-sm text-red-700">
+              <div className="mt-4 rounded-[10px] bg-red-50 p-3.5">
+                <p className="text-[13px] font-semibold text-red-700">Fix these before publishing</p>
+                <ul className="mt-1.5 grid gap-1 text-[13px] leading-snug text-red-700">
                   {publishCheck.errors.map((error) => (
                     <li key={error}>• {error}</li>
                   ))}
@@ -2211,9 +2224,9 @@ export default function AdminDesignBuilder({
             )}
 
             {publishCheck.warnings.length > 0 && (
-              <div className="mt-3 rounded-md border border-[#D4AF37]/50 bg-[#D4AF37]/10 p-3">
-                <p className="text-sm font-bold text-[#8a701d]">Warnings:</p>
-                <ul className="mt-1 grid gap-0.5 text-sm text-[#8a701d]">
+              <div className="mt-4 rounded-[10px] bg-[#FFF6DD] p-3.5">
+                <p className="text-[13px] font-semibold text-[#6b5414]">Check before publishing</p>
+                <ul className="mt-1.5 grid gap-1 text-[13px] leading-snug text-[#6b5414]">
                   {publishCheck.warnings.map((warning) => (
                     <li key={warning}>• {warning}</li>
                   ))}
@@ -2222,49 +2235,30 @@ export default function AdminDesignBuilder({
             )}
 
             {!publishCheck.errors.length && !publishCheck.warnings.length && (
-              <p className="mt-3 text-sm text-[#303839]/70">All checks passed. The template is ready to publish.</p>
+              <p className="mt-4 flex items-center gap-2.5 rounded-[10px] bg-[#F2F3F5] px-3.5 py-3 text-[13.5px] text-[#1f2425]">
+                <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-emerald-600 text-white" aria-hidden>
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="m20 6-11 11-5-5" /></svg>
+                </span>
+                All checks passed. The template is ready to publish.
+              </p>
             )}
 
-            {!publishCheck.errors.length && (
-              <div className="mt-4 grid gap-2">
-                {(["minor", "major"] as const).map((type) => {
-                  const next = nextCustomizerVersion(currentPublicVersion, type);
-                  return (
-                    <label key={type} className={`flex cursor-pointer items-center justify-between rounded-md border p-3 ${updateType === type ? "border-[#D4AF37] bg-[#D4AF37]/10" : "border-[#303839]/12"}`}>
-                      <span>
-                        <span className="block text-sm font-bold text-[#303839]">{type === "minor" ? "Minor Update" : "Major Update"}</span>
-                        <span className="text-xs text-[#303839]/55">{currentDisplayVersion} → {formatCustomizerVersion(next)}</span>
-                      </span>
-                      <input type="radio" name="customizer-update-type" checked={updateType === type} onChange={() => setUpdateType(type)} />
-                    </label>
-                  );
-                })}
-                {updateType === "major" && (
-                  <p className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
-                    This will create Version {formatCustomizerVersion(nextPublicVersion)} and reset the minor revision sequence. Version {currentDisplayVersion} and all previous revisions will remain unchanged.
-                  </p>
-                )}
-                <label className="mt-1 text-xs font-bold text-[#303839]/70">
-                  Update Notes <span className="font-normal">(optional)</span>
-                  <textarea value={updateNotes} onChange={(event) => setUpdateNotes(event.target.value.slice(0, 2000))} rows={3} className="mt-1 w-full rounded-md border border-[#303839]/15 px-3 py-2 text-sm font-normal text-[#303839] outline-none focus:border-[#303839]/60" placeholder="What changed in this update?" />
-                </label>
-              </div>
-            )}
-
-            <div className="mt-4 flex justify-end gap-2">
+            <div className="mt-6 flex justify-end gap-2">
               <button
                 type="button"
+                data-shape="round"
                 onClick={() => setPublishCheck(null)}
-                className="rounded-full border border-[#303839]/15 px-4 py-2 text-xs font-bold text-[#303839] hover:bg-[#F8F6F1]"
+                className="h-10 cursor-pointer rounded-full border-[1.5px] border-[#27307A] bg-white px-5 text-[13.5px] font-semibold text-[#27307A] transition-colors hover:bg-[#27307A]/[0.05] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#27307A] focus-visible:ring-offset-2"
               >
                 Cancel
               </button>
               {!publishCheck.errors.length && (
                 <button
                   type="button"
+                  data-shape="round"
                   onClick={confirmPublish}
                   disabled={Boolean(studioBusy || saving)}
-                  className="rounded-full bg-[#303839] px-5 py-2 text-xs font-bold text-white hover:bg-[#434c4d] disabled:opacity-50"
+                  className="h-10 cursor-pointer rounded-full bg-[#27307A] px-6 text-[13.5px] font-semibold text-white transition-colors hover:bg-[#1f2766] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#27307A] focus-visible:ring-offset-2 disabled:cursor-wait disabled:opacity-50"
                 >
                   {studioBusy === "publishing" ? "Publishing…" : "Publish"}
                 </button>

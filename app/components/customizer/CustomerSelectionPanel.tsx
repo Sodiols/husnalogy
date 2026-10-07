@@ -71,7 +71,7 @@ const alignActions = [
 
 function SectionTitle({ children }: { children: React.ReactNode }) {
   return (
-    <h3 className="text-[10px] font-extrabold uppercase tracking-[0.14em] text-[#303839]/52">
+    <h3 className="text-[14px] font-bold text-[#1f2425]">
       {children}
     </h3>
   );
@@ -104,10 +104,10 @@ function OpacityControl({
   return (
     <div className="grid gap-1.5">
       <div className="flex items-center justify-between">
-        <span className="text-[9px] font-extrabold uppercase tracking-[0.15em] text-[#303839]/50">
+        <span className="text-[12.5px] font-semibold text-[#303839]/80">
           Opacity{multiple ? " · all selected" : ""}
         </span>
-        <span className="text-[10px] font-bold tabular-nums text-[#303839]/70">{Math.round(value)}%</span>
+        <span className="text-[12.5px] font-semibold tabular-nums text-[#303839]/70">{Math.round(value)}%</span>
       </div>
       {/* Slider + exact value, both from the one shared numeric control. */}
       <EditableNumericStepper
@@ -123,7 +123,7 @@ function OpacityControl({
         onPreviewChange={onPreview}
         onCommit={onChange}
         showStepButtons={false}
-        className="h-11 w-full rounded-lg border border-[#303839]/15 bg-white px-1"
+        className="h-10 w-full rounded-md border border-[#303839]/20 bg-white px-1"
       />
     </div>
   );
@@ -155,7 +155,7 @@ function PanelStepper({
       showLabel
       showStepButtons={false}
       className="h-14 w-full px-1"
-      inputClassName="h-9 w-full rounded-xl border border-[#303839]/12 bg-white px-3 text-left text-sm font-bold tabular-nums text-[#303839] outline-none transition-colors hover:border-[#303839]/25 focus:border-[#303839]/60 focus:ring-2 focus:ring-[#303839]/15 disabled:cursor-not-allowed disabled:opacity-45"
+      inputClassName="h-9 w-full rounded-md border border-[#303839]/20 bg-white px-3 text-left text-sm font-bold tabular-nums text-[#303839] outline-none transition-colors hover:border-[#303839]/25 focus:border-[#303839]/60 focus:ring-2 focus:ring-[#303839]/15 disabled:cursor-not-allowed disabled:opacity-45"
     />
   );
 }
@@ -168,11 +168,11 @@ function restoreColour(original: unknown, fallback: string): string {
 function ColourControl({ label, value, disabled, onChange }: any) {
   return (
     <label
-      className={`flex min-h-12 cursor-pointer items-center justify-between rounded-xl border border-[#303839]/10 bg-white px-3 ${
+      className={`flex min-h-12 cursor-pointer items-center justify-between rounded-[10px] bg-[#F8F6F1] px-3 ${
         disabled ? "cursor-not-allowed opacity-45" : ""
       }`}
     >
-      <span className="text-xs font-semibold text-[#303839]">{label}</span>
+      <span className="text-[13px] font-semibold text-[#303839]">{label}</span>
       <span className="relative grid h-8 w-8 place-items-center rounded-full border border-[#303839]/15 bg-white shadow-sm">
         <span className="h-5 w-5 rounded-full" style={{ backgroundColor: value }} aria-hidden />
         <input
@@ -204,7 +204,7 @@ function ActionButton({
       type="button"
       onClick={onClick}
       disabled={disabled}
-      className="flex min-h-11 cursor-pointer items-center gap-2 rounded-xl border border-[#303839]/10 bg-white px-3 text-left text-[11px] font-bold text-[#303839] transition-colors hover:border-[#303839]/20 hover:bg-[#303839]/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white disabled:cursor-not-allowed disabled:bg-white disabled:text-[#303839]/30"
+      className="flex min-h-11 cursor-pointer items-center gap-2 rounded-[10px] bg-[#F8F6F1] px-3 text-left text-[12.5px] font-semibold text-[#303839] transition-colors hover:bg-[#EFEBE1] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white disabled:cursor-not-allowed disabled:bg-white disabled:text-[#303839]/30"
     >
       <svg
         width="16"
@@ -281,12 +281,12 @@ export default function CustomerSelectionPanel({
     >
       <div className="flex items-center justify-between gap-3">
         <div className="min-w-0">
-          <p className="text-[10px] font-extrabold uppercase tracking-[0.15em] text-[#303839]/70">
+          <p className="text-[12.5px] font-semibold text-[#303839]/80">
             Selected item
           </p>
-          <p className="mt-0.5 truncate text-sm font-bold text-[#303839]">{layerLabel}</p>
+          <p className="mt-0.5 truncate text-[15px] font-bold text-[#1f2425]">{layerLabel}</p>
         </div>
-        <span className="shrink-0 rounded-full border border-[#303839]/10 bg-white px-2.5 py-1 text-[9px] font-bold capitalize text-[#303839]/55">
+        <span className="shrink-0 rounded-full bg-[#F8F6F1] px-2.5 py-1 text-[11.5px] font-semibold capitalize text-[#303839]/80">
           {layers.length === 1 ? layer.type : "Multiple"}
         </span>
       </div>
@@ -402,7 +402,7 @@ export default function CustomerSelectionPanel({
           <SectionTitle>Photo grid</SectionTitle>
           {layer.isUserLayer && (
             <label className="grid gap-1.5">
-              <span className="text-[9px] font-extrabold uppercase tracking-[0.12em] text-[#303839]/45">
+              <span className="text-[12.5px] font-semibold text-[#303839]/80">
                 Layout
               </span>
               <span className="relative">
@@ -420,7 +420,7 @@ export default function CustomerSelectionPanel({
                     }
                     event.currentTarget.value = "";
                   }}
-                  className="min-h-11 w-full cursor-pointer appearance-none rounded-xl border border-[#303839]/12 bg-white px-3 pr-10 text-xs font-bold text-[#303839] outline-none focus:ring-2 focus:ring-[#303839]"
+                  className="min-h-11 w-full cursor-pointer appearance-none rounded-md border border-[#303839]/20 bg-white px-3 pr-10 text-[13px] font-semibold text-[#303839] outline-none focus:ring-2 focus:ring-[#303839]"
                 >
                   <option value="" disabled>
                     Change layout
@@ -432,7 +432,7 @@ export default function CustomerSelectionPanel({
                   ))}
                 </select>
                 <svg
-                  className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[#303839]/45"
+                  className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[#303839]/70"
                   width="14"
                   height="14"
                   viewBox="0 0 24 24"
@@ -479,7 +479,7 @@ export default function CustomerSelectionPanel({
         <div className="mt-5 grid gap-3">
           <SectionTitle>QR code</SectionTitle>
           <label className="grid gap-1.5">
-            <span className="text-[9px] font-extrabold uppercase tracking-[0.12em] text-[#303839]/45">
+            <span className="text-[12.5px] font-semibold text-[#303839]/80">
               Destination URL
             </span>
             <input
@@ -487,7 +487,7 @@ export default function CustomerSelectionPanel({
               disabled={!canStyle}
               value={layer.value || ""}
               onChange={(event) => onPatch({ value: event.target.value })}
-              className="h-11 rounded-xl border border-[#303839]/12 bg-white px-3 text-xs text-[#303839] outline-none focus:border-[#303839]/60 focus:ring-2 focus:ring-[#303839]/15 disabled:cursor-not-allowed disabled:opacity-45"
+              className="h-11 rounded-md border border-[#303839]/20 bg-white px-3 text-xs text-[#303839] outline-none focus:border-[#303839]/60 focus:ring-2 focus:ring-[#303839]/15 disabled:cursor-not-allowed disabled:opacity-45"
             />
           </label>
           <div className="grid grid-cols-2 gap-2">
@@ -530,7 +530,7 @@ export default function CustomerSelectionPanel({
           />
           <span
             role="status"
-            className={`rounded-xl px-3 py-2 text-[10px] font-bold ${
+            className={`rounded-xl px-3 py-2 text-[12.5px] font-semibold ${
               qrReadable ? "bg-emerald-50 text-emerald-800" : "bg-red-50 text-red-800"
             }`}
           >
@@ -553,7 +553,7 @@ export default function CustomerSelectionPanel({
           ))}
         </div>
         {!canArrange && (
-          <p className="text-[10px] leading-4 text-[#303839]/50">
+          <p className="text-[12px] leading-5 text-[#303839]/70">
             Layer order is locked for this item.
           </p>
         )}
@@ -569,7 +569,7 @@ export default function CustomerSelectionPanel({
               type="button"
               onClick={() => onAlign("centerOnCardHorizontal")}
               disabled={!canAlign}
-              className="min-h-11 cursor-pointer rounded-xl border border-[#303839]/10 bg-white px-2 text-[10px] font-bold text-[#303839] transition-colors hover:bg-[#303839]/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white disabled:cursor-not-allowed disabled:opacity-40"
+              className="min-h-11 cursor-pointer rounded-[10px] bg-[#F8F6F1] px-2 text-[12.5px] font-semibold text-[#303839] transition-colors hover:bg-[#EFEBE1] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white disabled:cursor-not-allowed disabled:opacity-40"
             >
               Centre Horizontally
             </button>
@@ -577,7 +577,7 @@ export default function CustomerSelectionPanel({
               type="button"
               onClick={() => onAlign("centerOnCardVertical")}
               disabled={!canAlign}
-              className="min-h-11 cursor-pointer rounded-xl border border-[#303839]/10 bg-white px-2 text-[10px] font-bold text-[#303839] transition-colors hover:bg-[#303839]/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white disabled:cursor-not-allowed disabled:opacity-40"
+              className="min-h-11 cursor-pointer rounded-[10px] bg-[#F8F6F1] px-2 text-[12.5px] font-semibold text-[#303839] transition-colors hover:bg-[#EFEBE1] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white disabled:cursor-not-allowed disabled:opacity-40"
             >
               Centre Vertically
             </button>
@@ -585,7 +585,7 @@ export default function CustomerSelectionPanel({
               type="button"
               onClick={() => onAlign("centerOnCard")}
               disabled={!canAlign}
-              className="min-h-11 cursor-pointer rounded-xl border border-[#303839]/10 bg-white px-2 text-[10px] font-bold text-[#303839] transition-colors hover:bg-[#303839]/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white disabled:cursor-not-allowed disabled:opacity-40"
+              className="min-h-11 cursor-pointer rounded-[10px] bg-[#F8F6F1] px-2 text-[12.5px] font-semibold text-[#303839] transition-colors hover:bg-[#EFEBE1] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white disabled:cursor-not-allowed disabled:opacity-40"
             >
               Centre on Card
             </button>
@@ -603,7 +603,7 @@ export default function CustomerSelectionPanel({
                 type="button"
                 onClick={() => onAlign(item.action)}
                 disabled={!canAlign}
-                className="min-h-11 cursor-pointer rounded-xl border border-[#303839]/10 bg-white px-2 text-[10px] font-bold text-[#303839] transition-colors hover:bg-[#303839]/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white disabled:cursor-not-allowed disabled:opacity-40"
+                className="min-h-11 cursor-pointer rounded-[10px] bg-[#F8F6F1] px-2 text-[12.5px] font-semibold text-[#303839] transition-colors hover:bg-[#EFEBE1] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white disabled:cursor-not-allowed disabled:opacity-40"
               >
                 {item.label}
               </button>
@@ -615,7 +615,7 @@ export default function CustomerSelectionPanel({
                 type="button"
                 onClick={() => onAlign("distributeHorizontalCenters")}
                 disabled={!canAlign}
-                className="min-h-11 cursor-pointer rounded-xl border border-[#303839]/10 bg-white px-2 text-[10px] font-bold text-[#303839] hover:bg-[#303839]/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white disabled:cursor-not-allowed disabled:opacity-40"
+                className="min-h-11 cursor-pointer rounded-[10px] bg-[#F8F6F1] px-2 text-[12.5px] font-semibold text-[#303839] hover:bg-[#EFEBE1] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white disabled:cursor-not-allowed disabled:opacity-40"
               >
                 Distribute Horizontally
               </button>
@@ -623,7 +623,7 @@ export default function CustomerSelectionPanel({
                 type="button"
                 onClick={() => onAlign("distributeVerticalCenters")}
                 disabled={!canAlign}
-                className="min-h-11 cursor-pointer rounded-xl border border-[#303839]/10 bg-white px-2 text-[10px] font-bold text-[#303839] hover:bg-[#303839]/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white disabled:cursor-not-allowed disabled:opacity-40"
+                className="min-h-11 cursor-pointer rounded-[10px] bg-[#F8F6F1] px-2 text-[12.5px] font-semibold text-[#303839] hover:bg-[#EFEBE1] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white disabled:cursor-not-allowed disabled:opacity-40"
               >
                 Distribute Vertically
               </button>
@@ -631,7 +631,7 @@ export default function CustomerSelectionPanel({
                 type="button"
                 onClick={() => onAlign("distributeHorizontal")}
                 disabled={!canAlign}
-                className="min-h-11 cursor-pointer rounded-xl border border-[#303839]/10 bg-white px-2 text-[10px] font-bold text-[#303839] hover:bg-[#303839]/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white disabled:cursor-not-allowed disabled:opacity-40"
+                className="min-h-11 cursor-pointer rounded-[10px] bg-[#F8F6F1] px-2 text-[12.5px] font-semibold text-[#303839] hover:bg-[#EFEBE1] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white disabled:cursor-not-allowed disabled:opacity-40"
               >
                 Equal Horizontal Spacing
               </button>
@@ -639,7 +639,7 @@ export default function CustomerSelectionPanel({
                 type="button"
                 onClick={() => onAlign("distributeVertical")}
                 disabled={!canAlign}
-                className="min-h-11 cursor-pointer rounded-xl border border-[#303839]/10 bg-white px-2 text-[10px] font-bold text-[#303839] hover:bg-[#303839]/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white disabled:cursor-not-allowed disabled:opacity-40"
+                className="min-h-11 cursor-pointer rounded-[10px] bg-[#F8F6F1] px-2 text-[12.5px] font-semibold text-[#303839] hover:bg-[#EFEBE1] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white disabled:cursor-not-allowed disabled:opacity-40"
               >
                 Equal Vertical Spacing
               </button>
@@ -654,7 +654,7 @@ export default function CustomerSelectionPanel({
             type="button"
             onClick={onGroup}
             disabled={!canGroup}
-            className="min-h-11 flex-1 cursor-pointer rounded-xl border border-[#303839]/10 bg-white px-3 text-xs font-bold text-[#303839] hover:bg-[#303839]/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white disabled:cursor-not-allowed disabled:opacity-40"
+            className="min-h-11 flex-1 cursor-pointer rounded-[10px] bg-[#F8F6F1] px-3 text-[13px] font-semibold text-[#303839] hover:bg-[#EFEBE1] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white disabled:cursor-not-allowed disabled:opacity-40"
           >
             Group
           </button>
@@ -664,7 +664,7 @@ export default function CustomerSelectionPanel({
             type="button"
             onClick={onUngroup}
             disabled={!canUngroup}
-            className="min-h-11 flex-1 cursor-pointer rounded-xl border border-[#303839]/10 bg-white px-3 text-xs font-bold text-[#303839] hover:bg-[#303839]/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white disabled:cursor-not-allowed disabled:opacity-40"
+            className="min-h-11 flex-1 cursor-pointer rounded-[10px] bg-[#F8F6F1] px-3 text-[13px] font-semibold text-[#303839] hover:bg-[#EFEBE1] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white disabled:cursor-not-allowed disabled:opacity-40"
           >
             Ungroup
           </button>
@@ -673,7 +673,7 @@ export default function CustomerSelectionPanel({
           type="button"
           onClick={onDuplicate}
           disabled={!canDuplicate}
-          className="min-h-11 flex-1 cursor-pointer rounded-xl border border-[#303839]/10 bg-white px-3 text-xs font-bold text-[#303839] hover:bg-[#303839]/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white disabled:cursor-not-allowed disabled:opacity-40"
+          className="min-h-11 flex-1 cursor-pointer rounded-[10px] bg-[#F8F6F1] px-3 text-[13px] font-semibold text-[#303839] hover:bg-[#EFEBE1] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white disabled:cursor-not-allowed disabled:opacity-40"
         >
           Duplicate
         </button>

@@ -51,7 +51,7 @@ export default function CustomizerZoomControls({
     <div
       role="group"
       aria-label="Canvas zoom"
-      className={`flex min-h-11 items-center gap-0.5 rounded-full border border-[#303839]/12 bg-white px-1 shadow-[0_4px_18px_rgba(48,56,57,0.10)] ${className}`}
+      className={`flex h-11 shrink-0 items-center gap-0.5 rounded-full bg-white px-1 shadow-[0_2px_10px_rgba(31,36,37,0.12)] ${className}`}
     >
       <EditableNumericStepper
         label="Canvas zoom"
@@ -74,8 +74,10 @@ export default function CustomizerZoomControls({
             : value;
           onZoomChange(stepped / 100);
         }}
-        className="h-10 w-36 rounded-full bg-white"
-        buttonClassName="grid h-full min-h-10 place-items-center rounded-full text-[#303839] transition hover:bg-cream focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white disabled:opacity-30"
+        stepIcons="plusMinus"
+        className="h-9 w-32 rounded-full bg-white sm:w-36"
+        buttonClassName="grid h-full min-h-9 cursor-pointer place-items-center rounded-full text-[#303839] transition hover:bg-[#F8F6F1] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white disabled:opacity-30"
+        inputClassName="h-full min-w-0 w-full bg-transparent px-1 text-center text-[14px] font-semibold tabular-nums text-[#1f2425] outline-none focus:rounded-md focus:bg-[#F8F6F1]"
       />
       <button
         type="button"
@@ -83,8 +85,9 @@ export default function CustomizerZoomControls({
         aria-pressed={atActualSize}
         title={actualPercent !== null ? `Actual size — the printed page at true scale (${actualPercent}%)` : "Actual size"}
         onClick={() => (onActualSize ? onActualSize() : onZoomChange(1))}
-        className={`h-10 rounded-full px-2 text-[10px] font-extrabold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white ${
-          atActualSize ? "bg-[#303839] text-white" : "text-[#303839]/60 hover:bg-cream hover:text-[#303839]"
+        data-shape="round"
+        className={`h-9 cursor-pointer rounded-full px-2.5 text-[12.5px] font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white ${
+          atActualSize ? "bg-[#303839] text-white" : "text-[#303839]/75 hover:bg-[#F8F6F1] hover:text-[#303839]"
         }`}
       >
         1:1
@@ -95,8 +98,9 @@ export default function CustomizerZoomControls({
         aria-pressed={atFit}
         title={fitPercent !== null ? `Fit the whole page and recentre (${fitPercent}%)` : "Fit the whole page"}
         onClick={() => (onFit ? onFit() : onZoomChange(1))}
-        className={`min-h-10 rounded-full px-3 text-[11px] font-bold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white ${
-          atFit ? "bg-[#303839] text-white" : "text-[#303839]/70 hover:bg-cream hover:text-[#303839]"
+        data-shape="round"
+        className={`h-9 cursor-pointer rounded-full px-3 text-[13px] font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white ${
+          atFit ? "bg-[#303839] text-white" : "text-[#303839]/75 hover:bg-[#F8F6F1] hover:text-[#303839]"
         }`}
       >
         Fit

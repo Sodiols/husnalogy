@@ -165,7 +165,7 @@ export default function ToolbarDropdown({
             className="fixed z-[240] overflow-y-auto overscroll-contain rounded-2xl border border-[#303839]/12 bg-white p-2 shadow-[0_24px_60px_rgba(48,56,57,0.24)] [scrollbar-color:rgba(48,56,57,0.22)_transparent] [scrollbar-width:thin]"
           >
             <div className="flex items-center justify-between px-2 pb-2 pt-1">
-              <span className="text-[9px] font-extrabold uppercase tracking-[0.14em] text-[#303839]/50">
+              <span className="text-[12px] font-semibold text-[#303839]/70">
                 {label}
               </span>
               <span className="rounded-full bg-cream px-2 py-0.5 text-[9px] font-bold text-[#303839]/50">
@@ -217,7 +217,7 @@ export default function ToolbarDropdown({
                       {option.label}
                     </span>
                     {option.disabled ? (
-                      <span className="shrink-0 text-[10px] font-bold uppercase tracking-[0.08em] text-[#303839]/35">
+                      <span className="shrink-0 text-[11px] font-semibold text-[#303839]/60">
                         {option.note || "N/A"}
                       </span>
                     ) : isSelected ? (
@@ -258,7 +258,7 @@ export default function ToolbarDropdown({
       }
     >
       {!hideLabel && (
-        <span className="block text-[8px] font-extrabold uppercase tracking-[0.12em] text-[#303839]/45">
+        <span className="block truncate text-[10px] font-semibold text-[#303839]/70">
           {label}
         </span>
       )}

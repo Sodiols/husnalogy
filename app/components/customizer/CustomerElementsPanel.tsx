@@ -187,7 +187,7 @@ function Section({ title, action, children }: { title: string; action?: React.Re
   return (
     <section aria-labelledby={id}>
       <div className="mb-2 flex items-center justify-between gap-2">
-        <h3 id={id} className={studio ? "text-[15px] font-bold text-[#1f2425]" : "text-[10px] font-bold uppercase tracking-[0.16em] text-[#303839]/50"}>{studio ? title.replace(" / ", "/") : title}</h3>
+        <h3 id={id} className={studio ? "text-[15px] font-bold text-[#1f2425]" : "text-[14px] font-bold text-[#1f2425]"}>{studio ? title.replace(" / ", "/") : title}</h3>
         {action}
       </div>
       {children}
@@ -455,7 +455,7 @@ export default function CustomerElementsPanel({
           onClick={() => insert(element)}
           title={`Insert ${element.title}`}
           aria-label={`Insert ${element.title}`}
-          className="h-full w-full overflow-hidden rounded-lg border border-[#303839]/10 bg-white p-2 transition hover:border-[#303839]/40 hover:bg-[#303839]/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#303839]"
+          className={adminMode ? "h-full w-full overflow-hidden rounded-lg border border-[#303839]/10 bg-white p-2 transition hover:border-[#303839]/40 hover:bg-[#303839]/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#303839]" : "h-full w-full overflow-hidden rounded-[10px] bg-[#F8F6F1] cursor-pointer p-2 transition hover:bg-[#EFEBE1] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#303839]"}
         >
           <img src={element.url} alt={element.title} loading="lazy" draggable={false} className="h-full w-full object-contain transition group-hover:scale-105" />
         </button>
@@ -485,7 +485,7 @@ export default function CustomerElementsPanel({
           title={`Add ${graphic.title}`}
           aria-label={`Add ${graphic.title}${graphic.collectionName ? ` from ${graphic.collectionName}` : ""}`}
           aria-busy={busy}
-          className="h-full w-full overflow-hidden rounded-lg border border-[#303839]/10 bg-white p-2 transition hover:border-[#303839]/40 hover:bg-[#303839]/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#303839] disabled:cursor-progress"
+          className={adminMode ? "h-full w-full overflow-hidden rounded-lg border border-[#303839]/10 bg-white p-2 transition hover:border-[#303839]/40 hover:bg-[#303839]/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#303839] disabled:cursor-progress" : "h-full w-full overflow-hidden rounded-[10px] bg-[#F8F6F1] cursor-pointer p-2 transition hover:bg-[#EFEBE1] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#303839] disabled:cursor-progress"}
         >
           {busy ? (
             <span className="grid h-full w-full place-items-center text-[10px] font-bold text-[#303839]/55">Adding…</span>
@@ -540,7 +540,7 @@ export default function CustomerElementsPanel({
       aria-label={`See more ${target}`}
       className={adminMode
         ? "rounded px-1 py-0.5 text-[13px] font-medium text-[#1f2425] underline underline-offset-2 transition hover:text-[#303839]/70 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#303839]"
-        : "rounded px-1 py-0.5 text-[11px] font-semibold text-[#303839]/60 underline underline-offset-2 transition hover:text-[#303839] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#303839]"}
+        : "rounded px-1 py-0.5 text-[12.5px] font-medium text-[#1f2425] underline underline-offset-2 transition hover:text-[#303839] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#303839]"}
     >
       See more
     </button>
@@ -595,7 +595,7 @@ export default function CustomerElementsPanel({
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="m15 18-6-6 6-6" /></svg>
             </button>
           )}
-          <h2 className={`min-w-0 flex-1 truncate leading-tight ${adminMode ? "text-[20px] font-semibold text-[#1f2425]" : "font-display text-[22px] text-[#303839]"}`}>{VIEW_TITLES[view]}</h2>
+          <h2 className={`min-w-0 flex-1 truncate leading-tight ${adminMode ? "text-[20px] font-semibold text-[#1f2425]" : "text-[16px] font-bold text-[#1f2425]"}`}>{VIEW_TITLES[view]}</h2>
           {onClose && (
             <button
               type="button"
@@ -663,7 +663,7 @@ export default function CustomerElementsPanel({
                 onClick={() => onAddShape(shape.id)}
                 aria-label={`Add ${shape.label}`}
                 title={`Add ${shape.label}`}
-                className={adminMode ? SHAPE_TILE : "grid aspect-square place-items-center rounded-lg bg-cream text-[#B9B9B9] transition hover:bg-[#DCDCDC] hover:text-[#A9A9A9] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#303839]"}
+                className={adminMode ? SHAPE_TILE : "grid aspect-square cursor-pointer place-items-center rounded-[10px] bg-[#F8F6F1] text-[#B9B9B9] transition hover:bg-[#EFEBE1] hover:text-[#A9A9A9] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#303839]"}
               >
                 <svg width={adminMode ? "100%" : "34"} height={adminMode ? "100%" : "34"} viewBox="2.5 2.5 19 19" fill="currentColor" aria-hidden>{shape.render}</svg>
               </button>
@@ -767,7 +767,7 @@ export default function CustomerElementsPanel({
                 type="button"
                 onClick={() => onAddTextPreset(preset.id, preset.text)}
                 aria-label={`Add text: ${preset.label}`}
-                className="rounded-lg border border-[#303839]/10 bg-white px-3 py-2 text-left text-sm font-semibold text-[#303839] transition hover:border-[#303839]/40 hover:bg-[#303839]/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#303839]"
+                className={adminMode ? "rounded-lg border border-[#303839]/10 bg-white px-3 py-2 text-left text-sm font-semibold text-[#303839] transition hover:border-[#303839]/40 hover:bg-[#303839]/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#303839]" : "rounded-[10px] bg-[#F8F6F1] cursor-pointer px-3 py-2 text-left text-[14px] font-semibold text-[#1f2425] transition hover:bg-[#EFEBE1] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#303839]"}
               >
                 {preset.label}
               </button>
@@ -788,7 +788,7 @@ export default function CustomerElementsPanel({
                 aria-label={`Add ${line.label}`}
                 className={adminMode
                   ? "flex h-10 items-center rounded-lg px-1 transition hover:bg-[#303839]/[0.05] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#303839]"
-                  : "flex items-center rounded-lg border border-[#303839]/10 bg-white px-3 py-2.5 transition hover:border-[#303839]/40 hover:bg-[#303839]/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#303839]"}
+                  : "flex items-center rounded-[10px] bg-[#F8F6F1] cursor-pointer px-3 py-2.5 transition hover:bg-[#EFEBE1] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#303839]"}
               >
                 <svg viewBox="0 0 100 4" className="h-1 w-full" aria-hidden preserveAspectRatio="none">
                   <line x1="0" y1="2" x2="100" y2="2" stroke="#303839" strokeWidth="2" strokeDasharray={line.dash || undefined} strokeLinecap="round" />
@@ -821,7 +821,7 @@ export default function CustomerElementsPanel({
                 onClick={() => onAddShape(shape.id)}
                 aria-label={`Add ${shape.label}`}
                 title={`Add ${shape.label}`}
-                className="grid aspect-square place-items-center rounded-lg bg-cream text-[#B9B9B9] transition hover:bg-[#DCDCDC] hover:text-[#A9A9A9] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#303839]"
+                className="grid aspect-square cursor-pointer place-items-center rounded-[10px] bg-[#F8F6F1] text-[#B9B9B9] transition hover:bg-[#EFEBE1] hover:text-[#A9A9A9] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#303839]"
               >
                 <svg width="34" height="34" viewBox="0 0 24 24" fill="currentColor" aria-hidden>{shape.render}</svg>
               </button>
@@ -1025,7 +1025,7 @@ export default function CustomerElementsPanel({
               type="button"
               onClick={() => onAddTextPreset(preset.id, preset.text)}
               aria-label={`Add text: ${preset.label}`}
-              className="rounded-lg border border-[#303839]/10 bg-white px-3 py-2.5 text-left text-sm font-semibold text-[#303839] transition hover:border-[#303839]/40 hover:bg-[#303839]/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#303839]"
+              className={adminMode ? "rounded-lg border border-[#303839]/10 bg-white px-3 py-2.5 text-left text-sm font-semibold text-[#303839] transition hover:border-[#303839]/40 hover:bg-[#303839]/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#303839]" : "rounded-[10px] bg-[#F8F6F1] cursor-pointer px-3 py-2.5 text-left text-[14px] font-semibold text-[#1f2425] transition hover:bg-[#EFEBE1] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#303839]"}
             >
               {preset.label}
             </button>
@@ -1041,7 +1041,7 @@ export default function CustomerElementsPanel({
               type="button"
               onClick={() => onAddLine(line.id)}
               aria-label={`Add ${line.label}`}
-              className="flex items-center rounded-lg border border-[#303839]/10 bg-white px-3 py-3 transition hover:border-[#303839]/40 hover:bg-[#303839]/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#303839]"
+              className={adminMode ? "flex items-center rounded-lg border border-[#303839]/10 bg-white px-3 py-3 transition hover:border-[#303839]/40 hover:bg-[#303839]/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#303839]" : "flex items-center rounded-[10px] bg-[#F8F6F1] cursor-pointer px-3 py-3 transition hover:bg-[#EFEBE1] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#303839]"}
             >
               <svg viewBox="0 0 100 4" className="h-1 w-full" aria-hidden preserveAspectRatio="none">
                 <line x1="0" y1="2" x2="100" y2="2" stroke="#303839" strokeWidth="2" strokeDasharray={line.dash || undefined} strokeLinecap="round" />
@@ -1087,7 +1087,7 @@ export default function CustomerElementsPanel({
               onClick={() => onAddShape(shape.id)}
               aria-label={`Add ${shape.label}`}
               title={`Add ${shape.label}`}
-              className="grid aspect-square place-items-center rounded-lg bg-cream text-[#B9B9B9] transition hover:bg-[#DCDCDC] hover:text-[#A9A9A9] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#303839]"
+              className="grid aspect-square cursor-pointer place-items-center rounded-[10px] bg-[#F8F6F1] text-[#B9B9B9] transition hover:bg-[#EFEBE1] hover:text-[#A9A9A9] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#303839]"
             >
               <svg width="34" height="34" viewBox="0 0 24 24" fill="currentColor" aria-hidden>{shape.render}</svg>
             </button>

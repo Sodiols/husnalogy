@@ -21,7 +21,7 @@ export const CUSTOMIZER_FORMAT_OPTIONS = [
 function Badge({ text }: { text: string }) {
   if (!text) return null;
   return (
-    <span className="rounded-full bg-[#D4AF37]/15 px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wide text-[#8a701d]">
+    <span className="rounded-full bg-[#D4AF37]/15 px-2 py-0.5 text-[11.5px] font-semibold text-[#8a701d]">
       {text}
     </span>
   );
@@ -67,10 +67,10 @@ function OptionButton({ option, active, onClick, currency, showImage = false, co
       type="button"
       onClick={onClick}
       aria-pressed={active}
-      className={`flex w-full items-center gap-3 rounded-lg border px-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white ${compact ? "py-2" : "py-2.5"} ${
+      className={`flex w-full items-center gap-3 cursor-pointer rounded-[10px] border px-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white ${compact ? "py-2" : "py-2.5"} ${
         active
           ? "border-[#303839] bg-[#303839] text-white"
-          : "border-[#303839]/10 bg-white text-[#303839] hover:border-[#303839]/25 hover:bg-[#303839]/5"
+          : "border-transparent bg-[#F8F6F1] text-[#1f2425] hover:bg-[#EFEBE1]"
       }`}
     >
       {showImage && option.image && (
@@ -78,17 +78,17 @@ function OptionButton({ option, active, onClick, currency, showImage = false, co
       )}
       <span className="min-w-0 flex-1">
         <span className="flex flex-wrap items-center gap-1.5">
-          <span className="text-sm font-semibold">{option.displayLabel}</span>
+          <span className="text-[14px] font-semibold">{option.displayLabel}</span>
           <Badge text={option.badge} />
         </span>
         {option.description && (
-          <span className={`mt-0.5 block text-xs leading-snug ${active ? "text-white/70" : "text-[#303839]/50"}`}>
+          <span className={`mt-0.5 block text-[12.5px] leading-snug ${active ? "text-white/70" : "text-[#303839]/70"}`}>
             {option.description}
           </span>
         )}
       </span>
       {option.surcharge > 0 && (
-        <span className={`shrink-0 text-xs font-bold tabular-nums ${active ? "text-white/85" : "text-[#303839]/55"}`}>
+        <span className={`shrink-0 text-[13px] font-semibold tabular-nums ${active ? "text-white/85" : "text-[#303839]/70"}`}>
           {formatCurrencySurcharge(option.surcharge, currency)}
         </span>
       )}
@@ -120,7 +120,7 @@ function OptionGroup({ title, options, value, onChange, currency, showImage = fa
   if (corner) {
     return (
       <div>
-        <h4 className="mb-2.5 text-[11px] font-bold uppercase tracking-[0.11em] text-[#303839]/45">{title}</h4>
+        <h4 className="mb-2 text-[14px] font-bold text-[#1f2425]">{title}</h4>
         <div className="grid grid-cols-3 gap-2">
           {options.map((option) => (
             <button
@@ -128,15 +128,15 @@ function OptionGroup({ title, options, value, onChange, currency, showImage = fa
               type="button"
               onClick={() => onChange(localizedCartValue(option, currency))}
               aria-pressed={isActive(option)}
-              className={`flex flex-col items-center gap-1.5 rounded-lg border px-2 py-2.5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white ${
+              className={`flex flex-col items-center gap-1.5 cursor-pointer rounded-[10px] border px-2 py-2.5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white ${
                 isActive(option)
                   ? "border-[#303839] bg-[#303839] text-white"
-                  : "border-[#303839]/10 bg-white text-[#303839] hover:border-[#303839]/25 hover:bg-[#303839]/5"
+                  : "border-transparent bg-[#F8F6F1] text-[#1f2425] hover:bg-[#EFEBE1]"
               }`}
             >
               <CornerPreview option={option} />
-              <span className="text-[11px] font-bold">{option.displayLabel}</span>
-              {option.surcharge > 0 && <span className="text-[10px] opacity-70">{formatCurrencySurcharge(option.surcharge, currency)}</span>}
+              <span className="text-[12.5px] font-semibold">{option.displayLabel}</span>
+              {option.surcharge > 0 && <span className="text-[12px] opacity-75">{formatCurrencySurcharge(option.surcharge, currency)}</span>}
             </button>
           ))}
         </div>
@@ -146,7 +146,7 @@ function OptionGroup({ title, options, value, onChange, currency, showImage = fa
 
   return (
     <div>
-      <h4 className="mb-2 text-xs font-extrabold uppercase tracking-wide text-[#303839]">{title}</h4>
+      <h4 className="mb-2 text-[14px] font-bold text-[#1f2425]">{title}</h4>
       <div className="grid gap-2">
         {options.map((option) => (
           <OptionButton
@@ -215,7 +215,7 @@ export default function CustomerOptionsPanel({
       <OptionGroup title="Printing Process" options={printingOptions} value={options.printing} onChange={(v) => onOptionChange("printing", v)} currency={currency} />
 
       <div>
-        <h4 className="mb-2 text-xs font-extrabold uppercase tracking-wide text-[#303839]">Quantity</h4>
+        <h4 className="mb-2 text-[14px] font-bold text-[#1f2425]">Quantity</h4>
         <div className="flex flex-wrap gap-2">
           {quantityOptions.map((q: string) => {
             const active = String(quantity) === String(q);
@@ -225,10 +225,10 @@ export default function CustomerOptionsPanel({
                 type="button"
                 aria-pressed={active}
                 onClick={() => onQuantityChange(Number(q) || 1)}
-                className={`min-w-[56px] rounded-lg border px-3 py-2 text-sm font-bold tabular-nums transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white ${
+                className={`min-w-[56px] cursor-pointer rounded-[10px] border px-3 py-2 text-[14px] font-semibold tabular-nums transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white ${
                   active
                     ? "border-[#303839] bg-[#303839] text-white"
-                    : "border-[#303839]/10 bg-white text-[#303839] hover:border-[#303839]/25 hover:bg-[#303839]/5"
+                    : "border-transparent bg-[#F8F6F1] text-[#1f2425] hover:bg-[#EFEBE1]"
                 }`}
               >
                 {q}
@@ -239,14 +239,14 @@ export default function CustomerOptionsPanel({
       </div>
 
       <div>
-        <h4 className="mb-2 text-xs font-extrabold uppercase tracking-wide text-[#303839]">Husnalogy logo</h4>
+        <h4 className="mb-2 text-[14px] font-bold text-[#1f2425]">Husnalogy logo</h4>
         <button
           type="button"
           role="switch"
           aria-checked={Boolean(options.logo)}
           onClick={() => onOptionChange("logo", !options.logo)}
-          className={`flex w-full items-center justify-between gap-3 rounded-lg border px-3 py-3 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white ${
-            options.logo ? "border-[#303839] bg-[#303839] text-white" : "border-[#303839]/10 bg-white text-[#303839] hover:border-[#303839]/25 hover:bg-[#303839]/5"
+          className={`flex w-full items-center justify-between gap-3 cursor-pointer rounded-[10px] border px-3 py-3 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white ${
+            options.logo ? "border-[#303839] bg-[#303839] text-white" : "border-transparent bg-[#F8F6F1] text-[#1f2425] hover:bg-[#EFEBE1]"
           }`}
         >
           <span className="text-left font-semibold">Add subtle logo to back of card</span>
@@ -258,10 +258,10 @@ export default function CustomerOptionsPanel({
 
       <div className="sticky bottom-0 -mx-4 -mb-4 border-t border-[#303839]/8 bg-white px-4 py-3.5">
         <div className="flex items-baseline justify-between gap-3">
-          <span className="text-xs font-medium text-[#303839]/50 tabular-nums">
+          <span className="text-[13px] font-medium text-[#303839]/70 tabular-nums">
             {quantity} × {formatCurrency(unitPrice, currency)}
           </span>
-          <span className="font-display text-[22px] leading-none text-[#303839] tabular-nums">
+          <span className="text-[20px] font-bold leading-none text-[#1f2425] tabular-nums">
             {formatCurrency(unitPrice * quantity, currency)}
           </span>
         </div>

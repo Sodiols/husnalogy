@@ -3926,7 +3926,7 @@ export default function PersonalizeClient({ product, template }: { product: any;
           <>
             {/* Left tool rail (desktop) */}
             {showPanels && isDesktop && (
-              <div className="hidden lg:block">
+              <div className="hidden py-3 pl-3 lg:flex">
                 <CustomerToolRail
                   tools={visibleTools}
                   activeTool={activeTool}
@@ -3946,15 +3946,16 @@ export default function PersonalizeClient({ product, template }: { product: any;
 
             {/* Left settings panel (desktop) */}
             {showPanels && isDesktop && (
-              <aside className="hidden w-[340px] shrink-0 flex-col overflow-hidden border-r border-[#303839]/8 bg-white lg:flex">
+              <aside className="my-3 ml-3 hidden w-[340px] shrink-0 flex-col overflow-hidden rounded-2xl bg-white shadow-[0_4px_20px_rgba(48,56,57,0.12)] lg:flex">
                 <div className="shrink-0 px-4 pb-2 pt-4">
                   <div className="flex items-center justify-between gap-2">
-                    <h2 className="font-display text-[22px] leading-tight text-[#303839]">{panelTitle}</h2>
+                    <h2 className="min-w-0 truncate text-[19px] font-semibold leading-tight text-[#1f2425]">{panelTitle}</h2>
                     {hasAdvancedTools && (
                       <button
                         type="button"
+                        data-shape="round"
                         onClick={() => setCustomizeModeSafely(customizeMode === "easy" ? "advanced" : "easy")}
-                        className="shrink-0 rounded-full border border-[#303839]/15 px-3 py-1 text-[11px] font-bold text-[#303839] hover:bg-[#303839]/5"
+                        className="inline-flex h-8 shrink-0 cursor-pointer items-center rounded-full border-[1.5px] border-[#303839] bg-white px-2.5 text-[12.5px] font-semibold text-[#303839] transition-colors hover:bg-[#F8F6F1] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2"
                       >
                         {customizeMode === "easy" ? "Advanced Customize" : "Simple View"}
                       </button>
@@ -4125,10 +4126,10 @@ export default function PersonalizeClient({ product, template }: { product: any;
               <div className="pointer-events-none absolute inset-x-0 bottom-3 z-30 flex items-end justify-center gap-2 px-3">
                 <div className="pointer-events-auto flex max-w-full items-center gap-2 overflow-x-auto rounded-full no-scrollbar">
                   {enabledPages.length > 1 && (
-                    <div className="flex min-h-11 items-center rounded-full border border-[#303839]/8 bg-white px-1 shadow-[0_2px_12px_rgba(48,56,57,0.08)]" role="group" aria-label="Page navigation">
-                      <button type="button" aria-label="Previous page" disabled={pageIndex <= 0} onClick={() => onActivePageChange(enabledPages[Math.max(0, pageIndex - 1)].id)} className="grid h-9 w-9 place-items-center rounded-full text-[#303839]/70 transition-colors hover:bg-[#303839]/5 hover:text-[#303839] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white disabled:opacity-25">‹</button>
-                      <span className="min-w-14 text-center text-[11px] font-bold tabular-nums text-[#303839]/50">{pageIndex + 1} / {enabledPages.length}</span>
-                      <button type="button" aria-label="Next page" disabled={pageIndex >= enabledPages.length - 1} onClick={() => onActivePageChange(enabledPages[Math.min(enabledPages.length - 1, pageIndex + 1)].id)} className="grid h-9 w-9 place-items-center rounded-full text-[#303839]/70 transition-colors hover:bg-[#303839]/5 hover:text-[#303839] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white disabled:opacity-25">›</button>
+                    <div className="flex h-11 shrink-0 items-center rounded-full bg-white px-1 shadow-[0_2px_10px_rgba(31,36,37,0.12)]" role="group" aria-label="Page navigation">
+                      <button type="button" data-shape="round" aria-label="Previous page" disabled={pageIndex <= 0} onClick={() => onActivePageChange(enabledPages[Math.max(0, pageIndex - 1)].id)} className="grid h-9 w-8 cursor-pointer place-items-center rounded-full text-[#303839] transition-colors hover:bg-[#F8F6F1] sm:w-9 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white disabled:cursor-not-allowed disabled:opacity-25"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="m15 18-6-6 6-6" /></svg></button>
+                      <span className="min-w-12 text-center text-[14px] font-semibold tabular-nums text-[#1f2425] sm:min-w-14">{pageIndex + 1} / {enabledPages.length}</span>
+                      <button type="button" data-shape="round" aria-label="Next page" disabled={pageIndex >= enabledPages.length - 1} onClick={() => onActivePageChange(enabledPages[Math.min(enabledPages.length - 1, pageIndex + 1)].id)} className="grid h-9 w-8 cursor-pointer place-items-center rounded-full text-[#303839] transition-colors hover:bg-[#F8F6F1] sm:w-9 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white disabled:cursor-not-allowed disabled:opacity-25"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="m9 18 6-6-6-6" /></svg></button>
                     </div>
                   )}
                   <CustomizerZoomControls
@@ -4139,9 +4140,9 @@ export default function PersonalizeClient({ product, template }: { product: any;
                     onActualSize={actualSizeZoom}
                   />
                   {(productPreviewEditingEnabled || splitViewEnabled) && !previewMode && (
-                    <div className="hidden min-h-11 items-center gap-0.5 rounded-full border border-[#303839]/8 bg-white p-1 shadow-[0_2px_12px_rgba(48,56,57,0.08)] xl:flex" role="group" aria-label="Canvas view">
+                    <div className="hidden h-11 items-center gap-0.5 rounded-full bg-white p-1 shadow-[0_2px_10px_rgba(31,36,37,0.12)] xl:flex" role="group" aria-label="Canvas view">
                       {(["print", ...(productPreviewEditingEnabled ? ["product"] : []), ...(splitViewEnabled ? ["split"] : [])] as string[]).map((mode) => (
-                        <button key={mode} type="button" aria-pressed={workspaceMode === mode} onClick={() => setWorkspaceMode(mode as any)} className={`min-h-9 rounded-full px-3.5 text-[11px] font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white ${workspaceMode === mode ? "bg-[#303839] text-white" : "text-[#303839]/50 hover:bg-[#303839]/5 hover:text-[#303839]"}`}>{mode === "print" ? "Print Canvas" : mode === "product" ? "Product Preview" : "Split View"}</button>
+                        <button key={mode} type="button" data-shape="round" aria-pressed={workspaceMode === mode} onClick={() => setWorkspaceMode(mode as any)} className={`h-9 cursor-pointer rounded-full px-3.5 text-[13px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white ${workspaceMode === mode ? "bg-[#303839] font-semibold text-white" : "font-medium text-[#303839]/75 hover:bg-[#F8F6F1] hover:text-[#303839]"}`}>{mode === "print" ? "Print Canvas" : mode === "product" ? "Product Preview" : "Split View"}</button>
                       ))}
                     </div>
                   )}
@@ -4166,8 +4167,8 @@ export default function PersonalizeClient({ product, template }: { product: any;
             </main>
 
             {/* Right page thumbnails (desktop) */}
-            <aside className="hidden w-[132px] shrink-0 overflow-y-auto border-l border-[#303839]/8 bg-white px-3 py-4 [scrollbar-color:rgba(48,56,57,0.18)_transparent] [scrollbar-width:thin] lg:block" data-customizer-protected>
-              <p className="mb-3 px-0.5 text-[10px] font-bold uppercase tracking-[0.12em] text-[#303839]/40">Pages</p>
+            <aside className="my-3 mr-3 hidden w-[136px] shrink-0 overflow-y-auto rounded-2xl bg-white px-3 py-4 shadow-[0_4px_20px_rgba(48,56,57,0.12)] [scrollbar-color:rgba(48,56,57,0.18)_transparent] [scrollbar-width:thin] lg:block" data-customizer-protected>
+              <p className="mb-3 px-0.5 text-[14px] font-bold text-[#1f2425]">Pages</p>
               <CustomizerPageThumbnails
                 template={template}
                 values={values}

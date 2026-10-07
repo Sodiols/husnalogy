@@ -188,7 +188,7 @@ test.describe("Design Studio orientation controls", () => {
     // Publish the landscape draft: the version freezes exactly that design.
     await header(page).getByRole("button", { name: "Publish Changes" }).click();
     await studio(page).getByRole("button", { name: "Publish", exact: true }).click();
-    await expect(studio(page).getByRole("status").first()).toContainText(/Published as Version/, { timeout: 15_000 });
+    await expect(studio(page).getByRole("status").first()).toContainText(/^Published\./, { timeout: 15_000 });
     const published = await page.evaluate(() => Object.values((window as any).__adminFixture.versions as Record<string, any[]>)[0][0].template);
     expect(published.layers).toEqual(redone.layers);
     expect([published.canvasWidthPx, published.canvasHeightPx]).toEqual([2100, 1500]);

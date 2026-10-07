@@ -76,7 +76,7 @@ test.describe("Design Studio save and publish", () => {
     await expect(unsavedChip(page)).toBeVisible();
 
     await publish(page);
-    await expect(statusNotice(page)).toContainText("Published as Version 2.001", { timeout: 15_000 });
+    await expect(statusNotice(page)).toContainText("Published. New customers now see this design.", { timeout: 15_000 });
     // The studio stayed mounted through the whole sequence.
     await expect(header(page)).toBeVisible();
     await expect(unsavedChip(page)).toHaveCount(0);

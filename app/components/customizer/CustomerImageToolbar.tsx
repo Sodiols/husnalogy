@@ -107,11 +107,11 @@ export default function CustomerImageToolbar({
   if (cropping) {
     return (
       <div
-        className="pointer-events-auto flex max-w-full items-center gap-1 overflow-x-auto rounded-full border border-[#303839]/12 bg-white px-2 py-1.5 shadow-[0_6px_24px_rgba(48,56,57,0.14)] no-scrollbar"
+        className="pointer-events-auto flex max-w-full items-center gap-1 overflow-x-auto rounded-2xl bg-white px-2 py-1.5 shadow-[0_4px_20px_rgba(48,56,57,0.12)] no-scrollbar"
         role="toolbar"
         aria-label="Crop photo"
       >
-        <span className="whitespace-nowrap px-1 text-[10px] font-bold uppercase tracking-wide text-[#303839]/50">Crop</span>
+        <span className="whitespace-nowrap px-1 text-[12.5px] font-semibold text-[#303839]/80">Crop</span>
 
         {canZoom && (
           <EditableNumericStepper stepIcons="plusMinus" label="Zoom photo" value={Math.round(zoom * 100)} minimum={100} maximum={500} step={1} largeStep={10} allowNegative={false} allowDecimal={false} formatValue={(value) => `${Math.round(value)}%`} onCommit={(value) => onImagePatch({ zoom: value / 100 }, "crop-zoom")} showLabel className="h-11 w-32 shrink-0 rounded-lg bg-white px-1" />
@@ -196,7 +196,7 @@ export default function CustomerImageToolbar({
 
   return (
     <div
-      className="pointer-events-auto flex max-w-full items-center gap-1 overflow-x-auto rounded-full border border-[#303839]/12 bg-white px-2 py-1.5 shadow-[0_6px_24px_rgba(48,56,57,0.14)] no-scrollbar"
+      className="pointer-events-auto flex max-w-full items-center gap-1 overflow-x-auto rounded-2xl bg-white px-2 py-1.5 shadow-[0_4px_20px_rgba(48,56,57,0.12)] no-scrollbar"
       role="toolbar"
       aria-label="Photo options"
     >

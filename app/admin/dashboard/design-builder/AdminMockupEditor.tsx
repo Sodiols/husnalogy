@@ -155,7 +155,7 @@ export default function AdminMockupEditor({ template, product, onChange, onSynce
       if (next && !editedMeanwhile) applySynced(next);
       setSyncState("saved");
       setSyncMessage(
-        (publish ? `Published version ${next?.version}.` : "Draft saved to normalized mockup tables.") +
+        (publish ? "Mockup published." : "Mockup draft saved.") +
           (editedMeanwhile ? " Newer edits made while saving are not saved yet." : ""),
       );
     } catch (error: any) {
@@ -295,7 +295,7 @@ export default function AdminMockupEditor({ template, product, onChange, onSynce
 
         <aside className="grid content-start gap-4">
           <section className="rounded-2xl border border-[#303839]/10 bg-white p-4 shadow-sm">
-            <div className="flex items-center justify-between gap-3"><div><h3 className="text-sm font-extrabold">Database status</h3><p className="mt-1 text-[11px] text-[#303839]/50">Draft and published versions use normalized tables.</p></div><span className={`h-2.5 w-2.5 rounded-full ${syncState === "error" ? "bg-red-500" : syncState === "saving" || syncState === "loading" ? "animate-pulse bg-[#D4AF37]" : syncState === "saved" ? "bg-emerald-500" : "bg-[#303839]/20"}`} /></div>
+            <div className="flex items-center justify-between gap-3"><div><h3 className="text-sm font-extrabold">Database status</h3><p className="mt-1 text-[11px] text-[#303839]/50">Drafts and published mockups are stored separately.</p></div><span className={`h-2.5 w-2.5 rounded-full ${syncState === "error" ? "bg-red-500" : syncState === "saving" || syncState === "loading" ? "animate-pulse bg-[#D4AF37]" : syncState === "saved" ? "bg-emerald-500" : "bg-[#303839]/20"}`} /></div>
             {syncMessage && <p className={`mt-2 rounded-lg px-3 py-2 text-xs font-semibold ${syncState === "error" ? "bg-red-50 text-red-800" : "bg-emerald-50 text-emerald-800"}`}>{syncMessage}</p>}
             <div className="mt-3 grid grid-cols-3 gap-2"><button type="button" disabled={syncState === "saving"} onClick={importLegacy} className="min-h-11 rounded-xl border border-[#303839]/15 bg-[#F8F6F1] px-2 text-[11px] font-extrabold disabled:opacity-50">Import legacy</button><button type="button" disabled={syncState === "saving"} onClick={() => persist(false)} className="min-h-11 rounded-xl border border-[#303839]/15 bg-white px-2 text-[11px] font-extrabold disabled:opacity-50">Save draft</button><button type="button" disabled={syncState === "saving"} onClick={() => persist(true)} className="min-h-11 rounded-xl bg-[#303839] px-2 text-[11px] font-extrabold text-white disabled:opacity-50">Publish</button></div>
           </section>
