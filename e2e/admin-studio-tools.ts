@@ -67,3 +67,22 @@ export async function addStudioText(page: Page) {
 export async function selectEditTool(page: Page) {
   await rail(page).getByRole("button", { name: "Edit", exact: true }).click();
 }
+
+/**
+ * The card's Horizontal / Vertical choice lives in the canvas bar's
+ * Orientation popover: open it (if it is not already) and return its radios.
+ */
+export async function orientationChoices(page: Page) {
+  const group = page.getByRole("radiogroup", { name: "Artboard orientation" });
+  if (!(await group.count())) await studio(page).getByRole("button", { name: "Orientation" }).click();
+  await expect(group).toBeVisible();
+  return group;
+}
+
+/** The canvas bar's Settings popover (snap, safe area, bleed, pan, guides). */
+export async function canvasSettings(page: Page) {
+  const dialog = page.getByRole("dialog", { name: "Canvas settings" });
+  if (!(await dialog.count())) await studio(page).getByRole("button", { name: "Canvas settings" }).click();
+  await expect(dialog).toBeVisible();
+  return dialog;
+}

@@ -167,15 +167,15 @@ describe("tool rail keeps every tool", () => {
     expect(builder).toContain("onAddFrame={addFrameWithMask}");
     expect(builder).toContain("onAddQRCode={() => addQRCode()}");
     // …guides and the hand tool sit in the canvas bar, pages with the layers.
-    expect(builder).toContain("addGuide(axis)");
+    expect(builder).toContain("onAddGuide={addGuide}");
     expect(builder).toContain('dispatchTool({ type: "togglePan" })');
     expect(builder).toContain('id="admin-pages-section"');
   });
 });
 
 describe("canvas controls survive the restyle", () => {
-  it("keeps zoom, fit, snap, safe area and bleed", () => {
-    expect(builder).toContain("<CustomizerZoomControls");
+  it("keeps zoom, fit, snap, safe area and bleed — in the canvas bar and its Settings", () => {
+    expect(builder).toContain("<AdminCanvasBar");
     expect(builder).toContain("onFit={fitToPage}");
     expect(builder).toContain("onActualSize={resetViewport}");
     expect(builder).toContain("setSnapEnabled");

@@ -24,6 +24,10 @@ type Props = {
   active?: boolean;
   children: (close: () => void) => React.ReactNode;
   menuClassName?: string;
+  /** "round" lets a circular trigger opt out of the global button radius. */
+  triggerShape?: "round";
+  /** Tallest the menu may grow before it scrolls (still clamped to the viewport). */
+  maxMenuHeight?: number;
 };
 
 /**
@@ -49,6 +53,8 @@ export default function ToolbarPopover({
   active = false,
   children,
   menuClassName = "",
+  triggerShape,
+  maxMenuHeight = 460,
 }: Props) {
   const [open, setOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
@@ -71,7 +77,7 @@ export default function ToolbarPopover({
     const anchor = triggerRef.current?.getBoundingClientRect();
     if (!anchor) return;
     const menu = menuRef.current;
-    const height = menu ? Math.min(menu.scrollHeight + 4, 460) : 320;
+    const height = menu ? Math.min(menu.scrollHeight + 4, maxMenuHeight) : 320;
     setPosition(
       planPopoverPlacement({
         anchor: { left: anchor.left, right: anchor.right, top: anchor.top, bottom: anchor.bottom },
@@ -80,7 +86,7 @@ export default function ToolbarPopover({
         align,
       }),
     );
-  }, [align, menuWidth]);
+  }, [align, menuWidth, maxMenuHeight]);
 
   // Measure before paint so the menu never flashes in the wrong place.
   useLayoutEffect(() => {
@@ -169,6 +175,7 @@ export default function ToolbarPopover({
         aria-expanded={open}
         aria-controls={open ? menuId : undefined}
         aria-label={label}
+        data-shape={triggerShape}
         title={triggerTitle || label}
         disabled={disabled}
         onClick={() => setOpen((current) => !current)}

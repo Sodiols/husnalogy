@@ -1,12 +1,45 @@
 "use client";
 
+import type { ReactNode } from "react";
 import EditableNumericStepper from "@/app/components/customizer/EditableNumericStepper";
+import { layerDisplayName } from "@/lib/customizer/v2/layer-label";
 
-// Fields manager tab (Section 30). In this system a customer field always
-// belongs to a customer-editable layer (that connection is the single source
-// of truth, reconciled on save). This tab shows every field with its
-// connection, lets the admin edit all field properties in one place, and
-// surfaces warnings for anything that will not survive a save.
+// Fields manager (Section 30) — the studio's "Moment" side panel and the
+// Fields tab. In this system a customer field always belongs to a
+// customer-editable layer (that connection is the single source of truth,
+// reconciled on save). It shows every field with its connection, lets the
+// admin edit all field properties in one place, and surfaces warnings for
+// anything that will not survive a save.
+//
+// Styled as the other studio side panels: light-grey cards, dark text,
+// navy outlined controls, bold small section headings.
+
+type Layout = "panel" | "page";
+
+const line = (children: ReactNode, size = 18) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+    {children}
+  </svg>
+);
+
+const ICONS = {
+  text: line(<path d="M5 5h14v4h-1.5L16.5 7H13.5v11l2 .5V20h-7v-1.5l2-.5V7H7.5L6.5 9H5Z" />, 20),
+  image: line(<><rect x="4" y="4" width="16" height="16" rx="1.5" /><circle cx="9" cy="9" r="1.5" /><path d="m4 17 5-5 4 4 2.5-2.5L20 18" /></>, 20),
+  up: line(<path d="m6 15 6-6 6 6" />),
+  down: line(<path d="m6 9 6 6 6-6" />),
+  open: line(<><path d="M14 5h5v5" /><path d="M19 5 11 13" /><path d="M18 14v4a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h4" /></>, 16),
+  fields: line(<><rect x="4" y="5" width="16" height="5" rx="1.2" /><rect x="4" y="14" width="16" height="5" rx="1.2" /><path d="M7 7.5h5M7 16.5h7" /></>, 28),
+};
+
+const INPUT =
+  "h-10 w-full rounded-md border border-[#303839]/20 bg-white px-3 text-[14px] text-[#1f2425] outline-none transition-colors placeholder:text-[#303839]/40 focus:border-[#27307A] focus:ring-2 focus:ring-[#27307A]/15";
+const LABEL = "mb-1 block text-[12.5px] font-semibold text-[#1f2425]";
+const ICON_BUTTON =
+  "grid h-8 w-8 cursor-pointer place-items-center rounded-full text-[#1f2425] transition-colors hover:bg-[#303839]/[0.08] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#27307A] disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:bg-transparent";
+
+function pageLabel(template: any, pageId: string) {
+  return (template?.pages || []).find((page: any) => page.id === pageId)?.label || pageId;
+}
 
 export default function AdminFieldsPanel({
   template,
@@ -14,7 +47,9 @@ export default function AdminFieldsPanel({
   onFieldReorder,
   onSelectLayer,
   onToggleRequired,
-}: any) {
+  layout = "page",
+}: any & { layout?: Layout }) {
+  const panel = layout === "panel";
   const layers = template?.layers || [];
   const fields = template?.fields || [];
 
@@ -25,145 +60,162 @@ export default function AdminFieldsPanel({
     const bound = layers.filter((l: any) => l.fieldId === field.id && l.customerEditable);
     return { field, layer: bound[0], bound };
   });
+  const visible = connected.filter((entry: any) => entry.layer);
   const orphanFields = connected.filter((entry: any) => !entry.layer);
   const editableWithoutField = layers.filter(
     (layer: any) => layer.customerEditable && (!layer.fieldId || !fields.some((f: any) => f.id === layer.fieldId)),
   );
 
-  const input = "h-10 w-full rounded-lg border border-[#303839]/15 bg-white px-3 text-sm text-[#303839] shadow-sm outline-none transition focus:border-[#303839]/60 focus:ring-2 focus:ring-[#303839]/15";
-
   return (
-    <div className="mx-auto grid w-full max-w-7xl gap-5 p-4 md:p-6 2xl:p-8">
-      <div>
-        <h3 className="font-display text-2xl text-[#303839]">Customer fields</h3>
-        <p className="mt-1 text-sm text-[#303839]/55">
-          These are the only things a customer can change. A field is created by marking a layer
-          “customer editable” on the Design tab; everything else in the design stays locked.
-        </p>
-      </div>
+    <div className={panel ? "grid gap-5 px-4 pb-6 pt-1" : "mx-auto grid w-full max-w-7xl gap-5 p-4 md:p-6 2xl:p-8"} data-admin-fields-panel={layout}>
+      <p className="text-[14px] leading-relaxed text-[#303839]/75">
+        The event details a customer fills in — names, date, time, venue, RSVP. A field appears when a
+        layer is marked <span className="font-semibold text-[#1f2425]">customer editable</span>; everything else stays locked.
+      </p>
 
       {editableWithoutField.length > 0 && (
-        <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700" role="alert">
-          <p className="font-bold">These editable layers have no field yet (fixed automatically on save):</p>
-          {editableWithoutField.map((layer: any) => (
-            <button key={layer.id} type="button" onClick={() => onSelectLayer(layer.id)} className="mt-1 block rounded underline underline-offset-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white">
-              {layer.name} · {layer.page}
-            </button>
-          ))}
+        <div className="rounded-[10px] bg-red-50 p-3 text-[13px] leading-snug text-red-800" role="alert">
+          <p className="font-semibold">These editable layers have no field yet — fixed automatically on save:</p>
+          <ul className="mt-1.5 grid gap-1">
+            {editableWithoutField.map((layer: any) => (
+              <li key={layer.id}>
+                <button
+                  type="button"
+                  onClick={() => onSelectLayer(layer.id)}
+                  className="cursor-pointer underline underline-offset-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-700"
+                >
+                  {layerDisplayName(layer)} · {pageLabel(template, layer.page)}
+                </button>
+              </li>
+            ))}
+          </ul>
         </div>
       )}
 
       {orphanFields.length > 0 && (
-        <div className="rounded-lg border border-[#D4AF37]/50 bg-[#D4AF37]/10 p-3 text-sm text-[#8a701d]">
-          <p className="font-bold">Not connected to any editable layer (removed on save):</p>
-          <p className="mt-0.5">{orphanFields.map((entry: any) => entry.field.label || entry.field.id).join(", ")}</p>
+        <div className="rounded-[10px] bg-[#FFF6DD] p-3 text-[13px] leading-snug text-[#6b5414]">
+          <p className="font-semibold">Not connected to any editable layer — removed on save:</p>
+          <p className="mt-0.5">{orphanFields.map((entry: any) => entry.field.label || "Untitled field").join(", ")}</p>
         </div>
       )}
 
-      <div className="grid gap-4 xl:grid-cols-2">
-        {connected
-          .filter((entry: any) => entry.layer)
-          .map(({ field, layer, bound }: any, index: number, visible: any[]) => (
-            <div key={field.id} className="rounded-lg border border-[#303839]/12 bg-white p-4">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <div className="flex items-center gap-2">
-                  <span className="rounded bg-[#F8F6F1] px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wide text-[#303839]/70">
-                    {field.type}
-                  </span>
-                  <span className="text-[11px] font-bold text-[#303839]/45">
-                    {field.id} · {bound.length > 1 ? `linked on ${bound.map((l: any) => l.page).join(", ")}` : `page: ${layer.page}`}
-                  </span>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  {/* Display order in Easy Personalize (spec §5) — independent
-                      of layer z-order, only reorders template.fields. */}
-                  <div className="flex items-center rounded-full border border-[#303839]/15">
+      <section className="grid gap-2.5">
+        <div className="flex items-baseline justify-between gap-2">
+          <h3 className="text-[14px] font-bold text-[#1f2425]">Customer fields</h3>
+          {visible.length > 0 && <span className="text-[12.5px] text-[#303839]/60">{visible.length} in display order</span>}
+        </div>
+
+        {visible.length ? (
+          <div className={panel ? "grid gap-2.5" : "grid gap-3 xl:grid-cols-2"}>
+            {visible.map(({ field, layer, bound }: any, index: number) => {
+              const isImage = field.type === "image" || field.type === "file";
+              const pages = [...new Set(bound.map((entry: any) => pageLabel(template, entry.page)))] as string[];
+              const hidden = field.customerVisible === false;
+              return (
+                <article key={field.id} data-field-card={field.id} className="rounded-[10px] bg-[#F2F3F5] p-3">
+                  <div className="flex items-start gap-2.5">
+                    <span className="mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-md bg-white text-[#1f2425]">{isImage ? ICONS.image : ICONS.text}</span>
+                    <div className="min-w-0 flex-1">
+                      <p className={`truncate text-[15px] font-semibold ${hidden ? "text-[#303839]/50" : "text-[#1f2425]"}`}>{field.label || layerDisplayName(layer)}</p>
+                      <p className="mt-0.5 flex flex-wrap items-center gap-1 text-[12px] text-[#303839]/65">
+                        <span className="capitalize">{isImage ? "Photo" : field.type || "Text"}</span>
+                        {pages.map((label) => (
+                          <span key={label} className="rounded-full bg-white px-1.5 py-px text-[11.5px] text-[#303839]/80">{label}</span>
+                        ))}
+                        {bound.length > 1 && (
+                          <span title="One field, shown on each of these pages" className="rounded-full bg-[#27307A]/10 px-1.5 py-px text-[11.5px] text-[#27307A]">Linked</span>
+                        )}
+                      </p>
+                    </div>
+                    {/* Display order in Easy Personalize (spec §5) — independent
+                        of layer z-order, only reorders template.fields. */}
+                    <div className="flex shrink-0 items-center">
+                      <button type="button" aria-label="Move field up in Easy Personalize" title="Move up" disabled={index === 0} onClick={() => onFieldReorder(layer.id, "up")} data-shape="round" className={ICON_BUTTON}>
+                        {ICONS.up}
+                      </button>
+                      <button type="button" aria-label="Move field down in Easy Personalize" title="Move down" disabled={index === visible.length - 1} onClick={() => onFieldReorder(layer.id, "down")} data-shape="round" className={ICON_BUTTON}>
+                        {ICONS.down}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className={`mt-3 grid gap-2.5 ${panel ? "" : "sm:grid-cols-2"}`}>
+                    <label className="block">
+                      <span className={LABEL}>Customer label</span>
+                      <input className={INPUT} value={field.label || ""} onChange={(e) => onFieldPatch(layer.id, { label: e.target.value })} />
+                    </label>
+                    <label className="block">
+                      <span className={LABEL}>Placeholder</span>
+                      <input className={INPUT} value={field.placeholder || ""} onChange={(e) => onFieldPatch(layer.id, { placeholder: e.target.value })} />
+                    </label>
+                    <label className="block">
+                      <span className={LABEL}>Helper text</span>
+                      <input className={INPUT} value={field.helpText || ""} onChange={(e) => onFieldPatch(layer.id, { helpText: e.target.value })} />
+                    </label>
+                    {!isImage && (
+                      <label className="block">
+                        <span className={LABEL}>Maximum length <span className="font-normal text-[#303839]/60">(0 = no limit)</span></span>
+                        <EditableNumericStepper
+                          label="Maximum field length"
+                          value={field.maxLength || 0}
+                          minimum={0}
+                          maximum={100000}
+                          onCommit={(maxLength) => onFieldPatch(layer.id, { maxLength })}
+                          showStepButtons={false}
+                          className="h-10 w-full"
+                          inputClassName={INPUT}
+                        />
+                      </label>
+                    )}
+                  </div>
+
+                  <div className="mt-3 flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-t border-[#303839]/10 pt-3">
+                    <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+                      {/* Hidden fields are never required (isCustomerFieldRequired):
+                          customers cannot fill what they cannot see. */}
+                      <label className={`flex cursor-pointer items-center gap-2 text-[13px] text-[#1f2425] ${hidden ? "cursor-not-allowed opacity-55" : ""}`}>
+                        <input
+                          type="checkbox"
+                          checked={Boolean(field.required) && !hidden}
+                          disabled={hidden}
+                          onChange={(e) => onToggleRequired(layer.id, e.target.checked)}
+                          className="h-4 w-4 cursor-pointer accent-[#27307A]"
+                        />
+                        {hidden ? "Optional while hidden" : "Required"}
+                      </label>
+                      <label className="flex cursor-pointer items-center gap-2 text-[13px] text-[#1f2425]">
+                        <input
+                          type="checkbox"
+                          checked={!hidden}
+                          onChange={(e) => onFieldPatch(layer.id, { customerVisible: e.target.checked })}
+                          className="h-4 w-4 cursor-pointer accent-[#27307A]"
+                        />
+                        Visible to customers
+                      </label>
+                    </div>
                     <button
                       type="button"
-                      aria-label="Move field up in Easy Personalize"
-                      disabled={index === 0}
-                      onClick={() => onFieldReorder(layer.id, "up")}
-                      className="grid h-7 w-7 place-items-center text-[#303839] disabled:cursor-not-allowed disabled:opacity-30 hover:enabled:bg-[#F8F6F1]"
+                      data-shape="round"
+                      onClick={() => onSelectLayer(layer.id)}
+                      className="inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-full border-[1.5px] border-[#27307A] bg-white px-3 text-[13px] font-semibold text-[#27307A] transition-colors hover:bg-[#27307A]/[0.05] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#27307A] focus-visible:ring-offset-2 focus-visible:ring-offset-[#F2F3F5]"
                     >
-                      ↑
-                    </button>
-                    <span className="h-4 w-px bg-[#303839]/15" />
-                    <button
-                      type="button"
-                      aria-label="Move field down in Easy Personalize"
-                      disabled={index === visible.length - 1}
-                      onClick={() => onFieldReorder(layer.id, "down")}
-                      className="grid h-7 w-7 place-items-center text-[#303839] disabled:cursor-not-allowed disabled:opacity-30 hover:enabled:bg-[#F8F6F1]"
-                    >
-                      ↓
+                      Open layer {ICONS.open}
                     </button>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => onSelectLayer(layer.id)}
-                    className="min-h-11 rounded-full border border-[#303839]/15 px-3 py-1 text-xs font-bold text-[#303839] hover:bg-[#F8F6F1] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white"
-                  >
-                    Open layer →
-                  </button>
-                </div>
-              </div>
-
-              <div className="mt-3 grid gap-2.5 sm:grid-cols-2">
-                <label className="block">
-                  <span className="mb-1 block text-[10px] font-bold uppercase tracking-wide text-[#303839]/55">Customer label</span>
-                  <input className={input} value={field.label || ""} onChange={(e) => onFieldPatch(layer.id, { label: e.target.value })} />
-                </label>
-                <label className="block">
-                  <span className="mb-1 block text-[10px] font-bold uppercase tracking-wide text-[#303839]/55">Placeholder</span>
-                  <input className={input} value={field.placeholder || ""} onChange={(e) => onFieldPatch(layer.id, { placeholder: e.target.value })} />
-                </label>
-                <label className="block">
-                  <span className="mb-1 block text-[10px] font-bold uppercase tracking-wide text-[#303839]/55">Helper text</span>
-                  <input className={input} value={field.helpText || ""} onChange={(e) => onFieldPatch(layer.id, { helpText: e.target.value })} />
-                </label>
-                {field.type !== "image" && field.type !== "file" ? (
-                  <label className="block">
-                    <span className="mb-1 block text-[10px] font-bold uppercase tracking-wide text-[#303839]/55">Max length (0 = none)</span>
-                    <EditableNumericStepper label="Maximum field length" value={field.maxLength || 0} minimum={0} maximum={100000} onCommit={(maxLength) => onFieldPatch(layer.id, { maxLength })} />
-                  </label>
-                ) : (
-                  <span />
-                )}
-              </div>
-
-              <div className="mt-3 flex flex-wrap items-center gap-4">
-                {/* Hidden fields are never required (isCustomerFieldRequired):
-                    customers cannot fill what they cannot see. */}
-                <label className={`flex items-center gap-2 text-xs font-bold text-[#303839]/75 ${field.customerVisible === false ? "opacity-60" : ""}`}>
-                  <input
-                    type="checkbox"
-                    checked={Boolean(field.required) && field.customerVisible !== false}
-                    disabled={field.customerVisible === false}
-                    onChange={(e) => onToggleRequired(layer.id, e.target.checked)}
-                    className="h-4 w-4 accent-[#303839]"
-                  />
-                  {field.customerVisible === false ? "Optional while hidden" : "Required"}
-                </label>
-                <label className="flex items-center gap-2 text-xs font-bold text-[#303839]/75">
-                  <input
-                    type="checkbox"
-                    checked={field.customerVisible !== false}
-                    onChange={(e) => onFieldPatch(layer.id, { customerVisible: e.target.checked })}
-                    className="h-4 w-4 accent-[#303839]"
-                  />
-                  Visible to customers
-                </label>
-              </div>
-            </div>
-          ))}
-      </div>
-
-      {!connected.filter((entry: any) => entry.layer).length && (
-        <p className="rounded-lg border border-[#303839]/12 bg-white p-6 text-center text-sm text-[#303839]/55">
-          No customer fields yet. On the Design tab, select a text or image layer and turn on
-          “customer editable”.
-        </p>
-      )}
+                </article>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="grid justify-items-center gap-2 rounded-[10px] bg-[#F2F3F5] px-5 py-8 text-center">
+            <span className="text-[#303839]/45">{ICONS.fields}</span>
+            <p className="text-[14px] font-semibold text-[#1f2425]">No customer fields yet</p>
+            <p className="text-[13px] leading-relaxed text-[#303839]/70">
+              Select a text or photo on the card and turn on “customer editable” to let customers fill it in.
+            </p>
+          </div>
+        )}
+      </section>
     </div>
   );
 }

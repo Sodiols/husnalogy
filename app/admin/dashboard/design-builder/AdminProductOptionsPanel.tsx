@@ -1,11 +1,15 @@
 "use client";
 
-// Product Options manager tab (Section 32). Edits the product's REAL option
-// arrays (formatOptions, sizeOptions, …, paperStyleOptions) through structured
+// Product Options manager (Section 32) — the studio's "Options" side panel and
+// the Product Options tab. Edits the product's REAL option arrays
+// (formatOptions, sizeOptions, …, paperStyleOptions) through structured
 // controls. Values are stored back into the same product JSONB fields the
 // product page and customizer read, so a change here shows up everywhere.
+//
+// Styled as the other studio side panels: light-grey cards, dark text, navy
+// outlined controls, bold small section headings.
 
-import { useRef, useState } from "react";
+import { useRef, useState, type ReactNode } from "react";
 import {
   parseProductOption,
   type ProductOptionEntry,
@@ -14,6 +18,7 @@ import {
 import { uploadBuilderImage } from "./builder-utils";
 import { formatCurrencySurcharge } from "@/lib/currency";
 import EditableNumericStepper from "@/app/components/customizer/EditableNumericStepper";
+import ToolbarPopover, { ToolbarMenuItem } from "./ToolbarPopover";
 
 export const OPTION_GROUPS: Array<{ key: string; title: string; hint: string; supportsImage?: boolean }> = [
   { key: "formatOptions", title: "Choose Your Format", hint: "How the product is delivered (printed, download, both). Leave empty to use the built-in list." },
@@ -24,6 +29,31 @@ export const OPTION_GROUPS: Array<{ key: string; title: string; hint: string; su
   { key: "paperOptions", title: "Paper Type", hint: "Paper stocks. Shown to customers as “Paper Type”." },
   { key: "printingOptions", title: "Printing Process", hint: "Printing upgrades. Shown to customers as “Printing Process”." },
 ];
+
+const line = (children: ReactNode, size = 16) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+    {children}
+  </svg>
+);
+
+const ICONS = {
+  up: line(<path d="m6 15 6-6 6 6" />),
+  down: line(<path d="m6 9 6 6 6-6" />),
+  edit: line(<><path d="M4 20h4L19 9l-4-4L4 16v4Z" /><path d="m13.5 6.5 4 4" /></>),
+  more: line(<><circle cx="5" cy="12" r="1.3" fill="currentColor" /><circle cx="12" cy="12" r="1.3" fill="currentColor" /><circle cx="19" cy="12" r="1.3" fill="currentColor" /></>),
+  plus: line(<path d="M12 5v14M5 12h14" />, 14),
+  chevron: line(<path d="m6 9 6 6 6-6" />, 14),
+};
+
+const INPUT =
+  "h-10 w-full rounded-md border border-[#303839]/20 bg-white px-3 text-[14px] text-[#1f2425] outline-none transition-colors placeholder:text-[#303839]/40 focus:border-[#27307A] focus:ring-2 focus:ring-[#27307A]/15";
+const LABEL = "mb-1 block text-[12.5px] font-semibold text-[#1f2425]";
+const ICON_BUTTON =
+  "grid h-8 w-8 cursor-pointer place-items-center rounded-full text-[#1f2425] transition-colors hover:bg-[#303839]/[0.08] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#27307A] disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:bg-transparent";
+const OUTLINE_PILL =
+  "inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-full border-[1.5px] border-[#27307A] bg-white px-3 text-[13px] font-semibold text-[#27307A] transition-colors hover:bg-[#27307A]/[0.05] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#27307A] focus-visible:ring-offset-2 focus-visible:ring-offset-white disabled:cursor-not-allowed disabled:opacity-50";
+const SOLID_PILL =
+  "inline-flex h-8 cursor-pointer items-center rounded-full bg-[#27307A] px-4 text-[13px] font-semibold text-white transition-colors hover:bg-[#1f2766] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#27307A] focus-visible:ring-offset-2 focus-visible:ring-offset-white disabled:cursor-not-allowed disabled:opacity-50";
 
 // Convert any entry to a rich object for editing.
 function toRich(entry: ProductOptionEntry): RichProductOption {
@@ -46,45 +76,60 @@ function toRich(entry: ProductOptionEntry): RichProductOption {
   };
 }
 
+function Chip({ children, tone = "plain" }: { children: ReactNode; tone?: "plain" | "navy" | "gold" }) {
+  const tones = { plain: "bg-white text-[#303839]/75", navy: "bg-[#27307A]/10 text-[#27307A]", gold: "bg-[#FFF6DD] text-[#6b5414]" };
+  return <span className={`rounded-full px-1.5 py-px text-[11.5px] font-medium ${tones[tone]}`}>{children}</span>;
+}
+
 function OptionRow({ entry, index, count, onEdit, onMove, onDelete, onDuplicate, onSetDefault }: any) {
   const parsed = parseProductOption(entry);
   if (!parsed) return null;
   return (
-    <div className={`flex items-center gap-2 rounded-md border px-2.5 py-2 ${parsed.active ? "border-[#303839]/12 bg-white" : "border-[#303839]/10 bg-[#F8F6F1] opacity-60"}`}>
-      {parsed.image && <img src={parsed.image} alt="" className="h-8 w-8 shrink-0 rounded object-cover" />}
+    <div data-option-row className={`flex min-w-0 items-center gap-2.5 rounded-[10px] bg-[#F2F3F5] py-2 pl-3 pr-1.5 ${parsed.active ? "" : "opacity-60"}`}>
+      {parsed.image && (
+        // eslint-disable-next-line @next/next/no-img-element -- an option thumbnail from the asset API
+        <img src={parsed.image} alt="" className="h-9 w-9 shrink-0 rounded-md bg-white object-cover" />
+      )}
       <div className="min-w-0 flex-1">
-        <p className="flex flex-wrap items-center gap-1.5 text-sm font-semibold text-[#303839]">
-          {parsed.displayLabel}
-          {parsed.surcharge > 0 && <span className="text-xs font-bold text-[#303839]/50">{formatCurrencySurcharge(parsed.surcharge)}</span>}
-          {parsed.badge && (
-            <span className="rounded-full bg-[#D4AF37]/15 px-1.5 py-0.5 text-[9px] font-extrabold uppercase text-[#8a701d]">{parsed.badge}</span>
-          )}
-          {parsed.isDefault && <span className="rounded-full bg-[#303839]/10 px-1.5 py-0.5 text-[9px] font-extrabold uppercase text-[#303839]/60">Default</span>}
-          {!parsed.active && <span className="text-[10px] font-bold text-[#303839]/50">(disabled)</span>}
-        </p>
-        {parsed.description && <p className="truncate text-xs text-[#303839]/50">{parsed.description}</p>}
+        <p className="truncate text-[14px] font-semibold text-[#1f2425]">{parsed.displayLabel}</p>
+        {(parsed.surcharge > 0 || parsed.isDefault || parsed.badge || !parsed.active || parsed.description) && (
+          <p className="mt-0.5 flex flex-wrap items-center gap-1 text-[12px] text-[#303839]/65">
+            {parsed.surcharge > 0 && <span>{formatCurrencySurcharge(parsed.surcharge)}</span>}
+            {parsed.isDefault && <Chip tone="navy">Default</Chip>}
+            {parsed.badge && <Chip tone="gold">{parsed.badge}</Chip>}
+            {!parsed.active && <Chip>Unavailable</Chip>}
+            {parsed.description && <span className="w-full truncate">{parsed.description}</span>}
+          </p>
+        )}
       </div>
-      <span className="flex shrink-0 items-center gap-0.5">
-        <button type="button" aria-label="Move up" disabled={index === 0} onClick={() => onMove(index, -1)} className="grid h-6 w-5 place-items-center text-[10px] text-[#303839]/50 hover:text-[#303839] disabled:opacity-25">▲</button>
-        <button type="button" aria-label="Move down" disabled={index === count - 1} onClick={() => onMove(index, 1)} className="grid h-6 w-5 place-items-center text-[10px] text-[#303839]/50 hover:text-[#303839] disabled:opacity-25">▼</button>
-        <button type="button" onClick={() => onSetDefault(index)} className="rounded px-1.5 py-1 text-[10px] font-bold text-[#303839]/50 hover:bg-[#F8F6F1] hover:text-[#303839]" title="Make default">
-          Default
+      <span className="flex shrink-0 items-center">
+        <button type="button" aria-label="Move up" title="Move up" disabled={index === 0} onClick={() => onMove(index, -1)} data-shape="round" className={ICON_BUTTON}>
+          {ICONS.up}
         </button>
-        <button type="button" onClick={() => onDuplicate(index)} className="grid h-6 w-6 place-items-center text-[11px] text-[#303839]/50 hover:text-[#303839]" aria-label="Duplicate option">⧉</button>
-        <button type="button" onClick={() => onEdit(index)} className="rounded px-1.5 py-1 text-[10px] font-bold text-[#303839] hover:bg-[#F8F6F1]">
-          Edit
+        <button type="button" aria-label="Move down" title="Move down" disabled={index === count - 1} onClick={() => onMove(index, 1)} data-shape="round" className={ICON_BUTTON}>
+          {ICONS.down}
         </button>
-        <button type="button" onClick={() => onDelete(index)} className="grid h-6 w-6 place-items-center text-[11px] text-red-600 hover:text-red-700" aria-label="Delete option">✕</button>
+        <button type="button" aria-label={`Edit ${parsed.displayLabel}`} title="Edit" onClick={() => onEdit(index)} data-shape="round" className={ICON_BUTTON}>
+          {ICONS.edit}
+        </button>
+        <ToolbarPopover label={`More actions for ${parsed.displayLabel}`} triggerTitle="More" menuWidth={190} align="end" triggerShape="round" triggerClassName={ICON_BUTTON} trigger={ICONS.more}>
+          {(close) => (
+            <>
+              <ToolbarMenuItem label="Make default" disabled={parsed.isDefault} onSelect={() => { onSetDefault(index); close(); }} />
+              <ToolbarMenuItem label="Duplicate" onSelect={() => { onDuplicate(index); close(); }} />
+              <ToolbarMenuItem label="Delete" danger onSelect={() => { onDelete(index); close(); }} />
+            </>
+          )}
+        </ToolbarPopover>
       </span>
     </div>
   );
 }
 
-function OptionEditor({ initial, supportsImage, onSave, onCancel }: any) {
+function OptionEditor({ initial, supportsImage, wide, onSave, onCancel }: any) {
   const [draft, setDraft] = useState<RichProductOption>(initial);
   const [busy, setBusy] = useState(false);
   const imageInput = useRef<HTMLInputElement>(null);
-  const input = "h-10 w-full rounded-lg border border-[#303839]/15 bg-white px-3 text-sm text-[#303839] shadow-sm outline-none transition focus:border-[#303839]/60 focus:ring-2 focus:ring-[#303839]/15";
   const patch = (updates: Partial<RichProductOption>) => setDraft((current) => ({ ...current, ...updates }));
 
   const uploadImage = async (file?: File) => {
@@ -106,14 +151,16 @@ function OptionEditor({ initial, supportsImage, onSave, onCancel }: any) {
   };
 
   return (
-    <div className="grid gap-2.5 rounded-lg border border-[#303839]/20 bg-[#F8F6F1] p-3">
-      <div className="grid gap-2.5 sm:grid-cols-2">
+    <div data-option-editor className="grid min-w-0 gap-3 rounded-[10px] border-[1.5px] border-[#27307A]/30 bg-[#F2F3F5] p-3">
+      <div className={`grid gap-2.5 ${wide ? "sm:grid-cols-2" : ""}`}>
         <label className="block">
-          <span className="mb-1 block text-[10px] font-bold uppercase tracking-wide text-[#303839]/55">Customer label *</span>
-          <input className={input} value={draft.label} onChange={(e) => patch({ label: e.target.value })} />
+          <span className={LABEL}>
+            Customer label <span className="text-red-700" aria-hidden>*</span>
+          </span>
+          <input className={INPUT} value={draft.label} required onChange={(e) => patch({ label: e.target.value })} />
         </label>
         <label className="block">
-          <span className="mb-1 block text-[10px] font-bold uppercase tracking-wide text-[#303839]/55">Price surcharge (৳)</span>
+          <span className={LABEL}>Price surcharge (৳)</span>
           <EditableNumericStepper
             label="Price surcharge"
             value={draft.surcharge || 0}
@@ -122,73 +169,86 @@ function OptionEditor({ initial, supportsImage, onSave, onCancel }: any) {
             largeStep={1}
             allowNegative={false}
             allowDecimal
+            showStepButtons={false}
             onCommit={(surcharge) => patch({ surcharge })}
+            className="h-10 w-full"
+            inputClassName={INPUT}
           />
         </label>
-        <label className="block sm:col-span-2">
-          <span className="mb-1 block text-[10px] font-bold uppercase tracking-wide text-[#303839]/55">Short description</span>
-          <input className={input} value={draft.description || ""} onChange={(e) => patch({ description: e.target.value })} />
+        <label className={`block ${wide ? "sm:col-span-2" : ""}`}>
+          <span className={LABEL}>Short description</span>
+          <input className={INPUT} value={draft.description || ""} onChange={(e) => patch({ description: e.target.value })} />
         </label>
         <label className="block">
-          <span className="mb-1 block text-[10px] font-bold uppercase tracking-wide text-[#303839]/55">Badge</span>
+          <span className={LABEL}>Badge</span>
           <span className="relative block min-w-0">
-            <select className={`${input} appearance-none pr-10`} value={draft.badge || ""} onChange={(e) => patch({ badge: e.target.value })}>
+            <select className={`${INPUT} cursor-pointer appearance-none pr-10`} value={draft.badge || ""} onChange={(e) => patch({ badge: e.target.value })}>
               <option value="">None</option>
               <option value="Best Seller">Best Seller</option>
               <option value="Recommended">Recommended</option>
               <option value="New">New</option>
             </select>
-            <svg className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[#303839]/50" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-              <path d="m6 9 6 6 6-6" />
-            </svg>
+            <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[#303839]/55">{ICONS.chevron}</span>
           </span>
         </label>
         <label className="block">
-          <span className="mb-1 block text-[10px] font-bold uppercase tracking-wide text-[#303839]/55">Internal value</span>
-          <input className={input} value={draft.value || ""} placeholder="auto from label" onChange={(e) => patch({ value: e.target.value })} />
+          <span className={LABEL}>Internal value</span>
+          <input className={INPUT} value={draft.value || ""} placeholder="Made from the label" onChange={(e) => patch({ value: e.target.value })} />
         </label>
       </div>
 
       {supportsImage && (
-        <div className="flex items-center gap-2">
-          {draft.image && <img src={draft.image} alt="" className="h-10 w-10 rounded object-cover" />}
-          <button type="button" onClick={() => imageInput.current?.click()} className="rounded-full border border-[#303839]/15 bg-white px-3 py-1.5 text-xs font-bold hover:bg-white/60">
+        <div className="flex items-center gap-2.5">
+          {draft.image && (
+            // eslint-disable-next-line @next/next/no-img-element -- an option thumbnail from the asset API
+            <img src={draft.image} alt="" className="h-10 w-10 rounded-md bg-white object-cover" />
+          )}
+          <button type="button" data-shape="round" onClick={() => imageInput.current?.click()} disabled={busy} className={OUTLINE_PILL}>
             {busy ? "Uploading…" : draft.image ? "Replace image" : "Add image"}
           </button>
           {draft.image && (
-            <button type="button" onClick={() => patch({ image: "", imageAssetId: "", imageBucket: "", imagePath: "", imageEditorPath: "", imageThumbnailPath: "" })} className="text-xs font-bold text-red-700 underline-offset-2 hover:underline">
+            <button
+              type="button"
+              onClick={() => patch({ image: "", imageAssetId: "", imageBucket: "", imagePath: "", imageEditorPath: "", imageThumbnailPath: "" })}
+              className="cursor-pointer text-[13px] font-semibold text-red-700 underline-offset-2 hover:underline"
+            >
               Remove
             </button>
           )}
-          <input ref={imageInput} type="file" accept="image/*" className="sr-only" onChange={(e) => { uploadImage(e.target.files?.[0]); e.target.value = ""; }} />
+          <input
+            ref={imageInput}
+            type="file"
+            accept="image/*"
+            className="sr-only"
+            aria-label="Option image"
+            onChange={(e) => {
+              uploadImage(e.target.files?.[0]);
+              e.target.value = "";
+            }}
+          />
         </div>
       )}
 
-      <div className="flex flex-wrap items-center gap-4">
-        <label className="flex items-center gap-2 text-xs font-bold text-[#303839]/75">
-          <input type="checkbox" checked={draft.active !== false} onChange={(e) => patch({ active: e.target.checked })} className="h-4 w-4 accent-[#303839]" />
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-[#303839]/10 pt-3">
+        <label className="flex cursor-pointer items-center gap-2 text-[13px] text-[#1f2425]">
+          <input type="checkbox" checked={draft.active !== false} onChange={(e) => patch({ active: e.target.checked })} className="h-4 w-4 cursor-pointer accent-[#27307A]" />
           Available
         </label>
-        <label className="flex items-center gap-2 text-xs font-bold text-[#303839]/75">
-          <input type="checkbox" checked={draft.customerVisible !== false} onChange={(e) => patch({ customerVisible: e.target.checked })} className="h-4 w-4 accent-[#303839]" />
+        <label className="flex cursor-pointer items-center gap-2 text-[13px] text-[#1f2425]">
+          <input type="checkbox" checked={draft.customerVisible !== false} onChange={(e) => patch({ customerVisible: e.target.checked })} className="h-4 w-4 cursor-pointer accent-[#27307A]" />
           Visible to customers
         </label>
-        <label className="flex items-center gap-2 text-xs font-bold text-[#303839]/75">
-          <input type="checkbox" checked={draft.isDefault === true} onChange={(e) => patch({ isDefault: e.target.checked })} className="h-4 w-4 accent-[#303839]" />
+        <label className="flex cursor-pointer items-center gap-2 text-[13px] text-[#1f2425]">
+          <input type="checkbox" checked={draft.isDefault === true} onChange={(e) => patch({ isDefault: e.target.checked })} className="h-4 w-4 cursor-pointer accent-[#27307A]" />
           Default selection
         </label>
       </div>
 
       <div className="flex justify-end gap-2">
-        <button type="button" onClick={onCancel} className="rounded-full border border-[#303839]/15 px-4 py-1.5 text-xs font-bold text-[#303839] hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white">
+        <button type="button" data-shape="round" onClick={onCancel} className={OUTLINE_PILL}>
           Cancel
         </button>
-        <button
-          type="button"
-          disabled={!draft.label.trim()}
-          onClick={() => onSave(draft)}
-          className="rounded-full bg-[#303839] px-4 py-1.5 text-xs font-bold text-white hover:bg-[#434c4d] disabled:opacity-50"
-        >
+        <button type="button" data-shape="round" disabled={!draft.label.trim()} onClick={() => onSave(draft)} className={SOLID_PILL}>
           Save option
         </button>
       </div>
@@ -196,7 +256,7 @@ function OptionEditor({ initial, supportsImage, onSave, onCancel }: any) {
   );
 }
 
-function OptionGroupEditor({ group, entries, onChange }: any) {
+function OptionGroupEditor({ group, entries, onChange, wide }: any) {
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [addingNew, setAddingNew] = useState(false);
   const list: ProductOptionEntry[] = Array.isArray(entries) ? entries : [];
@@ -228,29 +288,34 @@ function OptionGroupEditor({ group, entries, onChange }: any) {
   };
 
   return (
-    <section className="rounded-lg border border-[#303839]/12 bg-white p-4">
-      <div className="mb-1 flex items-center justify-between gap-2">
-        <h4 className="font-display text-xl text-[#303839]">{group.title}</h4>
+    <section className={wide ? "grid min-w-0 content-start gap-2.5 rounded-[12px] border border-[#303839]/10 bg-white p-4" : "grid min-w-0 gap-2.5"} data-option-group={group.key}>
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h3 className="text-[14px] font-bold text-[#1f2425]">{group.title}</h3>
+          <p className="mt-0.5 text-[12.5px] leading-snug text-[#303839]/65">{group.hint}</p>
+        </div>
         <button
           type="button"
+          data-shape="round"
+          aria-label={`Add option to ${group.title}`}
           onClick={() => {
             setAddingNew(true);
             setEditingIndex(null);
           }}
-          className="rounded-full border border-[#303839]/15 px-3 py-1 text-xs font-bold text-[#303839] hover:bg-[#F8F6F1]"
+          className={`${OUTLINE_PILL} shrink-0`}
         >
-          + Add option
+          {ICONS.plus} Add
         </button>
       </div>
-      <p className="mb-3 text-xs text-[#303839]/50">{group.hint}</p>
 
-      <div className="grid gap-1.5">
+      <div className="grid min-w-0 gap-1.5">
         {list.map((entry, index) =>
           editingIndex === index ? (
             <OptionEditor
               key={index}
               initial={toRich(entry)}
               supportsImage={group.supportsImage}
+              wide={wide}
               onSave={(draft: RichProductOption) => saveEdited(index, draft)}
               onCancel={() => setEditingIndex(null)}
             />
@@ -276,11 +341,12 @@ function OptionGroupEditor({ group, entries, onChange }: any) {
             />
           ),
         )}
-        {!list.length && <p className="rounded-md border border-dashed border-[#303839]/20 px-3 py-4 text-center text-xs text-[#303839]/45">No options configured.</p>}
+        {!list.length && !addingNew && <p className="rounded-[10px] bg-[#F2F3F5] px-3 py-3 text-[13px] text-[#303839]/65">No options yet.</p>}
         {addingNew && (
           <OptionEditor
             initial={{ label: "", surcharge: 0, active: true, customerVisible: true, isDefault: false }}
             supportsImage={group.supportsImage}
+            wide={wide}
             onSave={saveNew}
             onCancel={() => setAddingNew(false)}
           />
@@ -291,6 +357,8 @@ function OptionGroupEditor({ group, entries, onChange }: any) {
 }
 
 type Props = {
+  /** "panel": the studio's narrow Options side panel; "page": the wide Product Options tab. */
+  layout?: "panel" | "page";
   productOptions: Record<string, ProductOptionEntry[]>;
   quantityOptions: any[];
   onOptionsChange: (key: string, entries: ProductOptionEntry[]) => void;
@@ -298,35 +366,33 @@ type Props = {
 };
 
 export default function AdminProductOptionsPanel({
+  layout = "page",
   productOptions,
   quantityOptions,
   onOptionsChange,
   onQuantityOptionsChange,
 }: Props) {
+  const wide = layout === "page";
   return (
-    <div className="mx-auto grid w-full max-w-7xl gap-5 p-4 md:p-6 xl:grid-cols-2 2xl:p-8">
-      <div className="xl:col-span-2">
-        <h3 className="font-display text-2xl text-[#303839]">Product options</h3>
-        <p className="mt-1 text-sm text-[#303839]/55">
-          These options power the product page, the customizer Options step, pricing, the cart, and
-          orders. Surcharges are added to the unit price automatically.
-        </p>
-      </div>
+    <div className={wide ? "mx-auto grid w-full max-w-7xl gap-5 p-4 md:p-6 xl:grid-cols-2 2xl:p-8" : "grid gap-5 px-4 pb-6 pt-1"} data-admin-options-panel={layout}>
+      <p className={`text-[14px] leading-relaxed text-[#303839]/75 ${wide ? "xl:col-span-2" : ""}`}>
+        The choices customers make on the product page and in the Options step — format, size, envelopes, paper and printing.
+        Surcharges are added to the unit price automatically.
+      </p>
 
-      {OPTION_GROUPS.map((group) => (
-        <OptionGroupEditor
-          key={group.key}
-          group={group}
-          entries={productOptions[group.key] || []}
-          onChange={onOptionsChange}
-        />
+      {OPTION_GROUPS.map((group, index) => (
+        <div key={group.key} className={`min-w-0 ${!wide && index > 0 ? "border-t border-[#303839]/10 pt-5" : ""}`}>
+          <OptionGroupEditor group={group} entries={productOptions[group.key] || []} onChange={onOptionsChange} wide={wide} />
+        </div>
       ))}
 
-      <section className="rounded-lg border border-[#303839]/12 bg-white p-4 xl:col-span-2">
-        <h4 className="font-display text-xl text-[#303839]">Quantity</h4>
-        <p className="mb-2 text-xs text-[#303839]/50">Quantities customers can order, comma separated (e.g. 1, 10, 20, 50, 100).</p>
+      <section className={wide ? "grid gap-2.5 rounded-[12px] border border-[#303839]/10 bg-white p-4 xl:col-span-2" : "grid gap-2.5 border-t border-[#303839]/10 pt-5"}>
+        <div>
+          <h3 className="text-[14px] font-bold text-[#1f2425]">Quantity</h3>
+          <p className="mt-0.5 text-[12.5px] leading-snug text-[#303839]/65">Quantities customers can order, separated by commas (e.g. 1, 10, 20, 50, 100).</p>
+        </div>
         <input
-          className="h-10 w-full rounded-lg border border-[#303839]/15 bg-white px-3 text-sm text-[#303839] shadow-sm outline-none transition focus:border-[#303839]/60 focus:ring-2 focus:ring-[#303839]/15"
+          className={INPUT}
           value={(quantityOptions || []).map((entry: any) => (typeof entry === "object" ? entry?.label : entry)).join(", ")}
           onChange={(e) =>
             onQuantityOptionsChange(

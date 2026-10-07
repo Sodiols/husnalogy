@@ -8,6 +8,7 @@
 // Collapsed: a launch card with a live summary. Open: a full-screen
 // professional editor (fixed overlay, no site chrome).
 
+import { panForZoomChange } from "@/lib/customizer/v2/zoom";
 import ToolbarPopover, { ToolbarMenuItem, ToolbarMenuSection } from "./ToolbarPopover";
 import { configureAssetRuntime } from "@/app/components/customizer/canvas-image-source";
 import { DEFAULT_FONT_FAMILY } from "@/lib/customizer/v2/google-fonts";
@@ -37,6 +38,7 @@ import AdminLayersPanel from "./AdminLayersPanel";
 import AdminPagesPanel from "./AdminPagesPanel";
 import AdminFieldsPanel from "./AdminFieldsPanel";
 import AdminProductOptionsPanel from "./AdminProductOptionsPanel";
+import AdminCanvasBar from "./AdminCanvasBar";
 import AdminTemplateSettings from "./AdminTemplateSettings";
 import AdminCustomerPreview from "./AdminCustomerPreview";
 import AdminMockupEditor from "./AdminMockupEditor";
@@ -344,7 +346,10 @@ export default function AdminDesignBuilder({
   // document dirty, and never creates undo history.
   const [viewport, setViewport] = useState<ViewportState>(INITIAL_VIEWPORT);
   const { zoom } = viewport;
-  const setZoom = (next: number) => setViewport((current) => ({ ...current, zoom: next }));
+  // Zooming keeps the point at the centre of the workspace where it is, so a
+  // scrolled view does not jump when the zoom changes.
+  const setZoom = (next: number) =>
+    setViewport((current) => ({ zoom: next, ...panForZoomChange({ panX: current.panX, panY: current.panY }, current.zoom, next) }));
   const setPan = (pan: { panX: number; panY: number }) => setViewport((current) => ({ ...current, ...pan }));
   // Zoom 1 IS the fitted page: AdminCanvas measures its live workspace box and
   // scales the card so the whole thing fits, so collapsing the tool rail, the
@@ -1833,6 +1838,7 @@ export default function AdminDesignBuilder({
                     )}
                     {sidePanel === "options" && (
                       <AdminProductOptionsPanel
+                        layout="panel"
                         productOptions={productOptions}
                         quantityOptions={quantityOptions}
                         onOptionsChange={(key: string, entries: any[]) => onProductOptionsChange?.(key, entries)}
@@ -1841,6 +1847,7 @@ export default function AdminDesignBuilder({
                     )}
                     {sidePanel === "moment" && (
                       <AdminFieldsPanel
+                        layout="panel"
                         template={t}
                         onFieldPatch={onFieldPatch}
                         onFieldReorder={onFieldReorder}
@@ -1979,6 +1986,7 @@ export default function AdminDesignBuilder({
                 panX={viewport.panX}
                 panY={viewport.panY}
                 onPanChange={setPan}
+                onViewportChange={(next: ViewportState) => setViewport(next)}
                 showSafeArea={Boolean(settings.showSafeArea)}
                 showBleed={Boolean(settings.showBleed)}
                 snapEnabled={snapEnabled}
@@ -2006,121 +2014,25 @@ export default function AdminDesignBuilder({
                   onClose={() => setContextMenu(null)}
                 />
               )}
-              <div className="pointer-events-none absolute inset-x-0 bottom-3 z-30 flex items-center justify-center gap-2 px-3">
-                <div className="pointer-events-auto flex flex-wrap items-center justify-center gap-2">
-                  <CustomizerZoomControls
-                    zoom={zoom}
-                    onZoomChange={setZoom}
-                    fitZoom={1}
-                    actualSizeZoom={actualSizeZoomValue}
-                    usePresetSteps
-                    onFit={fitToPage}
-                    onActualSize={resetViewport}
-                  />
-                  {/* One segmented group instead of three separate pills. */}
-                  <div
-                    role="group"
-                    aria-label="Canvas guides"
-                    className="flex min-h-11 items-center gap-0.5 rounded-full border border-[#303839]/8 bg-white p-1 shadow-[0_2px_12px_rgba(48,56,57,0.08)]"
-                  >
-                    <button
-                      type="button"
-                      aria-pressed={snapEnabled}
-                      onClick={() => setSnapEnabled((v) => !v)}
-                      className={`min-h-9 rounded-full px-3.5 text-[11px] font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white ${
-                        snapEnabled ? "bg-[#303839] text-white" : "text-[#303839]/50 hover:bg-[#F8F6F1] hover:text-[#303839]"
-                      }`}
-                    >
-                      Snap
-                    </button>
-                    <button
-                      type="button"
-                      aria-pressed={Boolean(settings.showSafeArea)}
-                      onClick={() => commit({ ...t, settings: { ...settings, showSafeArea: !settings.showSafeArea } })}
-                      className={`min-h-9 rounded-full px-3.5 text-[11px] font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white ${
-                        settings.showSafeArea ? "bg-[#303839] text-white" : "text-[#303839]/50 hover:bg-[#F8F6F1] hover:text-[#303839]"
-                      }`}
-                    >
-                      Safe area
-                    </button>
-                    <button
-                      type="button"
-                      aria-pressed={Boolean(settings.showBleed)}
-                      onClick={() => commit({ ...t, settings: { ...settings, showBleed: !settings.showBleed } })}
-                      className={`min-h-9 rounded-full px-3.5 text-[11px] font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white ${
-                        settings.showBleed ? "bg-[#303839] text-white" : "text-[#303839]/50 hover:bg-[#F8F6F1] hover:text-[#303839]"
-                      }`}
-                    >
-                      Bleed
-                    </button>
-                    {/* Ruler guides and the hand tool: canvas aids, kept beside Snap. */}
-                    <ToolbarPopover
-                      label="Add guide"
-                      triggerTitle="Add a ruler guide"
-                      menuWidth={180}
-                      align="center"
-                      triggerClassName="min-h-9 rounded-full px-3.5 text-[11px] font-bold text-[#303839]/50 transition-colors hover:bg-[#F8F6F1] hover:text-[#303839] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839]"
-                      triggerActiveClassName="min-h-9 rounded-full bg-[#303839] px-3.5 text-[11px] font-bold text-white"
-                      trigger={<span>Guide</span>}
-                    >
-                      {(close) => (
-                        <ToolbarMenuSection title="Ruler guide">
-                          {(["horizontal", "vertical"] as const).map((axis) => (
-                            <ToolbarMenuItem
-                              key={axis}
-                              label={axis === "horizontal" ? "Horizontal guide" : "Vertical guide"}
-                              onSelect={() => {
-                                addGuide(axis);
-                                close();
-                              }}
-                            />
-                          ))}
-                        </ToolbarMenuSection>
-                      )}
-                    </ToolbarPopover>
-                    <button
-                      type="button"
-                      aria-pressed={activeTool === "pan"}
-                      title="Pan the canvas (or hold Space)"
-                      onClick={() => dispatchTool({ type: "togglePan" })}
-                      className={`min-h-9 rounded-full px-3.5 text-[11px] font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white ${
-                        activeTool === "pan" ? "bg-[#303839] text-white" : "text-[#303839]/50 hover:bg-[#F8F6F1] hover:text-[#303839]"
-                      }`}
-                    >
-                      Pan
-                    </button>
-                  </div>
-                  <div
-                    role="radiogroup"
-                    aria-label="Artboard orientation"
-                    className="flex min-h-11 items-center gap-0.5 rounded-full border border-[#303839]/8 bg-white p-1 shadow-[0_2px_12px_rgba(48,56,57,0.08)]"
-                  >
-                    {(["portrait", "landscape"] as const).map((value) => {
-                      const active = artboardOrientation === value;
-                      const label = value === "portrait" ? "Vertical" : "Horizontal";
-                      return (
-                        <button
-                          key={value}
-                          type="button"
-                          role="radio"
-                          aria-checked={active}
-                          aria-label={label}
-                          title={artboardOrientation === "square" ? "A square card has no vertical or horizontal orientation" : `${label} card — the design is carried across`}
-                          disabled={artboardOrientation === "square"}
-                          onClick={() => setArtboardOrientation(value)}
-                          className={`flex min-h-9 items-center gap-1.5 rounded-full px-3 text-[11px] font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white disabled:cursor-not-allowed disabled:opacity-40 ${
-                            active ? "bg-[#303839] text-white" : "text-[#303839]/50 hover:bg-[#F8F6F1] hover:text-[#303839]"
-                          }`}
-                        >
-                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" aria-hidden>
-                            {value === "portrait" ? <rect x="6.5" y="3" width="11" height="18" rx="1.5" /> : <rect x="3" y="6.5" width="18" height="11" rx="1.5" />}
-                          </svg>
-                          <span className="max-xl:sr-only">{label}</span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
+              <div className="pointer-events-none absolute inset-x-0 bottom-3 z-30 flex items-center justify-center px-3">
+                <AdminCanvasBar
+                  zoom={zoom}
+                  onZoomChange={setZoom}
+                  onFit={fitToPage}
+                  onActualSize={resetViewport}
+                  actualSizeZoom={actualSizeZoomValue}
+                  snapEnabled={snapEnabled}
+                  onToggleSnap={() => setSnapEnabled((value) => !value)}
+                  showSafeArea={Boolean(settings.showSafeArea)}
+                  onToggleSafeArea={() => commit({ ...t, settings: { ...settings, showSafeArea: !settings.showSafeArea } })}
+                  showBleed={Boolean(settings.showBleed)}
+                  onToggleBleed={() => commit({ ...t, settings: { ...settings, showBleed: !settings.showBleed } })}
+                  panActive={activeTool === "pan"}
+                  onTogglePan={() => dispatchTool({ type: "togglePan" })}
+                  onAddGuide={addGuide}
+                  orientation={artboardOrientation}
+                  onOrientationChange={setArtboardOrientation}
+                />
               </div>
             </main>
 

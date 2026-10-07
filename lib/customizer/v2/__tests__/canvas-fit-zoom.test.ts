@@ -322,7 +322,8 @@ describe("canvas viewport wiring", () => {
   it("makes Fit reset to 100% and recentre, with 1:1 kept separate", () => {
     expect(adminBuilder).toContain("const fitToPage = () => setViewport(fitViewport(1))");
     expect(adminBuilder).toContain("const resetViewport = () => setViewport(fitViewport(actualSizeZoomValue ?? 1))");
-    expect(adminBuilder).toContain("fitZoom={1}");
+    // Fit is the canvas bar's "Fit to screen"; 1:1 is its separate "Actual size".
+    expect(adminBuilder).toContain("onFit={fitToPage}");
     expect(adminBuilder).toContain("actualSizeZoom={actualSizeZoomValue}");
   });
 

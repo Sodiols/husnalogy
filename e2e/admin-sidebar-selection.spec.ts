@@ -8,7 +8,7 @@
  */
 import { expect, test, type Page } from "@playwright/test";
 import { bodyPoint, selectedIds } from "./customizer-fixture";
-import { addStudioShape, openSidePanel, rail, sidePanel } from "./admin-studio-tools";
+import { addStudioShape, canvasSettings, openSidePanel, rail, sidePanel } from "./admin-studio-tools";
 
 /** 10 pt on the fixture's 300 DPI card, in stored document px (type-units.ts). */
 const TEN_POINTS = 41.67;
@@ -158,15 +158,16 @@ test.describe("tool rail", () => {
     expect(saved.layers.some((layer: any) => layer.type === "text" && layer.text === "Rail text")).toBe(true);
   });
 
-  test("ruler guides and the hand tool moved to the canvas bar", async ({ page }) => {
+  test("ruler guides and the hand tool live in the canvas bar's Settings", async ({ page }) => {
     await openStudio(page);
-    await studio(page).getByRole("button", { name: "Add guide" }).click();
-    await page.getByRole("menuitem", { name: "Horizontal guide" }).click();
+    const settings = await canvasSettings(page);
+    await settings.getByRole("button", { name: "Horizontal guide" }).click();
+    const pan = settings.getByRole("switch", { name: "Pan" });
+    await pan.click();
+    await expect(pan).toHaveAttribute("aria-checked", "true");
+    await page.keyboard.press("Escape");
     const saved = await savedTemplate(page);
     expect(saved.guides).toHaveLength(1);
-    const pan = studio(page).getByRole("button", { name: "Pan", exact: true });
-    await pan.click();
-    await expect(pan).toHaveAttribute("aria-pressed", "true");
   });
 });
 

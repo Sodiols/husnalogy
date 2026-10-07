@@ -169,3 +169,70 @@ export function panCursor({ isPanning, panToolActive }: { isPanning?: boolean; p
   if (panToolActive) return "grab";
   return "";
 }
+
+/* ------------------------------------------------------------ wheel scroll --
+ * The mouse wheel / trackpad scrolls a zoomed-in artboard like a document:
+ * vertical wheel scrolls up and down, Shift+wheel (or a sideways swipe) left
+ * and right. It only scrolls what is actually hidden — the part of the card
+ * beyond the workspace, plus a small margin — so at Fit the wheel leaves the
+ * card where it is, and a scroll can never fling it out of view.
+ */
+
+/** Extra room past the card's edge a scroll may reveal, in screen px. */
+export const WHEEL_SCROLL_MARGIN = 48;
+
+const LINE_PX = 16;
+
+/** How far a scroll may move the card on each axis (0 when it already fits). */
+export function wheelScrollLimits(bounds: PanBounds): { maxPanX: number; maxPanY: number } {
+  const overflow = (display: unknown, workspace: unknown) => {
+    const extra = Math.max(0, finite(display)) - Math.max(0, finite(workspace));
+    return extra > 0 ? extra / 2 + WHEEL_SCROLL_MARGIN : 0;
+  };
+  return {
+    maxPanX: overflow(bounds?.displayWidth, bounds?.workspaceWidth),
+    maxPanY: overflow(bounds?.displayHeight, bounds?.workspaceHeight),
+  };
+}
+
+/** A wheel event's movement in screen px, whatever unit the device reports. */
+export function normalizeWheelDelta(
+  event: { deltaX: number; deltaY: number; deltaMode?: number; shiftKey?: boolean },
+  pageHeight: number,
+): { dx: number; dy: number } {
+  const unit = event.deltaMode === 1 ? LINE_PX : event.deltaMode === 2 ? Math.max(1, finite(pageHeight, 600)) : 1;
+  let dx = finite(event.deltaX) * unit;
+  let dy = finite(event.deltaY) * unit;
+  // A mouse has one wheel: Shift turns it sideways.
+  if (event.shiftKey && !dx) {
+    dx = dy;
+    dy = 0;
+  }
+  return { dx, dy };
+}
+
+// One axis: move by `delta`, never past the limit — but a card already beyond
+// it (moved there by dragging) is never pulled back, only stopped from going
+// further out.
+function scrollAxis(current: number, delta: number, limit: number): number {
+  const next = current - delta;
+  // `|| 0` folds -0 into 0, so "nothing moved" compares equal.
+  if (next > current) return Math.min(next, Math.max(limit, current)) || 0;
+  if (next < current) return Math.max(next, Math.min(-limit, current)) || 0;
+  return current;
+}
+
+/** The pan after scrolling by `delta` screen px (content moves opposite to the wheel). */
+export function panFromWheel(pan: PanOffset, delta: { dx: number; dy: number }, bounds: PanBounds): PanOffset {
+  const { maxPanX, maxPanY } = wheelScrollLimits(bounds);
+  return {
+    panX: scrollAxis(finite(pan?.panX), finite(delta?.dx), maxPanX),
+    panY: scrollAxis(finite(pan?.panY), finite(delta?.dy), maxPanY),
+  };
+}
+
+/** Ctrl/⌘+wheel and trackpad pinch: a smooth zoom factor for one wheel event. */
+export function wheelZoomFactor(deltaY: number, deltaMode = 0): number {
+  const px = finite(deltaY) * (deltaMode === 1 ? LINE_PX : 1);
+  return Math.exp(-px * 0.0025);
+}

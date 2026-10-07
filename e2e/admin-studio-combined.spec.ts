@@ -6,7 +6,7 @@
  * be exactly what was saved.
  */
 import { expect, test, type Page } from "@playwright/test";
-import { addStudioFrame, addStudioText } from "./admin-studio-tools";
+import { addStudioFrame, addStudioText, orientationChoices } from "./admin-studio-tools";
 import { bodyPoint, selectedIds } from "./customizer-fixture";
 
 const PHOTO = `data:image/svg+xml;utf8,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200"><rect width="100" height="200" fill="#ff0000"/><rect x="100" width="100" height="200" fill="#0000ff"/></svg>')}`;
@@ -91,8 +91,9 @@ async function crop(page: Page, id: string, dx: number) {
 }
 
 async function orient(page: Page, label: "Vertical" | "Horizontal") {
-  await studio(page).getByRole("radiogroup", { name: "Artboard orientation" }).getByRole("radio", { name: label }).click();
-  await expect(studio(page).getByRole("radiogroup", { name: "Artboard orientation" }).getByRole("radio", { name: label })).toHaveAttribute("aria-checked", "true");
+  await (await orientationChoices(page)).getByRole("radio", { name: label }).click();
+  await expect((await orientationChoices(page)).getByRole("radio", { name: label })).toHaveAttribute("aria-checked", "true");
+  await page.keyboard.press("Escape");
 }
 
 /** Everything the canvas draws for the design: artboard + each layer's drawn box and in-frame transform. */

@@ -8,6 +8,7 @@
  * draft, a reload and a publication.
  */
 import { expect, test, type Page } from "@playwright/test";
+import { orientationChoices } from "./admin-studio-tools";
 
 const PHOTO = `data:image/svg+xml;utf8,${encodeURIComponent(
   '<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200"><rect width="100" height="200" fill="#ff0000"/><rect x="100" width="100" height="200" fill="#0000ff"/></svg>',
@@ -15,7 +16,6 @@ const PHOTO = `data:image/svg+xml;utf8,${encodeURIComponent(
 
 const studio = (page: Page) => page.locator("[data-admin-customizer]");
 const header = (page: Page) => studio(page).locator("header");
-const orientation = (page: Page) => studio(page).getByRole("radiogroup", { name: "Artboard orientation" });
 
 /** A populated 5 × 7 design with every kind of object the conversion must carry. */
 function populatedTemplate(size: { widthIn: number; heightIn: number; widthPx: number; heightPx: number }) {
@@ -139,13 +139,13 @@ test.describe("Design Studio orientation controls", () => {
     await page.getByRole("button", { name: "Open Design Studio" }).click();
     await expect(header(page)).toBeVisible();
 
-    await expect(orientation(page)).toBeVisible();
-    await expect(orientation(page).getByRole("radio", { name: "Vertical" })).toHaveAttribute("aria-checked", "true");
+    await expect(await orientationChoices(page)).toBeVisible();
+    await expect((await orientationChoices(page)).getByRole("radio", { name: "Vertical" })).toHaveAttribute("aria-checked", "true");
     expect(await drawnArtboard(page)).toBe("0 0 1500 2100");
-    await orientation(page).getByRole("radio", { name: "Horizontal" }).click();
+    await (await orientationChoices(page)).getByRole("radio", { name: "Horizontal" }).click();
     await expect.poll(() => drawnArtboard(page)).toBe("0 0 2100 1500");
-    await expect(orientation(page).getByRole("radio", { name: "Horizontal" })).toHaveAttribute("aria-checked", "true");
-    await orientation(page).getByRole("radio", { name: "Vertical" }).click();
+    await expect((await orientationChoices(page)).getByRole("radio", { name: "Horizontal" })).toHaveAttribute("aria-checked", "true");
+    await (await orientationChoices(page)).getByRole("radio", { name: "Vertical" }).click();
     await expect.poll(() => drawnArtboard(page)).toBe("0 0 1500 2100");
   });
 
@@ -155,7 +155,7 @@ test.describe("Design Studio orientation controls", () => {
     const portrait = await saveDraft(page);
     expect([portrait.canvasWidthPx, portrait.canvasHeightPx]).toEqual([1500, 2100]);
 
-    await orientation(page).getByRole("radio", { name: "Horizontal" }).click();
+    await (await orientationChoices(page)).getByRole("radio", { name: "Horizontal" }).click();
     await expect.poll(() => drawnArtboard(page)).toBe("0 0 2100 1500");
     const landscape = await saveDraft(page);
     expect([landscape.canvasWidthPx, landscape.canvasHeightPx, landscape.cardWidthIn, landscape.cardHeightIn]).toEqual([2100, 1500, 7, 5]);
@@ -197,12 +197,12 @@ test.describe("Design Studio orientation controls", () => {
     await page.reload();
     await openProduct(page, title);
     await expect.poll(() => drawnArtboard(page)).toBe("0 0 2100 1500");
-    await expect(orientation(page).getByRole("radio", { name: "Horizontal" })).toHaveAttribute("aria-checked", "true");
+    await expect((await orientationChoices(page)).getByRole("radio", { name: "Horizontal" })).toHaveAttribute("aria-checked", "true");
     const reopened = await saveDraft(page);
     expect(reopened.layers).toEqual(redone.layers);
 
     // And back to vertical, carried across the same way.
-    await orientation(page).getByRole("radio", { name: "Vertical" }).click();
+    await (await orientationChoices(page)).getByRole("radio", { name: "Vertical" }).click();
     await expect.poll(() => drawnArtboard(page)).toBe("0 0 1500 2100");
     expectUniformMapping(reopened, await saveDraft(page));
   });
@@ -210,7 +210,7 @@ test.describe("Design Studio orientation controls", () => {
   test("3.5 × 5: Horizontal is 1500 × 1050", async ({ page }) => {
     await openProduct(page, "Minimal Thank You Card", populatedTemplate({ widthIn: 3.5, heightIn: 5, widthPx: 1050, heightPx: 1500 }));
     await expect.poll(() => drawnArtboard(page)).toBe("0 0 1050 1500");
-    await orientation(page).getByRole("radio", { name: "Horizontal" }).click();
+    await (await orientationChoices(page)).getByRole("radio", { name: "Horizontal" }).click();
     await expect.poll(() => drawnArtboard(page)).toBe("0 0 1500 1050");
     const saved = await saveDraft(page);
     expect([saved.canvasWidthPx, saved.canvasHeightPx, saved.cardWidthIn, saved.cardHeightIn]).toEqual([1500, 1050, 5, 3.5]);
@@ -219,7 +219,7 @@ test.describe("Design Studio orientation controls", () => {
   test("the control stays usable at a narrow admin width", async ({ page }) => {
     await openProduct(page, "Minimal Thank You Card", populatedTemplate({ widthIn: 5, heightIn: 7, widthPx: 1500, heightPx: 2100 }));
     await page.setViewportSize({ width: 1180, height: 800 });
-    const horizontal = orientation(page).getByRole("radio", { name: "Horizontal" });
+    const horizontal = (await orientationChoices(page)).getByRole("radio", { name: "Horizontal" });
     await expect(horizontal).toBeVisible();
     const box = (await horizontal.boundingBox())!;
     expect(box.x).toBeGreaterThanOrEqual(0);

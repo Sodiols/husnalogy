@@ -37,13 +37,17 @@ import {
   isTypingTarget,
   MIDDLE_MOUSE_BUTTON,
   panCursor,
+  normalizeWheelDelta,
   panFromGesture,
+  panFromWheel,
   panHasPointerPriority,
   PAN_TOOL,
   shouldBeginPan,
+  wheelZoomFactor,
   type PanBounds,
   type PanGesture,
 } from "@/lib/customizer/v2/viewport-pan";
+import { clampZoom, panForZoomAtPoint } from "@/lib/customizer/v2/zoom";
 import { resolveLayerSelectionGeometry } from "@/lib/customizer/v2/selection-geometry";
 import { cropPanDelta, resolveCropRect, resolveImageDrawBoxFromTransform } from "@/lib/customizer/v2/image-crop";
 import { ERASE_LIMITS, canvasPointToDrawBox, normalizeEraseMask, type EraseStroke } from "@/lib/customizer/v2/erase-mask";
@@ -83,6 +87,7 @@ export default function AdminCanvas({
   panX = 0,
   panY = 0,
   onPanChange,
+  onViewportChange,
   showSafeArea,
   showBleed,
   snapEnabled = true,
@@ -870,6 +875,51 @@ export default function AdminCanvas({
   useEffect(() => () => {
     if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
   }, []);
+
+  /* --------------------------------------------------------- wheel scroll --
+   * The wheel scrolls a zoomed-in artboard (Shift or a sideways swipe for
+   * horizontal) through the same pan state as dragging, batched per frame.
+   * Ctrl/⌘+wheel — which is also what a trackpad pinch sends — zooms around
+   * the pointer instead of zooming the whole browser page. Crop mode keeps
+   * its own wheel (it zooms the photo inside its frame).
+   */
+  const viewportRef = useRef({ zoom, panX, panY, padding: fitPadding });
+  viewportRef.current = { zoom, panX, panY, padding: fitPadding };
+  const onViewportChangeRef = useRef(onViewportChange);
+  onViewportChangeRef.current = onViewportChange;
+  useEffect(() => {
+    const element = wrapRef.current;
+    if (!element) return;
+    const onWheel = (event: WheelEvent) => {
+      if (cropRef.current) return;
+      const view = viewportRef.current;
+      if (event.ctrlKey || event.metaKey) {
+        event.preventDefault();
+        const nextZoom = clampZoom(view.zoom * wheelZoomFactor(event.deltaY, event.deltaMode));
+        if (Math.abs(nextZoom - view.zoom) < 0.0005) return;
+        // The pointer, relative to the centre the page sits at with no pan.
+        const rect = element.getBoundingClientRect();
+        const pad = view.padding;
+        const focal = {
+          x: event.clientX - (rect.left + pad.left + (rect.width - pad.left - pad.right) / 2),
+          y: event.clientY - (rect.top + pad.top + (rect.height - pad.top - pad.bottom) / 2),
+        };
+        const base = pendingPanRef.current || { panX: view.panX, panY: view.panY };
+        onViewportChangeRef.current?.({ zoom: nextZoom, ...panForZoomAtPoint(base, view.zoom, nextZoom, focal) });
+        return;
+      }
+      const delta = normalizeWheelDelta(event, element.clientHeight);
+      const base = pendingPanRef.current || { panX: view.panX, panY: view.panY };
+      const next = panFromWheel(base, delta, panBoundsRef.current);
+      // Nothing left to scroll that way: let the event go.
+      if (next.panX === base.panX && next.panY === base.panY) return;
+      event.preventDefault();
+      pendingPanRef.current = next;
+      if (rafRef.current === null) rafRef.current = requestAnimationFrame(flushPan);
+    };
+    element.addEventListener("wheel", onWheel, { passive: false });
+    return () => element.removeEventListener("wheel", onWheel);
+  }, [flushPan]);
 
   // Space temporarily switches to Pan from any tool, without changing activeTool.
   // It must never steal a space character from a field or the inline text editor.

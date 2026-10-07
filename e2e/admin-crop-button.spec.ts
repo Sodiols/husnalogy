@@ -8,6 +8,7 @@
  */
 import { expect, test, type Page } from "@playwright/test";
 import { anchorPoint, bodyPoint, selectedIds } from "./customizer-fixture";
+import { orientationChoices } from "./admin-studio-tools";
 
 const PHOTO = `data:image/svg+xml;utf8,${encodeURIComponent(
   '<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200"><rect width="100" height="200" fill="#ff0000"/><rect x="100" width="100" height="200" fill="#0000ff"/></svg>',
@@ -239,7 +240,7 @@ test.describe("admin Crop button", () => {
       expect(await drawn(page, id)).not.toEqual(before);
     };
 
-    await studio(page).getByRole("radiogroup", { name: "Artboard orientation" }).getByRole("radio", { name: "Horizontal" }).click();
+    await (await orientationChoices(page)).getByRole("radio", { name: "Horizontal" }).click();
     await expect.poll(() => page.evaluate(() => document.querySelector("[data-admin-customizer] [data-canvas-surface] svg")?.getAttribute("viewBox"))).toBe("0 0 2100 1500");
     await cropAndCheck("i_photo");
 
