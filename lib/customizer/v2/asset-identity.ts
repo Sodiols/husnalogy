@@ -60,19 +60,30 @@ export function permanentAdminReference(value: unknown): boolean {
   );
 }
 
+/** A Storage / S3-style signed URL: a credential that expires, never content. */
+function isSignedUrl(value: unknown): boolean {
+  return typeof value === "string" && /[?&](token|X-Amz-Signature|Signature|Expires)=/i.test(value);
+}
+
 /**
  * The same document without any library-asset credential. Applied before a
  * template is stored (server) and before a recovery snapshot is written
  * (browser), so a stored design never depends on a URL that will expire.
+ *
+ * Only what can come back is removed: a library asset's runtime URLs when its
+ * id can sign fresh ones (a real asset id), and ANY signed URL. A plain URL
+ * on an asset whose id cannot be signed (a legacy or non-library id, a data:
+ * URL) is the picture itself — removing it would lose the picture for good.
  */
 export function stripAdminAssetUrls<T>(value: T): T {
   const visit = (current: unknown): unknown => {
     if (Array.isArray(current)) return current.map(visit);
     if (!current || typeof current !== "object") return current;
     const adminAsset = permanentAdminReference(current);
+    const resignable = adminAsset && UUID.test(adminAssetIdentity(current)?.id || "");
     return Object.fromEntries(
       Object.entries(current as Record<string, unknown>)
-        .filter(([key]) => !adminAsset || !EPHEMERAL_ASSET_KEYS.has(key))
+        .filter(([key, child]) => !adminAsset || !EPHEMERAL_ASSET_KEYS.has(key) || (!resignable && !isSignedUrl(child)))
         .map(([key, child]) => [key, visit(child)]),
     );
   };

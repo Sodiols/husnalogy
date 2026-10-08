@@ -309,11 +309,19 @@ test.describe("signed-in customer: server persistence", () => {
 
   test("a design that cannot be loaded is never overwritten, and opens once the server answers", async ({ page }) => {
     const seeded = server.seed({ values: { guest_name: "Never Overwrite Me" }, renderData: { clientRevision: 3, editorState: {} } });
-    server.failReads = { status: 500, remaining: 2 };
+    // The server stays down until the editor has shown the failure. (A fixed
+    // number of failed reads is not enough: in development the restore runs
+    // more than once while the session settles, and those runs can use up the
+    // failures within milliseconds, so the message might never be seen.)
+    server.failReads = { status: 500, remaining: Number.MAX_SAFE_INTEGER };
     await page.goto(`/__e2e/customizer${QUERY}&customizationId=${seeded.id}`);
     await expect(page.getByText(/couldn't load your saved design/)).toBeVisible({ timeout: 30_000 });
+    // While the design is unreadable, editing stays blocked and nothing is written.
+    await page.waitForTimeout(2_000);
+    await expect(page.getByText(/couldn't load your saved design/)).toBeVisible();
     expect(server.designWrites(), "the editor wrote while the design was unreadable").toHaveLength(0);
-    // The automatic retries reach a healthy server.
+    // The server recovers: the automatic retries reach it.
+    server.failReads = null;
     await expect(page.locator("[data-customizer-restore-overlay]")).toHaveCount(0, { timeout: 30_000 });
     expect(await layerText(page, "fx_title")).toContain("Never Overwrite Me");
     expect(server.designWrites()).toHaveLength(0);

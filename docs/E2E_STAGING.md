@@ -116,7 +116,13 @@ reaches a real Supabase project — not even the one in `.env.local`
 - the server's Supabase calls (server-rendered pages, site settings,
   `/account`, `/checkout`, `/orders`) are answered by a local stand-in started
   in global setup (`e2e/global-setup.ts` → `e2e/supabase-http-stub.ts`), which
-  refuses any non-local URL;
+  refuses any non-local URL and serves ONE fixed catalogue product, so the
+  storefront listing and product page render real cards;
+- specs that need a personalizable product use the local fixture
+  (`/__e2e/customizer`, the same customer customizer shell); the one check
+  that needs real catalogue images through the image optimizer
+  (`image-optimizer.spec.ts`, "public catalogue images are optimized") skips
+  locally and runs against staging;
 - the dev server runs on its own port (3105) and build folder
   (`.next/e2e-stub`), fresh for every run, so it can sit beside a normal
   `npm run dev`. `E2E_REUSE_SERVER=1` reuses an already running stub server.

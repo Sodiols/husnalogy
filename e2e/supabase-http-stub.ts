@@ -8,8 +8,11 @@
  *                               (id, email and name are read from the stub
  *                               token itself; see e2e/customer-stub.ts)
  *   GET  /rest/v1/profiles    → that account's profile (role: customer)
- *   any  /rest/v1/*           → [] (an empty project: no products, settings
- *                               fall back to their defaults)
+ *   GET  /rest/v1/products    → ONE fixed, public catalogue product
+ *                               (STUB_CATALOGUE_PRODUCT), so the storefront's
+ *                               listing and product page render real cards
+ *   any  /rest/v1/*           → [] (otherwise an empty project: settings fall
+ *                               back to their defaults)
  *   any  /storage/*, other    → 404
  * Tokens are never verified — this process holds no data and listens only on
  * 127.0.0.1.
@@ -19,6 +22,45 @@ import { createServer, type Server } from "node:http";
 const STUB_URL = String(process.env.NEXT_PUBLIC_SUPABASE_URL || "http://127.0.0.1:54399").replace(/\/$/, "");
 
 let server: Server | null = null;
+
+/** The local catalogue: one active, public, non-personalizable product. */
+export const STUB_CATALOGUE_PRODUCT = {
+  id: "e2e0c0de-0000-4000-8000-00000000c001",
+  slug: "e2e-stub-wedding-card",
+  title: "Stub Wedding Card",
+  category: "Wedding Cards",
+  category_id: null,
+  status: "active",
+  visibility: "public",
+  price: 250,
+  sale_price: null,
+  thumbnail: "/images/weddings.png",
+  description: "A fixed catalogue product served by the local e2e stand-in.",
+  featured: true,
+  data: {},
+  created_at: "2026-10-01T00:00:00.000Z",
+  updated_at: "2026-10-01T00:00:00.000Z",
+  product_images: [],
+  product_mockups: [],
+  product_videos: [],
+  product_collection_products: [],
+  product_customizer_templates: [],
+  reviews: [],
+};
+
+/** The PostgREST filters the storefront uses on products (eq / neq / in); anything else is ignored. */
+function matchesFilters(row: Record<string, unknown>, params: URLSearchParams): boolean {
+  for (const [column, filter] of params) {
+    if (["select", "order", "limit", "offset"].includes(column) || !(column in row)) continue;
+    const value = String(row[column] ?? "");
+    const [operator, ...rest] = filter.split(".");
+    const operand = rest.join(".");
+    if (operator === "eq" && value !== operand) return false;
+    if (operator === "neq" && value === operand) return false;
+    if (operator === "in" && !operand.replace(/^\(|\)$/g, "").split(",").map((entry) => entry.replace(/^"|"$/g, "")).includes(value)) return false;
+  }
+  return true;
+}
 
 type TokenAccount = { id: string; email: string; name: string };
 
@@ -53,6 +95,11 @@ export async function startSupabaseHttpStub(): Promise<void> {
       const profile = account ? { id: account.id, full_name: account.name, email: account.email, role: "customer", avatar_url: null } : null;
       const single = String(request.headers.accept || "").includes("vnd.pgrst.object");
       return single ? send(200, profile) : send(200, profile ? [profile] : []);
+    }
+    if (url.pathname === "/rest/v1/products") {
+      const rows = [STUB_CATALOGUE_PRODUCT].filter((row) => matchesFilters(row, url.searchParams));
+      const single = String(request.headers.accept || "").includes("vnd.pgrst.object");
+      return single ? send(rows.length ? 200 : 406, rows[0] ?? { code: "PGRST116", message: "no rows" }) : send(200, rows);
     }
     if (url.pathname.startsWith("/rest/v1/")) {
       const single = String(request.headers.accept || "").includes("vnd.pgrst.object");

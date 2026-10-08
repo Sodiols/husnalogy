@@ -55,6 +55,19 @@ describe("a signed URL is not an image identity", () => {
     expect(assetIdentityOf({ assetId: "not-a-uuid", src: "x" })).toBeNull();
   });
 
+  it("strips only what can come back: a re-signable asset's URLs and any signed URL", () => {
+    const [layer] = stripRuntimeAssetUrls([hydratedPhoto()]) as any[];
+    expect(layer.src).toBeUndefined();
+    expect(layer.originalUrl).toBeUndefined();
+    expect(layer.assetId).toBe(ASSET);
+    // An id that cannot sign a fresh URL: the plain URL IS the picture, so it stays…
+    const svg = "data:image/svg+xml;utf8,%3Csvg%2F%3E";
+    expect(stripRuntimeAssetUrls({ type: "element", assetId: "el-multi", src: svg, tintColor: "#2e7d32" })).toEqual({ type: "element", assetId: "el-multi", src: svg, tintColor: "#2e7d32" });
+    expect((stripRuntimeAssetUrls({ assetId: "legacy-7", src: "https://cdn.example.com/a.png" }) as any).src).toBe("https://cdn.example.com/a.png");
+    // …but a signed URL is a credential and never kept, whatever the id.
+    expect((stripRuntimeAssetUrls({ assetId: "legacy-7", src: signed("a.webp", 1_900_000_000) }) as any).src).toBeUndefined();
+  });
+
   it("reads a signed URL's expiry from its own token", () => {
     expect(signedUrlExpiry(signed("a.webp", 1_700_000_000))).toBe(1_700_000_000_000);
     expect(signedUrlExpiry("https://example.com/a.png")).toBeNull();

@@ -1,4 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
+import { supabaseIsStubbed } from "./customer-stub";
+import { FIXTURE } from "./customizer-fixture";
 import { seedManifest } from "./helpers";
 
 // Responsive acceptance for the customer customizer shell (spec §8, §9, §25).
@@ -7,8 +9,11 @@ import { seedManifest } from "./helpers";
 // it opens the personalize page as a guest and measures layout only. That keeps
 // it runnable on any environment that can serve the product catalogue.
 //
-// Set E2E_CUSTOMIZER_URL (or seed the manifest) to pin a specific product;
-// otherwise the first product that exposes a personalize page is used.
+// Set E2E_CUSTOMIZER_URL (or seed the manifest) to pin a specific product.
+// The default local run (playwright.config.ts, stub mode) has no
+// personalizable product, so it measures the local fixture (/__e2e/customizer)
+// — the same customer customizer shell. Any other environment uses the first
+// product that exposes a personalize page.
 
 const VIEWPORTS: Array<{ name: string; width: number; height: number }> = [
   { name: "320x568", width: 320, height: 568 },
@@ -30,6 +35,10 @@ async function personalizeUrl(page: Page): Promise<string> {
   const fromEnv = process.env.E2E_CUSTOMIZER_URL || seedManifest.customizerUrl || "";
   if (fromEnv) {
     resolvedUrl = fromEnv;
+    return resolvedUrl;
+  }
+  if (supabaseIsStubbed) {
+    resolvedUrl = FIXTURE;
     return resolvedUrl;
   }
   await page.goto("/products");

@@ -186,8 +186,10 @@ export default function AdminBackgroundPanel({ template, activePage, paletteSour
     }
   };
 
+  // One column that may shrink to the panel: content never widens it past its
+  // slot (a 1280px-wide window leaves it about 250px).
   return (
-    <div className="grid gap-6 px-4 pb-6 pt-1" data-admin-background-panel>
+    <div className="grid grid-cols-[minmax(0,1fr)] gap-6 px-4 pb-6 pt-1" data-admin-background-panel>
       <p className="-mb-3 text-[12.5px] text-[#303839]/60">
         Background of <span className="font-semibold text-[#1f2425]">{page.label || "this page"}</span>
       </p>
@@ -205,7 +207,7 @@ export default function AdminBackgroundPanel({ template, activePage, paletteSour
             onChange={(event) => setQuery(event.target.value)}
             placeholder="Search for backgrounds"
             aria-label="Search for backgrounds"
-            className="min-w-0 flex-1 bg-transparent text-[14px] text-[#1f2425] outline-none placeholder:text-[#303839]/55 [&::-webkit-search-cancel-button]:hidden"
+            className="w-0 min-w-0 flex-1 bg-transparent text-[14px] text-[#1f2425] outline-none placeholder:text-[#303839]/55 [&::-webkit-search-cancel-button]:hidden"
           />
           <button data-shape="round" type="submit" aria-label="Search" className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-[#27307A] text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#27307A] focus-visible:ring-offset-2">
             <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden><circle cx="11" cy="11" r="6.5" /><path d="m20 20-4.2-4.2" /></svg>
@@ -349,14 +351,14 @@ export default function AdminBackgroundPanel({ template, activePage, paletteSour
               else setHexDraft((current || "#ffffff").toUpperCase());
             }}
             aria-invalid={!normalizeHexInput(hexDraft)}
-            className="h-[46px] min-w-0 flex-1 rounded-md border border-[#303839]/25 bg-white px-3 text-center text-[14px] tabular-nums text-[#1f2425] outline-none focus:border-[#27307A] aria-[invalid=true]:border-red-500"
+            className="h-[46px] w-0 min-w-0 flex-1 rounded-md border border-[#303839]/25 bg-white px-3 text-center text-[14px] tabular-nums text-[#1f2425] outline-none focus:border-[#27307A] aria-[invalid=true]:border-red-500"
           />
           <input ref={colourInput} type="color" value={current || "#ffffff"} onChange={() => undefined} tabIndex={-1} aria-hidden className="sr-only" />
         </div>
       </Section>
 
       <Section title="Swatches">
-        <div className="grid grid-cols-6 justify-items-start gap-x-2 gap-y-2.5" data-background-swatches>
+        <div className="flex flex-wrap gap-2.5" data-background-swatches>
           <Swatch color={NO_BACKGROUND_COLOR} label="No colour" selected={noColour} onPick={() => applyColour(NO_BACKGROUND_COLOR)} />
           {BACKGROUND_SWATCHES.filter((hex) => hex !== "#ffffff").map((hex) => (
             <Swatch key={hex} color={hex} label={`Colour ${hex}`} selected={current === hex} onPick={() => applyColour(hex)} />

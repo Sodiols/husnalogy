@@ -86,7 +86,9 @@ const layout = (page: Page) =>
     const inspectorBox = inspector?.getBoundingClientRect();
     return {
       pageOverflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
-      panelInside: Boolean(panelBox && panelBox.left >= 0 && panelBox.right <= window.innerWidth + 0.5 && panelBox.width >= 260),
+      // Pages is a deliberately narrow column of thumbnails (~190px); the
+      // others take the wider slot. Either way it must be usable and on screen.
+      panelInside: Boolean(panelBox && panelBox.left >= 0 && panelBox.right <= window.innerWidth + 0.5 && panelBox.width >= 180),
       inspectorInside: Boolean(inspectorBox && inspectorBox.left >= 0 && inspectorBox.right <= window.innerWidth + 0.5 && inspectorBox.width >= 280),
       panelSideways: panel ? panel.scrollWidth - panel.clientWidth : -1,
       workspace: panelBox && inspectorBox ? inspectorBox.left - panelBox.right : 0,

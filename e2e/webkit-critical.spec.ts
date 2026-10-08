@@ -1,4 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
+import { supabaseIsStubbed } from "./customer-stub";
+import { FIXTURE } from "./customizer-fixture";
 import { seedManifest } from "./helpers";
 
 // Focused WebKit (Safari engine) coverage for the critical customer paths.
@@ -16,6 +18,9 @@ import { seedManifest } from "./helpers";
 async function firstPersonalizeUrl(page: Page): Promise<string | null> {
   const fromEnv = process.env.E2E_CUSTOMIZER_URL || seedManifest.customizerUrl || "";
   if (fromEnv) return fromEnv;
+  // The default local run (stub mode) has no personalizable product: the
+  // local fixture is the same customer customizer shell.
+  if (supabaseIsStubbed) return FIXTURE;
   await page.goto("/products");
   const slugs = await page.evaluate(() =>
     Array.from(document.querySelectorAll('a[href^="/products/"]'))
