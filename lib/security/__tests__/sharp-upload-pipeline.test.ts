@@ -139,6 +139,41 @@ describe("customer upload pipeline on patched sharp", () => {
     const editor = [...store.objects.entries()].find(([key]) => key.endsWith("/editor.webp"))![1];
     const meta = await sharp(editor.data).metadata();
     expect([meta.width, meta.height]).toEqual([400, 800]);
+    // The reported size matches the stored, upright files (it used to be the raw 800×400).
+    const { file } = await response.json();
+    expect([file.width, file.height]).toEqual([400, 800]);
+    // The JPEG original keeps its compressed picture as uploaded, plus the
+    // orientation tag, so it still displays (and prints) upright.
+    const original = [...store.objects.entries()].find(([key]) => key.endsWith("/original.jpg"))![1];
+    const originalMeta = await sharp(original.data).metadata();
+    expect([originalMeta.width, originalMeta.height, originalMeta.orientation]).toEqual([800, 400, 6]);
+    const { info: upright } = await sharp(original.data).rotate().raw().toBuffer({ resolveWithObject: true });
+    expect([upright.width, upright.height]).toEqual([400, 800]);
+  });
+
+  it("stores a JPEG original without re-compressing it, minus metadata and appended bytes", async () => {
+    const camera = await sharp({ create: { width: 900, height: 600, channels: 3, background: "#7a4b2c" } })
+      .composite([{ input: Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="900" height="600"><circle cx="450" cy="300" r="200" fill="#e8d3b0"/></svg>') }])
+      .jpeg({ quality: 88 })
+      .withExif({ IFD0: { Make: "PrivateCam", ImageDescription: "GPS 23.81N 90.41E" } })
+      .withIccProfile("p3")
+      .toBuffer();
+    const upload = Buffer.concat([camera, Buffer.from("PK\u0003\u0004 <script>alert(1)</script>", "latin1")]);
+    const response = await customerUpload(multipart("http://localhost/api/customizer/upload", new File([new Uint8Array(upload)], "camera.jpg", { type: "image/jpeg" })));
+    expect(response.status).toBe(200);
+    const original = [...store.objects.entries()].find(([key]) => key.endsWith("/original.jpg"))![1];
+    // Same decoded pixels as the camera file: no generation loss.
+    const [before, after] = await Promise.all([sharp(camera).raw().toBuffer(), sharp(original.data).raw().toBuffer()]);
+    expect(after.equals(before)).toBe(true);
+    // The compressed scan itself is carried over unchanged.
+    const scanStart = camera.indexOf(Buffer.from([0xff, 0xda]));
+    expect(original.data.includes(camera.subarray(scanStart, camera.length - 2))).toBe(true);
+    // Private metadata and the appended payload are gone; the colour profile stays.
+    expect(original.data.includes(Buffer.from("PrivateCam"))).toBe(false);
+    expect(original.data.includes(Buffer.from("GPS 23.81N"))).toBe(false);
+    expect(original.data.includes(Buffer.from("<script>"))).toBe(false);
+    expect(original.data.subarray(-2).equals(Buffer.from([0xff, 0xd9]))).toBe(true);
+    expect((await sharp(original.data).metadata()).icc).toBeTruthy();
   });
 
   it("rejects a non-image disguised with an image name and MIME type", async () => {

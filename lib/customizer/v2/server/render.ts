@@ -13,7 +13,10 @@
 //
 // Images are inlined as data URIs before rendering: resvg never fetches the
 // network, and we only accept sources we trust (our own Supabase storage,
-// site-relative public files, or data URIs) — spec §33.
+// site-relative public files, or data URIs) — spec §33. Each raster is first
+// made render-ready (EXIF orientation applied, converted to sRGB, full
+// resolution — render-image.ts), because resvg ignores both and would
+// otherwise print what the editor never showed.
 
 import { createHash } from "crypto";
 import { readFileSync, existsSync } from "fs";
@@ -35,6 +38,7 @@ import {
 } from "./server-fonts";
 import { resolveFontsForStyles } from "./google-font-files";
 import { readBodyBytes } from "@/lib/http/read-body";
+import { renderReadyDataUri, renderReadyImage } from "./render-image";
 
 export class RenderError extends Error {
   code: string;
@@ -115,11 +119,24 @@ async function fetchAsDataUri(source: string): Promise<string> {
   return `data:${contentType.split(";")[0]};base64,${buffer.toString("base64")}`;
 }
 
+/** The exact stored bytes (snapshot pinning and integrity checks rely on this). */
 export async function loadTrustedImageBuffer(source: string): Promise<Buffer> {
   const dataUri = await fetchAsDataUri(source);
   const match = /^data:[^;,]+;base64,([\s\S]+)$/.exec(dataUri);
   if (!match) throw new RenderError("IMAGE_DECODE_FAILED", "The image could not be decoded for rendering.");
   return Buffer.from(match[1], "base64");
+}
+
+/** The same image as the browser draws it: upright and sRGB (see render-image.ts). For compositing. */
+export async function loadRenderReadyImageBuffer(source: string): Promise<Buffer> {
+  const dataUri = await fetchAsDataUri(source);
+  const match = /^data:([^;,]+);base64,([\s\S]+)$/.exec(dataUri);
+  if (!match) throw new RenderError("IMAGE_DECODE_FAILED", "The image could not be decoded for rendering.");
+  try {
+    return (await renderReadyImage(Buffer.from(match[2], "base64"), match[1])).buffer;
+  } catch (error) {
+    throw new RenderError("IMAGE_DECODE_FAILED", `An image could not be prepared for rendering: ${String((error as Error)?.message || error).slice(0, 200)}`);
+  }
 }
 
 export type PageRenderResult = {
@@ -216,6 +233,17 @@ export async function renderCustomizationPages(options: RenderCustomizationOptio
     : { top: 0, right: 0, bottom: 0, left: 0 };
 
   const results: PageRenderResult[] = [];
+  // Render-ready (upright, sRGB, full-resolution) copies, shared by every page
+  // of this render. The pinned/stored originals themselves are never changed.
+  const readyImages = new Map<string, Promise<string>>();
+  const renderReady = (url: string, dataUri: string) => {
+    if (!readyImages.has(url)) {
+      readyImages.set(url, renderReadyDataUri(dataUri).catch((error) => {
+        throw new RenderError("IMAGE_DECODE_FAILED", `An image could not be prepared for rendering: ${String((error as Error)?.message || error).slice(0, 200)}`);
+      }));
+    }
+    return readyImages.get(url)!;
+  };
 
   for (const page of pages) {
     // Inline every image the page depends on.
@@ -223,7 +251,7 @@ export async function renderCustomizationPages(options: RenderCustomizationOptio
     const hrefMap: Record<string, string> = {};
     for (const url of urls) {
       if (options.imageData && !options.imageData[url]) throw new RenderError("ASSET_REFERENCE_INVALID", "Required manufacturing image is not pinned.");
-      hrefMap[url] = options.imageData ? options.imageData[url] : await fetchAsDataUri(url);
+      hrefMap[url] = await renderReady(url, options.imageData ? options.imageData[url] : await fetchAsDataUri(url));
     }
 
     try {
@@ -281,7 +309,14 @@ export async function renderCustomizationPages(options: RenderCustomizationOptio
 // (spec §24): page size = trim size + bleed, image embedded at full bleed.
 export async function buildPrintPdf(
   pages: PageRenderResult[],
-  physical: { widthIn: number; heightIn: number; dpi: number; bleedPx: { top: number; right: number; bottom: number; left: number } },
+  physical: {
+    widthIn: number;
+    heightIn: number;
+    dpi: number;
+    bleedPx: { top: number; right: number; bottom: number; left: number };
+    /** Measured document pixels per inch (print-spec.ts); defaults to `dpi`. */
+    pxPerInch?: { x: number; y: number };
+  },
 ): Promise<{ pdf: Buffer; checksum: string }> {
   try {
     const pdfDoc = await PDFDocument.create();
@@ -291,8 +326,8 @@ export async function buildPrintPdf(
     pdfDoc.setCreator("Husnalogy Render Service");
 
     const { widthIn, heightIn, dpi, bleedPx } = physical;
-    const bleedWIn = (bleedPx.left + bleedPx.right) / dpi;
-    const bleedHIn = (bleedPx.top + bleedPx.bottom) / dpi;
+    const bleedWIn = (bleedPx.left + bleedPx.right) / (physical.pxPerInch?.x || dpi);
+    const bleedHIn = (bleedPx.top + bleedPx.bottom) / (physical.pxPerInch?.y || dpi);
     const pageWpt = (widthIn + bleedWIn) * 72;
     const pageHpt = (heightIn + bleedHIn) * 72;
 

@@ -7,6 +7,7 @@
 // customizer_template_versions snapshots and order_design_snapshots.
 
 import { sanitizeCustomPath } from "./shape-library";
+import { normalizePrintQualitySettings } from "./print-resolution";
 import { normalizeEraseMask } from "./erase-mask";
 import { TRANSPARENT_PAINT, canonicalPaint, isExplicitTransparentPaint } from "./paint";
 import { DEFAULT_FONT_FAMILY, normalizeAllowedCustomerFonts } from "./google-fonts";
@@ -498,6 +499,10 @@ export function templateToDocument(template: Record<string, any>): { document: C
     templateDescription: str(settingsSrc.templateDescription),
     adminNotes: str(settingsSrc.adminNotes),
   };
+  // Product print-quality thresholds, carried only when the template sets them
+  // (older documents serialize exactly as before).
+  const printQuality = normalizePrintQualitySettings(settingsSrc.printQuality);
+  if (printQuality) settings.printQuality = printQuality;
 
   const assets: AssetReference[] = [];
   if (t.assets && typeof t.assets === "object" && !Array.isArray(t.assets)) {

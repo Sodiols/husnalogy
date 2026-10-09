@@ -14,14 +14,18 @@ import { getGridSlotRect, normalizeGridSlot, validateGridGeometry } from "./grid
 import { validateGroupRelationships } from "./groups";
 import { isValidQRValue, qrContrastRatio } from "./qr";
 import { isCustomerFieldRequired } from "./field-binding";
+import { LOW_RESOLUTION_CUSTOMER_MESSAGE, effectiveImagePpi, layerSourceDimensions, printQualityThresholds } from "./print-resolution";
 
 export type PreflightOptions = {
   measure?: MeasureFn;
   // Known pixel dimensions for uploaded images, keyed by src/assetId. When an
   // image layer's source is missing here, the resolution check is skipped.
   imageDimensions?: Record<string, { width: number; height: number }>;
-  // Minimum acceptable effective DPI for placed photos before warning/error.
+  // Minimum acceptable effective PPI for placed photos (default: the
+  // product's settings.printQuality.minImagePpi, else 200).
   minImageDpi?: number;
+  // The caller may block (checkout). Blocking also needs the product to
+  // require it (settings.printQuality.blockLowResolution); otherwise warn.
   blockOnLowResolution?: boolean;
   mockupAvailable?: boolean;
   productionRenderFailed?: boolean;
@@ -46,7 +50,12 @@ function isImageLike(layer: CustomizerLayer): layer is Extract<CustomizerLayer, 
 export function runPreflight(document: CustomizerDocument, options: PreflightOptions = {}): PreflightResult {
   const issues: PreflightIssue[] = [];
   const measure = options.measure || fallbackMeasure;
-  const minImageDpi = options.minImageDpi ?? 150;
+  // The product's thresholds (template settings.printQuality), else the
+  // stationery defaults. A low-resolution photo blocks only where the caller
+  // allows blocking (checkout) AND the product requires it.
+  const printQuality = printQualityThresholds(document.settings?.printQuality);
+  const minImageDpi = options.minImageDpi ?? printQuality.minimum;
+  const blockLowResolution = Boolean(options.blockOnLowResolution) && printQuality.block;
 
   const enabledPages = document.pages.filter((page) => page.enabled);
   if (!enabledPages.length) {
@@ -140,26 +149,20 @@ export function runPreflight(document: CustomizerDocument, options: PreflightOpt
         });
       }
 
-      // Effective print resolution: the placed image must carry enough pixels
-      // for the frame's physical print size (frame px are at page DPI).
-      const dims =
-        options.imageDimensions?.[layer.src] ||
-        (layer.assetId ? options.imageDimensions?.[layer.assetId] : undefined);
-      if (dims && dims.width > 0 && layer.src) {
-        const zoom = layer.transform.zoom || 1;
-        // Pixels of source image shown per canvas px (cover fit, zoomed).
-        const coverScale = Math.max(layer.width / dims.width, layer.height / dims.height) * zoom;
-        const effectiveDpi = page.dpi / Math.max(coverScale, 1e-6) / 1; // src px per output inch
-        // coverScale = canvas px per source px; source px per inch = dpi / coverScale
-        if (effectiveDpi < minImageDpi) {
-          issues.push({
-            code: "low-resolution-image",
-            severity: options.blockOnLowResolution ? "error" : "warning",
-            pageId: page.id,
-            layerId: layer.id,
-            message: `"${layer.name}" photo prints at about ${Math.round(effectiveDpi)} DPI (minimum ${minImageDpi}). It may look blurry.`,
-          });
-        }
+      // Effective print resolution from the same draw box the renderers use
+      // (crop, zoom and fit included) — print-resolution.ts.
+      const dims = layerSourceDimensions(layer as any, document.assets, options.imageDimensions);
+      const effectivePpi = dims && layer.src
+        ? effectiveImagePpi({ frameWidth: layer.width, frameHeight: layer.height, transform: layer.transform, fitMode: (layer as any).fitMode, sourceWidth: dims.width, sourceHeight: dims.height, dpi: page.dpi })
+        : null;
+      if (effectivePpi !== null && effectivePpi < minImageDpi) {
+        issues.push({
+          code: "low-resolution-image",
+          severity: blockLowResolution ? "error" : "warning",
+          pageId: page.id,
+          layerId: layer.id,
+          message: `${LOW_RESOLUTION_CUSTOMER_MESSAGE} ("${layer.name}" prints at about ${Math.round(effectivePpi)} PPI; ${minImageDpi} or more is recommended.)`,
+        });
       }
     }
 
@@ -194,21 +197,17 @@ export function runPreflight(document: CustomizerDocument, options: PreflightOpt
             message: `Photo grid "${layer.name}" slot ${index + 1} points at a missing asset.`,
           });
         }
-        const metadataWidth = Number(slot.metadata?.width) || 0;
-        const metadataHeight = Number(slot.metadata?.height) || 0;
-        const dimensions = options.imageDimensions?.[slot.src] || (slot.assetId ? options.imageDimensions?.[slot.assetId] : undefined) ||
-          (metadataWidth > 0 && metadataHeight > 0 ? { width: metadataWidth, height: metadataHeight } : undefined);
+        const dimensions = layerSourceDimensions(slot as any, document.assets, options.imageDimensions);
         if (dimensions && slot.src) {
           const rect = getGridSlotRect(layer, slot);
-          const coverScale = Math.max(rect.width / dimensions.width, rect.height / dimensions.height) * (slot.transform.zoom || 1);
-          const effectiveDpi = page.dpi / Math.max(coverScale, 1e-6);
-          if (effectiveDpi < minImageDpi) {
+          const effectivePpi = effectiveImagePpi({ frameWidth: rect.width, frameHeight: rect.height, transform: slot.transform, fitMode: (slot.transform as any)?.fitMode, sourceWidth: dimensions.width, sourceHeight: dimensions.height, dpi: page.dpi });
+          if (effectivePpi !== null && effectivePpi < minImageDpi) {
             issues.push({
               code: "LOW_RESOLUTION_GRID_IMAGE",
-              severity: options.blockOnLowResolution ? "error" : "warning",
+              severity: blockLowResolution ? "error" : "warning",
               pageId: page.id,
               layerId: layer.id,
-              message: `Photo grid "${layer.name}" slot ${index + 1} prints at about ${Math.round(effectiveDpi)} DPI.`,
+              message: `${LOW_RESOLUTION_CUSTOMER_MESSAGE} (Photo grid "${layer.name}" slot ${index + 1} prints at about ${Math.round(effectivePpi)} PPI.)`,
             });
           }
         }

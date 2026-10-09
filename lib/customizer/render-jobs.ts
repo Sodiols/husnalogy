@@ -14,7 +14,7 @@ import {
   renderCustomizationPages,
   buildPrintPdf,
   RenderError,
-  loadTrustedImageBuffer,
+  loadRenderReadyImageBuffer,
   type PageRenderResult,
 } from "@/lib/customizer/v2/server/render";
 import { renderFlatMockup } from "@/lib/customizer/v2/server/mockup-render";
@@ -28,6 +28,7 @@ import { loadNormalizedMockupTemplate } from "@/lib/customizer/mockup-store";
 import { resolveFlagsIntoTemplate } from "@/lib/customizer/v2/feature-flags.server";
 import { readProductionSnapshot, productionIntegrityHash } from "@/lib/customizer/production-input";
 import { openProductionInput, productionStorage } from "@/lib/customizer/server/production-assets";
+import { printSpec } from "@/lib/customizer/print-spec";
 
 export const RENDER_MAX_ATTEMPTS = 3;
 const RENDER_BUCKET = "customizer-renders";
@@ -432,11 +433,11 @@ export async function processRenderJob(jobId: string, suppliedClient?: ReturnTyp
       for (const view of config.views) {
         await assertActiveLease();
         if (!view.baseImageUrl) throw new RenderError("MOCKUP_RENDER_FAILED", `Mockup view ${view.name || view.id} has no base image.`);
-        const baseImage = await loadTrustedImageBuffer(view.baseImageUrl);
+        const baseImage = await loadRenderReadyImageBuffer(view.baseImageUrl);
         const overlayImages: Record<string, Buffer> = {};
         for (const overlay of view.overlays || []) {
           if (!overlay.src) continue;
-          overlayImages[overlay.id] = await loadTrustedImageBuffer(overlay.src);
+          overlayImages[overlay.id] = await loadRenderReadyImageBuffer(overlay.src);
           if (overlay.assetId) overlayImages[overlay.assetId] = overlayImages[overlay.id];
         }
         const transparent = view.requiresTransparency === true;
@@ -482,17 +483,14 @@ export async function processRenderJob(jobId: string, suppliedClient?: ReturnTyp
     }
 
     if (jobType === "print_pdf") {
-      const bleedPx = {
-        top: Number(template.bleed?.top) || 0,
-        right: Number(template.bleed?.right) || 0,
-        bottom: Number(template.bleed?.bottom) || 0,
-        left: Number(template.bleed?.left) || 0,
-      };
+      // One physical specification for the raster and the PDF page (print-spec.ts).
+      const spec = printSpec(template);
       const { pdf, checksum } = await buildPrintPdf(pages, {
-        widthIn: Number(template.cardWidthIn) || 5,
-        heightIn: Number(template.cardHeightIn) || 7,
-        dpi: Number(template.dpi) || 300,
-        bleedPx,
+        widthIn: spec.trimWidthIn,
+        heightIn: spec.trimHeightIn,
+        dpi: spec.dpi,
+        bleedPx: spec.bleedPx,
+        pxPerInch: { x: spec.pxPerInchX, y: spec.pxPerInchY },
       });
       const path = `${basePath}/print.pdf`;
       await uploadOutput(supabase, path, pdf, "application/pdf");

@@ -27,6 +27,8 @@ import { ZOOM_MAX, ZOOM_MIN, clampZoom } from "@/lib/customizer/v2/zoom";
 import { awaitDevSaveGate, ensureCustomizerMetrics, recordDocumentCommit, recordEditorEvent } from "@/lib/customizer/v2/dev-metrics";
 import type { CropExitMode, CropSessionApi, LayerTransformChange } from "@/app/components/customizer/CustomizerWorkspace";
 import { isTypingTarget } from "@/lib/customizer/v2/viewport-pan";
+import { LOW_RESOLUTION_CUSTOMER_MESSAGE } from "@/lib/customizer/v2/print-resolution";
+import { lowResolutionPhotos } from "@/app/components/customizer/photo-quality";
 import CustomizerReviewStep from "@/app/components/customizer/CustomizerReviewStep";
 import CustomerCustomizerHeader from "@/app/components/customizer/CustomerCustomizerHeader";
 import CustomerToolRail, { getCustomerTools, type CustomerTool } from "@/app/components/customizer/CustomerToolRail";
@@ -974,6 +976,13 @@ export default function PersonalizeClient({ product, template }: { product: any;
     // metrics rather than the fallback used during the first paint (spec §14).
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [template, activePage, editorState, fontEpoch],
+  );
+
+  // The customer's own photos on this page that would print below the
+  // product's minimum resolution. Recomputed with every resize, zoom or crop.
+  const lowResPhotos = useMemo(
+    () => lowResolutionPhotos({ layers: effectiveLayers, fields: template?.fields || [], values, dpi: template?.dpi, settings: template?.settings }),
+    [effectiveLayers, template, values],
   );
 
   // Load exactly the faces this design uses — never the whole catalog — then
@@ -4021,6 +4030,17 @@ export default function PersonalizeClient({ product, template }: { product: any;
             ) : (
               <p className="rounded-full bg-white px-4 py-2 text-xs font-semibold text-[#303839]/70 shadow-sm">Loading your design…</p>
             )}
+          </div>
+        )}
+        {step !== "review" && lowResPhotos.length > 0 && restoreReady && (
+          <div
+            data-photo-quality-warning
+            role="status"
+            aria-live="polite"
+            className="pointer-events-none absolute left-1/2 top-3 z-[40] w-[min(92%,30rem)] -translate-x-1/2 rounded-xl border border-[#D4AF37]/50 bg-[#FFF6DD] px-4 py-2.5 text-[13px] font-semibold leading-snug text-[#6b5414] shadow-[0_6px_18px_rgba(48,56,57,0.12)]"
+          >
+            {LOW_RESOLUTION_CUSTOMER_MESSAGE}
+            {lowResPhotos.length > 1 ? ` (${lowResPhotos.map((photo) => photo.name).join(", ")})` : ""}
           </div>
         )}
         {step === "review" ? (

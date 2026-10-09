@@ -560,6 +560,8 @@ export type CustomizerSettings = {
   templateName: string;
   templateDescription: string;
   adminNotes: string;
+  /** Product print-quality thresholds for placed photos (print-resolution.ts). */
+  printQuality?: import("./print-resolution").PrintQualitySettings;
 };
 
 /* --------------------------------------------------------------- document */

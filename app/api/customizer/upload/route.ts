@@ -9,6 +9,7 @@ import { bodyErrorResponse, readFormDataBody } from "@/lib/http/read-body";
 import { sniffImageType, safeFileName } from "@/lib/customizer/v2/uploads";
 import { resolvePrivateAssetUrl } from "@/lib/customizer/server/private-assets";
 import { logEvent, requestIdFrom } from "@/lib/observability/logger";
+import { stripJpegMetadataVerified } from "@/lib/uploads/jpeg-lossless";
 
 const MAX_SIZE = 15 * 1024 * 1024;
 const MAX_DIMENSION = 12000; // per side
@@ -33,8 +34,10 @@ function isPdf(buffer: Buffer): boolean {
 //  * Type decided by magic bytes, never the file name, extension or
 //    Content-Type. Images must also fully decode.
 //  * Size, per-side dimension and total pixel count are capped.
-//  * The stored ORIGINAL is re-encoded: EXIF/GPS metadata is removed and any
-//    bytes appended after the image (polyglot payloads) are discarded.
+//  * The stored ORIGINAL loses its EXIF/GPS metadata and any bytes appended
+//    after the image (polyglot payloads). A JPEG's compressed picture is kept
+//    byte for byte (no re-compression); other formats are re-encoded
+//    losslessly.
 //  * File names are generated server side; the path is always inside the
 //    caller's own folder; the write uses the service role only after the
 //    session has been verified (customers can no longer write to the bucket
@@ -119,10 +122,16 @@ export async function POST(request: Request) {
   let thumbBuffer: Buffer;
   try {
     const decode = () => sharp(buffer, { limitInputPixels: MAX_PIXELS, failOn: "error" }).rotate();
-    // Full resolution, orientation applied, metadata removed (sharp drops
-    // EXIF/XMP/GPS unless asked to keep it). Near-lossless for print.
+    // Full resolution, metadata removed, nothing appended after the image.
+    // A JPEG keeps its compressed picture byte for byte (only metadata
+    // segments are dropped; the colour profile and orientation stay) — proven
+    // to decode to identical pixels, else re-encoded as before. PNG and WebP
+    // are re-encoded losslessly (orientation applied, metadata dropped).
+    const losslessJpeg = sniffed.mime === "image/jpeg" ? await stripJpegMetadataVerified(buffer, MAX_PIXELS) : null;
     originalBuffer =
-      sniffed.mime === "image/png"
+      losslessJpeg
+        ? losslessJpeg
+        : sniffed.mime === "image/png"
         ? await decode().png({ compressionLevel: 9 }).toBuffer()
         : sniffed.mime === "image/webp"
           ? await decode().webp({ lossless: true }).toBuffer()
@@ -135,6 +144,10 @@ export async function POST(request: Request) {
   // The variants must decode AND be the right size for this photo (EXIF
   // orientation applied): a thumbnail-sized editor image is never stored.
   const swapped = typeof meta.orientation === "number" && meta.orientation >= 5 && meta.orientation <= 8;
+  // Every stored file is upright, so the photo's size is reported upright too
+  // (a portrait phone photo is taller than wide, whatever its raw pixel order).
+  const orientedWidth = swapped ? height : width;
+  const orientedHeight = swapped ? width : height;
   try {
     await assertVariantsDecodable(editorBuffer, thumbBuffer);
     await assertVariantsSized(editorBuffer, thumbBuffer, swapped ? height : width, swapped ? width : height, CUSTOMER_VARIANT_BOUNDS);
@@ -193,8 +206,8 @@ export async function POST(request: Request) {
       file_name: displayName,
       mime_type: sniffed.mime,
       size_bytes: originalBuffer.length,
-      width,
-      height,
+      width: orientedWidth,
+      height: orientedHeight,
       checksum,
       status: "ready",
       metadata: { folder },
@@ -229,8 +242,8 @@ export async function POST(request: Request) {
     originalFileName: displayName,
     mimeType: sniffed.mime,
     fileSize: originalBuffer.length,
-    width,
-    height,
+    width: orientedWidth,
+    height: orientedHeight,
     checksum,
     createdAt: new Date(stamp).toISOString(),
   };
@@ -253,8 +266,8 @@ export async function POST(request: Request) {
       name: displayName,
       type: sniffed.mime,
       size: originalBuffer.length,
-      width,
-      height,
+      width: orientedWidth,
+      height: orientedHeight,
       checksum,
       createdAt: new Date(stamp).toISOString(),
       assetReference,

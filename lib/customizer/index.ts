@@ -26,6 +26,7 @@ import {
 } from "@/lib/customizer/v2/text-editing";
 import { isCustomizerFeatureEnabled } from "@/lib/customizer/v2/feature-flags";
 import { renderBoundsErrors } from "@/lib/customizer/production-limits";
+import { printSpecIssues } from "@/lib/customizer/print-spec";
 import {
   normalizeStoredCustomerPermissions,
   permissionBundle,
@@ -1117,6 +1118,10 @@ export function validateCustomizerTemplateDetailed(template: any = {}): { errors
   } else if (renderBoundsErrors(t).length) {
     warnings.push(`Print size exceeds automatic production limits (${renderBoundsErrors(t)[0]}). Orders will need manual production.`);
   }
+  // The canvas must have the printed card's shape (print-spec.ts).
+  const physical = printSpecIssues(t);
+  errors.push(...physical.errors.map((message) => `Print size: ${message}`));
+  warnings.push(...physical.warnings.map((message) => `Print size: ${message}`));
   if (!enabledPages.length) errors.push("At least one enabled page is required.");
 
   // Unique page ids.
