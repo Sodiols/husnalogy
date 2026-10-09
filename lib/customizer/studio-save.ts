@@ -17,7 +17,7 @@
 
 export type ProductSaveResult =
   | { ok: true; productId: string; product: any; template: any | null }
-  | { ok: false; reason: "validation" | "request" | "busy"; error: string };
+  | { ok: false; reason: "validation" | "request" | "busy" | "conflict"; error: string };
 
 export type TemplatePublishResult =
   | { ok: true; displayVersion: string; version: any; warnings: string[] }
@@ -35,7 +35,7 @@ export function asProductSaveResult(value: unknown): ProductSaveResult {
     return { ok: true, productId: result.productId, product: result.product ?? null, template: result.template ?? null };
   }
   if (result && result.ok === false) {
-    const reason = result.reason === "validation" || result.reason === "busy" ? result.reason : "request";
+    const reason = result.reason === "validation" || result.reason === "busy" || result.reason === "conflict" ? result.reason : "request";
     return { ok: false, reason, error: String(result.error || "The design could not be saved.") };
   }
   return { ok: false, reason: "request", error: "The design could not be saved." };
@@ -168,7 +168,7 @@ export type StudioSaveStatusInput = {
   /** A save request is in flight. */
   saving: boolean;
   /** The last save attempt's failure, cleared by the next success. */
-  failure: { reason: "validation" | "request" | "busy"; error: string } | null;
+  failure: { reason: "validation" | "request" | "busy" | "conflict"; error: string } | null;
   online: boolean;
   /** A new product can be created as a draft (it has the minimum a draft needs: a name). */
   canCreateDraft: boolean;
@@ -203,7 +203,9 @@ export function describeStudioSaveStatus(input: StudioSaveStatusInput): StudioSa
     const kept = "Your changes are kept on this device.";
     detail = input.failure!.reason === "validation"
       ? `Not saved to the server — ${input.failure!.error} ${kept}`
-      : `Save failed — ${input.failure!.error} ${kept} Retrying automatically.`;
+      : input.failure!.reason === "conflict"
+        ? `Not saved — ${input.failure!.error} ${kept} Keep your version (replaces theirs), or reload to see theirs.`
+        : `Save failed — ${input.failure!.error} ${kept} Retrying automatically.`;
     alert = true;
   } else if (!input.hasServerRecord && input.dirty && !input.canCreateDraft) {
     detail = "This design is only on this device. Give the product a name (Back to Product) and it will save to the server as a draft.";

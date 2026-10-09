@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { describeStudioSaveStatus, studioAutosaveRetryDelayMs, studioMayAutosave } from "../studio-save";
+import { asProductSaveResult, describeStudioSaveStatus, studioAutosaveRetryDelayMs, studioMayAutosave } from "../studio-save";
 
 const read = (relative: string) => readFileSync(path.join(process.cwd(), relative), "utf8");
 const base = { hasServerRecord: true, dirty: false, saving: false, failure: null, online: true, canCreateDraft: true };
@@ -39,6 +39,20 @@ describe("studio save status: only what the server confirmed is called saved", (
     expect(describeStudioSaveStatus({ ...base, dirty: true, failure: { reason: "busy", error: "x" } }).flags).toEqual([]);
     // A later success (not dirty) leaves no stale failure on screen.
     expect(describeStudioSaveStatus({ ...base, failure: { reason: "request", error: "old" } })).toMatchObject({ primary: "Saved", flags: [] });
+  });
+
+  it("a draft changed elsewhere is a conflict: the work is kept, nothing is retried, the designer chooses", () => {
+    const conflict = describeStudioSaveStatus({
+      ...base,
+      dirty: true,
+      failure: { reason: "conflict", error: "This design was changed in another tab or by another person after you opened it." },
+    });
+    expect(conflict).toMatchObject({ primary: "Unsaved", flags: ["Save failed"], alert: true });
+    expect(conflict.detail).toContain("changed in another tab or by another person");
+    expect(conflict.detail).toContain("kept on this device");
+    expect(conflict.detail).toContain("Keep your version");
+    expect(conflict.detail).not.toContain("Retrying");
+    expect(asProductSaveResult({ ok: false, reason: "conflict", error: "x" })).toEqual({ ok: false, reason: "conflict", error: "x" });
   });
 
   it("offline is reported while there is unsaved work", () => {

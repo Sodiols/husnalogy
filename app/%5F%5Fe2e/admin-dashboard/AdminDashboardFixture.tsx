@@ -198,6 +198,17 @@ function installMock(store: Store) {
   (controls as any).store = store;
   let createdProducts = 0;
   let templateRevision = 0;
+  // Another tab or person saves this product's draft: a new revision on the
+  // "server" that the open studio has not seen.
+  (controls as any).externalDraftSave = (productId: string) => {
+    templateRevision += 1;
+    store.products = store.products.map((product: any) =>
+      product.id === productId && product.customizerTemplate
+        ? { ...product, customizerTemplate: { ...product.customizerTemplate, updatedAt: `2026-10-04T08:00:00.${String(templateRevision).padStart(6, "0")}+00:00` } }
+        : product,
+    );
+    writeDurable(store, controls.versions);
+  };
 
   window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = new URL(typeof input === "string" ? input : input instanceof URL ? input.href : input.url, window.location.origin);
@@ -221,11 +232,16 @@ function installMock(store: Store) {
         return json({ ok: false, error }, 500);
       }
       const existing: any = method === "PUT" ? store.products.find((product) => product.id === parts[3]) : null;
+      // Like the server: a save carrying an older draft revision is refused.
+      const { expectedTemplateUpdatedAt, ...fields } = body;
+      if (expectedTemplateUpdatedAt && body.customizerTemplate && existing?.customizerTemplate?.updatedAt && expectedTemplateUpdatedAt !== existing.customizerTemplate.updatedAt) {
+        return json({ ok: false, conflict: true, errors: { customizerTemplate: "This design was changed in another tab or by another person after you opened it." } }, 409);
+      }
       const id = existing?.id || `prod-new-${(createdProducts += 1)}`;
       templateRevision += 1;
       const saved: any = {
         ...(existing || { createdAt: new Date().toISOString(), reviews: [], images: [] }),
-        ...body,
+        ...fields,
         id,
         // Like the server: an omitted status keeps the stored one.
         status: body.status || existing?.status || "draft",

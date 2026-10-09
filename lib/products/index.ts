@@ -7,6 +7,7 @@ import { normalizeCustomizerTemplate, templateFromRow } from "@/lib/customizer";
 import { hydrateAdminAssetUrls } from "@/lib/customizer/server/admin-assets";
 import { migrateTextAutoSizing } from "@/lib/customizer/v2/text-layout";
 import { saveCustomizerTemplate } from "@/lib/customizer/store";
+import { DraftConflictError } from "@/lib/customizer/draft-revision";
 import {
   clampString,
   cleanOptionalString,
@@ -757,7 +758,7 @@ async function replaceProductCollectionLinks(productId, collectionIds = []) {
   if (error) throw error;
 }
 
-async function syncProductDetails(product) {
+async function syncProductDetails(product, options: { templateSaved?: boolean } = {}) {
   await replaceProductMedia(product.id, "product_images", "image_url", product.images);
   await replaceProductMedia(product.id, "product_mockups", "mockup_url", product.mockups);
   await replaceProductMedia(product.id, "product_videos", "video_url", normalizeStringArray(product.videos || product.video));
@@ -765,7 +766,7 @@ async function syncProductDetails(product) {
 
   // Persist the customizer template into its dedicated table (source of truth).
   // Products without a template are left untouched so existing products keep working.
-  if (product.customizerTemplate) {
+  if (product.customizerTemplate && !options.templateSaved) {
     const saved = await saveCustomizerTemplate(product.id, product.customizerTemplate);
     if (saved) product.customizerTemplate = saved;
   }
@@ -1106,7 +1107,11 @@ export async function createProduct(input, options: { actor?: any } = {}) {
  * additionally stripped for a designer — so the widest endpoint in the product
  * surface cannot be used to escape the review workflow.
  */
-export async function updateProduct(id, input, options: { actor?: any } = {}) {
+export async function updateProduct(
+  id,
+  input,
+  options: { actor?: any; expectedTemplateUpdatedAt?: string | null } = {},
+) {
   const actor = options.actor || null;
   const products = await getProducts();
   const index = products.findIndex((product) => product.id === id);
@@ -1124,6 +1129,25 @@ export async function updateProduct(id, input, options: { actor?: any } = {}) {
 
   if (!(await assertUniqueSlug(product.slug, id))) {
     return { ok: false, errors: { slug: "This slug already exists." } };
+  }
+
+  // A save that carries the draft revision its editor last saw writes the
+  // template FIRST: if another tab or person changed the draft since, nothing
+  // at all is written (not the template, not the product fields from the same
+  // stale form).
+  const guardTemplate = Boolean(options.expectedTemplateUpdatedAt && input?.customizerTemplate && product.customizerTemplate);
+  if (guardTemplate) {
+    try {
+      const saved = await saveCustomizerTemplate(id, product.customizerTemplate, {
+        expectedUpdatedAt: options.expectedTemplateUpdatedAt,
+      });
+      if (saved) product.customizerTemplate = saved;
+    } catch (error) {
+      if (error instanceof DraftConflictError) {
+        return { ok: false, conflict: true, errors: { customizerTemplate: error.message } };
+      }
+      throw error;
+    }
   }
 
   const supabase = createServiceRoleClient();
@@ -1146,7 +1170,7 @@ export async function updateProduct(id, input, options: { actor?: any } = {}) {
   const { error } = await supabase.from("products").update(row).eq("id", id);
   if (error) throw error;
 
-  await syncProductDetails(product);
+  await syncProductDetails(product, { templateSaved: guardTemplate });
   return { ok: true, product: { ...product, workflowState: nextWorkflowState || products[index].workflowState } };
 }
 

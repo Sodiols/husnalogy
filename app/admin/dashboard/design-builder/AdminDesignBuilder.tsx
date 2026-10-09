@@ -1367,6 +1367,14 @@ export default function AdminDesignBuilder({
   const [online, setOnline] = useState(() => (typeof navigator === "undefined" ? true : navigator.onLine !== false));
   const retryTimerRef = useRef<number | null>(null);
   const retryAttemptRef = useRef(0);
+  // The draft changed elsewhere (another tab or person) since this studio
+  // loaded it. Autosave stops until the designer decides: keep their version
+  // (overwrite) or reload to see the other one. Their work stays in the local
+  // recovery copy either way.
+  const conflictRef = useRef(false);
+  // Set just before a reload the designer asked for, so the leave-page prompt
+  // does not block it (the work is already in the local recovery copy).
+  const reloadingRef = useRef(false);
   const clearRetry = () => {
     if (retryTimerRef.current !== null) window.clearTimeout(retryTimerRef.current);
     retryTimerRef.current = null;
@@ -1405,7 +1413,7 @@ export default function AdminDesignBuilder({
     };
     const onBeforeUnload = (event: BeforeUnloadEvent) => {
       flush();
-      if (!revisions.isDirty()) return;
+      if (!revisions.isDirty() || reloadingRef.current) return;
       event.preventDefault();
       event.returnValue = "";
     };
@@ -1443,7 +1451,7 @@ export default function AdminDesignBuilder({
     persistRecoveryNow();
   };
   const autosave = async () => {
-    if (busyRef.current || autosaveInFlightRef.current || recoveryOfferRef.current) return;
+    if (busyRef.current || autosaveInFlightRef.current || recoveryOfferRef.current || conflictRef.current) return;
     const online = typeof navigator === "undefined" || navigator.onLine !== false;
     if (!studioMayAutosave({ hasServerRecord: Boolean(productId), canCreateDraft, dirty: revisions.isDirty(), online })) return;
     clearRetry();
@@ -1462,8 +1470,10 @@ export default function AdminDesignBuilder({
    * a failed request is retried with backoff, a busy form shortly; a refused
    * save (no name, an invalid field) waits for the next edit.
    */
-  const scheduleSaveRetry = (reason: "validation" | "request" | "busy") => {
-    if (reason === "validation") return;
+  const scheduleSaveRetry = (reason: "validation" | "request" | "busy" | "conflict") => {
+    // A conflict is never retried: re-sending would either fail again or,
+    // worse, need the designer's consent to replace someone else's work.
+    if (reason === "validation" || reason === "conflict") return;
     clearRetry();
     retryAttemptRef.current += 1;
     const delay = reason === "busy" ? 1_500 : studioAutosaveRetryDelayMs(retryAttemptRef.current);
@@ -1603,20 +1613,25 @@ export default function AdminDesignBuilder({
    * Only the revision that was sent is marked clean: an edit made while the
    * request was in flight keeps the document unsaved.
    */
-  const saveCurrentRevision = async () => {
+  const saveCurrentRevision = async (options: { overwrite?: boolean } = {}) => {
     const revision = revisions.current;
     const keyBefore = recoveryKeyRef.current;
     const sent = tRef.current;
     let result: ProductSaveResult;
     try {
-      result = asProductSaveResult(await onSave?.("template", { template: sent }));
+      result = asProductSaveResult(await onSave?.("template", { template: sent, overwrite: options.overwrite }));
     } catch (error) {
       result = { ok: false, reason: "request", error: (error as Error)?.message || "The design could not be saved." };
     }
     if (result.ok === false) {
       if (result.reason !== "busy") setSaveFailure(result);
+      if (result.reason === "conflict") {
+        conflictRef.current = true;
+        persistRecoveryNow();
+      }
       scheduleSaveRetry(result.reason);
     } else {
+      conflictRef.current = false;
       setSaveFailure(null);
       retryAttemptRef.current = 0;
       lastSavedTemplateRef.current = sent;
@@ -1677,6 +1692,31 @@ export default function AdminDesignBuilder({
       busyRef.current = false;
       setStudioBusy("");
     }
+  };
+
+  /* ----- a draft changed elsewhere (conflict) ----- */
+  // "Keep my version": the designer saw the warning and chose to replace the
+  // other version with theirs.
+  const keepMyVersion = async () => {
+    if (busyRef.current) return;
+    busyRef.current = true;
+    await autosaveInFlightRef.current;
+    setStudioBusy("saving");
+    setPublishNotice("");
+    try {
+      const result = await saveCurrentRevision({ overwrite: true });
+      if (result.ok) setPublishNotice("Your version was saved and replaced the other one.");
+    } finally {
+      busyRef.current = false;
+      setStudioBusy("");
+    }
+  };
+  // "Reload to see theirs": the page reloads with the server's latest draft;
+  // this design stays in the local recovery copy and is offered back on open.
+  const reloadLatest = () => {
+    persistRecoveryNow();
+    reloadingRef.current = true;
+    window.location.reload();
   };
 
   /* ----- leaving the studio ----- */
@@ -1935,6 +1975,16 @@ export default function AdminDesignBuilder({
             <button type="button" onClick={() => void saveDraft()} className="underline underline-offset-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#6b5414]">
               Retry now
             </button>
+          )}
+          {saveFailure?.reason === "conflict" && (
+            <>
+              <button type="button" data-conflict-keep onClick={() => void keepMyVersion()} disabled={Boolean(studioBusy) || !online} className="rounded-lg bg-[#303839] px-3 py-1.5 text-white disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2">
+                Keep my version
+              </button>
+              <button type="button" data-conflict-reload onClick={reloadLatest} className="underline underline-offset-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#6b5414]">
+                Reload to see theirs
+              </button>
+            </>
           )}
         </div>
       )}

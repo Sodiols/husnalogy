@@ -8,6 +8,7 @@
 
 import { createServiceRoleClient } from "@/lib/supabase/server";
 import { getCustomizerTemplateByProductId } from "@/lib/customizer/store";
+import { draftMatchesExpectedRevision } from "@/lib/customizer/draft-revision";
 import { resolveLayerImageTransform, validateCustomizerTemplateDetailed } from "@/lib/customizer";
 import { templateToDocument } from "@/lib/customizer/v2/document";
 
@@ -63,25 +64,7 @@ function versionFromRow(row: Partial<TemplateVersionDatabaseRow>): TemplateVersi
   };
 }
 
-/**
- * True when the stored draft is still the exact revision the caller saved.
- * Timestamps are compared as instants, so formatting differences between the
- * database and the JSON response cannot cause a false mismatch.
- */
-export function draftMatchesExpectedRevision(draftUpdatedAt: unknown, expectedUpdatedAt: unknown): boolean {
-  if (!expectedUpdatedAt) return true;
-  const instant = (value: unknown): string | null => {
-    const text = String(value || "");
-    const ms = Date.parse(text);
-    if (!Number.isFinite(ms)) return null;
-    // Postgres keeps microseconds; Date.parse keeps milliseconds. Compare the
-    // full fraction so two saves inside one millisecond still differ.
-    const fraction = (text.match(/\.(\d+)/)?.[1] || "").padEnd(6, "0").slice(0, 6);
-    return `${Math.floor(ms / 1000)}.${fraction}`;
-  };
-  const draft = instant(draftUpdatedAt);
-  return draft !== null && draft === instant(expectedUpdatedAt);
-}
+export { draftMatchesExpectedRevision };
 
 // Publish the current draft of a product's template as a new immutable
 // version. Runs detailed validation first — blocking errors abort the publish.

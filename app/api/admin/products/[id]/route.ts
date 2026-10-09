@@ -5,6 +5,7 @@ import { designerMayEdit } from "@/lib/products/workflow";
 import { workflowStateOf } from "@/lib/auth/roles";
 import { deleteProduct, updateProduct } from "@/lib/products";
 import { readJsonObject } from "@/lib/http/read-body";
+import { parseExpectedDraftRevision } from "@/lib/customizer/draft-revision";
 
 export const PUT = withAdminMutation(async function PUT(request, { params }) {
   const { id } = await params;
@@ -24,10 +25,18 @@ export const PUT = withAdminMutation(async function PUT(request, { params }) {
 
   const bodyRead23 = await readJsonObject(request, 5 * 1024 * 1024);
   if (bodyRead23.response) return bodyRead23.response;
-  const body = bodyRead23.body;
-  const result = await updateProduct(id, body, { actor: session.actor });
+  const { expectedTemplateUpdatedAt, ...body } = bodyRead23.body;
+  // The draft revision this editor last saw; a draft changed since is not
+  // overwritten (409 conflict) — see saveCustomizerTemplate.
+  const result = await updateProduct(id, body, {
+    actor: session.actor,
+    expectedTemplateUpdatedAt: parseExpectedDraftRevision(expectedTemplateUpdatedAt),
+  });
 
   if (!result.ok) {
+    if ((result as any).conflict) {
+      return Response.json({ ok: false, conflict: true, errors: result.errors }, { status: 409 });
+    }
     return Response.json({ ok: false, errors: result.errors }, { status: 400 });
   }
 

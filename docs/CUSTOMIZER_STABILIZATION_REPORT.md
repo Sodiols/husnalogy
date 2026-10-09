@@ -469,7 +469,18 @@ and render-worker run, then Hostinger smoke tests.
 ## 7. Remaining issues
 
 - **Defects not fixed:** designs saved before the fixes may keep a stale background id (Task 01) or have had layers
-  moved to Front (page ids) — not recoverable automatically; two tabs editing one draft still last-write-win.
+  moved to Front (page ids) — not recoverable automatically. Read-only production check 2026-10-09: neither live
+  product's draft has a stale background id.
+- **Fixed 2026-10-09 (Week 1) — two editors, one draft:** a product save now carries the draft revision
+  (`expectedTemplateUpdatedAt`) its editor last loaded or saved. A draft changed since (another tab or person) is
+  refused with 409 `conflict` before anything is written; the template write is a compare-and-swap on the stored
+  `updated_at`, so a save landing between check and write is caught too. The studio never retries a conflict and stops
+  autosaving; the work stays in local recovery; the designer chooses **Keep my version** (explicit overwrite) or
+  **Reload to see theirs** (no leave-page prompt; the design is offered back). Files: `lib/customizer/draft-revision.ts`,
+  `lib/customizer/store.ts`, `lib/products/index.ts`, `app/api/admin/products/[id]/route.ts`,
+  `product-upload-form.tsx`, `AdminDesignBuilder.tsx`, `studio-save.ts`. Tests: `draft-save-conflict.test.ts` (6, real
+  schema + trigger, incl. the race), `studio-save-status.test.ts` (+1), `e2e/admin-studio-draft-conflict.spec.ts` (2);
+  regression: studio save/publish, recovery and exit specs 24/24.
 - **Environment blockers:** staging, seeded specs, WebKit run.
 - **Optional:** Fit/Fill toolbar for the Background layer (needs product approval); consecutive arrow nudges are
   separate undo steps (could be coalesced).

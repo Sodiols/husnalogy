@@ -46,7 +46,7 @@ export function createCustomizerTestClient(t: TestDatabase) {
   const client: any = {
     from(table: string) {
       if (!TABLES.has(table)) throw new Error(`Unexpected table in customizer test client: ${table}`);
-      let action: "select" | "upsert" = "select";
+      let action: "select" | "upsert" | "update" = "select";
       let rows: any[] = [];
       let conflict = "";
       let columns = "*";
@@ -88,6 +88,11 @@ export function createCustomizerTestClient(t: TestDatabase) {
           single = true;
           return builder;
         },
+        update(value: any) {
+          action = "update";
+          rows = [value];
+          return builder;
+        },
         upsert(value: any, options: { onConflict?: string } = {}) {
           action = "upsert";
           rows = Array.isArray(value) ? value : [value];
@@ -102,6 +107,16 @@ export function createCustomizerTestClient(t: TestDatabase) {
             const values = rows.map((row) => `(${keys.map((key) => bind(row[key], key)).join(", ")})`).join(", ");
             const updates = keys.filter((key) => key !== conflict).map((key) => `${identifier(key)} = excluded.${identifier(key)}`).join(", ");
             sql = `insert into public.${table} (${keys.map(identifier).join(", ")}) values ${values} on conflict (${conflict}) do update set ${updates} returning ${columns}`;
+          } else if (action === "update") {
+            // Bind the SET values first: the where clause placeholders were
+            // numbered when eq() ran, so renumber them after the SET list.
+            const keys = Object.keys(rows[0]);
+            const whereArgs = args.splice(0, args.length);
+            const sets = keys.map((key) => `${identifier(key)} = ${bind(rows[0][key], key)}`).join(", ");
+            const offset = keys.length;
+            const renumbered = where.replace(/\$(\d+)/g, (_, n) => `$${Number(n) + offset}`);
+            args.push(...whereArgs);
+            sql = `update public.${table} set ${sets}${renumbered} returning ${columns}`;
           } else {
             sql = `select ${columns} from public.${table}${where}${sorts.length ? ` order by ${sorts.join(", ")}` : ""}${limit}`;
           }

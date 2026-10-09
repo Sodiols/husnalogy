@@ -1327,6 +1327,10 @@ export default function ProductUploadForm({
   // Draft waiting for its autosave) may run before React re-renders; reading
   // state there would POST the same new product a second time.
   const persistedIdRef = useRef<string | null>(product?.id || null);
+  // The customizer draft revision (`updatedAt`) this form last loaded or saved.
+  // Sent with every save so a draft changed in another tab, or by another
+  // person, is refused (409 conflict) instead of silently overwritten.
+  const draftRevisionRef = useRef<string | null>(product?.customizerTemplate?.updatedAt || null);
 
   const editingId = persistedProduct?.id || null;
 
@@ -1341,6 +1345,7 @@ export default function ProductUploadForm({
     setForm(buildInitialForm(product));
     setPersistedProduct(product);
     persistedIdRef.current = product?.id || null;
+    draftRevisionRef.current = product?.customizerTemplate?.updatedAt || null;
     setErrors({});
     setSaveError("");
     setSuccessMessage("");
@@ -1613,8 +1618,12 @@ export default function ProductUploadForm({
    *
    * `options.template` is the exact template revision to persist; the studio
    * passes its own synchronous copy so a save can never send a stale render.
+   *
+   * `options.overwrite` replaces the server's draft even if it changed since
+   * this form loaded it — only after the designer chose "Keep my version" on
+   * a conflict.
    */
-  const save = async (requestedAction, options: { template?: any } = {}): Promise<ProductSaveResult> => {
+  const save = async (requestedAction, options: { template?: any; overwrite?: boolean } = {}): Promise<ProductSaveResult> => {
     if (saveInFlightRef.current) {
       return { ok: false, reason: "busy", error: "A save is already in progress." };
     }
@@ -1653,6 +1662,9 @@ export default function ProductUploadForm({
       const endpoint = savedId ? `/api/admin/products/${savedId}` : "/api/admin/products";
       const payload: any = buildPayload(statusToSave, source);
       if (templateOnly) delete payload.status;
+      if (savedId && payload.customizerTemplate && draftRevisionRef.current && !options.overwrite) {
+        payload.expectedTemplateUpdatedAt = draftRevisionRef.current;
+      }
       const response = await fetch(endpoint, {
         method: savedId ? "PUT" : "POST",
         headers: { "Content-Type": "application/json" },
@@ -1660,6 +1672,12 @@ export default function ProductUploadForm({
       });
       const data = await response.json().catch(() => ({}));
 
+      if (response.status === 409 && data?.conflict) {
+        const firstError = data?.errors ? Object.values(data.errors)[0] : data?.error;
+        const message = String(firstError || "This design was changed elsewhere after you opened it.");
+        setSaveError(templateOnly ? message : `Not saved — ${message} Reload the page to see the latest version.`);
+        return { ok: false, reason: "conflict", error: message };
+      }
       if (!response.ok || data?.ok === false) {
         const firstError = data?.errors ? Object.values(data.errors)[0] : data?.error;
         throw new Error(String(firstError || "Product could not be saved."));
@@ -1667,6 +1685,7 @@ export default function ProductUploadForm({
       const saved = data?.product;
       if (!saved?.id) throw new Error("The server did not confirm the saved product.");
       persistedIdRef.current = String(saved.id);
+      draftRevisionRef.current = saved.customizerTemplate?.updatedAt || null;
 
       const message = templateOnly
         ? "Design draft saved."
