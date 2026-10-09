@@ -74,7 +74,7 @@ export default function AdminMediaLibrary({ onInsertAsset, currentAssetIds = [] 
   const currentIds = new Set(currentAssetIds.filter(Boolean));
 
   const loadPage = async (nextPage: number, append: boolean, signal?: AbortSignal) => {
-    const query = new URLSearchParams({ page: String(nextPage), pageSize: String(PAGE_SIZE) });
+    const query = new URLSearchParams({ page: String(nextPage), pageSize: String(PAGE_SIZE), scope: "uploads" });
     if (search.trim()) query.set("search", search.trim());
     const response = await fetch(`/api/admin/customizer/assets?${query.toString()}`, { cache: "no-store", signal });
     const payload = await response.json().catch(() => ({}));

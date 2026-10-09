@@ -170,7 +170,11 @@ export async function buildRasterVariants(source: Buffer): Promise<AssetVariants
 /** SVG stays vector: the sanitized source IS the editor variant. */
 export async function buildSvgVariants(sanitizedSvg: Buffer): Promise<AssetVariants> {
   const { width, height } = await orientedDimensions(sanitizedSvg);
-  const thumbnailBuffer = await sharp(sanitizedSvg, limits)
+  // A vector has no native resolution. Rasterize the thumbnail at a density
+  // that fills ASSET_THUMB_MAX_PX even when the declared size is tiny (Iconify
+  // icons are 12–24 px), instead of a 12 px bitmap stretched across a tile.
+  const density = Math.min(72 * Math.max(1, ASSET_THUMB_MAX_PX / Math.max(width, height, 1)), 72 * 64);
+  const thumbnailBuffer = await sharp(sanitizedSvg, { ...limits, density })
     .resize(ASSET_THUMB_MAX_PX, ASSET_THUMB_MAX_PX, { fit: "inside", withoutEnlargement: true })
     .webp({ quality: 82 })
     .toBuffer();

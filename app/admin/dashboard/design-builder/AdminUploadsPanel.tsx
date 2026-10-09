@@ -33,7 +33,8 @@ const OUTLINE_BUTTON =
 const visible = (asset: AdminUploadAsset) => asset.adminAvailable !== false && !asset.archived && (asset.status || "ready") === "ready";
 
 async function fetchLibrary(page: number, signal?: AbortSignal): Promise<{ assets: AdminUploadAsset[]; total: number }> {
-  const query = new URLSearchParams({ page: String(page), pageSize: String(PAGE_SIZE) });
+  // Only what an admin or designer uploaded: never icons or elements (lib/customizer/asset-scopes.ts).
+  const query = new URLSearchParams({ page: String(page), pageSize: String(PAGE_SIZE), scope: "uploads" });
   const response = await fetch(`/api/admin/customizer/assets?${query}`, { cache: "no-store", signal });
   const payload = await response.json().catch(() => ({}));
   if (!response.ok || payload.ok === false) throw new Error(payload.error || "Could not load your images.");

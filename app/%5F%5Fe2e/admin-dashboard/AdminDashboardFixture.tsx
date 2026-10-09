@@ -13,6 +13,7 @@ import { useEffect, useState } from "react";
 
 import AdminDashboardClient from "@/app/admin/dashboard/admin-dashboard-client";
 import { StudioActorProvider } from "@/app/admin/dashboard/design-builder/studio-actor";
+import { assetInScope, parseAdminAssetScope } from "@/lib/customizer/asset-scopes";
 
 const DAY = 24 * 60 * 60 * 1000;
 const NOW = Date.now();
@@ -353,10 +354,12 @@ function installMock(store: Store) {
     if (path === "/api/admin/customizer/assets") {
       // Like the real list: filtered by asset type and by a title/filename search, newest first.
       const type = url.searchParams.get("type") || "";
+      const scope = parseAdminAssetScope(url.searchParams.get("scope"));
       const search = (url.searchParams.get("search") || "").toLowerCase();
       const assets = controls.assets.filter(
         (asset: any) =>
           (!type || asset.assetType === type) &&
+          (!scope || assetInScope(asset, scope)) &&
           (!search || `${asset.title || ""} ${asset.originalFilename || ""}`.toLowerCase().includes(search)),
       );
       return json({ ok: true, assets, total: assets.length, categories: [], folders: [] });

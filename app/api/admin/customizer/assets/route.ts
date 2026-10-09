@@ -16,6 +16,7 @@ import {
   type AssetVariants,
 } from "@/lib/customizer/server/asset-variants";
 import { readFormData } from "@/lib/http/read-body";
+import { ADMIN_ASSET_SCOPES, parseAdminAssetScope } from "@/lib/customizer/asset-scopes";
 
 /** Variant metadata recorded alongside the row for diagnostics and repair. */
 function variantMetadata(variants: AssetVariants, previous: Record<string, any> = {}) {
@@ -129,6 +130,12 @@ export async function GET(request: Request) {
   if (folderId === "unfiled") query = query.is("folder_id", null);
   else if (folderId) query = query.eq("folder_id", folderId);
   if (assetType) query = query.eq("asset_type", assetType);
+  // The studio panel's slice of the library (Uploads never lists icons or elements).
+  const scope = parseAdminAssetScope(url.searchParams.get("scope"));
+  if (scope) {
+    query = query.in("asset_type", ADMIN_ASSET_SCOPES[scope].types);
+    if (!ADMIN_ASSET_SCOPES[scope].libraryImports) query = query.is("source_provider", null);
+  }
   if (mimeType) query = query.eq("mime_type", mimeType);
   if (search) query = query.or(`title.ilike.%${search}%,original_filename.ilike.%${search}%,keywords.ilike.%${search}%`);
 

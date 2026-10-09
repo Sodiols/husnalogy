@@ -287,6 +287,8 @@ export default function CustomerElementsPanel({
     const query = new URLSearchParams({ page: String(page), pageSize: allowedElementIds.length ? "200" : "30" });
     if (debouncedSearch) query.set("search", debouncedSearch);
     if (category) query.set("category", category);
+    // The studio lists the element library only, never uploaded photos (lib/customizer/asset-scopes.ts).
+    if (adminMode) query.set("scope", "elements");
 
     (async () => {
       try {
