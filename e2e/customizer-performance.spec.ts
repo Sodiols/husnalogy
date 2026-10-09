@@ -66,6 +66,29 @@ async function bodyPoint(page: Page, layerId: string): Promise<Point> {
   return point;
 }
 
+/**
+ * Wait until the workspace has stopped re-rendering. Selecting a layer has
+ * one-shot follow-up renders (toolbar, inspector, recovery bookkeeping) that
+ * can land up to ~1 s later; they are the selection's cost, not the drag's,
+ * and a fixed pause let them leak into the drag window on some runs.
+ */
+async function waitForWorkspaceIdle(page: Page, quietMs = 700, timeoutMs = 8_000): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  let last = -1;
+  let stableSince = Date.now();
+  while (Date.now() < deadline) {
+    const renders = await page.evaluate(() => Number((window as any).__husnalogyCustomizerMetrics?.renders?.workspace || 0));
+    if (renders !== last) {
+      last = renders;
+      stableSince = Date.now();
+    } else if (Date.now() - stableSince >= quietMs) {
+      return;
+    }
+    await page.waitForTimeout(100);
+  }
+  throw new Error("the workspace kept re-rendering with no input — something renders in a loop");
+}
+
 test.describe("large-document performance", () => {
   for (const count of COUNTS) {
     test(`${count} layers: one commit per drag, no workspace re-render`, async ({ page }) => {
@@ -106,6 +129,7 @@ test.describe("large-document performance", () => {
       const selectMs = Date.now() - selectStart - 400;
 
       // --- drag cost ------------------------------------------------------
+      await waitForWorkspaceIdle(page);
       await reset();
       const from = await bodyPoint(page, "fx_title");
       const STEPS = 20;

@@ -153,6 +153,10 @@ test("customizer text field accepts input on WebKit", async ({ page }) => {
   await page.goto(url as string);
   const root = page.locator("[data-customizer-root]");
   await expect(root).toBeVisible();
+  // Editing waits for the saved design: until the "Loading your design…"
+  // overlay clears, a customer cannot reach the fields, and anything filled
+  // underneath it is (correctly) replaced by the restore.
+  await expect(page.locator("[data-customizer-restore-overlay]")).toHaveCount(0, { timeout: 60_000 });
 
   // On a phone viewport the panel starts collapsed behind the bottom tool
   // rail — tapping "Edit" is how a real customer reaches the fields, so drive

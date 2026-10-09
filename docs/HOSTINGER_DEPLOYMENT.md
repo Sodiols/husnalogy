@@ -369,6 +369,46 @@ removed immediately by the request; a crashed checkout's bytes are removed
 once its preparation lease (4 min) expires. Committed order bytes are never
 candidates, and a storage trigger refuses their deletion anyway.
 
+### First production run (approval-gated) — do this BEFORE enabling the cron
+
+As of 2026-10-10 the worker has **never run** against production. Its first
+run acts on a backlog, so it is done by hand, once, with the owner present:
+
+1. **Inspect (read-only):** `npm run worker:queue-summary -- --env .env.local`.
+   It prints counts only (no recipients or paths) and `wouldNow`: e-mails it
+   would send, checkout leases it would expire, abandoned checkouts and files
+   it would clean up, production and render work. On 2026-10-10 it showed:
+   **4 e-mails** (2 customer confirmations + 2 admin alerts for the orders of
+   5 and 8 October), 1 stale checkout lease to expire, 2 abandoned checkouts
+   awaiting cleanup, no render or production work.
+2. **Decide about the old e-mails.** If those orders were tests, sending the
+   confirmations days later would reach whoever placed them. Safe default:
+   make the first run with `RESEND_API_KEY` **unset** in hPanel — the worker
+   then *defers* e-mails (no attempt is spent, nothing is lost) while lease
+   expiry and cleanup proceed. Afterwards either set the key (they are sent
+   once) or, with explicit approval, mark those specific tasks failed in the
+   SQL editor with a reason (`update public.notification_tasks set
+   status='failed', last_error='dismissed by owner before first run' where
+   order_id in ('…')`) — a production data change.
+3. **Run once by hand** (owner approval):
+   `curl -fsS --max-time 290 -H "Authorization: Bearer $CRON_SECRET" https://husnalogy.com/api/admin/customizer/render/process`
+   → expect `200` with `subsystems.*.status` `ok` (or `degraded` with a stated
+   reason). A `401` means the secret differs from the app's `CRON_SECRET`.
+4. **Check:** `GET /api/admin/production/health` (Bearer) → `200`; rerun the
+   queue summary → `wouldNow` all 0 (or only the deliberately deferred
+   e-mails); `npm run backup:reconcile -- --source-env .env.local` → still
+   0 missing.
+5. **Then** create the cron job below (every 5 minutes) and point an uptime
+   monitor at the health URL.
+
+**Disable / roll back:** delete or pause the hPanel cron job (work simply
+waits in the queues; nothing is lost); in an emergency also rotate
+`CRON_SECRET` so no caller can trigger runs. Rehearsed locally:
+`lib/worker/__tests__/worker-first-run.test.ts` (this exact backlog shape:
+one pass does it all once; repeated passes change nothing; a transient
+database failure is recovered next pass) and
+`lib/security/__tests__/worker-endpoint-overlap.test.ts` (overlapping calls → 409).
+
 ### Verify the cron actually runs (do not assume)
 
 `GET https://husnalogy.com/api/admin/production/health` with the same
@@ -576,6 +616,14 @@ Storage objects. Disaster recovery is planned here:
 
 A real restore must be **coordinated**: the database and Storage must come from
 the same point in time (orders reference stored files), and the application
-build must match the restored migrations (section 3). Test a restore into the
-staging project at least once before launch; until then, recovery is
-**unverified**.
+build must match the restored migrations (section 3).
+
+Tooling (2026-10-09): `npm run backup:run` (encrypted database + Storage
+backup with verification), `backup:check` (monitoring), `backup:reconcile`
+(database ↔ Storage), `restore:db`, `restore:storage`, `restore:rewrite-urls`
+(all restores refuse production). Strategy, costs and the decisions still
+needed: [PRODUCTION_BACKUP_STRATEGY.md](PRODUCTION_BACKUP_STRATEGY.md).
+Runbook: [HUSNALOGY_DISASTER_RECOVERY.md](HUSNALOGY_DISASTER_RECOVERY.md).
+The procedure is drill-tested locally with synthetic data
+([BACKUP_RESTORE_TEST_RESULTS.md](BACKUP_RESTORE_TEST_RESULTS.md)); a
+production backup and a hosted restore are still **unverified**.

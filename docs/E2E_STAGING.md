@@ -1,5 +1,10 @@
 # Staging E2E environment (Playwright)
 
+This is the staging **setup** guide (Supabase project, migrations, seed,
+tests). Architecture and current status: [SUPABASE_STAGING_AUDIT.md](SUPABASE_STAGING_AUDIT.md).
+Template: `.env.staging.example` (copy to the git-ignored `.env.staging`).
+Read-only drift check of any project: `npm run probe:schema -- --env <file>`.
+
 The full browser suite places **real orders**. Run it only against a dedicated
 **staging** Supabase project — never against production data or real
 customer accounts. Every staging command reads only `.env.staging` (template:
@@ -193,6 +198,8 @@ Never reuse production keys; never commit `.env.staging`.
    must reach 200 after a run.
 10. **Email.** A Resend TEST key (or none — notification tasks then wait).
     Never send to real customers from staging.
-11. **Backup drill.** Restore a staging backup (database + one Storage
-    bucket) at least once before launch and record the result.
+11. **Backup drill.** `npm run backup:run -- --source-env .env.staging --backup-root <private folder>`,
+    then restore it into a SECOND disposable project with the runbook
+    ([HUSNALOGY_DISASTER_RECOVERY.md](HUSNALOGY_DISASTER_RECOVERY.md) §3) and
+    record the result in [BACKUP_RESTORE_TEST_RESULTS.md](BACKUP_RESTORE_TEST_RESULTS.md).
 12. **Run.** `npm run test:e2e:staging`, then the controlled order (§5).

@@ -1,0 +1,108 @@
+# Husnalogy production backup (database + Storage), encrypted, verified and
+# uploaded off-site. See docs/PRODUCTION_BACKUP_STRATEGY.md.
+#
+# SAFETY
+# - Manual start only (workflow_dispatch). The daily schedule below stays
+#   commented out until the owner approves the destination, the credentials
+#   and the schedule (PRODUCTION_BACKUP_STRATEGY.md §7). Pull requests can
+#   never trigger it, and it refuses to run from any branch but master.
+# - Every secret lives in the protected GitHub Environment
+#   "production-backup" (Settings → Environments): add required reviewers and
+#   restrict it to the master branch.
+# - The backup is client-side encrypted (BACKUP_ENCRYPTION_KEY) before it
+#   leaves the runner; nothing is uploaded as a GitHub artifact, and the
+#   runner's copy is deleted at the end. The job SUCCEEDS only when the
+#   off-site upload was verified file by file (run-backup.mjs stage "upload").
+name: production-backup
+
+on:
+  workflow_dispatch: {}
+  # schedule:
+  #   - cron: "0 20 * * *"   # 02:00 Asia/Dhaka — enable only after approval
+
+permissions:
+  contents: read
+
+concurrency:
+  group: husnalogy-production-backup
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    if: github.ref == 'refs/heads/master'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    environment: production-backup
+    env:
+      BACKUP_ENVIRONMENT: production
+      BACKUP_EXPECTED_PROJECT_REF: ${{ vars.BACKUP_EXPECTED_PROJECT_REF }}
+      BACKUP_DESTINATION: ${{ vars.BACKUP_DESTINATION }}
+      BACKUP_S3_ENDPOINT: ${{ vars.BACKUP_S3_ENDPOINT }}
+      BACKUP_RETENTION: ${{ vars.BACKUP_RETENTION }}
+      BACKUP_RETENTION_APPROVED: ${{ vars.BACKUP_RETENTION_APPROVED }}
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      HUSNALOGY_PG_BIN: /usr/lib/postgresql/17/bin
+    steps:
+      - name: Check configuration (names only, values are never printed)
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          BACKUP_DATABASE_URL: ${{ secrets.BACKUP_DATABASE_URL }}
+          BACKUP_ENCRYPTION_KEY: ${{ secrets.BACKUP_ENCRYPTION_KEY }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        run: |
+          missing=""
+          for name in SUPABASE_URL SUPABASE_SERVICE_ROLE_KEY BACKUP_DATABASE_URL BACKUP_ENCRYPTION_KEY BACKUP_EXPECTED_PROJECT_REF BACKUP_DESTINATION AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_REGION; do
+            if [ -z "${!name}" ]; then missing="$missing $name"; fi
+          done
+          if [ -n "$missing" ]; then echo "::error::Missing configuration:$missing"; exit 1; fi
+
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install PostgreSQL 17 client tools (pg_dump / pg_restore / psql)
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q postgresql-common
+          sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
+          sudo apt-get install -y -q postgresql-client-17
+          "$HUSNALOGY_PG_BIN/pg_dump" --version
+
+      - run: npm ci
+
+      - name: Back up, verify and upload off-site
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          BACKUP_DATABASE_URL: ${{ secrets.BACKUP_DATABASE_URL }}
+          BACKUP_ENCRYPTION_KEY: ${{ secrets.BACKUP_ENCRYPTION_KEY }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        run: |
+          umask 077
+          node scripts/backup/run-backup.mjs --backup-root "$RUNNER_TEMP/backups"
+
+      - name: Check the off-site backup (age, completeness, size)
+        if: always()
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        run: node scripts/backup/run-backup.mjs --check --max-age-hours 26
+
+      - name: Run summary (operational fields only)
+        if: always()
+        run: |
+          if [ -f "$RUNNER_TEMP/backups/last-run.json" ]; then
+            { echo '```json'; cat "$RUNNER_TEMP/backups/last-run.json"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Remove the runner copy
+        if: always()
+        run: rm -rf "$RUNNER_TEMP/backups"

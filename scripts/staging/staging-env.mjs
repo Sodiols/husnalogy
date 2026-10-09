@@ -24,7 +24,7 @@ export const REQUIRED_STAGING_VARS = [
   "STAGING_CONFIRM_PROJECT_REF",
 ];
 
-function parseEnvFile(path) {
+export function parseEnvFile(path) {
   const out = {};
   if (!existsSync(path)) return out;
   for (const raw of readFileSync(path, "utf8").split(/\r?\n/)) {

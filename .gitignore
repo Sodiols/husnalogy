@@ -35,3 +35,7 @@ app.zip
 
 # Asset variant repair backups and reports (contain storage paths; kept local)
 .asset-repair-backups/
+
+# Backups never belong in git, even encrypted (scripts/backup, docs/PRODUCTION_BACKUP_STRATEGY.md)
+backups/
+*.enc
