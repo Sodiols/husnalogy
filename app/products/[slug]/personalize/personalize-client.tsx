@@ -981,7 +981,7 @@ export default function PersonalizeClient({ product, template }: { product: any;
   // The customer's own photos on this page that would print below the
   // product's minimum resolution. Recomputed with every resize, zoom or crop.
   const lowResPhotos = useMemo(
-    () => lowResolutionPhotos({ layers: effectiveLayers, fields: template?.fields || [], values, dpi: template?.dpi, settings: template?.settings }),
+    () => lowResolutionPhotos({ layers: effectiveLayers, fields: template?.fields || [], values, dpi: template?.dpi, physical: template, settings: template?.settings }),
     [effectiveLayers, template, values],
   );
 

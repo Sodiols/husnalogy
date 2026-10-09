@@ -1,4 +1,5 @@
 import { createClient, createServiceRoleClient } from "@/lib/supabase/server";
+import { trustedMasterPath } from "@/lib/uploads/master-original";
 import { rateLimit } from "@/lib/security/rate-limit";
 import { rejectCrossSiteRequest } from "@/lib/security/same-origin";
 
@@ -56,7 +57,8 @@ export async function DELETE(request: Request, { params }: any) {
   const { error: deleteError } = await supabase.from("customer_asset_library").delete().eq("id", id).eq("user_id", user.id);
   if (deleteError) return Response.json({ ok: false, error: "Could not delete this photo." }, { status: 500 });
 
-  const removePaths = [...new Set([asset.path, asset.editor_path, asset.thumbnail_path].filter(Boolean))];
+  // The private master (lib/uploads/master-original.ts) goes with its asset.
+  const removePaths = [...new Set([asset.path, asset.editor_path, asset.thumbnail_path, trustedMasterPath(asset)].filter(Boolean))];
   if (removePaths.length) {
     const { error: storageError } = await service.storage.from(asset.bucket).remove(removePaths);
     if (storageError) {

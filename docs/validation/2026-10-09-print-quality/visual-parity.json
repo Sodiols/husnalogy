@@ -1,0 +1,62 @@
+{
+  "portrait-phone-photo": {
+    "width": 600,
+    "height": 900,
+    "mae": 0.68,
+    "psnrDb": 48.22,
+    "pixelsWithin32": 1,
+    "inkBoundsDeltaPx": 0,
+    "inkCoverageRatio": 0.9906,
+    "inkAmountRatio": 0.9995,
+    "beforeFix": {
+      "mae": 57.781,
+      "psnrDb": 10.59,
+      "pixelsWithin32": 0.19346
+    }
+  },
+  "display-p3-photo": {
+    "width": 600,
+    "height": 400,
+    "mae": 1.064,
+    "psnrDb": 43.26,
+    "pixelsWithin32": 1,
+    "inkBoundsDeltaPx": 0,
+    "inkCoverageRatio": 1.0013,
+    "inkAmountRatio": 0.9994,
+    "beforeFix": {
+      "mae": 9.409,
+      "psnrDb": 22.92,
+      "pixelsWithin32": 0.78631
+    }
+  },
+  "transparent-png": {
+    "width": 600,
+    "height": 600,
+    "mae": 0.217,
+    "psnrDb": 47.13,
+    "pixelsWithin32": 0.99973,
+    "inkBoundsDeltaPx": 1,
+    "inkCoverageRatio": 1.0084,
+    "inkAmountRatio": 0.9979
+  },
+  "cropped-photo": {
+    "width": 600,
+    "height": 750,
+    "mae": 0.41,
+    "psnrDb": 49.44,
+    "pixelsWithin32": 1,
+    "inkBoundsDeltaPx": 0,
+    "inkCoverageRatio": 0.9984,
+    "inkAmountRatio": 1.0002
+  },
+  "small-typography": {
+    "width": 750,
+    "height": 300,
+    "mae": 0.908,
+    "psnrDb": 32.48,
+    "pixelsWithin32": 0.99078,
+    "inkBoundsDeltaPx": 1,
+    "inkCoverageRatio": 1.1362,
+    "inkAmountRatio": 1.0462
+  }
+}

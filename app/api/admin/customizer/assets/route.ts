@@ -13,10 +13,12 @@ import {
   verifyStoredEditorVariant,
   variantStoragePath,
   VARIANT_GENERATION_VERSION,
+  ASSET_MAX_DIMENSION,
   type AssetVariants,
 } from "@/lib/customizer/server/asset-variants";
 import { readFormData } from "@/lib/http/read-body";
 import { ADMIN_ASSET_SCOPES, parseAdminAssetScope } from "@/lib/customizer/asset-scopes";
+import { ORIGINAL_POLICY_VERSION, sanitizedOriginal, sha256, type MasterRecord, type OriginalMethod } from "@/lib/uploads/master-original";
 
 /** Variant metadata recorded alongside the row for diagnostics and repair. */
 function variantMetadata(variants: AssetVariants, previous: Record<string, any> = {}) {
@@ -200,6 +202,9 @@ export const POST = withAdminMutation(async function POST(request: Request) {
   const defaultColor = String(formData?.get("defaultColor") || "").trim().slice(0, 32);
 
   let buffer = Buffer.from(await file.arrayBuffer());
+  // The exact upload's hash (legacy rows were recorded with it, so duplicates
+  // of them are still recognised).
+  const uploadChecksum = createHash("sha256").update(buffer).digest("hex");
   const sniffed = sniffImageType(buffer, true);
   if (sniffed.ok === false) return Response.json({ ok: false, error: sniffed.error }, { status: 400 });
 
@@ -229,12 +234,24 @@ export const POST = withAdminMutation(async function POST(request: Request) {
 
   const { editorBuffer, thumbnailBuffer, editorMime, editorExtension, width, height } = variants;
 
-  const checksum = createHash("sha256").update(buffer).digest("hex");
+  // Original-image policy (lib/uploads/master-original.ts): a raster upload is
+  // kept byte for byte as the private, server-only master; the stored
+  // `original` is its sanitized full-resolution copy (no camera/GPS metadata,
+  // picture not degraded) and `checksum` is that file's hash. SVG is already
+  // sanitized above and is its own master.
+  const raster = sniffed.mime !== "image/svg+xml";
+  let original: { buffer: Buffer; method: OriginalMethod | "sanitized-svg" };
+  try {
+    original = raster ? await sanitizedOriginal(buffer, sniffed.mime, ASSET_MAX_DIMENSION * ASSET_MAX_DIMENSION) : { buffer, method: "sanitized-svg" };
+  } catch {
+    return Response.json({ ok: false, error: "This file could not be safely decoded or optimized." }, { status: 400 });
+  }
+  const checksum = sha256(original.buffer);
   const supabase = createServiceRoleClient();
   const { data: duplicate } = await supabase
     .from("customizer_assets")
     .select("*")
-    .eq("checksum", checksum)
+    .in("checksum", [...new Set([checksum, uploadChecksum])])
     .in("status", ["ready", "archived"])
     .order("created_at", { ascending: false })
     .limit(1)
@@ -297,12 +314,16 @@ export const POST = withAdminMutation(async function POST(request: Request) {
   const cleanName = safeFileName(file.name, "asset");
   const basePath = `assets/${assetId}`;
   const originalPath = `${basePath}/original/${cleanName}`;
+  const master: MasterRecord | null = raster
+    ? { path: `${basePath}/master/${cleanName}`, checksum: uploadChecksum, size: buffer.byteLength, mimeType: sniffed.mime }
+    : null;
   // Content-addressed so a later repair lands on a new URL instead of trying to
   // replace bytes behind a one-year cache header.
   const editorPath = variantStoragePath(assetId, "editor", editorBuffer, editorExtension);
   const thumbnailPath = variantStoragePath(assetId, "thumbnail", thumbnailBuffer);
   const uploads = [
-    { path: originalPath, data: buffer, contentType: sniffed.mime },
+    ...(master ? [{ path: master.path, data: buffer, contentType: sniffed.mime }] : []),
+    { path: originalPath, data: original.buffer, contentType: sniffed.mime },
     { path: editorPath, data: editorBuffer, contentType: editorMime },
     { path: thumbnailPath, data: thumbnailBuffer, contentType: "image/webp" },
   ];
@@ -353,7 +374,7 @@ export const POST = withAdminMutation(async function POST(request: Request) {
       thumbnail_path: thumbnailPath,
       editor_path: editorPath,
       mime_type: sniffed.mime,
-      file_size_bytes: buffer.byteLength,
+      file_size_bytes: original.buffer.byteLength,
       width,
       height,
       tintable,
@@ -365,7 +386,12 @@ export const POST = withAdminMutation(async function POST(request: Request) {
       status: "ready",
       checksum,
       usage_count: 0,
-      metadata: variantMetadata(variants, { originalMimeType: sniffed.mime }),
+      metadata: variantMetadata(variants, {
+        originalMimeType: sniffed.mime,
+        originalMethod: original.method,
+        originalPolicy: ORIGINAL_POLICY_VERSION,
+        ...(master ? { master } : {}),
+      }),
       created_by: admin.admin?.id || null,
     })
     .select("*")

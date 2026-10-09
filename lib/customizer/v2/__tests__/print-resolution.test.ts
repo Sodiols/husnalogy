@@ -15,6 +15,7 @@ import {
   effectiveImagePpi,
   imageQualityLevel,
   layerSourceDimensions,
+  measuredPxPerInch,
   normalizePrintQualitySettings,
   printQualityThresholds,
 } from "../print-resolution";
@@ -135,5 +136,48 @@ describe("preflight now checks every photo", () => {
   it("old documents without print settings serialize exactly as before", () => {
     const { document } = templateToDocument(template);
     expect("printQuality" in document.settings).toBe(false);
+  });
+});
+
+describe("declared DPI that does not match the canvas (measured density wins)", () => {
+  // Declares 300 DPI, but 1000 × 1400 px on a 5 × 7 in card is really 200 px per inch.
+  const mismatched = {
+    id: "t-mismatch", version: 1, canvasWidthPx: 1000, canvasHeightPx: 1400, cardWidthIn: 5, cardHeightIn: 7, dpi: 300,
+    pages: [{ id: "front", label: "Front", enabled: true }],
+    fields: [{ id: "photo", label: "Photo", type: "image" }],
+    layers: [{ id: "photo_layer", name: "Photo", page: "front", type: "image", fieldId: "photo", customerEditable: true, x: 500, y: 700, width: 1000, height: 1250 }],
+  };
+  const values = { photo: { url: "https://x.supabase.co/p.jpg", assetReference: { version: 1, assetId: "a", ownerId: "u", bucket: "customer-uploads", storagePath: "u/p.jpg", originalFileName: "p", mimeType: "image/jpeg", fileSize: 1, width: 1000, height: 1250, createdAt: "" } } };
+
+  it("measures pixels per printed inch from the canvas and the card", () => {
+    expect(measuredPxPerInch({ widthPx: 1000, heightPx: 1400, widthIn: 5, heightIn: 7 })).toEqual({ x: 200, y: 200 });
+    expect(measuredPxPerInch({ widthPx: 1000, heightPx: 1400 })).toBeNull();
+  });
+
+  it("a photo with one source pixel per canvas pixel prints at 200 PPI, not the declared 300", () => {
+    const declaredOnly = effectiveImagePpi({ frameWidth: 1000, frameHeight: 1250, dpi: 300, sourceWidth: 1000, sourceHeight: 1250 });
+    const measured = effectiveImagePpi({ frameWidth: 1000, frameHeight: 1250, dpi: 300, pxPerInch: { x: 200, y: 200 }, sourceWidth: 1000, sourceHeight: 1250 });
+    expect(declaredOnly).toBeCloseTo(300);
+    expect(measured).toBeCloseTo(200);
+  });
+
+  it("a stretched page reports its coarser axis", () => {
+    expect(effectiveImagePpi({ frameWidth: 100, frameHeight: 100, dpi: 300, pxPerInch: { x: 300, y: 250 }, sourceWidth: 100, sourceHeight: 100 })).toBeCloseTo(250);
+  });
+
+  it("preflight uses the measured density: the photo is flagged against a 250 PPI minimum", () => {
+    const { document } = templateToDocument({ ...mismatched, settings: { printQuality: { minImagePpi: 250 } } });
+    expect(document.pages[0].widthIn).toBe(5);
+    const result = runPreflight(resolveCustomerDocument(document, values, null));
+    const issue = result.issues.find((entry) => entry.code === "low-resolution-image");
+    expect(issue?.message).toContain("200 PPI");
+    // With a consistent 300 px/in canvas the same photo would pass (1500 px frame width).
+  });
+
+  it("the live customer warning agrees", async () => {
+    const { lowResolutionPhotos } = await import("@/app/components/customizer/photo-quality");
+    const found = lowResolutionPhotos({ layers: mismatched.layers, fields: mismatched.fields, values, dpi: 300, physical: mismatched, settings: { printQuality: { minImagePpi: 250 } } });
+    expect(found[0]?.ppi).toBeCloseTo(200);
+    expect(lowResolutionPhotos({ layers: mismatched.layers, fields: mismatched.fields, values, dpi: 300, settings: { printQuality: { minImagePpi: 250 } } })).toEqual([]); // declared DPI alone would have missed it
   });
 });

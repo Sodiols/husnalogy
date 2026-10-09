@@ -61,16 +61,37 @@ export type EffectivePpiInput = {
   fitMode?: "cover" | "contain" | string | null;
   sourceWidth: number;
   sourceHeight: number;
-  /** Document pixels per printed inch (the page/template DPI). */
+  /** The DPI the page declares (used when no physical size is known). */
   dpi: number;
+  /**
+   * Document pixels per printed inch MEASURED from the page's pixels and its
+   * physical size (measuredPxPerInch). This, not the declared DPI, decides how
+   * large the photo prints — they differ when a template's canvas does not
+   * match its card size.
+   */
+  pxPerInch?: { x: number; y: number } | null;
 };
 
-/** Source pixels per printed inch for a placed photo, or null when it cannot be known. */
+/** Pixels per printed inch on each axis, from a page's pixel and physical size; null when unknown. */
+export function measuredPxPerInch(page: { widthPx?: number; heightPx?: number; widthIn?: number; heightIn?: number } | null | undefined): { x: number; y: number } | null {
+  const widthPx = positive(page?.widthPx);
+  const heightPx = positive(page?.heightPx);
+  const widthIn = positive(page?.widthIn);
+  const heightIn = positive(page?.heightIn);
+  return widthPx && heightPx && widthIn && heightIn ? { x: widthPx / widthIn, y: heightPx / heightIn } : null;
+}
+
+/**
+ * Source pixels per printed inch for a placed photo, or null when it cannot be
+ * known. With a measured density the lower of the two axes is returned (a
+ * stretched page prints one axis coarser than the other).
+ */
 export function effectiveImagePpi(input: EffectivePpiInput): number | null {
   const sourceWidth = positive(input.sourceWidth);
   const sourceHeight = positive(input.sourceHeight);
-  const dpi = positive(input.dpi);
-  if (!sourceWidth || !sourceHeight || !dpi || !(input.frameWidth > 0) || !(input.frameHeight > 0)) return null;
+  const densityX = positive(input.pxPerInch?.x) ?? positive(input.dpi);
+  const densityY = positive(input.pxPerInch?.y) ?? positive(input.dpi);
+  if (!sourceWidth || !sourceHeight || !densityX || !densityY || !(input.frameWidth > 0) || !(input.frameHeight > 0)) return null;
   const draw = resolveImageDrawBoxFromTransform(
     { frameX: 0, frameY: 0, frameWidth: input.frameWidth, frameHeight: input.frameHeight },
     input.transform || null,
@@ -79,7 +100,7 @@ export function effectiveImagePpi(input: EffectivePpiInput): number | null {
   const scaleY = draw.height / sourceHeight;
   const scale = input.fitMode === "contain" ? Math.min(scaleX, scaleY) : Math.max(scaleX, scaleY);
   if (!(scale > 0)) return null;
-  return dpi / scale;
+  return Math.min(densityX, densityY) / scale;
 }
 
 export type ImageQualityLevel = "excellent" | "acceptable" | "low";

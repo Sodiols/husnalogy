@@ -1,5 +1,6 @@
 import { withAdminMutation } from "@/lib/security/admin-mutation";
 import { z } from "zod";
+import { trustedMasterPath } from "@/lib/uploads/master-original";
 import { requireAdmin } from "@/lib/auth/admin-server";
 import { createServiceRoleClient } from "@/lib/supabase/server";
 import { getAdminAssetUsage, signAdminAssetRow } from "@/lib/customizer/server/admin-assets";
@@ -120,7 +121,8 @@ export const DELETE = withAdminMutation(async function DELETE(_request: Request,
     return Response.json({ ok: false, error: message }, { status: 409 });
   }
 
-  const removePaths = [...new Set([asset.path, asset.editor_path, asset.thumbnail_path].filter(Boolean))];
+  // The private master (lib/uploads/master-original.ts) goes with its asset.
+  const removePaths = [...new Set([asset.path, asset.editor_path, asset.thumbnail_path, trustedMasterPath(asset)].filter(Boolean))];
   const { error: storageError } = await supabase.storage.from(asset.bucket).remove(removePaths);
   if (storageError) {
     // Restore the authoritative record if Storage could not be cleaned up, so

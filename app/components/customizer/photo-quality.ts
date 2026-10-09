@@ -11,6 +11,7 @@ import { resolveLayerImage } from "./customizer-utils";
 import {
   effectiveImagePpi,
   layerSourceDimensions,
+  measuredPxPerInch,
   printQualityThresholds,
   type PrintQualitySettings,
 } from "@/lib/customizer/v2/print-resolution";
@@ -27,10 +28,18 @@ export function lowResolutionPhotos(input: {
   fields: any[];
   values: Record<string, any>;
   dpi: number | undefined;
+  /** The card's physical size and canvas, for the measured print density. */
+  physical?: { canvasWidthPx?: number; canvasHeightPx?: number; cardWidthIn?: number; cardHeightIn?: number } | null;
   settings?: { printQuality?: PrintQualitySettings } | null;
 }): LowResolutionPhoto[] {
   const thresholds = printQualityThresholds(input.settings?.printQuality);
   const dpi = positive(input.dpi) || 300;
+  const pxPerInch = measuredPxPerInch({
+    widthPx: input.physical?.canvasWidthPx,
+    heightPx: input.physical?.canvasHeightPx,
+    widthIn: input.physical?.cardWidthIn,
+    heightIn: input.physical?.cardHeightIn,
+  });
   const found: LowResolutionPhoto[] = [];
   for (const layer of input.layers || []) {
     if (!layer || (layer.type !== "image" && layer.type !== "frame") || layer.visible === false) continue;
@@ -54,6 +63,7 @@ export function lowResolutionPhotos(input: {
       sourceWidth: dims.width,
       sourceHeight: dims.height,
       dpi,
+      pxPerInch,
     });
     if (ppi !== null && ppi < thresholds.minimum) found.push({ layerId: layer.id, name: String(layer.name || field?.label || "Photo"), ppi });
   }

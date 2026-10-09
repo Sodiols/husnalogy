@@ -14,7 +14,7 @@ import { getGridSlotRect, normalizeGridSlot, validateGridGeometry } from "./grid
 import { validateGroupRelationships } from "./groups";
 import { isValidQRValue, qrContrastRatio } from "./qr";
 import { isCustomerFieldRequired } from "./field-binding";
-import { LOW_RESOLUTION_CUSTOMER_MESSAGE, effectiveImagePpi, layerSourceDimensions, printQualityThresholds } from "./print-resolution";
+import { LOW_RESOLUTION_CUSTOMER_MESSAGE, effectiveImagePpi, layerSourceDimensions, measuredPxPerInch, printQualityThresholds } from "./print-resolution";
 
 export type PreflightOptions = {
   measure?: MeasureFn;
@@ -153,7 +153,7 @@ export function runPreflight(document: CustomizerDocument, options: PreflightOpt
       // (crop, zoom and fit included) — print-resolution.ts.
       const dims = layerSourceDimensions(layer as any, document.assets, options.imageDimensions);
       const effectivePpi = dims && layer.src
-        ? effectiveImagePpi({ frameWidth: layer.width, frameHeight: layer.height, transform: layer.transform, fitMode: (layer as any).fitMode, sourceWidth: dims.width, sourceHeight: dims.height, dpi: page.dpi })
+        ? effectiveImagePpi({ frameWidth: layer.width, frameHeight: layer.height, transform: layer.transform, fitMode: (layer as any).fitMode, sourceWidth: dims.width, sourceHeight: dims.height, dpi: page.dpi, pxPerInch: measuredPxPerInch(page) })
         : null;
       if (effectivePpi !== null && effectivePpi < minImageDpi) {
         issues.push({
@@ -200,7 +200,7 @@ export function runPreflight(document: CustomizerDocument, options: PreflightOpt
         const dimensions = layerSourceDimensions(slot as any, document.assets, options.imageDimensions);
         if (dimensions && slot.src) {
           const rect = getGridSlotRect(layer, slot);
-          const effectivePpi = effectiveImagePpi({ frameWidth: rect.width, frameHeight: rect.height, transform: slot.transform, fitMode: (slot.transform as any)?.fitMode, sourceWidth: dimensions.width, sourceHeight: dimensions.height, dpi: page.dpi });
+          const effectivePpi = effectiveImagePpi({ frameWidth: rect.width, frameHeight: rect.height, transform: slot.transform, fitMode: (slot.transform as any)?.fitMode, sourceWidth: dimensions.width, sourceHeight: dimensions.height, dpi: page.dpi, pxPerInch: measuredPxPerInch(page) });
           if (effectivePpi !== null && effectivePpi < minImageDpi) {
             issues.push({
               code: "LOW_RESOLUTION_GRID_IMAGE",

@@ -9,7 +9,7 @@ import { bodyErrorResponse, readFormDataBody } from "@/lib/http/read-body";
 import { sniffImageType, safeFileName } from "@/lib/customizer/v2/uploads";
 import { resolvePrivateAssetUrl } from "@/lib/customizer/server/private-assets";
 import { logEvent, requestIdFrom } from "@/lib/observability/logger";
-import { stripJpegMetadataVerified } from "@/lib/uploads/jpeg-lossless";
+import { ORIGINAL_POLICY_VERSION, masterPathFor, sanitizedOriginal, sha256, type MasterRecord, type OriginalMethod } from "@/lib/uploads/master-original";
 
 const MAX_SIZE = 15 * 1024 * 1024;
 const MAX_DIMENSION = 12000; // per side
@@ -34,10 +34,12 @@ function isPdf(buffer: Buffer): boolean {
 //  * Type decided by magic bytes, never the file name, extension or
 //    Content-Type. Images must also fully decode.
 //  * Size, per-side dimension and total pixel count are capped.
-//  * The stored ORIGINAL loses its EXIF/GPS metadata and any bytes appended
-//    after the image (polyglot payloads). A JPEG's compressed picture is kept
-//    byte for byte (no re-compression); other formats are re-encoded
-//    losslessly.
+//  * Two files per photo (lib/uploads/master-original.ts): the exact upload as
+//    a private, server-only MASTER, and the sanitized full-resolution
+//    ORIGINAL every consumer uses — EXIF/GPS metadata and any bytes appended
+//    after the image (polyglot payloads) removed; a JPEG's compressed picture
+//    kept byte for byte, other formats re-encoded losslessly. Each has its
+//    own SHA-256; the row's `checksum` is the stored original's.
 //  * File names are generated server side; the path is always inside the
 //    caller's own folder; the write uses the service role only after the
 //    session has been verified (customers can no longer write to the bucket
@@ -118,24 +120,15 @@ export async function POST(request: Request) {
   }
 
   let originalBuffer: Buffer;
+  let originalMethod: OriginalMethod;
   let editorBuffer: Buffer;
   let thumbBuffer: Buffer;
   try {
     const decode = () => sharp(buffer, { limitInputPixels: MAX_PIXELS, failOn: "error" }).rotate();
-    // Full resolution, metadata removed, nothing appended after the image.
-    // A JPEG keeps its compressed picture byte for byte (only metadata
-    // segments are dropped; the colour profile and orientation stay) — proven
-    // to decode to identical pixels, else re-encoded as before. PNG and WebP
-    // are re-encoded losslessly (orientation applied, metadata dropped).
-    const losslessJpeg = sniffed.mime === "image/jpeg" ? await stripJpegMetadataVerified(buffer, MAX_PIXELS) : null;
-    originalBuffer =
-      losslessJpeg
-        ? losslessJpeg
-        : sniffed.mime === "image/png"
-        ? await decode().png({ compressionLevel: 9 }).toBuffer()
-        : sniffed.mime === "image/webp"
-          ? await decode().webp({ lossless: true }).toBuffer()
-          : await decode().jpeg({ quality: 95, chromaSubsampling: "4:4:4", mozjpeg: true }).toBuffer();
+    // The sanitized full-resolution original (lib/uploads/master-original.ts):
+    // metadata and appended bytes removed, picture not degraded. The upload
+    // itself is kept separately as the private master.
+    ({ buffer: originalBuffer, method: originalMethod } = await sanitizedOriginal(buffer, sniffed.mime, MAX_PIXELS));
     editorBuffer = await decode().resize(EDITOR_MAX_PX, EDITOR_MAX_PX, { fit: "inside", withoutEnlargement: true }).webp({ quality: 88 }).toBuffer();
     thumbBuffer = await decode().resize(THUMB_PX, THUMB_PX, { fit: "inside", withoutEnlargement: true }).webp({ quality: 78 }).toBuffer();
   } catch {
@@ -161,8 +154,14 @@ export async function POST(request: Request) {
   const originalPath = `${basePath}/original.${extension}`;
   const editorPath = `${basePath}/editor.webp`;
   const thumbPath = `${basePath}/thumb.webp`;
+  // The exact upload: private, server-only, never signed for a browser.
+  const masterPath = masterPathFor(originalPath, extension);
+  const master: MasterRecord = { path: masterPath, checksum, size: buffer.length, mimeType: sniffed.mime };
+  // Each stored file has its own hash; `checksum` is the stored original's.
+  const originalChecksum = sha256(originalBuffer);
 
   const uploads = [
+    { path: masterPath, data: buffer, contentType: sniffed.mime },
     { path: originalPath, data: originalBuffer, contentType: sniffed.mime },
     { path: editorPath, data: editorBuffer, contentType: "image/webp" },
     { path: thumbPath, data: thumbBuffer, contentType: "image/webp" },
@@ -208,9 +207,9 @@ export async function POST(request: Request) {
       size_bytes: originalBuffer.length,
       width: orientedWidth,
       height: orientedHeight,
-      checksum,
+      checksum: originalChecksum,
       status: "ready",
-      metadata: { folder },
+      metadata: { folder, master, originalMethod, originalPolicy: ORIGINAL_POLICY_VERSION },
     })
     .select("id")
     .maybeSingle();
@@ -244,7 +243,7 @@ export async function POST(request: Request) {
     fileSize: originalBuffer.length,
     width: orientedWidth,
     height: orientedHeight,
-    checksum,
+    checksum: originalChecksum,
     createdAt: new Date(stamp).toISOString(),
   };
   const [signedEditor, signedThumb] = await Promise.all([
@@ -268,7 +267,7 @@ export async function POST(request: Request) {
       size: originalBuffer.length,
       width: orientedWidth,
       height: orientedHeight,
-      checksum,
+      checksum: originalChecksum,
       createdAt: new Date(stamp).toISOString(),
       assetReference,
       url: signedEditor.signedUrl,

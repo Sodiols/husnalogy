@@ -39,6 +39,8 @@ import {
 import { resolveFontsForStyles } from "./google-font-files";
 import { readBodyBytes } from "@/lib/http/read-body";
 import { renderReadyDataUri, renderReadyImage } from "./render-image";
+import { withPngDensity } from "./png-density";
+import { printSpec } from "@/lib/customizer/print-spec";
 
 export class RenderError extends Error {
   code: string;
@@ -222,6 +224,7 @@ export async function renderCustomizationPages(options: RenderCustomizationOptio
   if (!pages.length) throw new RenderError("no-pages", "No enabled pages to render.");
 
   const canvasW = Number(template.canvasWidthPx) || 1500;
+  const physical = printSpec(template);
   const dpi = Number(template.dpi) || 300;
   const bleedPx = options.includeBleed
     ? {
@@ -284,14 +287,18 @@ export async function renderCustomizationPages(options: RenderCustomizationOptio
         background: options.transparentBackground ? undefined : "#ffffff",
       });
       const rendered = resvg.render();
-      const png = Buffer.from(rendered.asPng());
+      // Print files carry their true physical density (print-spec.ts): the
+      // canvas's measured pixels per inch, which is what the PDF page uses too.
+      const png = mode === "print"
+        ? withPngDensity(Buffer.from(rendered.asPng()), physical.pxPerInchX, physical.pxPerInchY)
+        : Buffer.from(rendered.asPng());
 
       results.push({
         pageId: page.id,
         png,
         widthPx: rendered.width,
         heightPx: rendered.height,
-        dpi: mode === "print" ? dpi : Math.round((rendered.width / nativeW) * dpi),
+        dpi: mode === "print" ? Math.round(physical.pxPerInchX) : Math.round((rendered.width / nativeW) * dpi),
         checksum: createHash("sha256").update(png).digest("hex"),
       });
     } catch (error) {

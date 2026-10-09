@@ -9,6 +9,7 @@
  * Only Supabase is replaced (an in-memory store that keeps real bytes, so each
  * route's own read-back verification decodes what it actually stored).
  */
+import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { crc32 } from "node:zlib";
 import { join } from "node:path";
@@ -45,8 +46,24 @@ vi.mock("@/lib/auth/roles", async (importOriginal) => {
   };
 });
 
+// The in-memory stand-in has no RPCs; the usage check is covered elsewhere.
+vi.mock("@/lib/customizer/server/admin-assets", async (importOriginal) => ({
+  ...(await importOriginal<any>()),
+  getAdminAssetUsage: async () => [],
+}));
+
+vi.mock("@/lib/auth/admin-server", async (importOriginal) => ({
+  ...(await importOriginal<any>()),
+  requireAdmin: async () => (session.userId && session.role === "admin"
+    ? { ok: true, admin: { id: session.userId, role: "admin" } }
+    : { ok: false, response: Response.json({ ok: false }, { status: 403 }) }),
+}));
+
 const customerUpload = (await import("@/app/api/customizer/upload/route")).POST;
 const adminAssetUpload = (await import("@/app/api/admin/customizer/assets/route")).POST;
+const { resolvePrivateAssetUrl } = await import("@/lib/customizer/server/private-assets");
+const deleteLibraryPhoto = (await import("@/app/api/customizer/library/[id]/route")).DELETE;
+const deleteStudioAsset = (await import("@/app/api/admin/customizer/assets/[id]/route")).DELETE;
 
 function semver(value: string): number[] {
   return value.split(".").map((part) => Number.parseInt(part, 10) || 0);
@@ -109,8 +126,18 @@ describe("customer upload pipeline on patched sharp", () => {
       expect(body.file.assetId).toBeTruthy();
 
       const stored = [...store.objects.entries()];
-      expect(stored).toHaveLength(3);
+      // Master (exact upload, private) + sanitized original + editor + thumbnail.
+      expect(stored).toHaveLength(4);
+      const master = stored.find(([key]) => key.endsWith(`/master.${extension}`))![1];
+      expect(Buffer.from(master.data).equals(bytes)).toBe(true);
       const original = stored.find(([key]) => key.endsWith(`/original.${extension}`))![1];
+      // Each file's recorded hash is the hash of the bytes actually stored.
+      const row = store.table("customer_asset_library")[0];
+      expect(row.checksum).toBe(createHash("sha256").update(original.data).digest("hex"));
+      expect(row.metadata.master).toMatchObject({ checksum: createHash("sha256").update(bytes).digest("hex"), size: bytes.length });
+      expect(row.metadata.master.path).toBe(stored.find(([key]) => key.endsWith(`/master.${extension}`))![0].replace(/^customer-uploads\//, ""));
+      expect(body.file.checksum).toBe(row.checksum);
+      expect(body.file.assetReference.checksum).toBe(row.checksum);
       const editor = stored.find(([key]) => key.endsWith("/editor.webp"))![1];
       const thumb = stored.find(([key]) => key.endsWith("/thumb.webp"))![1];
       expect(stored.every(([key]) => key.startsWith(`customer-uploads/${CUSTOMER_ID}/`))).toBe(true);
@@ -269,5 +296,95 @@ describe("studio asset pipeline (SVG + raster) on patched sharp", () => {
     const response = await adminAssetUpload(multipart("http://localhost/api/admin/customizer/assets", new File([svg], "ornament.svg", { type: "image/svg+xml" })));
     expect(response.status).toBe(403);
     expect(store.objects.size).toBe(0);
+  });
+});
+
+describe("original-image policy: private master + sanitized original, one hash per stored file", () => {
+  const hash = (data: Uint8Array) => createHash("sha256").update(data).digest("hex");
+  const gpsPhoto = () =>
+    sharp({ create: { width: 900, height: 600, channels: 3, background: "#7a4b2c" } })
+      .jpeg({ quality: 88 })
+      .withExif({ IFD0: { Make: "PrivateCam", ImageDescription: "GPS 23.81N 90.41E" } })
+      .toBuffer();
+
+  beforeEach(() => {
+    store = createMemorySupabase();
+  });
+
+  it("a customer's master is never signed for anyone — owner, staff or production", async () => {
+    session.userId = CUSTOMER_ID;
+    session.role = "customer";
+    const response = await customerUpload(multipart("http://localhost/api/customizer/upload", new File([new Uint8Array(await gpsPhoto())], "gps.jpg", { type: "image/jpeg" })));
+    const { file } = await response.json();
+    const masterPath = store.table("customer_asset_library")[0].metadata.master.path;
+    for (const actor of [{ userId: CUSTOMER_ID }, { administrator: true }, { productionWorker: true }]) {
+      for (const variant of ["original", "editor", "thumbnail"] as const) {
+        const signed = await resolvePrivateAssetUrl({ reference: file.assetReference, actor, variant, supabase: store.client });
+        expect(signed.signedUrl).not.toContain(masterPath);
+        expect(signed.signedUrl).not.toContain("/master.");
+      }
+    }
+    // Everything a browser can be given is free of the camera/GPS metadata.
+    for (const [key, object] of store.objects.entries()) {
+      if (key.includes("/master.")) continue;
+      expect(Buffer.from(object.data).includes(Buffer.from("GPS 23.81N")), key).toBe(false);
+    }
+  });
+
+  it("studio raster uploads: exact master, sanitized original, separate hashes, master removed on delete", async () => {
+    session.userId = ADMIN_ID;
+    session.role = "admin";
+    const upload = await gpsPhoto();
+    const response = await adminAssetUpload(multipart("http://localhost/api/admin/customizer/assets", new File([new Uint8Array(upload)], "couple.jpg", { type: "image/jpeg" }), { assetType: "image" }));
+    expect(response.status).toBe(201);
+    const row = store.table("customizer_assets")[0];
+    const objects = new Map([...store.objects.entries()].map(([key, object]) => [key.replace(/^customizer-elements\//, ""), object]));
+    const master = objects.get(row.metadata.master.path)!;
+    const original = objects.get(row.path)!;
+    expect(Buffer.from(master.data).equals(upload)).toBe(true);
+    expect(row.metadata.master.checksum).toBe(hash(upload));
+    expect(row.checksum).toBe(hash(original.data));
+    expect(row.file_size_bytes).toBe(original.data.length);
+    expect(row.metadata.originalMethod).toBe("jpeg-scan-preserved");
+    expect(Buffer.from(original.data).includes(Buffer.from("PrivateCam"))).toBe(false);
+    // Same picture, not re-compressed.
+    expect((await sharp(Buffer.from(original.data)).raw().toBuffer()).equals(await sharp(upload).raw().toBuffer())).toBe(true);
+    // Staff get the sanitized original, never the master.
+    const { asset } = await (await adminAssetUpload(multipart("http://localhost/api/admin/customizer/assets", new File([new Uint8Array(upload)], "again.jpg", { type: "image/jpeg" }), { assetType: "image" }))).json();
+    expect(asset.id).toBe(row.id); // the re-upload is recognised as the same asset
+    expect(asset.originalUrl).toContain(row.path);
+    expect(asset.originalUrl).not.toContain("/master/");
+
+    // Permanent deletion (archived first, as the route requires) takes the master too.
+    Object.assign(store.table("customizer_assets").find((entry: any) => entry.id === row.id), { archived: true, status: "archived" });
+    const deleted = await deleteStudioAsset(new Request(`http://localhost/api/admin/customizer/assets/${row.id}`, { method: "DELETE", headers: { origin: "http://localhost", host: "localhost" } }), { params: Promise.resolve({ id: row.id }) } as any);
+    expect(deleted.status, await deleted.clone().text()).toBe(200);
+    expect([...store.objects.keys()].some((key) => key.includes(`/${row.id}/`))).toBe(false);
+  });
+
+  it("legacy studio rows (hash of the raw upload) are still recognised as duplicates", async () => {
+    session.userId = ADMIN_ID;
+    session.role = "admin";
+    const upload = await gpsPhoto();
+    store.table("customizer_assets").push({
+      id: "11111111-1111-4111-8111-111111111111", title: "Legacy", original_filename: "legacy.jpg", asset_type: "image", bucket: "customizer-elements",
+      path: "assets/legacy/original/legacy.jpg", editor_path: "assets/legacy/editor/e.webp", thumbnail_path: "assets/legacy/thumbnail/t.webp",
+      mime_type: "image/jpeg", width: 900, height: 600, status: "ready", archived: false, active: true, admin_available: true, customer_available: false,
+      checksum: hash(upload), metadata: {}, created_at: new Date().toISOString(),
+    });
+    const response = await adminAssetUpload(multipart("http://localhost/api/admin/customizer/assets", new File([new Uint8Array(upload)], "legacy.jpg", { type: "image/jpeg" }), { assetType: "image" }));
+    const body = await response.json();
+    expect(body.duplicate).toBe(true);
+    expect(body.asset.id).toBe("11111111-1111-4111-8111-111111111111");
+  });
+
+  it("deleting a customer photo removes its master too", async () => {
+    session.userId = CUSTOMER_ID;
+    session.role = "customer";
+    await customerUpload(multipart("http://localhost/api/customizer/upload", new File([new Uint8Array(await gpsPhoto())], "gps.jpg", { type: "image/jpeg" })));
+    const row = store.table("customer_asset_library")[0];
+    const response = await deleteLibraryPhoto(new Request(`http://localhost/api/customizer/library/${row.id}`, { method: "DELETE", headers: { origin: "http://localhost", host: "localhost" } }), { params: Promise.resolve({ id: row.id }) } as any);
+    expect(response.status).toBe(200);
+    expect([...store.objects.keys()].filter((key) => key.includes(CUSTOMER_ID))).toEqual([]);
   });
 });
