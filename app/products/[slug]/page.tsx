@@ -22,6 +22,8 @@ import { getMainMockupImage } from "../product-image";
 import { normalizeCurrency } from "@/lib/currency";
 import { getSiteUrl } from "@/lib/site-url";
 import { serializeJsonLd } from "@/lib/security/json-ld";
+import { productMetadata } from "@/lib/seo/catalogue";
+import { notFound } from "next/navigation";
 
 const SITE_URL = getSiteUrl();
 
@@ -103,37 +105,10 @@ async function getInitialUser() {
 export async function generateMetadata({ params }) {
   const { slug } = await params;
   const product = await getProductBySlug(slug);
-
-  if (!product) {
-    return { title: "Product not found" };
-  }
-
-  const title = product.seoTitle || product.title;
-  const description =
-    product.seoDescription ||
-    product.shortDescription ||
-    product.description ||
-    `${product.title} — a refined Husnalogy design you can personalize.`;
-  const image = getMainMockupImage(product);
-
-  return {
-    title,
-    description,
-    alternates: { canonical: `/products/${slug}` },
-    openGraph: {
-      type: "website",
-      title,
-      description,
-      url: `/products/${slug}`,
-      images: image ? [{ url: image, alt: product.title }] : undefined,
-    },
-    twitter: {
-      card: "summary_large_image",
-      title,
-      description,
-      images: image ? [image] : undefined,
-    },
-  };
+  // Unknown, draft, hidden and deleted products are a real 404, never a page
+  // with public metadata.
+  if (!product) notFound();
+  return productMetadata(product);
 }
 
 export default async function ProductDetailsPage({ params }) {
@@ -141,13 +116,7 @@ export default async function ProductDetailsPage({ params }) {
 
   const product = await getProductBySlug(slug);
 
-  if (!product) {
-    return (
-      <main className="bg-white px-4 py-24 text-center text-[#303839]">
-        <h1 className="font-display text-4xl">Product not found</h1>
-      </main>
-    );
-  }
+  if (!product) notFound();
 
   const products = await getActiveProducts();
   const collections = await getProductCollections().catch(() => []);

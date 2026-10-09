@@ -1,7 +1,6 @@
-export const metadata = {
-  title: "Our Style",
-  description: "Explore the Husnalogy style direction for clean, refined, elegant, and meaningful products.",
-};
+import { staticPageMetadata } from "@/lib/seo/pages";
+
+export const metadata = staticPageMetadata("/our-style");
 
 const stylePoints = [
   ["Clean", "Layouts stay calm and easy to understand, with no unnecessary clutter."],

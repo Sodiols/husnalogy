@@ -9,6 +9,7 @@
  * no Effects or Remove BG control anywhere (product decision).
  */
 import { expect, test, type Page } from "@playwright/test";
+import { openSidePanel } from "./admin-studio-tools";
 import { bodyPoint, selectedIds } from "./customizer-fixture";
 
 const PHOTO = `data:image/svg+xml;utf8,${encodeURIComponent(
@@ -171,13 +172,23 @@ for (const size of SIZES) {
 
 test("a workspace narrower than the supported sizes scrolls the bar intentionally, with visible scroll buttons", async ({ page }) => {
   await openStudio(page, { width: 1024 });
+  // The compact shape bar fits completely here: nothing hidden, nothing to scroll.
   await select(page, "s_circle");
+  await expect(toolbar(page).getByRole("button", { name: "Scroll tools right" })).toHaveCount(0);
+  expect(await toolbar(page).evaluate((bar) => {
+    const strip = bar.querySelector(".overflow-x-auto") as HTMLElement;
+    return strip.scrollWidth - strip.clientWidth;
+  })).toBeLessThanOrEqual(1);
+  // With a side panel open the canvas column is narrower than any supported
+  // size: the text bar (the widest state) then scrolls, with visible buttons.
+  await openSidePanel(page, "Elements");
+  await select(page, "t_text");
   const right = toolbar(page).getByRole("button", { name: "Scroll tools right" });
   await expect(right).toBeVisible();
   await right.click();
   await expect(toolbar(page).getByRole("button", { name: "Scroll tools left" })).toBeVisible();
   // Keyboard reaches every control: tabbing to Alignment scrolls it into view.
-  const alignment = toolbar(page).getByRole("button", { name: "Alignment" });
+  const alignment = toolbar(page).getByRole("button", { name: "Alignment", exact: true });
   await alignment.focus();
   await alignment.click();
   await expect(panel(page)).toBeVisible();

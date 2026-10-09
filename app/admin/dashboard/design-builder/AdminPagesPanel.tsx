@@ -5,9 +5,26 @@
 // rename / duplicate / reorder / enable-disable / delete and per-page settings
 // (label, background, customer text permission) in each card's menu.
 
-import { useRef, useState } from "react";
+import { memo, useRef, useState } from "react";
 import CustomizerPreview from "@/app/components/customizer/CustomizerPreview";
-import { uploadBuilderImage } from "./builder-utils";
+import { useBackgroundUpload } from "./use-background-upload";
+import BackgroundUploadStatus from "./BackgroundUploadStatus";
+import { pageHasBackgroundImage } from "@/lib/customizer/v2/page-background";
+import { pagePreviewUnchanged } from "@/lib/customizer/v2/page-preview-memo";
+
+const NO_VALUES = {};
+
+/**
+ * One page card's live preview. Re-renders only when something that draws
+ * THIS page changed (lib/customizer/v2/page-preview-memo): an edit on Front no
+ * longer redraws every other page's thumbnail.
+ */
+const PageThumbnail = memo(
+  function PageThumbnail({ template, pageId }: { template: any; pageId: string }) {
+    return <CustomizerPreview template={template} values={NO_VALUES} page={pageId} showSafeArea={false} showBleed={false} />;
+  },
+  (previous, next) => previous.pageId === next.pageId && pagePreviewUnchanged(previous.template, next.template, next.pageId),
+);
 
 const PAGE_LABEL_PRESETS = ["Front", "Back", "Inside Left", "Inside Right", "Top", "Bottom"];
 
@@ -21,6 +38,8 @@ export default function AdminPagesPanel({
   onMovePage,
   onDeletePage,
   onPatchPage,
+  onSetBackgroundImage,
+  onRemoveBackgroundImage,
 }: any) {
   const pages = template?.pages || [];
   const [menuFor, setMenuFor] = useState<string | null>(null);
@@ -34,19 +53,8 @@ export default function AdminPagesPanel({
     setRenamingId(null);
   };
 
-  const uploadBackground = async (file?: File) => {
-    const pageId = bgTarget.current;
-    if (!file || !pageId) return;
-    const asset = await uploadBuilderImage(file, "background");
-    if (asset.url) onPatchPage(pageId, {
-      backgroundImage: asset.editorUrl || asset.url,
-      backgroundAssetId: asset.id,
-      bucket: asset.bucket,
-      originalPath: asset.originalPath,
-      editorPath: asset.editorPath,
-      thumbnailPath: asset.thumbnailPath,
-    });
-  };
+  // Applied only once the upload has succeeded; failures show on the card.
+  const upload = useBackgroundUpload(onSetBackgroundImage);
 
   const menuItem =
     "rounded px-2 py-1.5 text-left text-xs font-bold hover:bg-[#F8F6F1] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white";
@@ -75,7 +83,7 @@ export default function AdminPagesPanel({
             >
               {/* The page itself, drawn by the shared renderer: what the canvas shows, small. */}
               <span className={`block overflow-hidden rounded-md border border-[#303839]/10 bg-white ${disabled ? "opacity-45" : ""}`}>
-                <CustomizerPreview template={template} values={{}} page={page.id} showSafeArea={false} showBleed={false} />
+                <PageThumbnail template={template} pageId={page.id} />
               </span>
             </button>
 
@@ -100,6 +108,11 @@ export default function AdminPagesPanel({
                   {disabled && <span className="text-[#303839]/45"> · off</span>}
                 </span>
               )}
+              {upload.state.status !== "idle" && upload.state.pageId === page.id && (
+                <div className="mt-1.5 text-left">
+                  <BackgroundUploadStatus state={upload.state} onRetry={upload.retry} onDismiss={upload.dismiss} />
+                </div>
+              )}
             </div>
 
             <button
@@ -122,11 +135,11 @@ export default function AdminPagesPanel({
                 <button type="button" className={menuItem} onClick={() => { onDuplicatePage(page.id); setMenuFor(null); }}>
                   Duplicate
                 </button>
-                <button type="button" className={menuItem} onClick={() => { bgTarget.current = page.id; bgInput.current?.click(); setMenuFor(null); }}>
-                  Set background image
+                <button type="button" className={`${menuItem} disabled:opacity-40`} disabled={upload.busy} onClick={() => { bgTarget.current = page.id; bgInput.current?.click(); setMenuFor(null); }}>
+                  {pageHasBackgroundImage(page) ? "Replace background image" : "Set background image"}
                 </button>
-                {page.backgroundImage && (
-                  <button type="button" className={menuItem} onClick={() => { onPatchPage(page.id, { backgroundImage: "" }); setMenuFor(null); }}>
+                {pageHasBackgroundImage(page) && (
+                  <button type="button" className={menuItem} onClick={() => { onRemoveBackgroundImage(page.id); setMenuFor(null); }}>
                     Remove background image
                   </button>
                 )}
@@ -199,10 +212,12 @@ export default function AdminPagesPanel({
       <input
         ref={bgInput}
         type="file"
-        accept="image/*"
+        accept="image/jpeg,image/png,image/webp"
         className="sr-only"
+        tabIndex={-1}
+        aria-label="Page background image file"
         onChange={(e) => {
-          uploadBackground(e.target.files?.[0]);
+          if (bgTarget.current) void upload.start(e.target.files?.[0], bgTarget.current);
           e.target.value = "";
         }}
       />

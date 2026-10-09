@@ -13,6 +13,7 @@ import {
   removeFromWishlist,
 } from "../lib/customer-lists";
 import { getMainMockupImage } from "./product-image";
+import { productImageAlt } from "@/lib/seo/image-alt";
 import { formatCurrency } from "@/lib/currency";
 
 const COLOR_SWATCH_CLASSES = {
@@ -138,7 +139,7 @@ export default function ProductCard({ product, hasOtherStyles = false, hasSuite 
         <Link href={`/products/${product.slug}`} className="relative block h-full w-full" tabIndex={-1} aria-hidden="true">
           <Image
             src={image}
-            alt=""
+            alt={productImageAlt(product, image)}
             fill
             sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"
             className={`object-cover ${isStockOut ? "opacity-60" : ""}`}

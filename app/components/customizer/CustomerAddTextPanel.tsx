@@ -10,6 +10,15 @@ import {
   resolveTextEditorKeyAction,
   type TextPlacementPreset,
 } from "@/lib/customizer/v2/text-editing";
+import { TextStyleList, TextStyleTip } from "./TextStyleList";
+
+// Same rows as the studio's Add Text panel (both render TextStyleList).
+const PRESETS = ([
+  ["text", "Add Text", "Fits your words, wraps at the edge"],
+  ["heading", "Add Heading", "Large single-line title"],
+  ["subheading", "Add Subheading", "Refined supporting line"],
+  ["body", "Add Body Text", "Multiline invitation copy"],
+] as const).map(([id, label, description]) => ({ id, label, description }));
 
 type Props = {
   template: any;
@@ -51,51 +60,12 @@ export default function CustomerAddTextPanel({
 
   return (
     <div className="grid gap-6 p-4">
-      <div>
-        <p className="text-[12.5px] font-semibold text-[#303839]/70">Add text</p>
-        <p className="mt-0.5 text-[16px] font-bold leading-tight text-[#1f2425]">Choose a text style</p>
-        <p className="mt-1 text-[13px] leading-relaxed text-[#303839]/70">
-          Choose a style to add one text box to the card, then type straight into it.
+      <div className="grid gap-4">
+        <p className="text-[13px] leading-relaxed text-[#303839]/70">
+          Click a style to add one text box to {pageLabel}, then type straight into it.
         </p>
-
-        <div className="mt-3 grid gap-2">
-          {([
-            ["text", "Add Text", "Fits your words, wraps at the edge", "T"],
-            ["heading", "Add Heading", "Large single-line title", "Aa"],
-            ["subheading", "Add Subheading", "Refined supporting line", "Ag"],
-            ["body", "Add Body Text", "Multiline invitation copy", "¶"],
-          ] as const).map(([id, label, description, sample]) => {
-            const active = selectedPreset === id;
-            return (
-              <button
-                key={id}
-                type="button"
-                aria-pressed={active}
-                onClick={() => onSelectPreset(id)}
-                className={`flex min-h-14 cursor-pointer items-center gap-3 rounded-[10px] px-3 py-2 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white ${
-                  active
-                    ? "bg-[#D4AF37]/10 ring-[1.5px] ring-[#D4AF37]"
-                    : "bg-[#F8F6F1] hover:bg-[#EFEBE1]"
-                }`}
-              >
-                <span className="grid h-9 w-9 shrink-0 place-items-center rounded-md bg-white font-display text-base text-[#303839] shadow-[0_1px_3px_rgba(31,36,37,0.14)]" aria-hidden>
-                  {sample}
-                </span>
-                <span className="min-w-0">
-                  <span className="block text-[13.5px] font-semibold text-[#1f2425]">{label}</span>
-                  <span className="mt-0.5 block text-[12px] text-[#303839]/70">{description}</span>
-                </span>
-              </button>
-            );
-          })}
-        </div>
-
-        <div className="mt-3 flex items-center gap-2 rounded-[10px] bg-[#303839] px-3 py-3 text-white">
-          <svg className="shrink-0 text-[#D4AF37]" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden>
-            <path d="M4 7V5h16v2M12 5v14M9 19h6" />
-          </svg>
-          <span className="text-[12.5px] font-semibold">Each choice adds one text box to {pageLabel}</span>
-        </div>
+        <TextStyleList items={PRESETS} selected={selectedPreset} onSelect={onSelectPreset} />
+        <TextStyleTip>Each click adds one text box. Drag it into place on the card, or edit it below.</TextStyleTip>
       </div>
 
       {pageLayers.length > 0 && (
@@ -104,8 +74,8 @@ export default function CustomerAddTextPanel({
           {pageLayers.map((layer) => (
             <div
               key={layer.id}
-              className={`rounded-[10px] p-2.5 transition ${
-                selectedLayerId === layer.id ? "bg-[#D4AF37]/10 ring-[1.5px] ring-[#D4AF37]" : "bg-[#F8F6F1]"
+              className={`rounded-[10px] border bg-white p-2.5 transition-[border-color,box-shadow] duration-200 ${
+                selectedLayerId === layer.id ? "border-[#D4AF37] shadow-[0_0_0_1px_#D4AF37]" : "border-[#303839]/12"
               }`}
             >
               <textarea

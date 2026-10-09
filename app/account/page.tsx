@@ -1,10 +1,8 @@
 import AccountClient from "./account-client";
 import { getInitialUser } from "../lib/initial-user";
+import { privatePageMetadata } from "@/lib/seo/metadata";
 
-export const metadata = {
-  title: "My Account",
-  description: "Manage your Husnalogy profile, orders, wishlist, saved addresses, and files.",
-};
+export const metadata = privatePageMetadata("My Account");
 
 export default async function AccountPage() {
   return <AccountClient initialUser={await getInitialUser()} />;

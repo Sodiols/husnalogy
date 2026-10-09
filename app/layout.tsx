@@ -9,6 +9,9 @@ import { logServerFailure } from "@/lib/core/server-errors";
 import { BUSINESS_INFO } from "@/lib/launch-config";
 import { getSiteUrl } from "@/lib/site-url";
 import { serializeJsonLd } from "@/lib/security/json-ld";
+import { INDEXABLE_ROBOTS, SITE_NAME } from "@/lib/seo/metadata";
+import { getPublicPage } from "@/lib/seo/pages";
+import { DEFAULT_SHARE_IMAGE } from "@/lib/seo/share-image";
 
 const fontDisplay = localFont({
   src: [
@@ -38,51 +41,38 @@ const fontVariables = `${fontDisplay.variable} ${fontBody.variable}`;
 
 const SITE_URL = getSiteUrl();
 
-const DESCRIPTION =
-  "Husnalogy creates personalized wedding invitations, save the dates, nikah invitations, cards, gifts and stationery with a refined, minimalist design.";
+const HOME_PAGE = getPublicPage("/");
+const DESCRIPTION = HOME_PAGE.description;
 
+// Site-wide defaults only. No canonical and no og:url here: a page that sets
+// neither must not claim to be the homepage. Every public page builds its own
+// complete set through lib/seo (Next merges metadata objects shallowly).
 export const metadata = {
   metadataBase: new URL(SITE_URL),
   title: {
-    default: "Home - Husnalogy",
+    default: HOME_PAGE.title,
     template: "%s - Husnalogy",
   },
   description: DESCRIPTION,
-  applicationName: "Husnalogy",
-  keywords: [
-    "wedding invitations",
-    "save the dates",
-    "nikah invitations",
-    "birthday invitations",
-    "personalized gifts",
-    "wedding stationery",
-    "greeting cards",
-    "Husnalogy",
-  ],
-  authors: [{ name: "Husnalogy" }],
-  creator: "Husnalogy",
-  publisher: "Husnalogy",
-  alternates: { canonical: "/" },
+  applicationName: SITE_NAME,
+  authors: [{ name: SITE_NAME }],
+  creator: SITE_NAME,
+  publisher: SITE_NAME,
   openGraph: {
     type: "website",
-    siteName: "Husnalogy",
-    title: "Husnalogy | Wedding Invitations, Cards & Personalized Gifts",
+    siteName: SITE_NAME,
+    title: HOME_PAGE.title,
     description: DESCRIPTION,
-    url: SITE_URL,
     locale: "en_US",
-    images: [{ url: "/images/heroIMG.png", width: 1200, height: 630, alt: "Husnalogy invitations and stationery" }],
+    images: [DEFAULT_SHARE_IMAGE],
   },
   twitter: {
     card: "summary_large_image",
-    title: "Husnalogy | Wedding Invitations, Cards & Personalized Gifts",
+    title: HOME_PAGE.title,
     description: DESCRIPTION,
-    images: ["/images/heroIMG.png"],
+    images: [{ url: DEFAULT_SHARE_IMAGE.url, alt: DEFAULT_SHARE_IMAGE.alt }],
   },
-  robots: {
-    index: true,
-    follow: true,
-    googleBot: { index: true, follow: true, "max-image-preview": "large", "max-snippet": -1 },
-  },
+  robots: INDEXABLE_ROBOTS,
   icons: {
     icon: "/Brand Kit/Logo-1.png",
     shortcut: "/Brand Kit/Logo-1.png",

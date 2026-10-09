@@ -1,9 +1,7 @@
 import Link from "next/link";
+import { staticPageMetadata } from "@/lib/seo/pages";
 
-export const metadata = {
-  title: "Privacy Policy",
-  description: "Read how Husnalogy handles customer information, order details, and personalized product files.",
-};
+export const metadata = staticPageMetadata("/privacy");
 
 const sections = [
   {

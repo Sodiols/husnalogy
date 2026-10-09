@@ -17,9 +17,9 @@ describe("admin properties sidebar contract", () => {
     expect(panel).not.toContain('ariaLabel="X position"');
     expect(panel).not.toContain('ariaLabel="Opacity"');
     // The inspector is a bounded-width sidebar (now on the right, per the
-    // editor redesign) that collapses to a bottom drawer on small screens.
+    // editor redesign) that becomes a sheet under the canvas on small screens.
     expect(builder).toContain("w-[clamp(300px,21vw,360px)]");
-    expect(builder).toContain("max-lg:bottom-0");
+    expect(builder).toContain("studio-sheet:col-span-2");
   });
 
   it("keeps simple text content and direct font-size editing", () => {

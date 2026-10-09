@@ -3,7 +3,11 @@ import {
   getCollectionOptions,
   getCollectionProducts,
   getCollectionSuite,
+  isKnownCollectionSlug,
+  LANDING_PAGE_COLLECTIONS,
 } from "@/lib/collections";
+import { collectionMetadata } from "@/lib/seo/catalogue";
+import { productImageAlt } from "@/lib/seo/image-alt";
 import { getFilterOptions } from "@/lib/products";
 import ProductListingPage from "../../products/ProductListingPage";
 import { getMainMockupImage } from "../../products/product-image";
@@ -16,11 +20,13 @@ export async function generateMetadata({ params }) {
   const { slug } = await params;
   const suite = await getCollectionSuite(slug);
   const collection = suite || getCollectionDefinition(slug);
+  const products = suite?.products || (await getCollectionOptions(slug));
+  const landingPage = suite ? undefined : LANDING_PAGE_COLLECTIONS[collection.slug];
+  // An unknown slug still renders a (keyword-matched) listing, and an empty
+  // collection is a placeholder: both stay reachable but out of search.
+  const indexable = Boolean(suite || isKnownCollectionSlug(collection.slug)) && products.length > 0;
 
-  return {
-    title: collection.title,
-    description: collection.description,
-  };
+  return collectionMetadata({ ...collection, products }, { indexable, canonicalPath: landingPage });
 }
 
 export default async function CollectionPage({ params, searchParams }) {
@@ -103,7 +109,7 @@ function SubCollectionCard({ collection }) {
     <Link href={`/collections/${collection.slug}`} className="group block min-w-0">
       <span className="block aspect-square overflow-hidden rounded-[10px] bg-cream">
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={image} alt="" className="h-full w-full object-cover" />
+        <img src={image} alt={productImageAlt(collection.products[0], image)} className="h-full w-full object-cover" />
       </span>
       <h2 className="heading-card mt-3 line-clamp-2 capitalize group-hover:underline group-hover:underline-offset-4">
         {collection.name}

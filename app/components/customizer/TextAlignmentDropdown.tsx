@@ -198,11 +198,12 @@ export default function TextAlignmentDropdown({
         aria-controls={open ? menuId : undefined}
         disabled={!canHorizontal && !canVertical}
         onClick={() => setOpen((current) => !current)}
-        className={`flex h-10 min-w-12 shrink-0 cursor-pointer items-center justify-center gap-1 rounded-lg text-[#303839]/70 transition-colors hover:bg-cream hover:text-[#303839] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white disabled:cursor-not-allowed disabled:opacity-30 ${className}`}
+        // The studio toolbar's alignment trigger: the current alignment's icon and a chevron.
+        className={`flex h-9 shrink-0 cursor-pointer items-center justify-center gap-0.5 rounded-full px-2 text-[#303839] transition-colors hover:bg-[#303839]/[0.06] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] disabled:cursor-not-allowed disabled:text-[#303839]/30 disabled:hover:bg-transparent ${open ? "bg-[#303839]/[0.08]" : ""} ${className}`}
       >
-        <AlignIcon path={currentIcon.path} />
+        <AlignIcon path={currentIcon.path} size={18} />
         {mixed && <span className="h-1.5 w-1.5 rounded-full bg-[#D4AF37]" aria-hidden />}
-        <svg className={`transition-transform ${open ? "rotate-180" : ""}`} width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+        <svg className={`transition-transform ${open ? "rotate-180" : ""}`} width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
           <path d="m6 9 6 6 6-6" />
         </svg>
       </button>

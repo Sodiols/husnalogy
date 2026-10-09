@@ -1,9 +1,7 @@
 import AccountClient from "../account/account-client";
+import { privatePageMetadata } from "@/lib/seo/metadata";
 
-export const metadata = {
-  title: "My Profile",
-  description: "Manage your Husnalogy profile, orders, favorites, and saved addresses.",
-};
+export const metadata = privatePageMetadata("My Profile");
 
 export default function ProfilePage() {
   return <AccountClient />;

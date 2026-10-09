@@ -66,7 +66,7 @@ describe("launch ownership and render immutability", () => {
     // The secret is never read from the query string.
     expect(worker).not.toMatch(/searchParams\.get\("(secret|token|key)"\)/);
     // Scheduling is platform independent: Hostinger runs it via cron.
-    expect(read("HOSTINGER_DEPLOYMENT.md")).toContain("/api/admin/customizer/render/process");
+    expect(read("docs/HOSTINGER_DEPLOYMENT.md")).toContain("/api/admin/customizer/render/process");
   });
 });
 

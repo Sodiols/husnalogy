@@ -1,9 +1,7 @@
 import CartClient from "./cart-client";
+import { privatePageMetadata } from "@/lib/seo/metadata";
 
-export const metadata = {
-  title: "Cart",
-  description: "Review the products you have added to your Husnalogy cart.",
-};
+export const metadata = privatePageMetadata("Cart");
 
 export default function CartPage() {
   return <CartClient />;

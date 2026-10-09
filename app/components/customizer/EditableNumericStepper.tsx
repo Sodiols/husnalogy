@@ -42,6 +42,12 @@ export type EditableNumericStepperProps = {
   /** Step-button glyphs: chevrons (default) or − / + with no dividers, as the admin toolbar draws them. */
   stepIcons?: "chevron" | "plusMinus";
   /**
+   * Where the step buttons sit: either side of the value (default), or as a
+   * stacked up / down pair inside the field's right edge ("spinner"), for
+   * full-width inspector fields.
+   */
+  stepLayout?: "sides" | "spinner";
+  /**
    * Pair the numeric field with a drag slider (opacity, zoom).
    *
    * The slider lives INSIDE this component on purpose: the editor's numeric
@@ -83,6 +89,7 @@ export default function EditableNumericStepper({
   mixed = false,
   stepButtonWidth,
   stepIcons = "chevron",
+  stepLayout = "sides",
   slider = false,
   sliderClassName = "h-11 min-w-0 flex-1 accent-[#D4AF37] disabled:opacity-35",
 }: EditableNumericStepperProps) {
@@ -94,6 +101,9 @@ export default function EditableNumericStepper({
   const inputRef = useRef<HTMLInputElement>(null);
   const skipBlurCommit = useRef(false);
   const draftDirty = useRef(false);
+  /** Focus arriving from a click or tap: the caret goes where the pointer put it. */
+  const pointerFocus = useRef(false);
+  const spinner = showStepButtons && stepLayout === "spinner";
 
   useEffect(() => {
     const hasFocus = document.activeElement === inputRef.current;
@@ -131,36 +141,24 @@ export default function EditableNumericStepper({
     onCommit(next);
   };
 
-  const explicitColumns = showStepButtons && stepButtonWidth
+  const explicitColumns = showStepButtons && !spinner && stepButtonWidth
     ? `${stepButtonWidth}px minmax(0,1fr) ${stepButtonWidth}px`
     : undefined;
   const columns = explicitColumns
     ? ""
-    : showStepButtons
+    : showStepButtons && !spinner
       ? compact
         ? "grid-cols-[26px_minmax(0,1fr)_26px]"
         : "grid-cols-[34px_minmax(0,1fr)_34px]"
       : "grid-cols-1";
   const rowClass = showLabel ? `grid ${columns} grid-rows-[13px_1fr] items-center overflow-hidden` : `grid ${columns} items-center overflow-hidden`;
-  const resolvedLabelClassName = showStepButtons ? labelClassName : labelClassName.replace("col-span-3", "");
+  const resolvedLabelClassName = showStepButtons && !spinner ? labelClassName : labelClassName.replace("col-span-3", "");
   // Under a label the value row is shorter than the default 40px button floor;
   // a taller button overflows the clipped row, and focusing it scrolls the row
   // and hides the label.
   const resolvedButtonClassName = showLabel ? buttonClassName.replace(/(^|\s)min-h-10(?=\s|$)/, " ") : buttonClassName;
 
-  const stepperBody = (
-    <div
-      role="group"
-      aria-label={label}
-      style={explicitColumns ? { gridTemplateColumns: explicitColumns } : undefined}
-      className={`${rowClass} ${className}`}
-    >
-      {showLabel && <span className={resolvedLabelClassName}>{label}</span>}
-      {showStepButtons && (
-        <button type="button" aria-label={`Decrease ${label}`} onClick={() => applyStep(-1)} disabled={disabled || readOnly || value <= (minimum ?? -Infinity)} className={`${resolvedButtonClassName} ${stepIcons === "plusMinus" ? "" : "border-r border-[#303839]/10"}`}>
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d={stepIcons === "plusMinus" ? "M5 12h14" : "m15 18-6-6 6-6"} /></svg>
-        </button>
-      )}
+  const input = (
       <input
         ref={inputRef}
         type="text"
@@ -170,20 +168,26 @@ export default function EditableNumericStepper({
         placeholder={mixed ? "Mixed" : undefined}
         disabled={disabled}
         readOnly={readOnly}
+        onPointerDown={(event) => {
+          if (document.activeElement !== event.currentTarget) pointerFocus.current = true;
+        }}
         onFocus={(event) => {
           const input = event.currentTarget;
           originalValue.current = value;
           setEditing(true);
-          window.requestAnimationFrame(() => input.select());
+          // Tabbing in selects the value, so typing replaces it. A click or tap
+          // leaves the caret where it landed: Backspace then removes one
+          // character, like any text field (double-click / Ctrl+A select all).
+          if (pointerFocus.current) pointerFocus.current = false;
+          else window.requestAnimationFrame(() => input.select());
         }}
-        onClick={(event) => event.currentTarget.select()}
         onChange={(event) => {
           const sanitized = sanitizeNumericDraft(event.target.value, rules);
           if (sanitized === null) return;
           setDraft(sanitized);
           draftDirty.current = true;
           const preview = Number(sanitized);
-          if (onPreviewChange && Number.isFinite(preview)) onPreviewChange(parseNumericDraft(sanitized, value, rules));
+          if (onPreviewChange && sanitized !== "" && Number.isFinite(preview)) onPreviewChange(parseNumericDraft(sanitized, value, rules));
         }}
         onKeyDown={(event) => {
           if (event.key === "Enter") {
@@ -205,6 +209,7 @@ export default function EditableNumericStepper({
           }
         }}
         onBlur={() => {
+          pointerFocus.current = false;
           if (skipBlurCommit.current) {
             skipBlurCommit.current = false;
             return;
@@ -212,8 +217,52 @@ export default function EditableNumericStepper({
           commitDraft();
         }}
         className={inputClassName}
-        style={inputStyle}
+        style={spinner ? { ...inputStyle, paddingRight: 34 } : inputStyle}
       />
+  );
+
+  // The stacked pair keeps the field's focus (no blur, no half-typed commit):
+  // a step applies to what is typed so far. They are not Tab stops — ArrowUp /
+  // ArrowDown in the field do the same.
+  const spinnerButton = (direction: -1 | 1) => (
+    <button
+      type="button"
+      tabIndex={-1}
+      aria-label={`${direction > 0 ? "Increase" : "Decrease"} ${label}`}
+      title={`${direction > 0 ? "Increase" : "Decrease"} ${label}`}
+      onMouseDown={(event) => event.preventDefault()}
+      onClick={() => applyStep(direction)}
+      disabled={disabled || readOnly || (direction > 0 ? value >= (maximum ?? Infinity) : value <= (minimum ?? -Infinity))}
+      className="grid min-h-0 flex-1 place-items-center rounded-[4px] text-[#303839]/55 transition-colors hover:bg-[#303839]/[0.07] hover:text-[#1f2425] disabled:cursor-not-allowed disabled:opacity-30"
+    >
+      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+        <path d={direction > 0 ? "m6 15 6-6 6 6" : "m6 9 6 6 6-6"} />
+      </svg>
+    </button>
+  );
+
+  const stepperBody = spinner ? (
+    <div role="group" aria-label={label} className={`relative ${className}`} data-numeric-spinner>
+      {input}
+      <div className="absolute inset-y-[3px] right-[3px] flex w-7 flex-col gap-px">
+        {spinnerButton(1)}
+        {spinnerButton(-1)}
+      </div>
+    </div>
+  ) : (
+    <div
+      role="group"
+      aria-label={label}
+      style={explicitColumns ? { gridTemplateColumns: explicitColumns } : undefined}
+      className={`${rowClass} ${className}`}
+    >
+      {showLabel && <span className={resolvedLabelClassName}>{label}</span>}
+      {showStepButtons && (
+        <button type="button" aria-label={`Decrease ${label}`} onClick={() => applyStep(-1)} disabled={disabled || readOnly || value <= (minimum ?? -Infinity)} className={`${resolvedButtonClassName} ${stepIcons === "plusMinus" ? "" : "border-r border-[#303839]/10"}`}>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d={stepIcons === "plusMinus" ? "M5 12h14" : "m15 18-6-6 6-6"} /></svg>
+        </button>
+      )}
+      {input}
       {showStepButtons && (
         <button type="button" aria-label={`Increase ${label}`} onClick={() => applyStep(1)} disabled={disabled || readOnly || value >= (maximum ?? Infinity)} className={`${resolvedButtonClassName} ${stepIcons === "plusMinus" ? "" : "border-l border-[#303839]/10"}`}>
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d={stepIcons === "plusMinus" ? "M12 5v14M5 12h14" : "m9 18 6-6-6-6"} /></svg>

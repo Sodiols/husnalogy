@@ -1,6 +1,7 @@
 "use client";
 
-import { rememberRecentColor } from "@/lib/customizer/v2/studio-recent-colors";
+import { rememberRecentColor, useRecentColors } from "@/lib/customizer/v2/studio-recent-colors";
+import { normaliseSwatch, orderSwatches } from "@/lib/customizer/v2/swatch-order";
 import { FONT_SIZE_POINT_RULES, documentPxToPoints, fontSizeBoundsInPoints, pointsToDocumentPx } from "@/lib/customizer/v2/type-units";
 import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useRef, useState } from "react";
 import GoogleFontSelector from "@/app/components/customizer/GoogleFontSelector";
@@ -332,6 +333,40 @@ function ColourChip({ value, size = 20 }: { value: string; size?: number }) {
   );
 }
 
+/** True when dark ink would be hard to read on this colour. */
+function isDarkSwatch(hex: string): boolean {
+  const full = normaliseSwatch(hex);
+  if (!full) return false;
+  const n = parseInt(full.slice(1), 16);
+  const lum = 0.2126 * ((n >> 16) & 255) + 0.7152 * ((n >> 8) & 255) + 0.0722 * (n & 255);
+  return lum < 150;
+}
+
+/** One round swatch; the selected one carries a ring and a check, not colour alone. */
+function SwatchButton({ title, swatch, selected, onPick }: { title: string; swatch: string; selected: boolean; onPick: () => void }) {
+  return (
+    <button
+      type="button"
+      data-toolbar-menu-item
+      data-shape="round"
+      aria-label={`${title} ${swatch}`}
+      aria-pressed={selected}
+      title={swatch.toUpperCase()}
+      onClick={onPick}
+      className={`grid aspect-square w-full place-items-center rounded-full border border-[#303839]/15 transition-shadow focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#27307A] focus-visible:ring-offset-2 ${
+        selected ? "ring-2 ring-[#27307A] ring-offset-2" : "hover:ring-2 hover:ring-[#303839]/25 hover:ring-offset-1"
+      }`}
+      style={{ backgroundColor: swatch }}
+    >
+      {selected && (
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={isDarkSwatch(swatch) ? "#ffffff" : "#1f2425"} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+          <path d="m5 12 5 5 9-10" />
+        </svg>
+      )}
+    </button>
+  );
+}
+
 /**
  * Colour popover for text, a shape's fill and a shape's line: approved swatches,
  * an optional real "no paint" choice, and a hex field / picker that preview live
@@ -365,12 +400,22 @@ function ColourControl({
   useEffect(() => setDraft(isTransparentPaint(value) ? "" : value), [value]);
   const compact = useCompact();
   const trigger = caption ? `${TEXT_BUTTON} ${compact ? "gap-1 !px-2" : ""}` : ICON_BUTTON;
+  // White and black always lead, then the approved colours in a natural order.
+  const ordered = orderSwatches(swatches, { includeBasics: true });
+  const shown = new Set(ordered.map((swatch) => normaliseSwatch(swatch)));
+  const recent = useRecentColors()
+    .filter((colour) => !shown.has(normaliseSwatch(colour)))
+    .slice(0, 7);
+  const pick = (colour: string, close: () => void) => {
+    onCommit(colour);
+    close();
+  };
   return (
     <ToolbarPopover
       label={`${title}: ${none ? "Transparent" : value}`}
       triggerTitle={title}
       role="dialog"
-      menuWidth={236}
+      menuWidth={264}
       triggerClassName={trigger}
       triggerActiveClassName={`${trigger} ${BUTTON_ON}`}
       trigger={
@@ -386,85 +431,94 @@ function ColourControl({
       }
     >
       {(close) => (
-        <div className="grid gap-2 p-1.5" data-customizer-text-interaction>
-          <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-[#303839]/50">{title}</p>
-          <div className="grid grid-cols-8 gap-1.5">
+        <div className="grid min-w-0 gap-3 p-2" data-customizer-text-interaction>
+          <p className="text-[13px] font-bold text-[#1f2425]">{title}</p>
+
+          <div className="grid grid-cols-7 gap-2" data-colour-swatches>
             {allowTransparent && (
               <button
                 type="button"
                 data-toolbar-menu-item
+                data-shape="round"
                 aria-label="Transparent"
                 aria-pressed={none}
                 title="Transparent — no paint"
-                onClick={() => {
-                  onCommit(TRANSPARENT_PAINT);
-                  close();
-                }}
-                className={`grid h-6 w-6 place-items-center rounded-full transition-transform hover:scale-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] ${none ? "ring-2 ring-[#2B7BD8] ring-offset-1" : ""}`}
+                onClick={() => pick(TRANSPARENT_PAINT, close)}
+                className={`grid aspect-square w-full place-items-center overflow-hidden rounded-full transition-shadow focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#27307A] focus-visible:ring-offset-2 ${
+                  none ? "ring-2 ring-[#27307A] ring-offset-2" : "hover:ring-2 hover:ring-[#303839]/25 hover:ring-offset-1"
+                }`}
               >
-                <ColourChip value={TRANSPARENT_PAINT} size={24} />
+                <ColourChip value={TRANSPARENT_PAINT} size={28} />
               </button>
             )}
-            {swatches.map((swatch) => {
-              const selected = !none && swatch.toLowerCase() === String(value).toLowerCase();
-              return (
-                <button
-                  key={swatch}
-                  type="button"
-                  data-toolbar-menu-item
-                  aria-label={`${title} ${swatch}`}
-                  aria-pressed={selected}
-                  title={swatch}
-                  onClick={() => {
-                    onCommit(swatch);
+            {ordered.map((swatch) => (
+              <SwatchButton key={swatch} title={title} swatch={swatch} selected={!none && normaliseSwatch(swatch) === normaliseSwatch(String(value))} onPick={() => pick(swatch, close)} />
+            ))}
+          </div>
+
+          {recent.length > 0 && (
+            <div className="grid gap-2">
+              <p className="text-[12px] font-semibold text-[#303839]/65">Recent colours</p>
+              <div className="grid grid-cols-7 gap-2" data-colour-recent>
+                {recent.map((swatch) => (
+                  <SwatchButton key={swatch} title={title} swatch={swatch} selected={!none && normaliseSwatch(swatch) === normaliseSwatch(String(value))} onPick={() => pick(swatch, close)} />
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div className="grid gap-2 border-t border-[#303839]/10 pt-3">
+            <p className="text-[12px] font-semibold text-[#303839]/65">Custom colour</p>
+            <span className="flex min-w-0 items-center gap-2">
+              <label
+                className="relative h-9 w-9 shrink-0 cursor-pointer overflow-hidden rounded-full border border-[#303839]/15 focus-within:ring-2 focus-within:ring-[#27307A] focus-within:ring-offset-2"
+                title={`Pick ${title.toLowerCase()}`}
+                style={{ background: "conic-gradient(from 0deg, #ef4444, #f59e0b, #eab308, #22c55e, #06b6d4, #3b82f6, #8b5cf6, #ec4899, #ef4444)" }}
+              >
+                <input
+                  type="color"
+                  aria-label={`Pick ${title.toLowerCase()}`}
+                  value={none ? "#ffffff" : normalizeHex(value) || "#303839"}
+                  onChange={(event) => {
+                    setDraft(event.target.value);
+                    onPreview(event.target.value);
+                  }}
+                  onBlur={(event) => {
+                    if (event.target.value.toLowerCase() !== String(value).toLowerCase()) onCommit(event.target.value);
+                  }}
+                  className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+                />
+              </label>
+              <span className="flex h-9 min-w-0 flex-1 items-center gap-2 rounded-full border border-[#303839]/20 bg-white pl-1.5 pr-3 focus-within:border-[#27307A]">
+                <ColourChip value={none ? TRANSPARENT_PAINT : normalizeHex(draft) || value} size={22} />
+                <input
+                  type="text"
+                  value={draft}
+                  placeholder={none ? "Transparent" : "#303839"}
+                  aria-label={`${title} hex value`}
+                  spellCheck={false}
+                  onChange={(event) => {
+                    setDraft(event.target.value);
+                    const hex = normalizeHex(event.target.value);
+                    if (hex) onPreview(hex);
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key !== "Enter") return;
+                    event.preventDefault();
+                    const hex = normalizeHex(draft);
+                    if (hex) onCommit(hex);
                     close();
                   }}
-                  className={`h-6 w-6 rounded-full border border-[#303839]/15 transition-transform hover:scale-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] ${selected ? "ring-2 ring-[#2B7BD8] ring-offset-1" : ""}`}
-                  style={{ backgroundColor: swatch }}
+                  onBlur={() => {
+                    const hex = normalizeHex(draft);
+                    if (hex && hex !== String(value).toLowerCase()) onCommit(hex);
+                    else if (!hex) setDraft(none ? "" : value);
+                  }}
+                  className="input-bare h-full w-0 min-w-0 flex-1 border-0 bg-transparent p-0 text-[13px] font-semibold uppercase tabular-nums text-[#1f2425] outline-none placeholder:normal-case placeholder:text-[#303839]/45"
                 />
-              );
-            })}
+              </span>
+            </span>
           </div>
-          <span className="flex items-center gap-1.5">
-            <input
-              type="text"
-              value={draft}
-              placeholder={none ? "Transparent" : "#303839"}
-              aria-label={`${title} hex value`}
-              spellCheck={false}
-              onChange={(event) => {
-                setDraft(event.target.value);
-                const hex = normalizeHex(event.target.value);
-                if (hex) onPreview(hex);
-              }}
-              onKeyDown={(event) => {
-                if (event.key !== "Enter") return;
-                event.preventDefault();
-                const hex = normalizeHex(draft);
-                if (hex) onCommit(hex);
-                close();
-              }}
-              onBlur={() => {
-                const hex = normalizeHex(draft);
-                if (hex && hex !== String(value).toLowerCase()) onCommit(hex);
-                else if (!hex) setDraft(none ? "" : value);
-              }}
-              className="h-9 min-w-0 flex-1 rounded-lg border border-[#303839]/15 bg-white px-2 text-[13px] font-semibold uppercase tabular-nums text-[#303839] outline-none focus:border-[#303839]/60"
-            />
-            <input
-              type="color"
-              aria-label={`Pick ${title.toLowerCase()}`}
-              value={none ? "#ffffff" : normalizeHex(value) || "#303839"}
-              onChange={(event) => {
-                setDraft(event.target.value);
-                onPreview(event.target.value);
-              }}
-              onBlur={(event) => {
-                if (event.target.value.toLowerCase() !== String(value).toLowerCase()) onCommit(event.target.value);
-              }}
-              className="h-9 w-10 shrink-0 cursor-pointer rounded-lg border border-[#303839]/15 bg-white p-0.5"
-            />
-          </span>
         </div>
       )}
     </ToolbarPopover>
@@ -611,7 +665,7 @@ function TextControls({ layer, props, swatches }: { layer: any; props: Props; sw
         label="Font"
         value={String(fontFamily.value)}
         onChange={applyFontFamily}
-        className={useCompact() ? "w-[132px]" : "w-[164px]"}
+        className={useCompact() ? "w-[124px]" : "w-[164px]"}
         triggerPrefix="Font:"
         triggerClassName="h-9 rounded-full px-3 text-[13px] hover:bg-[#303839]/[0.06]"
         portal
@@ -685,12 +739,15 @@ function ShapeControls({ layer, props, swatches, line }: { layer: any; props: Pr
           onCommit={(next) => props.onLayerPropsPatch({ fill: next })}
         />
       )}
+      {/* Transparent is offered for a line too: it hides the stroke without
+          deleting the line or touching its geometry (it stays selectable on
+          the canvas and in Layers, and a colour brings it back). */}
       <ColourControl
         title="Line color"
         caption="Line color"
         value={stroke}
         swatches={swatches}
-        allowTransparent={!line}
+        allowTransparent
         onPreview={(next) => props.onLayerPropsPreview({ stroke: next })}
         onCommit={(next) => props.onLayerPropsPatch({ stroke: next })}
       />

@@ -1,10 +1,7 @@
 import SupportClient from "./support-client";
+import { staticPageMetadata } from "@/lib/seo/pages";
 
-export const metadata = {
-  title: "Support",
-  description: "Get help with Husnalogy orders, personalization, delivery, returns, and design requests.",
-  alternates: { canonical: "/support" },
-};
+export const metadata = staticPageMetadata("/support");
 
 export default function SupportPage() {
   return <SupportClient />;

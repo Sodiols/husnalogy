@@ -162,7 +162,7 @@ export default function ToolbarDropdown({
               width: position.width,
               maxHeight: position.maxHeight,
             }}
-            className="fixed z-[240] overflow-y-auto overscroll-contain rounded-2xl border border-[#303839]/12 bg-white p-2 shadow-[0_24px_60px_rgba(48,56,57,0.24)] [scrollbar-color:rgba(48,56,57,0.22)_transparent] [scrollbar-width:thin]"
+            className="fixed z-[270] overflow-y-auto overscroll-contain rounded-2xl border border-[#303839]/12 bg-white p-2 shadow-[0_24px_60px_rgba(48,56,57,0.24)] [scrollbar-color:rgba(48,56,57,0.22)_transparent] [scrollbar-width:thin]"
           >
             <div className="flex items-center justify-between px-2 pb-2 pt-1">
               <span className="text-[12px] font-semibold text-[#303839]/70">

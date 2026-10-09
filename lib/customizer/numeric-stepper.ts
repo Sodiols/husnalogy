@@ -24,10 +24,17 @@ export function clampNumericValue(value: number, rules: NumericStepperRules = {}
   return Number(next.toFixed(precision));
 }
 
+/**
+ * A typed draft, or null when the keystroke must be refused. Every state a
+ * person passes through while typing or deleting is a valid draft — an empty
+ * field, a lone "-" or "." — so Backspace can always remove the last
+ * character; such a draft commits nothing and reverts on blur
+ * (parseNumericDraft falls back to the previous value).
+ */
 export function sanitizeNumericDraft(raw: string, rules: NumericStepperRules = {}): string | null {
   const value = String(raw).replace(/,/g, ".").trim();
   const sign = rules.allowNegative === false ? "" : "-?";
-  const fraction = rules.allowDecimal === false ? "\\d*" : "(?:\\d+(?:\\.\\d*)?|\\.\\d*)";
+  const fraction = rules.allowDecimal === false ? "\\d*" : "(?:\\d+(?:\\.\\d*)?|\\.\\d*)?";
   return new RegExp(`^${sign}${fraction}$`).test(value) ? value : null;
 }
 

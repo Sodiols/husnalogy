@@ -19,6 +19,7 @@ import { normalizeMaskShape } from "@/lib/customizer/v2/masks";
 import { normalizeTextGrowthDirection } from "@/lib/customizer/v2/text-growth";
 import { normalizeQRCodeStyle } from "@/lib/customizer/v2/qr";
 import { migrateTextAutoSizing } from "@/lib/customizer/v2/text-layout";
+import { isSafeInsets, resolvePageSafeArea } from "@/lib/customizer/v2/safe-area";
 import {
   normalizeCanonicalText,
   promoteTextStyleForValue,
@@ -574,7 +575,9 @@ function layerFlips(input: any): { flipX?: true; flipY?: true } {
 }
 
 export function normalizeCustomizerPage(input: any = {}, index = 0): any {
-  const fallbackId = index === 0 ? "front" : index === 1 ? "back" : `page-${index + 1}`;
+  // Ids are stored keyified; the fallback is already in that form, so a second
+  // normalization never renames it (see normalizeCustomizerTemplate).
+  const fallbackId = index === 0 ? "front" : index === 1 ? "back" : `page_${index + 1}`;
   const id = keyify(input.id || "") || fallbackId;
   return {
     id,
@@ -588,6 +591,9 @@ export function normalizeCustomizerPage(input: any = {}, index = 0): any {
     thumbnailPath: cleanOptionalString(input.thumbnailPath),
     backgroundColor: cleanOptionalString(input.backgroundColor) || "#ffffff",
     thumbnail: cleanOptionalString(input.thumbnail) || cleanOptionalString(input.backgroundImage),
+    // A page may have its own safe area (Front and Back can differ); without
+    // one it inherits the template's. See lib/customizer/v2/safe-area.ts.
+    ...(isSafeInsets(input.safeArea) ? { safeArea: normalizeEdgeInset(input.safeArea, { top: 0, right: 0, bottom: 0, left: 0 }) } : {}),
     // Tri-state: undefined inherits template settings.allowCustomerText.
     ...(input.allowCustomerText === undefined ? {} : { allowCustomerText: normalizeBoolean(input.allowCustomerText) }),
   };
@@ -790,6 +796,19 @@ export function normalizeCustomizerTemplate(input: any = {}, existing: any = {})
   const rawPages = Array.isArray(source.pages) ? source.pages : Array.isArray(prev.pages) ? prev.pages : [];
   const pages = rawPages.map((page: any, index: number) => normalizeCustomizerPage(page, index));
   const pageIds = new Set(pages.map((page: any) => page.id));
+  // A page id may be rewritten here (keyified: "front_copy-2" → "front_copy_2").
+  // Everything that names a page by its ORIGINAL id follows it to the new one;
+  // before this, those layers were silently moved to the first page on save.
+  const pageIdFor = new Map<string, string>();
+  rawPages.forEach((page: any, index: number) => {
+    const raw = cleanString(page?.id);
+    if (raw && !pageIdFor.has(raw)) pageIdFor.set(raw, pages[index].id);
+  });
+  const resolvePageRef = (value: unknown): string | null => {
+    const ref = cleanString(value);
+    if (pageIds.has(ref)) return ref;
+    return pageIdFor.get(ref) ?? null;
+  };
 
   const rawFields = Array.isArray(source.fields) ? source.fields : Array.isArray(prev.fields) ? prev.fields : [];
   const fields = rawFields.map(normalizeCustomizerField).filter((field: any) => field.id);
@@ -797,7 +816,7 @@ export function normalizeCustomizerTemplate(input: any = {}, existing: any = {})
   const rawLayers = Array.isArray(source.layers) ? source.layers : Array.isArray(prev.layers) ? prev.layers : [];
   const layers = rawLayers
     .map(normalizeCustomizerLayer)
-    .map((layer: any) => ({ ...layer, page: pageIds.has(layer.page) ? layer.page : pages[0]?.id || "front" }));
+    .map((layer: any) => ({ ...layer, page: resolvePageRef(layer.page) ?? (pages[0]?.id || "front") }));
 
   const defaultPage = cleanString(source.defaultPage ?? prev.defaultPage);
   const mergedSettings = {
@@ -817,7 +836,7 @@ export function normalizeCustomizerTemplate(input: any = {}, existing: any = {})
     cardHeightIn: toNumber(source.cardHeightIn ?? prev.cardHeightIn, 7) || 7,
     dpi: toPositiveInt(source.dpi ?? prev.dpi, 300),
     orientation: CUSTOMIZER_ORIENTATIONS.has(orientation) ? orientation : "portrait",
-    defaultPage: pageIds.has(defaultPage) ? defaultPage : pages[0]?.id || "front",
+    defaultPage: resolvePageRef(defaultPage) ?? (pages[0]?.id || "front"),
     pages,
     fields,
     layers,
@@ -826,7 +845,7 @@ export function normalizeCustomizerTemplate(input: any = {}, existing: any = {})
     assets: source.assets && typeof source.assets === "object" ? source.assets : prev.assets || {},
     guides: (Array.isArray(source.guides) ? source.guides : Array.isArray(prev.guides) ? prev.guides : []).map((guide: any, index: number) => ({
       id: cleanString(guide?.id) || `guide_${index + 1}`,
-      pageId: cleanString(guide?.pageId || guide?.page) || pages[0]?.id || "front",
+      pageId: resolvePageRef(guide?.pageId || guide?.page) ?? (cleanString(guide?.pageId || guide?.page) || pages[0]?.id || "front"),
       axis: guide?.axis === "vertical" ? "vertical" : "horizontal",
       position: toNumber(guide?.position, 0),
       locked: normalizeBoolean(guide?.locked),
@@ -1165,7 +1184,7 @@ export function validateCustomizerTemplateDetailed(template: any = {}): { errors
     }
   });
 
-  // Safe area / bleed sanity.
+  // Safe area / bleed sanity — the template's, and each page's own.
   const safe = t.safeArea || {};
   const bleedVals = t.bleed || {};
   const insetTooBig =
@@ -1174,6 +1193,16 @@ export function validateCustomizerTemplateDetailed(template: any = {}): { errors
   if (insetTooBig) errors.push("Safe area insets are larger than the canvas.");
   Object.values({ ...safe, ...bleedVals }).forEach((value: any) => {
     if (Number(value) < 0) errors.push("Safe area and bleed values cannot be negative.");
+  });
+  (t.pages || []).forEach((page: any) => {
+    if (!isSafeInsets(page?.safeArea)) return;
+    if (Object.values(page.safeArea).some((value: any) => Number(value) < 0)) {
+      errors.push(`The safe area of page "${page.label || page.id}" cannot be negative.`);
+    }
+    const resolved = resolvePageSafeArea(t, page.id);
+    if (resolved.bounds.right <= resolved.bounds.left || resolved.bounds.bottom <= resolved.bounds.top) {
+      errors.push(`The safe area of page "${page.label || page.id}" is larger than the page.`);
+    }
   });
 
   // Default page must exist and be enabled.

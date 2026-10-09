@@ -3,7 +3,9 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import AdminMediaLibrary, { type AdminUploadAsset } from "./AdminMediaLibrary";
 import { uploadBuilderImage } from "./builder-utils";
+import LibraryThumb from "./LibraryThumb";
 import { qrModuleRects } from "@/lib/customizer/v2/qr";
+import { libraryRefreshDelayMs, libraryTileSourceKey, mergeRefreshedLibraryAssets } from "@/lib/customizer/v2/library-thumbnail";
 
 export type { AdminUploadAsset } from "./AdminMediaLibrary";
 
@@ -39,28 +41,63 @@ async function fetchLibrary(page: number, signal?: AbortSignal): Promise<{ asset
   return { assets, total: Number(payload.total) || assets.length };
 }
 
-/** A picture tile: the library thumbnail, or a clean empty tile if it cannot load. */
-function Thumb({ asset, onPick }: { asset: AdminUploadAsset; onPick: () => void }) {
-  const [failed, setFailed] = useState(false);
-  const src = asset.thumbnailUrl || asset.editorUrl || asset.url;
+/**
+ * A picture tile: the library's preview of the asset (LibraryThumb). Clicking
+ * inserts the ASSET — its identity and full-quality variants — never the
+ * preview URL. A tile whose preview cannot load asks the panel to re-sign the
+ * library and offers Retry; a re-signed row starts the tile over.
+ */
+function Thumb({
+  asset,
+  onPick,
+  onUnavailable,
+  onRetry,
+}: {
+  asset: AdminUploadAsset;
+  onPick: () => void;
+  onUnavailable?: (assetId: string) => void;
+  onRetry?: (assetId: string) => void;
+}) {
+  const sourceKey = libraryTileSourceKey(asset);
+  const [unavailableKey, setUnavailableKey] = useState("");
+  const [nonce, setNonce] = useState(0);
+  const failed = unavailableKey === sourceKey;
   return (
-    <button
-      type="button"
-      onClick={onPick}
-      aria-label={`Add ${asset.title} to the current page`}
-      title={asset.displayName || asset.title}
-      data-upload-tile
-      className="aspect-[4/5] overflow-hidden rounded-xl bg-[#F2F3F5] transition-opacity hover:opacity-85 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#27307A] focus-visible:ring-offset-2 focus-visible:ring-offset-white"
-    >
-      {src && !failed ? (
-        // eslint-disable-next-line @next/next/no-img-element -- a signed library thumbnail
-        <img src={src} alt="" loading="lazy" draggable={false} onError={() => setFailed(true)} className="h-full w-full object-cover" />
-      ) : (
-        <span className="grid h-full w-full place-items-center text-[#303839]/30" aria-hidden>
-          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="4" y="4" width="16" height="16" rx="2" /><circle cx="9" cy="9" r="1.5" /><path d="m4 17 5-5 4 4 2.5-2.5L20 18" /></svg>
-        </span>
+    <div className="relative">
+      <button
+        type="button"
+        onClick={onPick}
+        aria-label={`Add ${asset.title} to the current page`}
+        title={asset.displayName || asset.title}
+        data-upload-tile
+        className="block aspect-[4/5] w-full overflow-hidden rounded-xl bg-[#F2F3F5] transition-opacity hover:opacity-85 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#27307A] focus-visible:ring-offset-2 focus-visible:ring-offset-white"
+      >
+        <LibraryThumb
+          key={nonce}
+          asset={asset}
+          onUnavailable={(assetId, key) => {
+            setUnavailableKey(key);
+            onUnavailable?.(assetId);
+          }}
+        />
+      </button>
+      {failed && onRetry && (
+        <button
+          type="button"
+          data-thumb-retry
+          aria-label={`Retry loading ${asset.title}`}
+          onClick={() => {
+            setUnavailableKey("");
+            setNonce((value) => value + 1);
+            onRetry(asset.id);
+          }}
+          className="absolute bottom-1.5 left-1/2 -translate-x-1/2 rounded-full bg-white px-2.5 py-0.5 text-[11px] font-semibold text-[#27307A] shadow-[0_1px_3px_rgba(31,36,37,0.25)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#27307A]"
+          data-shape="round"
+        >
+          Retry
+        </button>
       )}
-    </button>
+    </div>
   );
 }
 
@@ -212,6 +249,38 @@ export default function AdminUploadsPanel({ onInsertAsset, currentAssetIds = [] 
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [dialog, setDialog] = useState<"media" | "phone" | null>(null);
+  const pageRef = useRef(page);
+  pageRef.current = page;
+
+  // Re-sign the loaded rows (their preview URLs expire): before they lapse, and
+  // when a tile's preview fails. Automatic refreshes are throttled so a
+  // genuinely missing file can never cause a request loop; Retry is immediate.
+  const refreshingRef = useRef(false);
+  const lastAutoRefreshRef = useRef(0);
+  const refreshLibrary = useCallback(async (manual: boolean) => {
+    if (refreshingRef.current) return;
+    const now = Date.now();
+    if (!manual && now - lastAutoRefreshRef.current < 20_000) return;
+    lastAutoRefreshRef.current = now;
+    refreshingRef.current = true;
+    try {
+      const fresh: AdminUploadAsset[] = [];
+      for (let index = 1; index <= Math.max(1, pageRef.current); index += 1) fresh.push(...(await fetchLibrary(index)).assets);
+      setAssets((current) => mergeRefreshedLibraryAssets(current, fresh));
+    } catch {
+      // The tiles keep their placeholders and Retry; the next attempt may succeed.
+    } finally {
+      refreshingRef.current = false;
+    }
+  }, []);
+  useEffect(() => {
+    // Before the earliest link lapses (at most every 15 s, never for links
+    // that have already lapsed — those are the tiles' failure path).
+    const delay = libraryRefreshDelayMs(assets, Date.now(), 60_000, 15_000);
+    if (delay === null) return;
+    const timer = window.setTimeout(() => void refreshLibrary(true), delay);
+    return () => window.clearTimeout(timer);
+  }, [assets, refreshLibrary]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -345,7 +414,15 @@ export default function AdminUploadsPanel({ onInsertAsset, currentAssetIds = [] 
         </div>
       ) : assets.length ? (
         <div className="grid grid-cols-3 gap-2.5" data-upload-grid>
-          {assets.map((asset) => <Thumb key={asset.id} asset={asset} onPick={() => onInsertAsset(asset)} />)}
+          {assets.map((asset) => (
+            <Thumb
+              key={asset.id}
+              asset={asset}
+              onPick={() => onInsertAsset(asset)}
+              onUnavailable={() => void refreshLibrary(false)}
+              onRetry={() => void refreshLibrary(true)}
+            />
+          ))}
         </div>
       ) : (
         !error && <p className="text-[14px] text-[#303839]/60">No images yet. Upload one and it stays here for every product.</p>

@@ -18,7 +18,9 @@ const externalBaseUrl = process.env.E2E_BASE_URL;
  *  - the dev server uses its own port and build folder, so it can run beside
  *    a developer's normal `npm run dev`.
  */
-export const STUB_SUPABASE_URL = "http://127.0.0.1:54399";
+// E2E_STUB_SUPABASE_PORT lets a second stub-mode run (own E2E_PORT and
+// NEXT_DIST_DIR) start its own stand-in beside one that is already running.
+export const STUB_SUPABASE_URL = `http://127.0.0.1:${Number(process.env.E2E_STUB_SUPABASE_PORT) || 54399}`;
 const localStubMode = !externalBaseUrl && !process.env.E2E_SUPABASE_URL;
 if (localStubMode) {
   process.env.NEXT_PUBLIC_SUPABASE_URL = STUB_SUPABASE_URL;

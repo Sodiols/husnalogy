@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { uploadBuilderImage, type BuilderAsset } from "./builder-utils";
+import LibraryThumb from "./LibraryThumb";
 
 /**
  * The media manager: the studio's whole image library — search, bulk upload,
@@ -323,7 +324,7 @@ export default function AdminMediaLibrary({ onInsertAsset, currentAssetIds = [] 
             {assets.map((asset) => (
               <article key={asset.id} className="group relative min-w-0 overflow-hidden rounded-xl border border-[#303839]/10 bg-white transition-colors duration-200 hover:border-[#303839]/40">
                 <button type="button" onClick={() => onInsertAsset(asset)} className="block w-full cursor-pointer text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#303839]" aria-label={`Add ${asset.title} to the current page`}>
-                  <span className="grid aspect-square place-items-center overflow-hidden bg-[#F8F6F1] p-2"><img src={asset.thumbnailUrl || asset.editorUrl || asset.url} alt="" loading="lazy" draggable={false} className="max-h-full max-w-full object-contain" /></span>
+                  <span className="grid aspect-square place-items-center overflow-hidden bg-[#F8F6F1] p-2"><LibraryThumb asset={asset} className="max-h-full max-w-full object-contain" /></span>
                   <span className="block p-2 pr-10">
                     <span className="block truncate text-xs font-extrabold text-[#303839]" title={asset.title}>{asset.displayName || asset.title}</span>
                     {asset.originalFilename && asset.originalFilename !== asset.title && <span className="mt-0.5 block truncate text-[9px] text-[#303839]/45" title={asset.originalFilename}>{asset.originalFilename}</span>}

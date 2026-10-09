@@ -8,6 +8,7 @@ import { loadNormalizedMockupTemplate } from "@/lib/customizer/mockup-store";
 import { resolveSessionTemplate } from "@/lib/customizer/versions";
 import { EXACT_VERSION_UNAVAILABLE_MESSAGE } from "@/lib/customizer/version-pin";
 import { logServerFailure } from "@/lib/core/server-errors";
+import { PRIVATE_ROBOTS } from "@/lib/seo/metadata";
 
 export const dynamic = "force-dynamic";
 
@@ -16,7 +17,7 @@ export async function generateMetadata({ params }: any) {
   const product = await getProductBySlug(slug);
   return {
     title: product ? `Personalize ${product.title}` : "Personalize",
-    robots: { index: false },
+    robots: PRIVATE_ROBOTS,
   };
 }
 

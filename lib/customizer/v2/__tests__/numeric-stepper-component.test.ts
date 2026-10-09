@@ -54,7 +54,7 @@ describe("editable numeric stepper component contract", () => {
     expect(gridToolbar).toContain("disabled={!(permissions.zoomImage || permissions.cropImage)}");
   });
 
-  it("keeps the customer toolbar on direct numeric inputs and the admin toolbar on visible steppers", () => {
+  it("gives the customer and admin toolbars the same visible font-size, spacing and line-height steppers", () => {
     const adminToolbar = read("app/admin/dashboard/design-builder/AdminContextToolbar.tsx");
     const customerToolbar = read("app/components/customizer/CustomerContextToolbar.tsx");
     expect(component).toContain("showStepButtons?: boolean");
@@ -64,8 +64,12 @@ describe("editable numeric stepper component contract", () => {
     expect(customerToolbar).toContain('label="Font size"');
     expect(customerToolbar).toMatch(/label="Letter spac(?:e|ing)"/);
     expect(customerToolbar).toContain('label="Line height"');
-    // The customer toolbar keeps its label-only numeric fields.
-    expect(customerToolbar).toContain("showStepButtons={false}");
+    // The customer toolbar matches the studio's "Font size − 17 +" steppers.
+    expect(customerToolbar).toContain("<ToolbarStepper");
+    const kit = read("app/components/customizer/CustomerToolbarKit.tsx");
+    expect(kit).toMatch(/showStepButtons\s*\r?\n/);
+    expect(kit).toContain('stepIcons="plusMinus"');
+    expect(customerToolbar).not.toContain("showStepButtons={false}");
     // The admin toolbar now shows explicit decrease/increase buttons (spec §9):
     // a bare `showStepButtons` prop (true), not `showStepButtons={false}`.
     // Matched line-ending agnostically so a CRLF checkout cannot break it.

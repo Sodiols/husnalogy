@@ -18,6 +18,8 @@
  * Operates on the flat template shape the Design Studio edits.
  */
 
+import { pageSafeInsets } from "./safe-area";
+
 export type CardSizePreset = {
   id: string;
   label: string;
@@ -316,7 +318,21 @@ export function changeTemplateOrientation(
 
   const layers = Array.isArray(template?.layers) ? template.layers : [];
   const content = designContentBounds(layers);
-  const safe = template?.safeArea || {};
+  // Every page's own safe area counts (Front and Back may differ): the design
+  // is fitted inside the tightest one so nothing crosses any page's line.
+  const pageIds = (Array.isArray(template?.pages) && template.pages.length ? template.pages : [null]).map((page: any) => page?.id ?? null);
+  const safe = pageIds.reduce(
+    (acc: any, id: string | null) => {
+      const own = pageSafeInsets(template, id);
+      return {
+        left: Math.max(acc.left, own.left),
+        right: Math.max(acc.right, own.right),
+        top: Math.max(acc.top, own.top),
+        bottom: Math.max(acc.bottom, own.bottom),
+      };
+    },
+    { left: 0, right: 0, top: 0, bottom: 0 },
+  );
   const availableW = Math.max(1, widthPx - num(safe.left) - num(safe.right));
   const availableH = Math.max(1, heightPx - num(safe.top) - num(safe.bottom));
 

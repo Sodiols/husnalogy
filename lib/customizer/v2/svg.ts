@@ -24,6 +24,7 @@ import { getGridSlotRect, normalizeGridSlot } from "./grids";
 import { hasImageFilters, imageFilterSvgPrimitives } from "./image-filters";
 import { resolveImageDrawBoxFromTransform } from "./image-crop";
 import { normalizeQRCodeStyle, qrModuleRects } from "./qr";
+import { pageSafeBounds } from "./safe-area";
 
 export type SvgBuildOptions = {
   template: any;
@@ -383,14 +384,8 @@ export function buildPageSvg(options: SvgBuildOptions): string {
   const totalW = pageWidth + bleed.left + bleed.right;
   const totalH = pageHeight + bleed.top + bleed.bottom;
 
-  // Auto-width text may grow only up to the safe area.
-  const safe = template?.safeArea || {};
-  const safeBounds: SafeBounds = {
-    left: Number(safe.left) || 0,
-    top: Number(safe.top) || 0,
-    right: pageWidth - (Number(safe.right) || 0),
-    bottom: pageHeight - (Number(safe.bottom) || 0),
-  };
+  // Auto-width text may grow only up to THIS page's safe area.
+  const safeBounds: SafeBounds = pageSafeBounds(template, pageId);
 
   const page = getPageById(template, pageId);
   const layers = getEffectiveLayersForPage(template, pageId, editorState || undefined);

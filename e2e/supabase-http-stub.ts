@@ -10,7 +10,11 @@
  *   GET  /rest/v1/profiles    → that account's profile (role: customer)
  *   GET  /rest/v1/products    → ONE fixed, public catalogue product
  *                               (STUB_CATALOGUE_PRODUCT), so the storefront's
- *                               listing and product page render real cards
+ *                               listing and product page render real cards,
+ *                               plus unlisted rows (draft / hidden / direct /
+ *                               deleted) that must never be listed or indexed
+ *   POST /rest/v1/contact_messages → echoes the inserted row, as a saved
+ *                               enquiry would be (nothing is stored)
  *   any  /rest/v1/*           → [] (otherwise an empty project: settings fall
  *                               back to their defaults)
  *   any  /storage/*, other    → 404
@@ -47,6 +51,20 @@ export const STUB_CATALOGUE_PRODUCT = {
   product_customizer_templates: [],
   reviews: [],
 };
+
+/** Rows the storefront must keep out of listings, the sitemap and search. */
+export const STUB_UNLISTED_PRODUCTS = [
+  { status: "draft", visibility: "public", slug: "e2e-stub-draft-card" },
+  { status: "active", visibility: "hidden", slug: "e2e-stub-hidden-card" },
+  { status: "active", visibility: "direct", slug: "e2e-stub-direct-link-card" },
+  { status: "deleted", visibility: "public", slug: "e2e-stub-deleted-card" },
+].map((row, index) => ({
+  ...STUB_CATALOGUE_PRODUCT,
+  ...row,
+  id: `e2e0c0de-0000-4000-8000-00000000c10${index}`,
+  title: `Stub ${row.slug.replace("e2e-stub-", "").replace(/-/g, " ")}`,
+  featured: false,
+}));
 
 /** The PostgREST filters the storefront uses on products (eq / neq / in); anything else is ignored. */
 function matchesFilters(row: Record<string, unknown>, params: URLSearchParams): boolean {
@@ -97,9 +115,23 @@ export async function startSupabaseHttpStub(): Promise<void> {
       return single ? send(200, profile) : send(200, profile ? [profile] : []);
     }
     if (url.pathname === "/rest/v1/products") {
-      const rows = [STUB_CATALOGUE_PRODUCT].filter((row) => matchesFilters(row, url.searchParams));
+      const rows = [STUB_CATALOGUE_PRODUCT, ...STUB_UNLISTED_PRODUCTS].filter((row) => matchesFilters(row, url.searchParams));
       const single = String(request.headers.accept || "").includes("vnd.pgrst.object");
       return single ? send(rows.length ? 200 : 406, rows[0] ?? { code: "PGRST116", message: "no rows" }) : send(200, rows);
+    }
+    if (url.pathname === "/rest/v1/contact_messages" && request.method === "POST") {
+      let body = "";
+      request.on("data", (chunk) => (body += chunk));
+      request.on("end", () => {
+        try {
+          const row = JSON.parse(body || "{}");
+          const single = String(request.headers.accept || "").includes("vnd.pgrst.object");
+          send(201, single ? (Array.isArray(row) ? row[0] : row) : [row].flat());
+        } catch {
+          send(400, { message: "invalid JSON" });
+        }
+      });
+      return;
     }
     if (url.pathname.startsWith("/rest/v1/")) {
       const single = String(request.headers.accept || "").includes("vnd.pgrst.object");

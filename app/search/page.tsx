@@ -1,12 +1,10 @@
 import { getActiveProducts, getFilterOptions } from "@/lib/products";
 import ProductListingPage from "../products/ProductListingPage";
+import { noindexPageMetadata } from "@/lib/seo/metadata";
 
 export const dynamic = "force-dynamic";
 
-export const metadata = {
-  title: "Search",
-  description: "Search Husnalogy wedding cards, invitations, gifts and stationery designs.",
-};
+export const metadata = noindexPageMetadata("Search", "Search Husnalogy wedding invitations, cards, gifts and stationery designs.");
 
 export default async function SearchPage({ searchParams }) {
   const params = await searchParams;

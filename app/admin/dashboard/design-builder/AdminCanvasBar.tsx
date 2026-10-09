@@ -81,8 +81,8 @@ const ICONS = {
 };
 
 const SHADOW = "shadow-[0_2px_10px_rgba(31,36,37,0.12)]";
-const CIRCLE = `grid h-11 w-11 cursor-pointer place-items-center rounded-full bg-white text-[#1f2425] ${SHADOW} transition-colors hover:bg-[#F2F3F5] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#27307A] focus-visible:ring-offset-2 focus-visible:ring-offset-[#F3F1EC] disabled:cursor-not-allowed disabled:opacity-40`;
-const CIRCLE_ACTIVE = `grid h-11 w-11 cursor-pointer place-items-center rounded-full bg-[#E3E5F2] text-[#27307A] ${SHADOW} focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#27307A] focus-visible:ring-offset-2 focus-visible:ring-offset-[#F3F1EC]`;
+const CIRCLE = `grid h-10 w-10 sm:h-11 sm:w-11 cursor-pointer place-items-center rounded-full bg-white text-[#1f2425] ${SHADOW} transition-colors hover:bg-[#F2F3F5] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#27307A] focus-visible:ring-offset-2 focus-visible:ring-offset-[#F3F1EC] disabled:cursor-not-allowed disabled:opacity-40`;
+const CIRCLE_ACTIVE = `grid h-10 w-10 sm:h-11 sm:w-11 cursor-pointer place-items-center rounded-full bg-[#E3E5F2] text-[#27307A] ${SHADOW} focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#27307A] focus-visible:ring-offset-2 focus-visible:ring-offset-[#F3F1EC]`;
 const ZOOM_PRESET_PERCENTS = [25, 50, 75, 100, 150, 200, 300];
 
 /** A labelled on/off switch with one line of explanation, as in the reference settings. */
@@ -121,12 +121,12 @@ export default function AdminCanvasBar(props: Props) {
   const pill = "inline-flex h-8 cursor-pointer items-center rounded-full border-[1.5px] border-[#27307A] bg-white px-3 text-[13px] font-semibold text-[#27307A] transition-colors hover:bg-[#27307A]/[0.05] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#27307A] focus-visible:ring-offset-2 focus-visible:ring-offset-white";
 
   return (
-    <div data-admin-canvas-bar className="pointer-events-auto flex items-center gap-2.5">
+    <div data-admin-canvas-bar className="pointer-events-auto flex max-w-full flex-wrap items-center justify-center gap-1.5 sm:flex-nowrap sm:gap-2.5">
       {/* Zoom: out · the value (typed or chosen) · in */}
       <button type="button" data-shape="round" aria-label="Zoom out" title="Zoom out" disabled={props.zoom <= ZOOM_MIN + 0.001} onClick={() => props.onZoomChange(nextZoomPreset(props.zoom, -1))} className={CIRCLE}>
         {ICONS.minus}
       </button>
-      <div role="group" aria-label="Canvas zoom" className={`flex h-11 items-center rounded-lg bg-white pl-1 pr-0.5 ${SHADOW}`}>
+      <div role="group" aria-label="Canvas zoom" className={`flex h-10 items-center rounded-lg bg-white pl-1 pr-0.5 sm:h-11 ${SHADOW}`}>
         <EditableNumericStepper
           label="Canvas zoom"
           value={percent}
@@ -216,7 +216,7 @@ export default function AdminCanvasBar(props: Props) {
         )}
       </ToolbarPopover>
 
-      <a href="/support" target="_blank" rel="noopener noreferrer" aria-label="Help center" title="Help center" className={CIRCLE}>
+      <a href="/support" target="_blank" rel="noopener noreferrer" aria-label="Help center" title="Help center" className={`${CIRCLE} max-sm:hidden`}>
         {ICONS.help}
       </a>
 

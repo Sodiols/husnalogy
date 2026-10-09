@@ -6,6 +6,7 @@ import { CUSTOMIZER_FEATURE_FLAGS } from "@/lib/customizer/v2/feature-flags";
 import { PRODUCTION_RENDER_LIMITS } from "@/lib/customizer/production-limits";
 import { GRID_PRESETS } from "@/lib/customizer/v2/grids";
 import EditableNumericStepper from "@/app/components/customizer/EditableNumericStepper";
+import { resolvePageSafeArea, setPageSafeArea } from "@/lib/customizer/v2/safe-area";
 import {
   CARD_SIZE_PRESETS,
   artboardOf,
@@ -106,6 +107,15 @@ export default function AdminTemplateSettings({ template, onChange, productName,
       }).template,
     );
   const patchSettings = (updates: any) => patch({ settings: { ...settings, ...updates } });
+  // Safe area: the template's (inherited by every page), or one page's own.
+  const [safeScope, setSafeScope] = useState<string>("all");
+  const scopedPage = safeScope === "all" ? null : (t.pages || []).find((page: any) => page.id === safeScope) || null;
+  const scopedSafe = scopedPage ? resolvePageSafeArea(t, scopedPage.id) : null;
+  const pagesWithOwnSafe = (t.pages || []).filter((page: any) => resolvePageSafeArea(t, page.id).ownInsets);
+  const commitSafeSide = (side: string, value: number) => {
+    if (!scopedPage || !scopedSafe) patch({ safeArea: { ...safe, [side]: value } });
+    else onChange(setPageSafeArea(t, scopedPage.id, { ...scopedSafe.insets, [side]: value }));
+  };
 
   useEffect(() => {
     if (!productId) return;
@@ -347,20 +357,49 @@ export default function AdminTemplateSettings({ template, onChange, productName,
           </Field>
         </div>
 
-        <div>
-          <span className="mb-1 block text-[10px] font-bold uppercase tracking-wide text-[#303839]/55">Safe area (px)</span>
+        <div data-safe-area-settings>
+          <div className="mb-1 flex items-center justify-between gap-2">
+            <span className="block text-[10px] font-bold uppercase tracking-wide text-[#303839]/55">Safe area (px)</span>
+            {(t.pages || []).length > 1 && (
+              <select
+                aria-label="Safe area applies to"
+                value={safeScope}
+                onChange={(event) => setSafeScope(event.target.value)}
+                className="h-7 rounded-md border border-[#303839]/15 bg-white px-1.5 text-[11px] text-[#303839] outline-none focus:border-[#303839]/60"
+              >
+                <option value="all">All pages</option>
+                {(t.pages || []).map((page: any) => (
+                  <option key={page.id} value={page.id}>{page.label || page.id} only</option>
+                ))}
+              </select>
+            )}
+          </div>
           <div className="grid grid-cols-4 gap-2">
             {["top", "right", "bottom", "left"].map((side) => (
               <SettingStepper
                 key={side}
-                label={`Safe area ${side}`}
-                value={safe[side] ?? 0}
+                label={scopedPage ? `${scopedPage.label || scopedPage.id} safe area ${side}` : `Safe area ${side}`}
+                value={scopedSafe ? (scopedSafe.insets as any)[side] : safe[side] ?? 0}
                 minimum={0}
                 maximum={5000}
-                onCommit={(value: number) => patch({ safeArea: { ...safe, [side]: value } })}
+                onCommit={(value: number) => commitSafeSide(side, value)}
               />
             ))}
           </div>
+          {scopedPage && scopedSafe?.ownInsets && (
+            <button
+              type="button"
+              onClick={() => onChange(setPageSafeArea(t, scopedPage.id, null))}
+              className="mt-1.5 text-[11px] font-semibold text-[#27307A] underline underline-offset-2"
+            >
+              Use the all-pages safe area for {scopedPage.label || scopedPage.id}
+            </button>
+          )}
+          {!scopedPage && pagesWithOwnSafe.length > 0 && (
+            <p className="mt-1.5 text-[11px] leading-snug text-[#303839]/60">
+              {pagesWithOwnSafe.map((page: any) => page.label || page.id).join(", ")} {pagesWithOwnSafe.length === 1 ? "has its" : "have their"} own safe area.
+            </p>
+          )}
         </div>
         <div>
           <span className="mb-1 block text-[10px] font-bold uppercase tracking-wide text-[#303839]/55">Bleed (px)</span>

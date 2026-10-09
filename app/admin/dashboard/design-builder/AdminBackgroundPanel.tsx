@@ -1,7 +1,10 @@
 "use client";
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { uploadBuilderImage, type BuilderAsset } from "./builder-utils";
+import type { BuilderAsset } from "./builder-utils";
+import { useBackgroundUpload } from "./use-background-upload";
+import BackgroundUploadStatus from "./BackgroundUploadStatus";
+import { pageHasBackgroundImage } from "@/lib/customizer/v2/page-background";
 import { useCanvasImageSource } from "@/app/components/customizer/canvas-image-source";
 import {
   BACKGROUND_SWATCHES,
@@ -14,8 +17,8 @@ import { rememberRecentColor, useRecentColors } from "@/lib/customizer/v2/studio
 
 /**
  * Background of the page being edited: its image and its colour. Every
- * control writes the page's own `backgroundImage` / `backgroundColor` through
- * the studio's page command, so each change is one undo step, is saved with
+ * control changes the page's own background picture / `backgroundColor` through
+ * the studio's page commands, so each change is one undo step, is saved with
  * the design, and draws identically in the studio, the customer editor and
  * the server render. Nothing here keeps a background of its own.
  *
@@ -29,6 +32,10 @@ type Props = {
   /** The design as it was opened: the source of its original palette. */
   paletteSource?: any;
   onPatchPage: (pageId: string, patch: Record<string, unknown>) => void;
+  /** Makes a library asset the page's background picture (one undo step). */
+  onSetBackgroundImage: (pageId: string, asset: BuilderAsset) => void;
+  /** Removes the page's background picture and every reference to it (one undo step). */
+  onRemoveBackgroundImage: (pageId: string) => void;
   /** Adds the page's background layer, or selects it when there already is one. */
   onBackgroundLayer: () => void;
   hasBackgroundLayer: boolean;
@@ -74,11 +81,20 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
   );
 }
 
-export default function AdminBackgroundPanel({ template, activePage, paletteSource, onPatchPage, onBackgroundLayer, hasBackgroundLayer }: Props) {
+export default function AdminBackgroundPanel({
+  template,
+  activePage,
+  paletteSource,
+  onPatchPage,
+  onSetBackgroundImage,
+  onRemoveBackgroundImage,
+  onBackgroundLayer,
+  hasBackgroundLayer,
+}: Props) {
   const page = (template?.pages || []).find((entry: any) => entry.id === activePage) || null;
   const input = useRef<HTMLInputElement>(null);
   const colourInput = useRef<HTMLInputElement>(null);
-  const [busy, setBusy] = useState(false);
+  const upload = useBackgroundUpload(onSetBackgroundImage);
   const [error, setError] = useState("");
   const [imageOpen, setImageOpen] = useState(true);
   const [query, setQuery] = useState("");
@@ -147,30 +163,10 @@ export default function AdminBackgroundPanel({ template, activePage, paletteSour
 
   if (!page) return null;
 
-  const setImage = (asset: BuilderAsset) =>
-    onPatchPage(page.id, {
-      backgroundImage: asset.editorUrl || asset.url,
-      backgroundAssetId: asset.id,
-      bucket: asset.bucket,
-      originalPath: asset.originalPath,
-      editorPath: asset.editorPath,
-      thumbnailPath: asset.thumbnailPath,
-    });
-
-  const upload = async (file?: File) => {
-    if (!file) return;
-    setBusy(true);
-    setError("");
-    try {
-      setImage(await uploadBuilderImage(file, "background"));
-    } catch (cause) {
-      setError((cause as Error).message || "Upload failed.");
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const hasImage = Boolean(page.backgroundImage || page.backgroundAssetId);
+  const setImage = (asset: BuilderAsset) => onSetBackgroundImage(page.id, asset);
+  const hasImage = pageHasBackgroundImage(page);
+  // An upload started from this panel for another page reports there, not here.
+  const uploadState = upload.state.status !== "idle" && upload.state.pageId === page.id ? upload.state : { status: "idle" as const };
   const pickWithEyedropper = async () => {
     const Dropper = (window as any).EyeDropper;
     if (!Dropper) {
@@ -265,19 +261,20 @@ export default function AdminBackgroundPanel({ template, activePage, paletteSour
                   </svg>
                 )}
               </span>
-              <button data-shape="round" type="button" className={OUTLINE_BUTTON} disabled={busy} onClick={() => input.current?.click()}>
-                {busy ? "Uploading…" : hasImage ? "Replace Image" : "Upload Image"}
+              <button data-shape="round" type="button" className={OUTLINE_BUTTON} disabled={upload.busy} onClick={() => input.current?.click()}>
+                {upload.busy ? "Uploading…" : hasImage ? "Replace Image" : "Upload Image"}
               </button>
             </div>
             {hasImage && (
               <button
                 type="button"
-                onClick={() => onPatchPage(page.id, { backgroundImage: "", backgroundAssetId: "" })}
+                onClick={() => onRemoveBackgroundImage(page.id)}
                 className="justify-self-start text-[13px] font-semibold text-[#27307A] underline underline-offset-2"
               >
                 Remove background image
               </button>
             )}
+            <BackgroundUploadStatus state={uploadState} onRetry={upload.retry} onDismiss={upload.dismiss} />
           </div>
         )}
         {error && <p role="alert" className="text-[12px] font-semibold text-red-700">{error}</p>}
@@ -381,7 +378,7 @@ export default function AdminBackgroundPanel({ template, activePage, paletteSour
         tabIndex={-1}
         aria-label="Background image file"
         onChange={(event) => {
-          void upload(event.target.files?.[0]);
+          void upload.start(event.target.files?.[0], page.id);
           event.target.value = "";
         }}
       />

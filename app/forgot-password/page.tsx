@@ -1,9 +1,8 @@
 import { Suspense } from "react";
 import AuthPage from "../components/auth-page";
+import { noindexPageMetadata } from "@/lib/seo/metadata";
 
-export const metadata = {
-  title: "Forgot Password",
-};
+export const metadata = noindexPageMetadata("Forgot Password");
 
 export default function ForgotPasswordPage() {
   return (

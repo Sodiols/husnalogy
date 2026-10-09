@@ -166,8 +166,12 @@ describe("every render path signs its own URLs", () => {
   });
 
   it("uses the thumbnail only in the uploads library", () => {
+    // Tiles preview through LibraryThumb (thumbnail first, larger previews as
+    // fallbacks); inserting hands over the asset itself.
     const panel = read("app/admin/dashboard/design-builder/AdminUploadsPanel.tsx");
-    expect(panel).toContain("asset.thumbnailUrl || asset.editorUrl || asset.url");
+    expect(panel).toContain("<LibraryThumb");
+    expect(panel).toContain("onPick={() => onInsertAsset(asset)}");
+    expect(read("lib/customizer/v2/library-thumbnail.ts")).toContain("[asset.thumbnailUrl, asset.editorUrl, asset.url]");
   });
 });
 

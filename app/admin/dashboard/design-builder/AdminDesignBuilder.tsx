@@ -72,6 +72,7 @@ import {
   templateSafeBounds,
 } from "@/lib/customizer/v2/text-layout";
 import { resolveLayerSelectionGeometry } from "@/lib/customizer/v2/selection-geometry";
+import { removePageBackgroundImage, setPageBackgroundImage, type PageBackgroundAsset } from "@/lib/customizer/v2/page-background";
 import { resolveSelection, sanitizeSelection, selectionsEqual, type SelectionIntent } from "@/lib/customizer/v2/selection";
 import {
   canonicalTextLayerUpdate,
@@ -87,8 +88,12 @@ import { formatCustomizerVersion, nextCustomizerVersion, type CustomizerUpdateTy
 import {
   asProductSaveResult,
   createRevisionTracker,
+  describeStudioSaveStatus,
   requestTemplatePublication,
   saveThenPublish,
+  studioAutosaveRetryDelayMs,
+  studioMayAutosave,
+  type ProductSaveResult,
   type RevisionTracker,
 } from "@/lib/customizer/studio-save";
 import { applyCanvasLayerPatches,
@@ -225,7 +230,7 @@ function constrainTextLayerBox(template: any, layerId: string): any {
         growthDirection: style.growthDirection,
       },
       builderTextMeasure,
-      templateSafeBounds(template),
+      templateSafeBounds(template, layer.page),
     );
     if (box.width === layer.width && box.height === layer.height && box.x === layer.x && box.y === layer.y) return template;
     return updateLayer(template, layerId, { width: box.width, height: box.height, x: box.x, y: box.y });
@@ -288,6 +293,7 @@ export default function AdminDesignBuilder({
   template,
   onChange,
   productName = "Product",
+  canCreateDraft = false,
   product = null,
   productOptions = {},
   quantityOptions = [],
@@ -297,9 +303,12 @@ export default function AdminDesignBuilder({
   productStatus = "draft",
   saving = false,
   errorMessage = "",
+  onUnsavedChange,
 }: any) {
   const t = template || {};
   const [studioOpen, setStudioOpen] = useState(false);
+  // The design as the server last confirmed it ("Discard changes" returns here).
+  const lastSavedTemplateRef = useRef(template);
   // The canvas INTERACTION mode, owned by the shared tool state machine
   // (spec §44). Insertion tools are one-shot commands and library panels are
   // inspector content, so neither can leave the editor stuck in a mode that
@@ -449,6 +458,11 @@ export default function AdminDesignBuilder({
     snapshot();
     apply(next);
   };
+  // Page background picture commands. They read the live template, so an
+  // upload that finishes after other edits never rolls those edits back.
+  const setPageBackground = (pageId: string, asset: PageBackgroundAsset) =>
+    commit(setPageBackgroundImage(tRef.current, pageId, asset));
+  const removePageBackground = (pageId: string) => commit(removePageBackgroundImage(tRef.current, pageId));
   const undo = () => {
     if (!undoStack.current.length) return;
     redoStack.current.push(historyEntry());
@@ -1016,20 +1030,12 @@ export default function AdminDesignBuilder({
 
   const resolvedGeometryForSelection = (ids = selectedLayerIds) => {
     const current = tRef.current;
-    const canvasWidth = Number(current?.canvasWidthPx) || 1500;
-    const canvasHeight = Number(current?.canvasHeightPx) || 2100;
-    const safeBounds = {
-      left: Number(current?.safeArea?.left) || 0,
-      top: Number(current?.safeArea?.top) || 0,
-      right: canvasWidth - (Number(current?.safeArea?.right) || 0),
-      bottom: canvasHeight - (Number(current?.safeArea?.bottom) || 0),
-    };
     return ids.map((id) => getLayer(current, id)).filter(Boolean).map((layer: any) => {
       const field = layer.fieldId ? getFieldById(current, layer.fieldId) : null;
       return resolveLayerSelectionGeometry(layer, {
         text: String(resolveLayerText(layer, field, {})),
         measure: builderTextMeasure,
-        safeBounds,
+        safeBounds: templateSafeBounds(current, layer.page),
       });
     });
   };
@@ -1336,9 +1342,10 @@ export default function AdminDesignBuilder({
   /* ----- crash-safe recovery and autosave ----- */
   // Every unsaved change is kept in this browser (lib/customizer/studio-
   // recovery), so a refresh, a closed tab or a crash never loses it; reopening
-  // the studio offers it back. A product that already exists is also saved to
-  // the server automatically once editing pauses. A new product is never
-  // created by autosave — it is created by Save Draft or Publish.
+  // the studio offers it back. Once editing pauses the design is also saved to
+  // the server: an existing product's draft is updated, and a NEW product is
+  // created as a draft (never published, never visible to customers) as soon
+  // as it has a name. Until then the header says "Local only".
   const productId = product?.id ? String(product.id) : "";
   // Recovery copies belong to the signed-in studio account: another admin or
   // designer on this browser never receives them (lib/customizer/studio-recovery).
@@ -1354,6 +1361,16 @@ export default function AdminDesignBuilder({
   const recoveryTimerRef = useRef<number | null>(null);
   const [autosaving, setAutosaving] = useState(false);
   const autosaveInFlightRef = useRef<Promise<unknown> | null>(null);
+  // The last save attempt's failure (cleared by the next success), the
+  // connection, and the retry schedule for a failed autosave.
+  const [saveFailure, setSaveFailure] = useState<Extract<ProductSaveResult, { ok: false }> | null>(null);
+  const [online, setOnline] = useState(() => (typeof navigator === "undefined" ? true : navigator.onLine !== false));
+  const retryTimerRef = useRef<number | null>(null);
+  const retryAttemptRef = useRef(0);
+  const clearRetry = () => {
+    if (retryTimerRef.current !== null) window.clearTimeout(retryTimerRef.current);
+    retryTimerRef.current = null;
+  };
   /** Write (or retire) the local copy now. Suspended while a recovered copy awaits the admin's decision, so it is never overwritten unseen. */
   const persistRecoveryNow = () => {
     if (recoveryTimerRef.current !== null) {
@@ -1426,8 +1443,10 @@ export default function AdminDesignBuilder({
     persistRecoveryNow();
   };
   const autosave = async () => {
-    if (!productId || busyRef.current || autosaveInFlightRef.current || recoveryOfferRef.current) return;
-    if (!revisions.isDirty()) return;
+    if (busyRef.current || autosaveInFlightRef.current || recoveryOfferRef.current) return;
+    const online = typeof navigator === "undefined" || navigator.onLine !== false;
+    if (!studioMayAutosave({ hasServerRecord: Boolean(productId), canCreateDraft, dirty: revisions.isDirty(), online })) return;
+    clearRetry();
     setAutosaving(true);
     const run = saveCurrentRevision();
     autosaveInFlightRef.current = run;
@@ -1438,18 +1457,60 @@ export default function AdminDesignBuilder({
       setAutosaving(false);
     }
   };
+  /**
+   * After a failed save (autosave, Save Draft or the save before a publish):
+   * a failed request is retried with backoff, a busy form shortly; a refused
+   * save (no name, an invalid field) waits for the next edit.
+   */
+  const scheduleSaveRetry = (reason: "validation" | "request" | "busy") => {
+    if (reason === "validation") return;
+    clearRetry();
+    retryAttemptRef.current += 1;
+    const delay = reason === "busy" ? 1_500 : studioAutosaveRetryDelayMs(retryAttemptRef.current);
+    retryTimerRef.current = window.setTimeout(() => {
+      retryTimerRef.current = null;
+      void autosaveRef.current();
+    }, delay);
+  };
   const autosaveRef = useRef(autosave);
   autosaveRef.current = autosave;
   // Autosave once editing pauses — never in the middle of typing, a toolbar
   // drag or a canvas gesture, which each end with a change that re-arms it.
+  const mayAutosave = Boolean(productId) || canCreateDraft;
   useEffect(() => {
-    if (!studioOpen || !productId || !dirtySinceSave || recoveryOffer || editingTextLayerId) return;
+    // Not limited to an open studio: leaving it with unsaved changes (Back to
+    // Product) still saves them once the pause has passed.
+    if (!mayAutosave || !dirtySinceSave || recoveryOffer || (studioOpen && editingTextLayerId)) return;
     const timer = window.setTimeout(() => {
       if (textStylePreviewRef.current || pendingGestureEntryRef.current) return;
       void autosaveRef.current();
     }, STUDIO_AUTOSAVE_DELAY_MS);
     return () => window.clearTimeout(timer);
-  }, [template, dirtySinceSave, studioOpen, productId, recoveryOffer, editingTextLayerId]);
+  }, [template, dirtySinceSave, studioOpen, mayAutosave, recoveryOffer, editingTextLayerId]);
+  // The connection: going offline is reported; coming back saves at once.
+  useEffect(() => {
+    const goOnline = () => {
+      setOnline(true);
+      if (revisions.isDirty()) void autosaveRef.current();
+    };
+    const goOffline = () => setOnline(false);
+    window.addEventListener("online", goOnline);
+    window.addEventListener("offline", goOffline);
+    return () => {
+      window.removeEventListener("online", goOnline);
+      window.removeEventListener("offline", goOffline);
+    };
+  }, [studioOpen, revisions]);
+  useEffect(() => () => clearRetry(), []);
+  // Leaving the studio (declared here, above the early return for a disabled
+  // customizer, so the hook order never changes).
+  const [exitPrompt, setExitPrompt] = useState<null | { phase: "ask" | "saving" | "failed"; error?: string }>(null);
+  // The product form (and the dashboard around it) asks before discarding work.
+  const onUnsavedChangeRef = useRef(onUnsavedChange);
+  onUnsavedChangeRef.current = onUnsavedChange;
+  useEffect(() => {
+    onUnsavedChangeRef.current?.(dirtySinceSave);
+  }, [dirtySinceSave]);
 
   /* ----- artboard orientation ----- */
   // The canvas bar's Vertical / Horizontal control runs the SAME conversion as
@@ -1464,11 +1525,7 @@ export default function AdminDesignBuilder({
 
   /* ----- save / publish ----- */
   const isPublished = productStatus === "active";
-  const statusChips = [
-    isPublished ? "Published" : "Draft",
-    t.enabled ? "Active" : "Inactive",
-    ...(autosaving ? ["Autosaving"] : dirtySinceSave ? ["Unsaved"] : []),
-  ];
+  const statusChips = [isPublished ? "Published" : "Draft", t.enabled ? "Active" : "Inactive"];
 
   const requestPublish = () => {
     const result = validateCustomizerTemplateDetailed(tRef.current);
@@ -1481,6 +1538,15 @@ export default function AdminDesignBuilder({
   // (two clicks in one frame); the state drives the disabled buttons.
   const busyRef = useRef(false);
   const [studioBusy, setStudioBusy] = useState<"" | "saving" | "publishing">("");
+  // Where the work is, stated only from what the server confirmed.
+  const saveStatus = describeStudioSaveStatus({
+    hasServerRecord: Boolean(productId),
+    dirty: dirtySinceSave,
+    saving: autosaving || studioBusy === "saving" || studioBusy === "publishing",
+    failure: saveFailure,
+    online,
+    canCreateDraft,
+  });
   const [versions, setVersions] = useState<any[]>([]);
   const currentPublished = versions[0] || null;
   const currentPublicVersion = currentPublished
@@ -1540,7 +1606,21 @@ export default function AdminDesignBuilder({
   const saveCurrentRevision = async () => {
     const revision = revisions.current;
     const keyBefore = recoveryKeyRef.current;
-    const result = asProductSaveResult(await onSave?.("template", { template: tRef.current }));
+    const sent = tRef.current;
+    let result: ProductSaveResult;
+    try {
+      result = asProductSaveResult(await onSave?.("template", { template: sent }));
+    } catch (error) {
+      result = { ok: false, reason: "request", error: (error as Error)?.message || "The design could not be saved." };
+    }
+    if (result.ok === false) {
+      if (result.reason !== "busy") setSaveFailure(result);
+      scheduleSaveRetry(result.reason);
+    } else {
+      setSaveFailure(null);
+      retryAttemptRef.current = 0;
+      lastSavedTemplateRef.current = sent;
+    }
     if (result.ok) {
       revisions.markSaved(revision);
       // The server now holds this revision: its local copy is no longer the
@@ -1597,6 +1677,61 @@ export default function AdminDesignBuilder({
       busyRef.current = false;
       setStudioBusy("");
     }
+  };
+
+  /* ----- leaving the studio ----- */
+  // Unsaved work (or a save still running) asks before the studio closes. The
+  // choices are only the ones that can really happen here: Save and exit
+  // (when the design can reach the server), keep the changes in the product
+  // form (when it cannot yet — it needs a name), Continue editing, or Discard
+  // changes (back to the design as the server last confirmed it). A failed
+  // save never closes the studio.
+  const canReachServer = Boolean(productId) || canCreateDraft;
+  const requestExit = () => {
+    if (busyRef.current) return;
+    if (!revisions.isDirty() && !autosaveInFlightRef.current) {
+      setStudioOpen(false);
+      return;
+    }
+    setExitPrompt({ phase: "ask" });
+  };
+  const saveAndExit = async () => {
+    if (busyRef.current) return;
+    setExitPrompt({ phase: "saving" });
+    await autosaveInFlightRef.current;
+    if (revisions.isDirty()) {
+      busyRef.current = true;
+      setStudioBusy("saving");
+      let result: ProductSaveResult;
+      try {
+        result = await saveCurrentRevision();
+      } finally {
+        busyRef.current = false;
+        setStudioBusy("");
+      }
+      if (result.ok === false || revisions.isDirty()) {
+        setExitPrompt({ phase: "failed", error: result.ok === false ? result.error : "Newer changes are not saved yet." });
+        return;
+      }
+    }
+    setExitPrompt(null);
+    setStudioOpen(false);
+  };
+  const keepAndExit = () => {
+    // The changes stay in the product form and in this browser's recovery copy.
+    persistRecoveryNow();
+    setExitPrompt(null);
+    setStudioOpen(false);
+  };
+  const discardAndExit = () => {
+    clearRetry();
+    apply(lastSavedTemplateRef.current, revisions.saved);
+    setSaveFailure(null);
+    clearStudioRecovery(studioStorage(), recoveryKeyRef.current);
+    setSelectedLayerIds([]);
+    setEditingGroupId(null);
+    setExitPrompt(null);
+    setStudioOpen(false);
   };
 
   const deactivate = () => {
@@ -1730,27 +1865,78 @@ export default function AdminDesignBuilder({
         templateName={settings.templateName || productName}
         productName={productName}
         statusChips={statusChips}
-        saveStatusLabel={studioBusy === "publishing" ? "Publishing…" : saving || studioBusy ? "Saving…" : ""}
+        saveStatus={saveStatus}
+        saveStatusLabel={studioBusy === "publishing" ? "Publishing…" : ""}
         tab={tab}
         onTabChange={setTab}
         canUndo={undoStack.current.length > 0}
         canRedo={redoStack.current.length > 0}
         onUndo={undo}
         onRedo={redo}
-        onBack={() => {
-          // Keep the studio open until its save/publish sequence finishes.
-          if (!busyRef.current) setStudioOpen(false);
-        }}
+        // Keeps the studio open while a save/publish sequence runs, and asks
+        // before leaving unsaved work.
+        onBack={requestExit}
         onSaveDraft={saveDraft}
         onPublish={requestPublish}
         publishLabel="Publish Changes"
         saving={Boolean(saving || studioBusy)}
       />
 
-      {errorMessage && (
+      {exitPrompt && (
+        <div className="fixed inset-0 z-[400] grid place-items-center bg-[#1f2425]/35 p-4" onKeyDown={(event) => event.key === "Escape" && exitPrompt.phase !== "saving" && setExitPrompt(null)}>
+          <div role="dialog" aria-modal="true" aria-labelledby="studio-exit-title" data-studio-exit className="w-full max-w-[440px] rounded-2xl bg-white p-6 shadow-[0_24px_60px_rgba(31,36,37,0.28)]">
+            <h2 id="studio-exit-title" className="text-[18px] font-semibold text-[#1f2425]">Leave the Design Studio?</h2>
+            <p className="mt-2 text-[14px] leading-relaxed text-[#303839]/80">
+              {exitPrompt.phase === "saving"
+                ? "Saving your design…"
+                : exitPrompt.phase === "failed"
+                  ? `Your design was not saved: ${exitPrompt.error} Nothing was lost — it is still here and on this device.`
+                  : autosaving
+                    ? "Your latest changes are still being saved."
+                    : canReachServer
+                      ? "You have changes that are not saved to the server yet."
+                      : "This design is only on this device. It can be saved once the product has a name."}
+            </p>
+            <div className="mt-5 flex flex-wrap justify-end gap-2">
+              <button type="button" disabled={exitPrompt.phase === "saving"} onClick={discardAndExit} className="mr-auto rounded-full px-4 py-2 text-[13px] font-semibold text-red-700 hover:bg-red-50 disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-700" data-shape="round">
+                Discard changes
+              </button>
+              <button type="button" autoFocus disabled={exitPrompt.phase === "saving"} onClick={() => setExitPrompt(null)} className="rounded-full border-[1.5px] border-[#27307A] px-4 py-2 text-[13px] font-semibold text-[#27307A] hover:bg-[#27307A]/[0.05] disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#27307A]" data-shape="round">
+                Continue editing
+              </button>
+              {canReachServer ? (
+                <button type="button" disabled={exitPrompt.phase === "saving"} onClick={() => void saveAndExit()} className="rounded-full bg-[#27307A] px-4 py-2 text-[13px] font-semibold text-white hover:bg-[#1f2766] disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#27307A] focus-visible:ring-offset-2" data-shape="round">
+                  {exitPrompt.phase === "saving" ? "Saving…" : exitPrompt.phase === "failed" ? "Try again" : "Save and exit"}
+                </button>
+              ) : (
+                <button type="button" onClick={keepAndExit} className="rounded-full bg-[#27307A] px-4 py-2 text-[13px] font-semibold text-white hover:bg-[#1f2766] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#27307A] focus-visible:ring-offset-2" data-shape="round">
+                  Keep changes and add a name
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+      {/* A failed save is announced once: the save-state line (reason, that the
+          work is kept, retry) replaces the form's own error line for it. */}
+      {errorMessage && !(saveFailure && saveStatus.alert && saveStatus.detail) && (
         <p className="border-b border-red-200 bg-red-50 px-4 py-2 text-xs font-bold text-red-700" role="alert">
           {errorMessage}
         </p>
+      )}
+      {saveStatus.alert && saveStatus.detail && (
+        <div
+          data-save-detail
+          role="alert"
+          className="flex flex-wrap items-center gap-3 border-b border-[#D4AF37]/40 bg-[#FFF6DD] px-4 py-2 text-xs font-semibold text-[#6b5414]"
+        >
+          <span>{saveStatus.detail}</span>
+          {saveStatus.flags.includes("Save failed") && saveFailure?.reason === "request" && online && (
+            <button type="button" onClick={() => void saveDraft()} className="underline underline-offset-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#6b5414]">
+              Retry now
+            </button>
+          )}
+        </div>
       )}
       {recoveryOffer && (
         <div data-studio-recovery className="flex flex-wrap items-center gap-3 border-b border-[#D4AF37]/40 bg-[#D4AF37]/10 px-4 py-2 text-xs font-bold text-[#8a701d]" role="alert">
@@ -1774,22 +1960,37 @@ export default function AdminDesignBuilder({
         </p>
       )}
 
-      <div className="relative flex min-h-0 min-w-0 flex-1 overflow-hidden">
+      {/* Below lg (on a screen tall enough) the design tab is a grid: rail and
+          canvas share the top row and the inspector sheet sits in the row
+          beneath, so the canvas re-fits above the sheet instead of being
+          covered by it. */}
+      <div
+        className={`relative flex min-h-0 min-w-0 flex-1 overflow-hidden ${
+          tab === "design" ? "studio-sheet:grid studio-sheet:grid-cols-[auto_minmax(0,1fr)] studio-sheet:grid-rows-[minmax(0,1fr)_auto]" : ""
+        }`}
+      >
         {tab === "design" && (
           <>
             {/* Left: the floating tool rail and the one side panel it opens. */}
-            <div className="relative flex min-h-0 shrink-0 gap-3 bg-[#F3F1EC] py-3 pl-3">
+            <div className="relative flex min-h-0 shrink-0 bg-[#F3F1EC] py-3 pl-3">
               <AdminToolRail activePanel={sidePanel} onSelect={onRailSelect} />
-              {/* The panel slot keeps one width whether a panel is open, closed or
-                  the narrow Pages strip, so the canvas area — and the artboard's
-                  position and fit — never change when panels are switched. */}
-              <div className="flex min-h-0 w-[clamp(280px,22vw,340px)] shrink-0" data-admin-side-panel-slot>
+              {/* The panel slot. From xl it keeps one width whether a panel is
+                  open, closed or the narrow Pages strip, so the artboard never
+                  moves when panels are switched. Below xl it takes room only while
+                  a panel is open, so the canvas gets that space back; on phones
+                  the panel floats over the canvas beside the rail instead. */}
+              <div
+                className={`flex min-h-0 w-0 shrink-0 ${sidePanel ? "sm:ml-3 sm:w-[clamp(260px,32vw,320px)]" : ""} xl:ml-3 xl:w-[clamp(280px,22vw,340px)]`}
+                data-admin-side-panel-slot
+              >
               {sidePanel && (
                 <aside
                   data-admin-side-panel={sidePanel}
                   aria-label={SIDE_PANEL_TITLES[sidePanel]}
                   // Pages is a narrow strip of page cards; every other panel fills the slot.
-                  className={`flex min-h-0 flex-col overflow-hidden rounded-2xl bg-white shadow-[0_4px_20px_rgba(48,56,57,0.12)] ${sidePanel === "pages" ? "w-[188px]" : "w-full"}`}
+                  className={`flex min-h-0 flex-col overflow-hidden rounded-2xl bg-white shadow-[0_4px_20px_rgba(48,56,57,0.12)] max-sm:absolute max-sm:bottom-3 max-sm:left-full max-sm:top-3 max-sm:z-40 max-sm:ml-2 max-sm:shadow-[0_12px_40px_rgba(48,56,57,0.22)] ${
+                    sidePanel === "pages" ? "w-[188px]" : "w-full max-sm:w-[min(340px,calc(100vw-112px))]"
+                  }`}
                 >
                   {sidePanel !== "elements" && sidePanel !== "icons" && (
                     <div className="flex shrink-0 items-center justify-between px-4 pb-2 pt-4">
@@ -1821,6 +2022,8 @@ export default function AdminDesignBuilder({
                         paletteSource={openedTemplate}
                         activePage={activePage}
                         onPatchPage={(pageId: string, patch: Record<string, unknown>) => commit(patchPage(t, pageId, patch))}
+                        onSetBackgroundImage={setPageBackground}
+                        onRemoveBackgroundImage={removePageBackground}
                         onBackgroundLayer={addBackground}
                         hasBackgroundLayer={layersForPage(t, activePage).some((layer: any) => layer.type === "background")}
                       />
@@ -1900,6 +2103,8 @@ export default function AdminDesignBuilder({
                           onMovePage={(pageId: string, dir: "up" | "down") => commit(movePage(t, pageId, dir))}
                           onDeletePage={handleDeletePage}
                           onPatchPage={(pageId: string, patch: any) => commit(patchPage(t, pageId, patch))}
+                          onSetBackgroundImage={setPageBackground}
+                          onRemoveBackgroundImage={removePageBackground}
                         />
                       </div>
                     )}
@@ -1909,7 +2114,9 @@ export default function AdminDesignBuilder({
               </div>
             </div>
 
-            <main className="relative min-h-0 min-w-[420px] flex-1 bg-[#F3F1EC]">
+            {/* No minimum width: the canvas fits the card to whatever room is
+                left, so it can never push the inspector off the screen. */}
+            <main className="relative min-h-0 min-w-0 flex-1 bg-[#F3F1EC]">
               {/* Page position, mirroring the customer editor's canvas label. */}
               {selectedLayerIds.length === 0 && (
                 <p className="pointer-events-none absolute inset-x-0 top-3 z-20 text-center text-[11px] font-semibold text-[#303839]/40">
@@ -2048,8 +2255,15 @@ export default function AdminDesignBuilder({
               </div>
             </main>
 
-            {/* Right inspector: the configuration surface for the selection. */}
-            <aside className="flex w-[clamp(300px,21vw,360px)] shrink-0 flex-col border-l border-[#303839]/8 bg-white max-lg:absolute max-lg:inset-x-0 max-lg:bottom-0 max-lg:z-40 max-lg:max-h-[48%] max-lg:w-full max-lg:rounded-t-2xl max-lg:border-l-0 max-lg:border-t max-lg:shadow-[0_-8px_32px_rgba(48,56,57,0.14)]">
+            {/* Right inspector: the configuration surface for the selection.
+                Below lg it shows only while something is selected, as a sheet
+                under the canvas (or a narrow column on short landscape screens). */}
+            <aside
+              data-admin-inspector
+              className={`flex shrink-0 flex-col border-l border-[#303839]/8 bg-white w-[clamp(240px,32vw,300px)] lg:w-[clamp(280px,25vw,300px)] xl:w-[clamp(300px,21vw,360px)] studio-sheet:relative studio-sheet:z-30 studio-sheet:col-span-2 studio-sheet:max-h-[min(46dvh,440px)] studio-sheet:w-full studio-sheet:rounded-t-2xl studio-sheet:border-l-0 studio-sheet:border-t studio-sheet:shadow-[0_-8px_32px_rgba(48,56,57,0.14)] ${
+                selectedLayerIds.length > 0 ? "" : "max-lg:hidden"
+              }`}
+            >
               <div className="min-h-0 flex-1 overflow-y-auto [scrollbar-color:rgba(48,56,57,0.18)_transparent] [scrollbar-width:thin]">
                 {alignmentOpen && selectedLayerIds.length > 0 ? (
                   <AdminAlignmentPanel

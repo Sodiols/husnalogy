@@ -42,6 +42,7 @@ import {
   type MeasureFn,
   type SafeBounds,
 } from "@/lib/customizer/v2/text-layout";
+import { pageSafeBounds, pageSafeInsets } from "@/lib/customizer/v2/safe-area";
 import { resolveLayerSelectionGeometry } from "@/lib/customizer/v2/selection-geometry";
 import { cropPanDelta, resolveCropRect } from "@/lib/customizer/v2/image-crop";
 import { resolveLayerCapabilities } from "@/lib/customizer/v2/interaction/capabilities";
@@ -344,16 +345,8 @@ export default function CustomizerWorkspace({
     setTextMetricsRevision((revision) => revision + 1);
   }, [googleFontMetricsRevision]);
 
-  // Auto-width text may grow only up to the safe area.
-  const safeBounds: SafeBounds = useMemo(
-    () => ({
-      left: Number(template?.safeArea?.left) || 0,
-      top: Number(template?.safeArea?.top) || 0,
-      right: canvasW - (Number(template?.safeArea?.right) || 0),
-      bottom: canvasH - (Number(template?.safeArea?.bottom) || 0),
-    }),
-    [template?.safeArea?.left, template?.safeArea?.top, template?.safeArea?.right, template?.safeArea?.bottom, canvasW, canvasH],
-  );
+  // Auto-width text may grow only up to this page's safe area.
+  const safeBounds: SafeBounds = useMemo(() => pageSafeBounds(template, pageId), [template, pageId]);
 
   // Shared with the renderers via resolveTextBox, so the customer's selection
   // box and handles always sit exactly on the rendered glyphs.
@@ -1070,7 +1063,7 @@ export default function CustomizerWorkspace({
           disabled={previewMode || Boolean(cropLayer) || Boolean(cropGridLayer)}
           snapping={{
             enabled: snappingEnabled,
-            safeArea: template?.safeArea,
+            safeArea: pageSafeInsets(template, pageId),
             // The customer only ever snaps to guides the template chose to expose.
             guides: (template?.guides || []).filter((guide: any) => guide?.customerVisible !== false),
             pageId,

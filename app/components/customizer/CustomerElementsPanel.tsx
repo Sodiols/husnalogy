@@ -919,7 +919,7 @@ export default function CustomerElementsPanel({
       {adminMode && onHome && !searching && (
         <div className="rounded-xl border border-[#D4AF37]/35 bg-white p-2.5">
           <div className="flex items-center gap-2">
-            <button type="button" disabled={uploading} onClick={() => fileRef.current?.click()} className="min-h-11 flex-1 rounded-lg bg-[#303839] px-3 text-xs font-extrabold text-white transition hover:bg-[#434c4d] disabled:cursor-not-allowed disabled:opacity-50">
+            <button type="button" disabled={uploading} onClick={() => fileRef.current?.click()} data-shape="round" className="min-h-11 flex-1 cursor-pointer rounded-full bg-[#303839] px-4 text-[13px] font-semibold text-white transition-colors hover:bg-[#414b4c] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white disabled:cursor-not-allowed disabled:opacity-50">
               {uploading ? `Uploading ${uploadProgress}%` : "Upload to library"}
             </button>
             {retryFile && !uploading && <button type="button" onClick={() => uploadAdminElement(retryFile)} className="min-h-11 rounded-lg border border-red-200 bg-white px-3 text-xs font-bold text-red-700">Retry</button>}

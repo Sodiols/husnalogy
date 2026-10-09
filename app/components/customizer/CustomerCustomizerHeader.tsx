@@ -27,7 +27,8 @@ function IconButton({ label, onClick, disabled, children }: any) {
       title={label}
       onClick={onClick}
       disabled={disabled}
-      className="grid h-10 w-10 place-items-center rounded-lg text-[#303839]/70 transition-colors hover:bg-[#303839]/5 hover:text-[#303839] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white disabled:opacity-30 disabled:hover:bg-transparent"
+      data-shape="round"
+      className="grid h-9 w-9 cursor-pointer place-items-center rounded-full text-[#1f2425] transition-colors hover:bg-[#F3F1EC] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:bg-transparent pointer-coarse:h-11 pointer-coarse:w-11"
     >
       {children}
     </button>
@@ -99,7 +100,8 @@ function MoreMenu({ items }: { items: Array<{ label: string; onSelect: () => voi
         aria-haspopup="menu"
         aria-expanded={open}
         onClick={() => setOpen((current) => !current)}
-        className="grid h-11 w-11 place-items-center rounded-lg text-[#303839]/70 transition-colors hover:bg-[#303839]/5 hover:text-[#303839] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white"
+        data-shape="round"
+        className="grid h-11 w-11 cursor-pointer place-items-center rounded-full text-[#1f2425] transition-colors hover:bg-[#F3F1EC] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white"
       >
         {MoreIcon}
       </button>
@@ -191,15 +193,7 @@ export default function CustomerCustomizerHeader({
         <IconButton label="Close customizer" onClick={onClose}>
           {CloseIcon}
         </IconButton>
-        <button
-          type="button"
-          onClick={onSaveExit}
-          disabled={savingDraft || !restoreReady}
-          className="hidden h-10 shrink-0 items-center whitespace-nowrap rounded-lg px-3 text-xs font-semibold text-[#303839]/70 transition-colors hover:bg-[#303839]/5 hover:text-[#303839] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white disabled:opacity-40 md:flex"
-        >
-          {savingDraft ? "Saving…" : "Save & Exit"}
-        </button>
-        <span className="hidden h-6 w-px shrink-0 bg-[#303839]/10 md:block" aria-hidden />
+        <span className="hidden h-6 w-px shrink-0 bg-[#303839]/12 sm:block" aria-hidden />
         <div className="hidden min-w-0 sm:block">
           <h1 className="min-w-0 truncate text-[15px] font-bold leading-tight text-[#1f2425]">{productTitle}</h1>
           <div className="flex items-center gap-2 text-[11px] leading-tight">
@@ -243,12 +237,13 @@ export default function CustomerCustomizerHeader({
               type="button"
               onClick={() => onStepChange(s.id)}
               aria-current={active ? "step" : undefined}
-              className={`rounded-full px-3.5 py-1.5 text-[13px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white sm:px-5 ${
+              data-shape="round"
+              className={`cursor-pointer whitespace-nowrap rounded-full px-3 py-1.5 text-[13px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white lg:px-3.5 ${
                 active
-                  ? "bg-white font-bold text-[#303839] shadow-[0_1px_3px_rgba(48,56,57,0.10)]"
+                  ? "bg-white font-semibold text-[#1f2425] shadow-[0_1px_3px_rgba(31,36,37,0.14)]"
                   : locked
-                    ? "font-semibold text-[#303839]/30"
-                    : "font-semibold text-[#303839]/55 hover:text-[#303839]"
+                    ? "font-medium text-[#303839]/30"
+                    : "font-medium text-[#303839]/65 hover:text-[#1f2425]"
               }`}
             >
               {s.label}
@@ -284,15 +279,16 @@ export default function CustomerCustomizerHeader({
             {RedoIcon}
           </IconButton>
         </div>
-        <span className="hidden h-6 w-px bg-[#303839]/10 sm:block" aria-hidden />
+        <span className="mx-1 hidden h-6 w-px bg-[#303839]/12 sm:block" aria-hidden />
         <button
           type="button"
           onClick={onTogglePreview}
           aria-pressed={previewMode}
-          className={`hidden h-10 items-center gap-1.5 rounded-lg px-3 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white sm:flex ${
+          data-shape="round"
+          className={`hidden h-9 cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-full px-3 text-[13px] font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white sm:flex ${
             previewMode
               ? "bg-[#303839] text-white hover:bg-[#414b4c]"
-              : "text-[#303839]/70 hover:bg-[#303839]/5 hover:text-[#303839]"
+              : "text-[#1f2425] hover:bg-[#F3F1EC]"
           }`}
         >
           {EyeIcon}
@@ -305,16 +301,25 @@ export default function CustomerCustomizerHeader({
             </IconButton>
           </div>
         )}
+        {/* The studio's outlined secondary action (Save Draft), in brand ink. */}
+        <button
+          type="button"
+          onClick={onSaveExit}
+          disabled={savingDraft || !restoreReady}
+          data-shape="round"
+          className="hidden h-9 shrink-0 cursor-pointer items-center whitespace-nowrap rounded-full border-[1.5px] border-[#303839] bg-white px-4 text-[13px] font-semibold text-[#303839] transition-colors hover:bg-[#303839]/[0.05] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white disabled:cursor-wait disabled:opacity-50 md:flex"
+        >
+          {savingDraft ? "Saving…" : "Save & Exit"}
+        </button>
+        {/* The studio's solid primary action (Publish), in brand ink. */}
         <button
           type="button"
           onClick={onPrimary}
           disabled={primaryDisabled}
-          className="ml-0.5 flex h-10 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full bg-[#303839] px-4 text-xs font-bold text-white transition-colors hover:bg-[#414b4c] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37] focus-visible:ring-offset-2 disabled:opacity-40 sm:px-5 sm:text-[13px]"
+          data-shape="round"
+          className="flex h-9 shrink-0 cursor-pointer items-center whitespace-nowrap rounded-full bg-[#303839] px-4 text-[13px] font-semibold text-white transition-colors hover:bg-[#414b4c] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white disabled:cursor-not-allowed disabled:opacity-40 pointer-coarse:h-11"
         >
           {primaryLabel}
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-            <path d="m9 6 6 6-6 6" />
-          </svg>
         </button>
       </div>
     </header>
@@ -333,12 +338,13 @@ export default function CustomerCustomizerHeader({
               onClick={() => onStepChange(s.id)}
               aria-current={active ? "step" : undefined}
               // 44px minimum touch target (spec §22).
-              className={`min-h-11 min-w-0 flex-1 truncate rounded-full px-2 text-[12px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white ${
+              data-shape="round"
+              className={`min-h-11 min-w-0 flex-1 truncate rounded-full cursor-pointer px-2 text-[13px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white ${
                 active
-                  ? "bg-white font-bold text-[#303839] shadow-[0_1px_3px_rgba(48,56,57,0.10)]"
+                  ? "bg-white font-semibold text-[#1f2425] shadow-[0_1px_3px_rgba(31,36,37,0.14)]"
                   : locked
-                    ? "font-semibold text-[#303839]/30"
-                    : "font-semibold text-[#303839]/55"
+                    ? "font-medium text-[#303839]/30"
+                    : "font-medium text-[#303839]/65"
               }`}
             >
               {s.label}

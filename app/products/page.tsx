@@ -1,14 +1,10 @@
 import { getActiveProducts, getFilterOptions } from "@/lib/products";
 import ProductListingPage from "./ProductListingPage";
+import { staticPageMetadata } from "@/lib/seo/pages";
 
 export const dynamic = "force-dynamic";
 
-export const metadata = {
-  title: "Shop All Products",
-  description:
-    "Browse all Husnalogy products — wedding invitations, save the dates, cards, personalized gifts and stationery. Filter by theme, occasion, format, colour and price.",
-  alternates: { canonical: "/products" },
-};
+export const metadata = staticPageMetadata("/products");
 
 export default async function ProductsPage({ searchParams }) {
   const params = await searchParams;

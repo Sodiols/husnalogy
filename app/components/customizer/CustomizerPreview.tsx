@@ -20,6 +20,7 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState, useSyncExterna
 import { getLegacyMaskPath, getMaskPath } from "@/lib/customizer/v2/masks";
 import { getGridSlotRect, normalizeGridSlot } from "@/lib/customizer/v2/grids";
 import { DEFAULT_LINE_HEIGHT, layoutText, createCanvasMeasure, fallbackMeasure, resolveTextBox, resolvedTextLayoutMode, type MeasureFn } from "@/lib/customizer/v2/text-layout";
+import { resolvePageSafeArea } from "@/lib/customizer/v2/safe-area";
 import { hasImageFilters, imageFilterSvgPrimitives } from "@/lib/customizer/v2/image-filters";
 import { resolveImageDrawBoxFromTransform } from "@/lib/customizer/v2/image-crop";
 import { normalizeQRCodeStyle, qrModuleRects } from "@/lib/customizer/v2/qr";
@@ -632,19 +633,17 @@ export default function CustomizerPreview({
     [resolvedLayers, geometryOverrides],
   );
 
-  const safe = template?.safeArea || {};
+  // This page's safe area (Front and Back may differ): the guide and the
+  // bound auto-width text wraps at.
+  const pageSafe = useMemo(() => resolvePageSafeArea(template, activePage?.id), [template, activePage?.id]);
+  const safe = pageSafe.insets;
   const bleed = template?.bleed || {};
   const bg = background || activePage?.backgroundImage || "";
   const idPrefix = `cz-${activePage?.id || "page"}`;
 
   // Auto-width text may grow only up to the safe area.
   const safeBounds = useMemo(
-    () => ({
-      left: Number(safe.left) || 0,
-      top: Number(safe.top) || 0,
-      right: width - (Number(safe.right) || 0),
-      bottom: height - (Number(safe.bottom) || 0),
-    }),
+    () => ({ left: safe.left, top: safe.top, right: width - safe.right, bottom: height - safe.bottom }),
     [safe.left, safe.top, safe.right, safe.bottom, width, height],
   );
 

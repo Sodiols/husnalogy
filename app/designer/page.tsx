@@ -2,13 +2,11 @@ import { notFound, redirect } from "next/navigation";
 
 import { canAccessStudio, getCurrentActor } from "@/lib/auth/roles";
 import DesignerWorkspaceClient from "./designer-workspace-client";
+import { privatePageMetadata } from "@/lib/seo/metadata";
 
 export const dynamic = "force-dynamic";
 
-export const metadata = {
-  title: "Designer workspace",
-  robots: { index: false, follow: false },
-};
+export const metadata = privatePageMetadata("Designer workspace");
 
 /**
  * The designer's entire surface.

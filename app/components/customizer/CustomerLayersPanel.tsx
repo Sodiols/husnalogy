@@ -5,16 +5,22 @@ import { anyGridSlotGrantsPhotoEditing } from "@/lib/customizer/v2/grids";
 import { isValidLayerDrop, resolveDropEdge } from "@/lib/customizer/v2/interaction/layer-reorder";
 import { getLayerPermissions } from "./customizer-utils";
 
-const typeLabel: Record<string, string> = {
-  text: "T",
-  image: "IMG",
-  frame: "FR",
-  grid: "GR",
-  shape: "SH",
-  element: "EL",
-  group: "GP",
-  background: "BG",
-  qrCode: "QR",
+// The studio's layer-type icons (AdminLayersPanel), so both panels read alike.
+const line = (children: React.ReactNode) => (
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+    {children}
+  </svg>
+);
+const LAYER_ICONS: Record<string, React.ReactNode> = {
+  text: line(<path d="M5 5h14v4h-1.5L16.5 7H13.5v11l2 .5V20h-7v-1.5l2-.5V7H7.5L6.5 9H5Z" />),
+  image: line(<><rect x="4" y="4" width="16" height="16" rx="1.5" /><circle cx="9" cy="9" r="1.5" /><path d="m4 17 5-5 4 4 2.5-2.5L20 18" /></>),
+  frame: line(<><rect x="4" y="4" width="16" height="16" rx="1.5" strokeDasharray="3 2.5" /><circle cx="12" cy="10" r="2.5" /><path d="M7.5 17a4.5 4.5 0 0 1 9 0" /></>),
+  shape: line(<><rect x="4" y="9" width="10" height="11" rx="1" /><circle cx="15.5" cy="8.5" r="4.5" /></>),
+  grid: line(<><rect x="4" y="4" width="7" height="7" rx="1" /><rect x="13" y="4" width="7" height="7" rx="1" /><rect x="4" y="13" width="7" height="7" rx="1" /><rect x="13" y="13" width="7" height="7" rx="1" /></>),
+  group: line(<><rect x="3.5" y="3.5" width="17" height="17" rx="2" strokeDasharray="3 2.5" /><rect x="7" y="7" width="6" height="6" rx="1" /><circle cx="15" cy="15" r="2.5" /></>),
+  element: line(<path d="m12 4 2.3 4.7 5.2.8-3.8 3.6.9 5.1L12 15.8l-4.6 2.4.9-5.1-3.8-3.6 5.2-.8Z" />),
+  background: line(<><rect x="4" y="4" width="16" height="16" rx="1.5" /><path d="m4 14 10-10M4 20 20 4M10 20 20 10" /></>),
+  qrCode: line(<><rect x="4" y="4" width="6" height="6" /><rect x="14" y="4" width="6" height="6" /><rect x="4" y="14" width="6" height="6" /><path d="M14 14h2v2h-2zM18 18h2v2h-2zM14 18h2M18 14h2" /></>),
 };
 
 export default function CustomerLayersPanel({ layers, selectedIds, selectedGridSlotId, onSelectionChange, onGridSlotSelect, onEnterGroup, onReorder, onToggleVisibility, onToggleLock, onRename, onDuplicate }: any) {
@@ -168,7 +174,7 @@ export default function CustomerLayersPanel({ layers, selectedIds, selectedGridS
               }}
               className="flex min-h-11 min-w-0 flex-1 items-center gap-2 rounded-lg text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white"
             >
-              <span className={`grid h-9 w-9 shrink-0 place-items-center rounded-md text-[9px] font-bold ${selected ? "bg-white/12" : "bg-white"}`}>{typeLabel[layer.type] || "OB"}</span>
+              <span className={`grid h-9 w-9 shrink-0 place-items-center rounded-md ${selected ? "bg-white/12 text-white" : "bg-white text-[#1f2425]"}`}>{LAYER_ICONS[layer.type] || LAYER_ICONS.shape}</span>
               <span className="min-w-0 flex-1">
                 {renaming === layer.id ? (
                   <input autoFocus value={name} onChange={(event) => setName(event.target.value)} onBlur={() => commit(layer)} onKeyDown={(event) => { if (event.key === "Enter") commit(layer); if (event.key === "Escape") setRenaming(null); }} onClick={(event) => event.stopPropagation()} className="h-9 w-full rounded-md bg-white px-2 text-xs text-[#303839]" aria-label="Layer name" />

@@ -98,9 +98,15 @@ describe("toolbar rows share one control height", () => {
     expect(source).not.toMatch(/\bh-8 w-8\b/);
   });
 
-  it("keeps the image toolbar's steppers at the canonical height", () => {
-    const source = sources.get("CustomerImageToolbar.tsx")!;
-    expect(source).toContain("h-11 w-32 shrink-0 rounded-lg bg-white px-1");
+  it("draws every toolbar control at the kit's one height, the 44px target on touch", () => {
+    // The toolbars share the studio's look through CustomerToolbarKit: 36px
+    // (32px compact) with a mouse, and the canonical 44px on a coarse pointer.
+    const kit = sources.get("CustomerToolbarKit.tsx")!;
+    expect(kit).toContain("pointer-coarse:[--tb-size:44px]");
+    expect(kit).toContain("h-[var(--tb-size,36px)]");
+    for (const name of [...TOOLBARS, "CustomerContextToolbar.tsx", "CustomerGroupToolbar.tsx"]) {
+      expect(sources.get(name)!, name).toContain('from "./CustomerToolbarKit"');
+    }
   });
 });
 

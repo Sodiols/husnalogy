@@ -14,6 +14,7 @@ import {
   getLocalProductOptions,
   saveProductOptions,
 } from "../lib/product-options";
+import { productImageAlt } from "@/lib/seo/image-alt";
 
 const DESKTOP_THUMB_SIZE = 80;
 const DESKTOP_THUMB_GAP = 12;
@@ -123,6 +124,7 @@ export default function ProductGallery({ product, belowMainContent = null, initi
   }, [product]);
 
   const activeImage = images[activeIndex] || images[0];
+  const activeImageAlt = productImageAlt(product, activeImage, (images[activeIndex] ? activeIndex : 0) + 1, images.length);
   const maxThumbStart = Math.max(0, images.length - visibleThumbs);
   const hasThumbnailCarousel = images.length > visibleThumbs;
 
@@ -360,6 +362,8 @@ export default function ProductGallery({ product, belowMainContent = null, initi
                 key={`${image}-${index}`}
                 type="button"
                 onClick={() => setActiveIndex(index)}
+                aria-label={`Show image ${index + 1} of ${images.length}`}
+                aria-current={activeIndex === index ? "true" : undefined}
                 className={`h-16 w-16 shrink-0 overflow-hidden rounded-none border bg-white transition-all duration-300 ease-out hover:border-[#303839]/70 md:h-20 md:w-20 ${
                   activeIndex === index
                     ? "border-[#303839]"
@@ -368,7 +372,7 @@ export default function ProductGallery({ product, belowMainContent = null, initi
               >
                 <img
                   src={image}
-                  alt={product.title}
+                  alt=""
                   className="h-full w-full object-cover"
                 />
               </button>
@@ -457,7 +461,7 @@ export default function ProductGallery({ product, belowMainContent = null, initi
         >
           <img
             src={activeImage}
-            alt={product.title}
+            alt={activeImageAlt}
             className="h-full w-full max-w-full object-cover transition-opacity duration-500 ease-out"
           />
         </button>
@@ -542,7 +546,7 @@ export default function ProductGallery({ product, belowMainContent = null, initi
               <div className="min-h-0 flex-1">
                 <img
                   src={activeImage}
-                  alt={product.title}
+                  alt={activeImageAlt}
                   className="h-full max-h-[calc(100vh-150px)] max-w-full object-contain"
                 />
               </div>

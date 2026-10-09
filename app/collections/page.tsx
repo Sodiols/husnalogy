@@ -2,14 +2,13 @@ import Link from "next/link";
 
 import { getAllCollectionSuites } from "@/lib/collections";
 import { getMainMockupImage } from "@/app/products/product-image";
+import { productImageAlt } from "@/lib/seo/image-alt";
 import ExploreMoreTile from "@/app/components/explore-more-tile";
+import { staticPageMetadata } from "@/lib/seo/pages";
 
 export const dynamic = "force-dynamic";
 
-export const metadata = {
-  title: "All Collections",
-  description: "Browse every active Husnalogy product collection.",
-};
+export const metadata = staticPageMetadata("/collections");
 
 export default async function CollectionsPage() {
   const collections = await getAllCollectionSuites();
@@ -39,7 +38,7 @@ export default async function CollectionsPage() {
                 <Link href={`/collections/${collection.slug}`} className="group block">
                   <span className="block aspect-square overflow-hidden rounded-[10px] bg-cream">
                     {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={image} alt="" className="h-full w-full object-cover" />
+                    <img src={image} alt={productImageAlt(collection.products[0], image)} className="h-full w-full object-cover" />
                   </span>
                   <h2 className="heading-card mt-3 line-clamp-2 capitalize group-hover:underline group-hover:underline-offset-4">
                     {collection.name}

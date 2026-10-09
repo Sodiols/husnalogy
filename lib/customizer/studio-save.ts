@@ -144,3 +144,83 @@ export function createRevisionTracker(): RevisionTracker {
     },
   };
 }
+
+/* ------------------------------------------------------------ save status */
+
+/**
+ * What the studio tells the designer about where their work is. Every label
+ * is a statement about the SERVER, never inferred from a local write:
+ *
+ *  - "Saved"       the server confirmed the current revision;
+ *  - "Unsaved"     the current revision is not on the server yet — it stays
+ *                  until the server confirms, never cleared by merely sending;
+ *  - "Saving…"     shown beside it while a request is in flight;
+ *  - "Local only"  there is no server record of this design at all — it lives
+ *                  only in this browser's recovery copy;
+ *  - "Save failed" the last attempt failed (detail says why; it is retried);
+ *  - "Offline"     the browser has no connection; changes are kept locally.
+ */
+export type StudioSaveStatusInput = {
+  /** The product exists on the server (it has an id). */
+  hasServerRecord: boolean;
+  /** The current revision differs from the last one the server confirmed. */
+  dirty: boolean;
+  /** A save request is in flight. */
+  saving: boolean;
+  /** The last save attempt's failure, cleared by the next success. */
+  failure: { reason: "validation" | "request" | "busy"; error: string } | null;
+  online: boolean;
+  /** A new product can be created as a draft (it has the minimum a draft needs: a name). */
+  canCreateDraft: boolean;
+};
+
+export type StudioSaveStatus = {
+  /** The headline: Saved, Unsaved, or "" for an untouched new design. */
+  primary: "Saved" | "Unsaved" | "";
+  /** Extra truths shown beside it. */
+  flags: Array<"Saving…" | "Local only" | "Save failed" | "Offline">;
+  /** One sentence for the designer, or "" when everything is saved. */
+  detail: string;
+  /** Whether the detail is a problem the designer should see now. */
+  alert: boolean;
+};
+
+export function describeStudioSaveStatus(input: StudioSaveStatusInput): StudioSaveStatus {
+  const flags: StudioSaveStatus["flags"] = [];
+  const primary: StudioSaveStatus["primary"] = input.dirty ? "Unsaved" : input.hasServerRecord ? "Saved" : "";
+  if (input.saving) flags.push("Saving…");
+  if (!input.hasServerRecord && (input.dirty || input.saving)) flags.push("Local only");
+  if (!input.online && input.dirty) flags.push("Offline");
+  const failed = Boolean(input.failure && input.failure.reason !== "busy" && input.dirty && !input.saving);
+  if (failed) flags.push("Save failed");
+
+  let detail = "";
+  let alert = false;
+  if (!input.online && input.dirty) {
+    detail = "You're offline. Your changes are kept on this device and will save when the connection returns.";
+    alert = true;
+  } else if (failed) {
+    const kept = "Your changes are kept on this device.";
+    detail = input.failure!.reason === "validation"
+      ? `Not saved to the server — ${input.failure!.error} ${kept}`
+      : `Save failed — ${input.failure!.error} ${kept} Retrying automatically.`;
+    alert = true;
+  } else if (!input.hasServerRecord && input.dirty && !input.canCreateDraft) {
+    detail = "This design is only on this device. Give the product a name (Back to Product) and it will save to the server as a draft.";
+    alert = true;
+  } else if (!input.hasServerRecord && input.dirty) {
+    detail = "This design is only on this device until its first save; it will be saved to the server as a draft automatically.";
+  }
+  return { primary, flags, detail, alert };
+}
+
+/** May the studio start an autosave now? (A new product needs a name; never while offline.) */
+export function studioMayAutosave(input: { hasServerRecord: boolean; canCreateDraft: boolean; dirty: boolean; online: boolean }): boolean {
+  return input.dirty && input.online && (input.hasServerRecord || input.canCreateDraft);
+}
+
+/** Backoff for retrying a failed studio autosave: 5 s, 15 s, 30 s, then every 60 s. */
+export function studioAutosaveRetryDelayMs(attempt: number): number {
+  const delays = [5_000, 15_000, 30_000];
+  return delays[Math.max(0, attempt - 1)] ?? 60_000;
+}

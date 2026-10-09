@@ -5,39 +5,39 @@
 
 const RAIL_ICONS: Record<string, React.ReactNode> = {
   edit: (
-    <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
       <path d="M12 20h9" />
       <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />
     </svg>
   ),
   addText: (
-    <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
       <path d="M4 7V5h16v2" />
       <path d="M12 5v14" />
       <path d="M9 19h6" />
     </svg>
   ),
   uploads: (
-    <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
       <rect x="3" y="3" width="18" height="18" rx="2" />
       <circle cx="9" cy="9" r="2" />
       <path d="m21 15-4.5-4.5L6 21" />
     </svg>
   ),
   options: (
-    <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
       <path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3" />
       <path d="M1 14h6M9 8h6M17 16h6" />
     </svg>
   ),
   elements: (
-    <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
       <path d="M12 3l2.4 4.9 5.4.8-3.9 3.8.9 5.4-4.8-2.5-4.8 2.5.9-5.4L4.2 8.7l5.4-.8Z" />
     </svg>
   ),
-  grids: <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden><rect x="3" y="3" width="8" height="8"/><rect x="13" y="3" width="8" height="8"/><rect x="3" y="13" width="8" height="8"/><rect x="13" y="13" width="8" height="8"/></svg>,
-  background: <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden><rect x="3" y="4" width="18" height="16" rx="2"/><path d="m3 16 5-5 4 4 3-3 6 6"/></svg>,
-  layers: <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" aria-hidden><path d="m12 3 9 5-9 5-9-5 9-5Z"/><path d="m3 13 9 5 9-5M3 18l9 4 9-4"/></svg>,
+  grids: <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden><rect x="3" y="3" width="8" height="8"/><rect x="13" y="3" width="8" height="8"/><rect x="3" y="13" width="8" height="8"/><rect x="13" y="13" width="8" height="8"/></svg>,
+  background: <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden><rect x="3" y="4" width="18" height="16" rx="2"/><path d="m3 16 5-5 4 4 3-3 6 6"/></svg>,
+  layers: <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" aria-hidden><path d="m12 3 9 5-9 5-9-5 9-5Z"/><path d="m3 13 9 5 9-5M3 18l9 4 9-4"/></svg>,
 };
 
 // ONE "elements" tool now covers the whole insertion library: Dynamic Shapes,
@@ -139,7 +139,7 @@ export default function CustomerToolRail({ tools, activeTool, onSelect, orientat
       aria-orientation={vertical ? "vertical" : "horizontal"}
       className={
         vertical
-          ? "flex w-[76px] shrink-0 flex-col items-stretch gap-0.5 overflow-y-auto rounded-2xl bg-white px-1.5 py-3 shadow-[0_4px_20px_rgba(48,56,57,0.12)] [scrollbar-width:none]"
+          ? "flex w-[80px] shrink-0 flex-col items-stretch gap-0.5 overflow-y-auto rounded-2xl bg-white px-1.5 py-3 shadow-[0_4px_20px_rgba(48,56,57,0.12)] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
           : "flex w-full items-stretch gap-1 overflow-x-auto border-t border-[#303839]/8 bg-white px-2 py-1.5 [scrollbar-width:none]"
       }
     >
@@ -152,11 +152,11 @@ export default function CustomerToolRail({ tools, activeTool, onSelect, orientat
             aria-label={tool.label}
             aria-pressed={active}
             onClick={() => onSelect(tool.id)}
-            className={`group relative flex cursor-pointer flex-col items-center justify-center gap-1.5 rounded-xl text-[11.5px] font-medium leading-none transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white ${
-              active
-                ? "bg-[#F8F6F1] text-[#303839]"
-                : "text-[#303839]/75 hover:bg-[#F8F6F1] hover:text-[#303839]"
-            } ${vertical ? "min-h-[60px] px-1 py-2.5" : "min-h-[56px] min-w-[68px] flex-1 px-1 py-2"}`}
+            // The studio rail's item (AdminToolRail): 24px icon over an 11px label;
+            // the active tool is the brand cream with a gold marker.
+            className={`group relative flex cursor-pointer flex-col items-center justify-center gap-1 rounded-xl text-[11px] font-medium leading-tight text-[#1f2425] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white ${
+              active ? "bg-[#F3F1EC]" : "hover:bg-[#303839]/[0.04]"
+            } ${vertical ? "min-h-[58px] w-full px-0.5" : "min-h-[56px] min-w-[68px] flex-1 px-1 py-2"}`}
           >
             {/* Selected marker: a quiet accent rule, no glow */}
             {active && vertical && (
@@ -165,8 +165,8 @@ export default function CustomerToolRail({ tools, activeTool, onSelect, orientat
             {active && !vertical && (
               <span className="absolute inset-x-3 top-[-6px] h-[3px] rounded-full bg-[#D4AF37]" aria-hidden />
             )}
-            <span className={active ? "text-[#303839]" : "text-current"}>{RAIL_ICONS[tool.id]}</span>
-            <span className="text-center">{tool.label}</span>
+            <span className="text-current">{RAIL_ICONS[tool.id]}</span>
+            <span className="w-full truncate text-center">{tool.label}</span>
           </button>
         );
       })}

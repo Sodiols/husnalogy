@@ -378,7 +378,7 @@ export function templateToDocument(template: Record<string, any>): { document: C
   const settingsSrc = (t.settings && typeof t.settings === "object" ? t.settings : {}) as Record<string, unknown>;
 
   const pages: CustomizerPage[] = (Array.isArray(t.pages) ? t.pages : []).map((page: any, index: number) => ({
-    id: str(page?.id) || (index === 0 ? "front" : index === 1 ? "back" : `page-${index + 1}`),
+    id: str(page?.id) || (index === 0 ? "front" : index === 1 ? "back" : `page_${index + 1}`),
     name: str(page?.label || page?.name) || `Page ${index + 1}`,
     enabled: page?.enabled === undefined ? true : bool(page.enabled),
     widthPx: posNum(page?.widthPx, canvas.widthPx),

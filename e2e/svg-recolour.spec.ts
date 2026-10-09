@@ -39,10 +39,18 @@ const drawnTint = (page: Page, layerId: string) =>
     return layer.querySelector("feFlood")?.getAttribute("flood-color") || "";
   }, layerId);
 
-const colourGroup = (page: Page) => page.getByRole("toolbar", { name: "Element options" }).getByRole("group", { name: "Element colour" });
+// The customer toolbar's colour control is a chip that opens a popover
+// ("Original colours", swatches and a free colour picker).
+const colourTrigger = (page: Page) => page.getByRole("toolbar", { name: "Element options" }).getByRole("button", { name: /^Element colour:/ });
+async function openColour(page: Page) {
+  if (!(await page.locator('input[aria-label="Custom element colour"]').count())) await colourTrigger(page).click();
+  await expect(page.locator('input[aria-label="Custom element colour"]')).toBeAttached();
+}
+const originalChoice = (page: Page) => page.locator("[data-toolbar-menu-item]").filter({ hasText: "Original colours" });
 
 async function setColour(page: Page, hex: string) {
-  await colourGroup(page).locator('input[type="color"]').evaluate((input: HTMLInputElement, value) => {
+  await openColour(page);
+  await page.locator('input[aria-label="Custom element colour"]').evaluate((input: HTMLInputElement, value) => {
     const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!;
     setter.call(input, value);
     input.dispatchEvent(new Event("input", { bubbles: true }));
@@ -63,14 +71,18 @@ test("a multicolour SVG is recoloured, returns to Original, and keeps its colour
   expect(element).toBeTruthy();
 
   // The control is offered even though the asset is not "tintable", starting on Original.
-  await expect(colourGroup(page)).toBeVisible();
-  await expect(colourGroup(page).getByRole("button", { name: "Original" })).toHaveAttribute("aria-pressed", "true");
+  await expect(colourTrigger(page)).toBeVisible();
+  await expect(colourTrigger(page)).toHaveAccessibleName("Element colour: Original");
+  await openColour(page);
+  await expect(originalChoice(page)).toHaveAttribute("aria-pressed", "true");
   expect(await drawnTint(page, element)).toBe("");
 
   await setColour(page, "#2e7d32");
   await expect.poll(() => drawnTint(page, element)).toBe("#2e7d32");
 
-  await colourGroup(page).getByRole("button", { name: "Original" }).click();
+  await page.keyboard.press("Escape");
+  await openColour(page);
+  await originalChoice(page).click();
   await expect.poll(() => drawnTint(page, element)).toBe("");
   await page.keyboard.press("Control+z");
   await expect.poll(() => drawnTint(page, element)).toBe("#2e7d32");

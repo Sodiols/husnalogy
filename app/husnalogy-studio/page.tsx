@@ -1,7 +1,6 @@
-export const metadata = {
-  title: "Husnalogy Studio",
-  description: "Learn about Husnalogy studio, its design direction, and its refined wedding stationery and gift products.",
-};
+import { staticPageMetadata } from "@/lib/seo/pages";
+
+export const metadata = staticPageMetadata("/husnalogy-studio");
 
 export default function HusnalogyStudioPage() {
   return (

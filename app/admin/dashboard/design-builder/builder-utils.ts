@@ -19,6 +19,7 @@ import { marqueeSelectedLayerIds, type SelectionRect } from "@/lib/customizer/v2
 import { getTextPlacementStyle, type TextPlacementPreset } from "@/lib/customizer/v2/text-editing";
 import { DEFAULT_LETTER_SPACING, DEFAULT_LINE_HEIGHT } from "@/lib/customizer/v2/text-layout";
 import { scaleLayerContent } from "@/lib/customizer/v2/artboard";
+import { AssetUploadError, describeUploadFailure } from "@/lib/customizer/v2/upload-failure";
 
 // Shared helpers for the admin visual Design Builder. Pure functions that take a
 // template and return a new template — the builder owns undo/redo on top.
@@ -1110,8 +1111,10 @@ function pageIdFromLabel(template: any, label: string) {
   const taken = new Set((template.pages || []).map((p: any) => p.id));
   if (!taken.has(base)) return base;
   let i = 2;
-  while (taken.has(`${base}-${i}`)) i += 1;
-  return `${base}-${i}`;
+  // "_" not "-": stored page ids are keyified, so this id survives saving
+  // unchanged (a "-" id was renamed on save and its layers lost their page).
+  while (taken.has(`${base}_${i}`)) i += 1;
+  return `${base}_${i}`;
 }
 
 export function addPage(template: any, label = "") {
@@ -1330,17 +1333,19 @@ export async function uploadBuilderImage(
     request.addEventListener("load", () => {
       const payload = request.response || {};
       if (request.status < 200 || request.status >= 300 || payload.ok === false) {
-        reject(new Error(payload?.error || "Upload failed."));
+        reject(new AssetUploadError(describeUploadFailure({ status: request.status, serverMessage: payload?.error })));
         return;
       }
       resolve(payload);
     });
-    request.addEventListener("error", () => reject(new Error("Upload failed. Check your connection and try again.")));
-    request.addEventListener("abort", () => reject(new Error("Upload cancelled.")));
+    request.addEventListener("error", () => reject(new AssetUploadError(describeUploadFailure({ status: 0 }))));
+    request.addEventListener("abort", () => reject(new AssetUploadError(describeUploadFailure({ status: 0, aborted: true }))));
     options.onProgress?.(0);
     request.send(formData);
   });
-  if (!data.asset?.id || !(data.asset?.editorUrl || data.asset?.url)) throw new Error("The asset was saved but could not be opened.");
+  if (!data.asset?.id || !(data.asset?.editorUrl || data.asset?.url)) {
+    throw new AssetUploadError({ kind: "server", message: "The asset was saved but could not be opened. Try again.", retryable: true });
+  }
   options.onProgress?.(100);
   return {
     ...data.asset,

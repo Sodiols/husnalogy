@@ -1,5 +1,10 @@
 @import "tailwindcss";
 
+/* The design studio's narrow, tall layout: below lg on a screen tall enough
+   for the inspector to sit as a sheet under the canvas. Short landscape
+   screens keep the inspector as a column, so the canvas keeps its height. */
+@custom-variant studio-sheet (@media (max-width: 1023.98px) and (min-height: 640px));
+
 /* ---------------------------------------------------------------------------
    Husnalogy brand system — the single source for storefront styling.
 

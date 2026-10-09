@@ -1,19 +1,22 @@
 "use client";
 
 import { useRef } from "react";
-import { useCompactToFit } from "./useCompactToFit";
-import EditableNumericStepper from "./EditableNumericStepper";
 import {
   resetImageTransformPatch,
   resolveImageCropCapabilities,
 } from "@/lib/customizer/v2/image-permissions";
-import { FOCUS_RING } from "@/lib/customizer/v2/design-tokens";
+import ToolbarPopover from "@/app/admin/dashboard/design-builder/ToolbarPopover";
+import { ComfortableDensity, TB_ICON_BUTTON, TB_ON, TB_TEXT_BUTTON, ToolbarButton, ToolbarIcon, ToolbarLabel, ToolbarShell, ToolbarStepper, useCompact } from "./CustomerToolbarKit";
 
 // Contextual photo toolbar (spec §11, §26). Rendered while an editable image
 // layer is selected. Two modes:
 //  - normal: Replace / Crop / rotation input, gated by permissions
-//  - crop:   zoom slider, rotate 90°, flip H/V, reset, cancel, done
+//  - crop:   zoom, rotate 90°, flip H/V, reset, cancel, done
 // Every control is gated by the layer's admin-configured customer permissions.
+//
+// Drawn like the studio's selection toolbar through CustomerToolbarKit: it
+// goes compact when the room is short (the studio's crop bar shares the
+// workspace with two side panels) instead of hiding Done off-screen.
 
 type ImageTransformState = {
   zoom?: number;
@@ -44,33 +47,47 @@ type Props = {
    * Studio, which also keeps them in its inspector) can leave them out.
    */
   showPositionFields?: boolean;
-  /** Use a compact crop bar when the available width is too narrow (Design Studio). */
+  /** Kept for callers; the shared toolbar shell always fits itself to the room it has. */
   fitToWidth?: boolean;
 };
 
-const IconButton = ({
-  label,
-  onClick,
-  children,
-  active = false,
-}: {
-  label: string;
-  onClick?: () => void;
-  children: React.ReactNode;
-  active?: boolean;
-}) => (
-  <button
-    type="button"
-    aria-label={label}
-    title={label}
-    onClick={onClick}
-    className={`grid h-[var(--crop-icon,44px)] w-[var(--crop-icon,44px)] shrink-0 place-items-center rounded-lg transition ${FOCUS_RING} ${
-      active ? "bg-[#303839] text-white" : "text-[#303839] hover:bg-[#303839]/5"
-    }`}
-  >
-    {children}
-  </button>
-);
+const ICONS = {
+  crop: "M6 2v16a2 2 0 0 0 2 2h14M18 22V8a2 2 0 0 0-2-2H2",
+  rotate: "M21 12a9 9 0 1 1-3-6.7M21 3v5h-5",
+  flipX: "M12 3v18M8 8 4 12l4 4M16 8l4 4-4 4",
+  flipY: "M3 12h18M8 8l4-4 4 4M8 16l4 4 4-4",
+  reset: "M3 12a9 9 0 1 0 3-6.7M3 3v5h5",
+  adjust: "M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6",
+} as const;
+
+/** The "Adjust" trigger: icon and label when there is room, icon alone when compact. */
+function AdjustTrigger() {
+  return (
+    <>
+      <ToolbarIcon path={ICONS.adjust} />
+      <ToolbarLabel>Adjust</ToolbarLabel>
+    </>
+  );
+}
+
+/** "Crop" as the crop bar's caption: shown when there is room, a heading for assistive tech when compact. */
+function CropCaption() {
+  const compact = useCompact();
+  return <span className={compact ? "sr-only" : "whitespace-nowrap px-2 text-[13px] font-semibold text-[#303839]/80"}>Crop</span>;
+}
+
+/** The photo tint: a colour chip that opens the system colour picker. */
+function TintChip({ value, onChange }: { value: string; onChange: (color: string) => void }) {
+  return (
+    <label
+      title="Tint colour"
+      className="relative grid h-[var(--tb-size,36px)] w-[var(--tb-size,36px)] shrink-0 cursor-pointer place-items-center rounded-full transition-colors hover:bg-[#303839]/[0.06] focus-within:ring-2 focus-within:ring-[#303839]"
+    >
+      <span className="block h-5 w-5 rounded-full border border-[#303839]/25" style={{ background: value }} aria-hidden />
+      <input type="color" aria-label="Tint colour" value={value} onChange={(event) => onChange(event.target.value)} className="absolute inset-0 h-full w-full cursor-pointer opacity-0" />
+    </label>
+  );
+}
 
 export default function CustomerImageToolbar({
   layer,
@@ -87,11 +104,7 @@ export default function CustomerImageToolbar({
   onFilterPatch,
   allowedFilters = [],
   showPositionFields = true,
-  fitToWidth = false,
 }: Props) {
-  // The Design Studio's crop bar shares the workspace with two side panels:
-  // there it switches to a compact density rather than hide Done off-screen.
-  const { ref: cropRowRef, compact } = useCompactToFit<HTMLDivElement>(fitToWidth && cropping);
   // Rotate 90° and the flips act on the value THEY last set, not only the
   // rendered one: two clicks faster than a re-render each saw the same stale
   // value, so a rotation step (or a flip) was silently lost. A new value from
@@ -131,156 +144,130 @@ export default function CustomerImageToolbar({
     onImagePatch({ [axis]: next }, "crop-flip");
   };
 
-  const divider = <span className="mx-0.5 h-5 w-px shrink-0 bg-[#303839]/12" aria-hidden />;
-
   if (cropping) {
-    // The value fields keep their full width in both densities: a narrower one clips "100%".
-    const stepper = "h-11 w-32 shrink-0 rounded-lg bg-white px-1";
-    return (
-      <div
-        ref={cropRowRef}
-        data-crop-density={compact ? "compact" : "comfortable"}
-        style={compact ? ({ "--crop-pad": "8px", "--crop-done-pad": "12px", "--crop-icon": "36px" } as React.CSSProperties) : undefined}
-        className="pointer-events-auto flex max-w-full items-center gap-1 overflow-x-auto rounded-2xl bg-white px-2 py-1.5 shadow-[0_4px_20px_rgba(48,56,57,0.12)] no-scrollbar"
-        role="toolbar"
-        aria-label="Crop photo"
-      >
-        <span className={compact ? "sr-only" : "whitespace-nowrap px-1 text-[12.5px] font-semibold text-[#303839]/80"}>Crop</span>
-
+    const sections: React.ReactNode[] = [];
+    // Values: the steppers keep room for "100%".
+    sections.push(
+      <div key="values" className="flex shrink-0 items-center">
+        <CropCaption />
         {canZoom && (
-          <EditableNumericStepper stepIcons="plusMinus" label="Zoom photo" value={Math.round(zoom * 100)} minimum={100} maximum={500} step={1} largeStep={10} allowNegative={false} allowDecimal={false} formatValue={(value) => `${Math.round(value)}%`} onCommit={(value) => onImagePatch({ zoom: value / 100 }, "crop-zoom")} showLabel className={stepper} />
+          <ToolbarStepper label="Zoom photo" value={Math.round(zoom * 100)} minimum={100} maximum={500} step={1} largeStep={10} formatValue={(value) => `${Math.round(value)}%`} widthClass="w-[112px]" onCommit={(value) => onImagePatch({ zoom: value / 100 }, "crop-zoom")} />
         )}
-
         {canRotateImage && (
-          <EditableNumericStepper stepIcons="plusMinus" label="Image rotation" value={imageRotation} minimum={-360} maximum={360} step={1} largeStep={15} allowNegative allowDecimal={false} onCommit={(rotation) => onImagePatch({ rotation }, "crop-rotate")} showLabel className={stepper} />
+          <ToolbarStepper label="Image rotation" value={imageRotation} minimum={-360} maximum={360} step={1} largeStep={15} allowNegative widthClass="w-[104px]" onCommit={(rotation) => onImagePatch({ rotation }, "crop-rotate")} />
         )}
         {showPositionFields && (
           <>
-            <EditableNumericStepper stepIcons="plusMinus" label="Crop X position" value={Number(transform.offsetX) || 0} minimum={-10000} maximum={10000} step={1} largeStep={10} allowNegative allowDecimal={false} disabled={!canReposition} onCommit={(offsetX) => onImagePatch({ offsetX }, "crop-position")} showLabel className="h-11 w-32 shrink-0 rounded-lg bg-white px-1" />
-            <EditableNumericStepper stepIcons="plusMinus" label="Crop Y position" value={Number(transform.offsetY) || 0} minimum={-10000} maximum={10000} step={1} largeStep={10} allowNegative allowDecimal={false} disabled={!canReposition} onCommit={(offsetY) => onImagePatch({ offsetY }, "crop-position")} showLabel className="h-11 w-32 shrink-0 rounded-lg bg-white px-1" />
+            <ToolbarStepper label="Crop X position" value={Number(transform.offsetX) || 0} minimum={-10000} maximum={10000} step={1} largeStep={10} allowNegative disabled={!canReposition} widthClass="w-[104px]" onCommit={(offsetX) => onImagePatch({ offsetX }, "crop-position")} />
+            <ToolbarStepper label="Crop Y position" value={Number(transform.offsetY) || 0} minimum={-10000} maximum={10000} step={1} largeStep={10} allowNegative disabled={!canReposition} widthClass="w-[104px]" onCommit={(offsetY) => onImagePatch({ offsetY }, "crop-position")} />
           </>
         )}
-
-        {canRotateImage && (
-          <IconButton
-            label="Rotate photo 90°"
-            onClick={rotateQuarter}
-          >
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-              <path d="M21 12a9 9 0 1 1-3-6.7" />
-              <path d="M21 3v5h-5" />
-            </svg>
-          </IconButton>
-        )}
-
-        {canFlip && (
-          <>
-            <IconButton
-              label="Flip horizontally"
-              active={Boolean(transform.flipX)}
-              onClick={() => toggleFlip("flipX")}
-            >
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden>
-                <path d="M12 3v18M8 8 4 12l4 4M16 8l4 4-4 4" />
-              </svg>
-            </IconButton>
-            <IconButton
-              label="Flip vertically"
-              active={Boolean(transform.flipY)}
-              onClick={() => toggleFlip("flipY")}
-            >
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden>
-                <path d="M3 12h18M8 8l4-4 4 4M8 16l4 4 4-4" />
-              </svg>
-            </IconButton>
-          </>
-        )}
-
-        {canReset && (
-          <IconButton
-            label="Reset crop"
-            onClick={() => onImagePatch(resetPatch, "crop-reset")}
-          >
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-              <path d="M3 12a9 9 0 1 0 3-6.7" />
-              <path d="M3 3v5h5" />
-            </svg>
-          </IconButton>
-        )}
-
-        {divider}
-
-        <button
-          type="button"
-          onClick={onCancelCrop}
-          className="min-h-11 whitespace-nowrap rounded-full px-[var(--crop-pad,12px)] py-1.5 text-xs font-bold text-[#303839]/70 hover:bg-[#303839]/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white"
-        >
-          Cancel
-        </button>
-        <button
-          type="button"
-          onClick={onConfirmCrop}
-          className="min-h-11 whitespace-nowrap rounded-full bg-[#303839] px-[var(--crop-done-pad,16px)] py-1.5 text-xs font-bold text-white hover:bg-[#1f2526] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white"
-        >
-          Done
-        </button>
-      </div>
+      </div>,
     );
+    if (canRotateImage || canFlip || canReset) {
+      sections.push(
+        <div key="actions" className="flex shrink-0 items-center">
+          {canRotateImage && <ToolbarButton label="Rotate photo 90°" icon={ICONS.rotate} onClick={rotateQuarter} />}
+          {canFlip && (
+            <>
+              <ToolbarButton label="Flip horizontally" icon={ICONS.flipX} pressed={flipX} onClick={() => toggleFlip("flipX")} />
+              <ToolbarButton label="Flip vertically" icon={ICONS.flipY} pressed={flipY} onClick={() => toggleFlip("flipY")} />
+            </>
+          )}
+          {canReset && <ToolbarButton label="Reset crop" icon={ICONS.reset} onClick={() => onImagePatch(resetPatch, "crop-reset")} />}
+        </div>,
+      );
+    }
+    sections.push(
+      <div key="finish" className="flex shrink-0 items-center gap-1">
+        <ToolbarButton label="Cancel" onClick={onCancelCrop} />
+        <ToolbarButton label="Done" primary onClick={onConfirmCrop} />
+      </div>,
+    );
+    return <ToolbarShell label="Crop photo" selectionKey={`crop-${layer?.id || ""}`} sections={sections} />;
   }
 
+  const sections: React.ReactNode[] = [];
+  if (canReplace || (canCrop && hasImage)) {
+    sections.push(
+      <div key="photo" className="flex shrink-0 items-center">
+        {canReplace && <ToolbarButton label={hasImage ? "Replace Photo" : "Add Photo"} onClick={onReplace} />}
+        {canCrop && hasImage && <ToolbarButton label="Crop" icon={ICONS.crop} showLabel collapsible={false} onClick={onEnterCrop} />}
+      </div>,
+    );
+  }
+  if (canRotateLayer && onLayerRotate) {
+    sections.push(
+      <ToolbarStepper key="rotation" caption="Rotation" label="Rotation in degrees" value={Math.round(Number(layer?.rotation) || 0)} minimum={-360} maximum={360} step={1} largeStep={15} allowNegative widthClass="w-[104px]" onCommit={onLayerRotate} />,
+    );
+  }
+  if (filtersEnabled && permissions.applyImageFilters && onFilterPatch) {
+    // The photo adjustments live in one popover, as the studio keeps its image
+    // bar short: brightness, contrast, saturation, greyscale, sepia and tint.
+    sections.push(
+      <AdjustMenu key="filters" layer={layer} allowedFilters={allowedFilters} resetFilters={resetFilters} onFilterPatch={onFilterPatch} />,
+    );
+  }
+  if (!sections.length) return null;
+  return <ToolbarShell label="Photo options" selectionKey={`photo-${layer?.id || ""}`} sections={sections} />;
+}
+
+/** The photo adjustments, opened from "Adjust" on the photo toolbar. */
+function AdjustMenu({
+  layer,
+  allowedFilters,
+  resetFilters,
+  onFilterPatch,
+}: {
+  layer: any;
+  allowedFilters: string[];
+  resetFilters: Record<string, number>;
+  onFilterPatch: (patch: Record<string, number | string | undefined>, group?: string) => void;
+}) {
+  const compact = useCompact();
+  const trigger = compact ? TB_ICON_BUTTON : TB_TEXT_BUTTON;
+  const filters = [
+    ["brightness", "Brightness", 0, 2, 0.05, 1],
+    ["contrast", "Contrast", 0, 2, 0.05, 1],
+    ["saturation", "Saturation", 0, 2, 0.05, 1],
+    ["grayscale", "Grayscale", 0, 1, 0.05, 0],
+    ["sepia", "Sepia", 0, 1, 0.05, 0],
+  ].filter(([key]) => !allowedFilters.length || allowedFilters.includes(String(key)));
   return (
-    <div
-      className="pointer-events-auto flex max-w-full items-center gap-1 overflow-x-auto rounded-2xl bg-white px-2 py-1.5 shadow-[0_4px_20px_rgba(48,56,57,0.12)] no-scrollbar"
-      role="toolbar"
-      aria-label="Photo options"
+    <ToolbarPopover
+      label="Adjust photo"
+      triggerTitle="Adjust photo"
+      role="dialog"
+      menuWidth={272}
+      triggerClassName={trigger}
+      triggerActiveClassName={`${trigger} ${TB_ON}`}
+      trigger={<AdjustTrigger />}
     >
-      {canReplace && (
-        <button
-          type="button"
-          onClick={onReplace}
-          className="min-h-11 whitespace-nowrap rounded-full bg-white px-3 py-1.5 text-xs font-bold text-[#303839] hover:bg-cream focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white"
-        >
-          {hasImage ? "Replace Photo" : "Add Photo"}
-        </button>
+      {() => (
+        <ComfortableDensity>
+          <div className="grid gap-2 p-2" data-customizer-text-interaction>
+            <p className="text-[13px] font-bold text-[#1f2425]">Adjust photo</p>
+            {filters.map(([key, label, min, max, step, fallback]: any) => (
+              <div key={key} className="flex items-center justify-between gap-2">
+                <span className="text-[13px] font-medium text-[#303839]/80">{label}</span>
+                <ToolbarStepper label={label} value={layer.filters?.[key] ?? fallback} minimum={min} maximum={max} step={step} largeStep={step * 5} allowNegative={min < 0} allowDecimal={step < 1} onCommit={(value) => onFilterPatch({ [key]: value }, `filter-${key}`)} />
+              </div>
+            ))}
+            {(!allowedFilters.length || allowedFilters.includes("tint")) && (
+              <div className="flex items-center justify-between gap-2">
+                <span className="flex items-center gap-1 text-[13px] font-medium text-[#303839]/80">
+                  Tint
+                  <TintChip value={layer.filters?.tintColor || "#D4AF37"} onChange={(tintColor) => onFilterPatch({ tintColor, tintAmount: Math.max(0.2, Number(layer.filters?.tintAmount) || 0) }, "filter-tint")} />
+                </span>
+                <ToolbarStepper label="Tint amount" value={layer.filters?.tintAmount || 0} minimum={0} maximum={1} step={0.05} largeStep={0.25} allowDecimal onCommit={(tintAmount) => onFilterPatch({ tintAmount }, "filter-tint")} />
+              </div>
+            )}
+            <div className="border-t border-[#303839]/10 pt-2">
+              <ToolbarButton label="Reset filters" onClick={() => onFilterPatch(resetFilters, "filter-reset")} />
+            </div>
+          </div>
+        </ComfortableDensity>
       )}
-
-      {canCrop && hasImage && (
-        <button
-          type="button"
-          onClick={onEnterCrop}
-          className="flex min-h-11 items-center gap-1.5 whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-bold text-[#303839] hover:bg-[#303839]/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white"
-        >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden>
-            <path d="M6 2v16a2 2 0 0 0 2 2h14" />
-            <path d="M18 22V8a2 2 0 0 0-2-2H2" />
-          </svg>
-          Crop
-        </button>
-      )}
-
-      {canRotateLayer && onLayerRotate && (
-        <>
-          {divider}
-          <EditableNumericStepper stepIcons="plusMinus" label="Rotation in degrees" value={Math.round(Number(layer?.rotation) || 0)} minimum={-360} maximum={360} step={1} largeStep={15} allowNegative allowDecimal={false} onCommit={onLayerRotate} showLabel className="h-11 w-32 shrink-0 rounded-lg bg-white px-1" />
-        </>
-      )}
-      {filtersEnabled && permissions.applyImageFilters && onFilterPatch && (
-        <>
-          {divider}
-          {[
-            ["brightness", "Brightness", 0, 2, 0.05, 1],
-            ["contrast", "Contrast", 0, 2, 0.05, 1],
-            ["saturation", "Saturation", 0, 2, 0.05, 1],
-            ["grayscale", "Grayscale", 0, 1, 0.05, 0],
-            ["sepia", "Sepia", 0, 1, 0.05, 0],
-          ].filter(([key]) => !allowedFilters.length || allowedFilters.includes(String(key))).map(([key, label, min, max, step, fallback]: any) => (
-            <EditableNumericStepper stepIcons="plusMinus" key={key} label={label} value={layer.filters?.[key] ?? fallback} minimum={min} maximum={max} step={step} largeStep={step * 5} allowNegative={min < 0} allowDecimal={step < 1} onCommit={(value) => onFilterPatch({ [key]: value }, `filter-${key}`)} showLabel className="h-11 w-28 shrink-0 rounded-lg bg-white px-1" />
-          ))}
-          {(!allowedFilters.length || allowedFilters.includes("tint")) && <><label className="grid min-h-11 shrink-0 grid-cols-[auto_44px] items-center gap-2 rounded-lg bg-white px-2 text-[9px] font-bold"><span>Tint</span><input type="color" value={layer.filters?.tintColor || "#D4AF37"} onChange={(event) => onFilterPatch({ tintColor: event.target.value, tintAmount: Math.max(0.2, Number(layer.filters?.tintAmount) || 0) }, "filter-tint")} className="h-11 w-11 rounded-full" /></label>
-          <EditableNumericStepper stepIcons="plusMinus" label="Tint amount" value={layer.filters?.tintAmount || 0} minimum={0} maximum={1} step={0.05} largeStep={0.25} allowNegative={false} allowDecimal onCommit={(tintAmount) => onFilterPatch({ tintAmount }, "filter-tint")} showLabel className="h-11 w-28 shrink-0 rounded-lg bg-white px-1" /></>}
-          <button type="button" onClick={() => onFilterPatch(resetFilters, "filter-reset")} className="min-h-11 shrink-0 rounded-lg px-2 text-[10px] font-bold hover:bg-[#303839]/5">Reset filters</button>
-        </>
-      )}
-    </div>
+    </ToolbarPopover>
   );
 }

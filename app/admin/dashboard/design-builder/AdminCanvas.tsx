@@ -31,6 +31,7 @@ import {
   type MeasureFn,
   type SafeBounds,
 } from "@/lib/customizer/v2/text-layout";
+import { pageSafeBounds, pageSafeInsets } from "@/lib/customizer/v2/safe-area";
 import { getFieldById, resolveLayerImage, resolveLayerText } from "@/app/components/customizer/customizer-utils";
 import {
   createPanGesture,
@@ -239,13 +240,9 @@ export default function AdminCanvas({
     [template, pageId, editingGroupId],
   );
 
-  // Auto-width text may grow only up to the safe area.
-  const safeBounds: SafeBounds = {
-    left: Number(template?.safeArea?.left) || 0,
-    top: Number(template?.safeArea?.top) || 0,
-    right: canvasW - (Number(template?.safeArea?.right) || 0),
-    bottom: canvasH - (Number(template?.safeArea?.bottom) || 0),
-  };
+  // Auto-width text may grow only up to this page's safe area (the same
+  // resolver preflight and the server render use).
+  const safeBounds: SafeBounds = pageSafeBounds(template, pageId);
 
   // The SAME resolver the renderers use, so the selection box, handles and the
   // rendered glyphs share one geometry — there is no second sizing calculation.
@@ -1075,7 +1072,7 @@ export default function AdminCanvas({
           selectionTheme={selectionTheme}
           snapping={{
             enabled: snapEnabled,
-            safeArea: template?.safeArea,
+            safeArea: pageSafeInsets(template, pageId),
             guides: savedGuides,
             pageId,
             neighbours: layers,

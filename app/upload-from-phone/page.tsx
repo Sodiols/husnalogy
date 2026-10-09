@@ -1,13 +1,11 @@
 import { notFound, redirect } from "next/navigation";
 import { canAccessStudio, getCurrentActor } from "@/lib/auth/roles";
 import UploadFromPhoneClient from "./upload-from-phone-client";
+import { privatePageMetadata } from "@/lib/seo/metadata";
 
 export const dynamic = "force-dynamic";
 
-export const metadata = {
-  title: "Upload from your phone",
-  robots: { index: false, follow: false },
-};
+export const metadata = privatePageMetadata("Upload from your phone");
 
 /**
  * The phone end of the Design Studio's "Upload from your phone": opened by

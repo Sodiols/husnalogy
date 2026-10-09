@@ -5,14 +5,11 @@ import WeddingCategorySection from "./components/shopByCategory";
 import TrendingCollections from "./components/trendingCollections";
 import { getTrendingWeddingCollections } from "@/lib/collections";
 import Newslatter from "../components/newsletter";
+import { staticPageMetadata } from "@/lib/seo/pages";
 
 export const dynamic = "force-dynamic";
 
-export const metadata = {
-  title: "Weddings",
-  description:
-    "Explore elegant wedding invitations, save the dates, and personalized wedding stationery from Husnalogy.",
-};
+export const metadata = staticPageMetadata("/weddings");
 
 export default async function WeddingPage() {
   const trendingCollections = await getTrendingWeddingCollections(10);

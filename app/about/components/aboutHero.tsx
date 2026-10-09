@@ -225,7 +225,7 @@ export default function AboutHero() {
             >
               <div className="flex items-center justify-center w-full h-full rounded-full">
                 <span>
-                  <img src="/Brand Kit/Logo-1.png" alt="logo" className="object-contain w-full h-full rounded-full" />
+                  <img src="/Brand Kit/Logo-1.png" alt="" className="object-contain w-full h-full rounded-full" />
                 </span>
               </div>
             </div>

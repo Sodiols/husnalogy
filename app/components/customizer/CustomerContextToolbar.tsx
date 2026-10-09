@@ -3,14 +3,17 @@
 // Contextual text toolbar (Section 5). Rendered ONLY while an editable text
 // layer is selected; every control is gated by the layer's admin-configured
 // customer permissions. Customer-added text gets the full set.
+//
+// Drawn exactly like the studio's selection toolbar (AdminContextToolbar) —
+// "Font:" trigger, "Font size − 17 +", colour chip, Bold / Italic, the
+// alignment menu — through the shared CustomerToolbarKit, in brand colours.
 
 import { FONT_SIZE_POINT_RULES, documentPxToPoints, fontSizeBoundsInPoints, pointsToDocumentPx } from "@/lib/customizer/v2/type-units";
 import { useEffect } from "react";
-import EditableNumericStepper from "./EditableNumericStepper";
 import TextAlignmentDropdown from "./TextAlignmentDropdown";
 import { effectiveTextGrowth } from "@/lib/customizer/v2/text-layout";
-import ToolbarDropdown, { type ToolbarDropdownOption } from "./ToolbarDropdown";
 import GoogleFontSelector from "./GoogleFontSelector";
+import { ToolbarButton, ToolbarColourControl, ToolbarShell, ToolbarStepper, useCompact } from "./CustomerToolbarKit";
 import {
   ensureGoogleFontLoaded,
   reportGoogleFontLoadFailure,
@@ -20,9 +23,11 @@ import {
 import {
   LETTER_SPACING_RULES,
   LINE_HEIGHT_RULES,
+  boldWeightForFont,
+  isBoldWeight,
   nearestSupportedWeight,
+  regularWeightForFont,
   resolveFontSizeBounds,
-  resolveWeightOptions,
 } from "@/lib/customizer/v2/text-toolbar";
 
 type Props = {
@@ -37,6 +42,24 @@ type Props = {
   allowedFonts?: string[];
   allowedColors?: string[];
 };
+
+/** The font picker, narrower in the compact density (as in the studio). */
+function FontPicker(props: { value: string; onChange: (family: string) => void; onOpen: () => void; allowedFonts: string[] }) {
+  const compact = useCompact();
+  return (
+    <GoogleFontSelector
+      label="Font family"
+      value={props.value}
+      onChange={props.onChange}
+      onOpen={props.onOpen}
+      allowedFonts={props.allowedFonts}
+      className={compact ? "w-[132px]" : "w-[164px]"}
+      triggerPrefix="Font:"
+      triggerClassName="h-[var(--tb-size,36px)] rounded-full px-3 text-[13px] hover:bg-[#303839]/[0.06]"
+      portal
+    />
+  );
+}
 
 export default function CustomerContextToolbar({
   layer,
@@ -66,7 +89,6 @@ export default function CustomerContextToolbar({
   // Honour the layer's own limits, exactly as the save validator does — shown
   // in points, like every font-size control (type-units.ts).
   const fontSizeBounds = fontSizeBoundsInPoints(resolveFontSizeBounds(style), dpi);
-  const weight = String(style.fontWeight || "400");
   const italic = style.fontStyle === "italic";
   const align = style.textAlign || "center";
   const verticalAlign = style.verticalAlign || "middle";
@@ -76,10 +98,9 @@ export default function CustomerContextToolbar({
   // Google Fonts variants, never a fixed list (spec §13).
   const { families } = useSelectableFamilies(allowedFonts);
   const capabilities = useFamilyCapabilities(style.fontFamily, families);
-  const weightOptions: ToolbarDropdownOption[] = resolveWeightOptions(capabilities.weights).map((option) => ({
-    value: option.value,
-    label: option.label,
-  }));
+  const weight = nearestSupportedWeight(capabilities.weights, String(style.fontWeight || "400"));
+  const bold = isBoldWeight(weight);
+  const noItalicCut = capabilities.known && !capabilities.hasItalic && !italic;
 
   // Load the face this layer actually uses so the canvas measures against real
   // metrics instead of a fallback and then reflowing (spec §14).
@@ -101,148 +122,143 @@ export default function CustomerContextToolbar({
     onStyleChange(patch, "fontFamily");
   };
 
-  const divider = <span className="mx-1 h-6 w-px shrink-0 bg-[#303839]/10" aria-hidden />;
-  // Shared compact field styling. Numeric fields stay fully keyboard editable.
-  const numericInput =
-    "h-7 w-full rounded-md border border-[#303839]/10 bg-[#F8F6F1] px-2 text-center text-[13px] font-semibold tabular-nums text-[#1f2425] outline-none transition-colors hover:border-[#303839]/25 focus:border-[#303839] focus:bg-white focus:ring-2 focus:ring-[#303839]/15";
-  const iconButton =
-    "grid h-9 w-9 shrink-0 cursor-pointer place-items-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white";
+  const sections: React.ReactNode[] = [];
+
+  if (editingText) {
+    sections.push(
+      <span key="editing" className="shrink-0 whitespace-nowrap rounded-full bg-[#303839] px-3 py-2 text-[13px] font-semibold text-white">
+        Editing text
+      </span>,
+    );
+  } else if (canEditContent) {
+    sections.push(<ToolbarButton key="edit" label="Edit Text" icon="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" showLabel primary onClick={onEditText} />);
+  }
+
+  if (canFont) {
+    sections.push(
+      <FontPicker
+        key="font"
+        value={style.fontFamily || ""}
+        onChange={onFontFamilyChange}
+        onOpen={() => {
+          if (style.fontFamily) void ensureGoogleFontLoaded(style.fontFamily, weight, italic ? "italic" : "normal").catch(reportGoogleFontLoadFailure);
+        }}
+        allowedFonts={allowedFonts}
+      />,
+    );
+  }
+
+  if (canSize) {
+    sections.push(
+      // Shown and typed in points; stored in document px (type-units.ts).
+      <ToolbarStepper
+        key="size"
+        caption="Font size"
+        label="Font size"
+        value={documentPxToPoints(fontSize, dpi)}
+        minimum={fontSizeBounds.minimum}
+        maximum={fontSizeBounds.maximum}
+        step={FONT_SIZE_POINT_RULES.step}
+        largeStep={FONT_SIZE_POINT_RULES.largeStep}
+        allowDecimal
+        onCommit={(points) => onStyleChange({ fontSize: pointsToDocumentPx(points, dpi) }, "fontSize")}
+      />,
+    );
+  }
+
+  // Colour · Bold · Italic · alignment: one group, as in the studio.
+  if (canColor || canStyle || canAlign || canVerticalAlign) {
+    sections.push(
+      <div key="style" className="flex shrink-0 items-center">
+        {canColor && (
+          <ToolbarColourControl
+            title="Text colour"
+            value={style.color || "#303839"}
+            palette={allowedColors}
+            swatchLabel="Set text colour"
+            pickerLabel="Custom text colour"
+            onChange={(color) => onStyleChange({ color }, "color")}
+          />
+        )}
+        {canStyle && (
+          <>
+            <ToolbarButton
+              label="Bold"
+              pressed={bold}
+              onClick={() => onStyleChange({ fontWeight: bold ? regularWeightForFont(capabilities.weights) : boldWeightForFont(capabilities.weights) }, "weight")}
+            >
+              <span className="text-[15px] font-black leading-none">B</span>
+            </ToolbarButton>
+            {/* Italic is offered only when the family genuinely ships one
+                (spec §13) — production would otherwise have no cut to render. */}
+            <ToolbarButton
+              label="Italic"
+              pressed={italic}
+              disabled={noItalicCut}
+              title={noItalicCut ? "Italic — this font has no italic cut" : "Italic"}
+              onClick={() => onStyleChange({ fontStyle: italic ? "normal" : "italic" })}
+            >
+              <span className="font-serif text-[16px] italic leading-none">I</span>
+            </ToolbarButton>
+          </>
+        )}
+        {(canAlign || canVerticalAlign) && (
+          <TextAlignmentDropdown
+            horizontal={align}
+            vertical={verticalAlign}
+            canHorizontal={canAlign}
+            canVertical={canVerticalAlign}
+            onHorizontalChange={(textAlign) => onStyleChange({ textAlign }, "alignment")}
+            onVerticalChange={(verticalAlign) => onStyleChange({ verticalAlign }, "vertical-alignment")}
+            growth={effectiveTextGrowth(style, layer?.text)}
+            canGrowth={canVerticalAlign}
+            onGrowthChange={(growthDirection) => onStyleChange({ growthDirection }, "text-growth")}
+          />
+        )}
+      </div>,
+    );
+  }
+
+  if (canSpacing || canLineHeight) {
+    sections.push(
+      <div key="spacing" className="flex shrink-0 items-center">
+        {canSpacing && (
+          <ToolbarStepper
+            caption="Letter spacing"
+            label="Letter spacing"
+            value={Number(style.letterSpacing ?? 0)}
+            minimum={LETTER_SPACING_RULES.minimum}
+            maximum={LETTER_SPACING_RULES.maximum}
+            step={LETTER_SPACING_RULES.step}
+            largeStep={LETTER_SPACING_RULES.largeStep}
+            allowNegative
+            allowDecimal
+            onCommit={(letterSpacing) => onStyleChange({ letterSpacing }, "letterSpacing")}
+          />
+        )}
+        {canLineHeight && (
+          <ToolbarStepper
+            caption="Line height"
+            label="Line height"
+            value={lineHeight}
+            minimum={LINE_HEIGHT_RULES.minimum}
+            maximum={LINE_HEIGHT_RULES.maximum}
+            step={LINE_HEIGHT_RULES.step}
+            largeStep={LINE_HEIGHT_RULES.largeStep}
+            allowDecimal
+            onCommit={(lineHeight) => onStyleChange({ lineHeight }, "line-height")}
+          />
+        )}
+      </div>,
+    );
+  }
 
   return (
-    <div
-      data-customizer-text-interaction
-      className="pointer-events-auto flex max-w-full items-center gap-0.5 overflow-x-auto rounded-2xl bg-white px-2 py-1.5 shadow-[0_4px_20px_rgba(48,56,57,0.12)] no-scrollbar"
-      role="toolbar"
-      aria-label="Text formatting"
-    >
-      {editingText && (
-        <>
-          <span className="shrink-0 whitespace-nowrap rounded-full bg-[#303839] px-3 py-1.5 text-[12.5px] font-semibold text-white">
-            Editing text
-          </span>
-          {divider}
-        </>
-      )}
-      {canEditContent && !editingText && (
-        <>
-          <button
-            type="button"
-            onClick={onEditText}
-            data-shape="round"
-            className="flex h-9 shrink-0 cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-full bg-[#303839] px-3.5 text-[13px] font-semibold text-white transition-colors hover:bg-[#414b4c] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white"
-          >
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-              <path d="M12 20h9" />
-              <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />
-            </svg>
-            Edit Text
-          </button>
-          {divider}
-        </>
-      )}
-
-      {canFont && (
-        <GoogleFontSelector
-          label="Font family"
-          value={style.fontFamily || ""}
-          onChange={onFontFamilyChange}
-          onOpen={() => {
-            if (style.fontFamily) void ensureGoogleFontLoaded(style.fontFamily, weight, italic ? "italic" : "normal").catch(reportGoogleFontLoadFailure);
-          }}
-          allowedFonts={allowedFonts}
-          className="w-52"
-          compact
-        />
-      )}
-
-      {canSize && (
-        <EditableNumericStepper
-          label="Font size"
-          value={documentPxToPoints(fontSize, dpi)}
-          minimum={fontSizeBounds.minimum}
-          maximum={fontSizeBounds.maximum}
-          step={FONT_SIZE_POINT_RULES.step}
-          largeStep={FONT_SIZE_POINT_RULES.largeStep}
-          allowNegative={false}
-          allowDecimal
-          onCommit={(points) => onStyleChange({ fontSize: pointsToDocumentPx(points, dpi) }, "fontSize")}
-          showLabel
-          showStepButtons={false}
-          className="h-10 w-[68px] shrink-0 px-1"
-          inputClassName={numericInput}
-        />
-      )}
-
-      {canColor && !allowedColors.length && (
-        <label className={`relative ${iconButton} hover:bg-[#303839]/5`} title="Text colour">
-          <span className="sr-only">Text colour</span>
-          <span className="h-5 w-5 rounded-full border-2 border-white shadow-[0_0_0_1px_rgba(48,56,57,0.18)]" style={{ background: style.color || "#303839" }} aria-hidden />
-          <input
-            type="color"
-            value={style.color || "#303839"}
-            onChange={(e) => onStyleChange({ color: e.target.value }, "color")}
-            className="absolute inset-0 cursor-pointer opacity-0"
-            aria-label="Text colour"
-          />
-        </label>
-      )}
-
-      {canColor && allowedColors.length > 0 && (
-        <span className="flex shrink-0 items-center gap-1 rounded-lg bg-[#F3F1EC] p-1" aria-label="Allowed text colours">
-          {allowedColors.map((color) => <button key={color} type="button" aria-label={`Set text colour ${color}`} aria-pressed={(style.color || "").toLowerCase() === color.toLowerCase()} onClick={() => onStyleChange({ color }, "color")} className={`h-7 w-7 rounded-md border-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white ${String(style.color).toLowerCase() === color.toLowerCase() ? "border-[#303839]" : "border-white"}`} style={{ backgroundColor: color }} />)}
-        </span>
-      )}
-
-      {canStyle && (
-        <>
-          <ToolbarDropdown
-            label="Weight"
-            value={weight}
-            onChange={(fontWeight) => onStyleChange({ fontWeight }, "weight")}
-            options={weightOptions}
-            width="w-28"
-          />
-          {/* Italic is offered only when the family genuinely ships one
-              (spec §13) — production would otherwise have no cut to render. */}
-          <button
-            type="button"
-            data-shape="round"
-            aria-label="Italic"
-            aria-pressed={italic}
-            disabled={!capabilities.hasItalic}
-            title={capabilities.hasItalic ? "Italic" : "This font has no italic style"}
-            onClick={() => onStyleChange({ fontStyle: italic ? "normal" : "italic" })}
-            className={`${iconButton} font-display text-[17px] italic disabled:cursor-not-allowed disabled:opacity-35 ${
-              italic ? "bg-[#303839] text-white" : "text-[#303839] hover:bg-[#303839]/5"
-            }`}
-          >
-            I
-          </button>
-        </>
-      )}
-
-      {(canAlign || canVerticalAlign) && (
-        <TextAlignmentDropdown
-          horizontal={align}
-          vertical={verticalAlign}
-          canHorizontal={canAlign}
-          canVertical={canVerticalAlign}
-          onHorizontalChange={(textAlign) => onStyleChange({ textAlign }, "alignment")}
-          onVerticalChange={(verticalAlign) => onStyleChange({ verticalAlign }, "vertical-alignment")}
-          growth={effectiveTextGrowth(style, layer?.text)}
-          canGrowth={canVerticalAlign}
-          onGrowthChange={(growthDirection) => onStyleChange({ growthDirection }, "text-growth")}
-        />
-      )}
-
-      {canSpacing && (
-        <EditableNumericStepper label="Letter spacing" value={Number(style.letterSpacing ?? 0)} minimum={LETTER_SPACING_RULES.minimum} maximum={LETTER_SPACING_RULES.maximum} step={LETTER_SPACING_RULES.step} largeStep={LETTER_SPACING_RULES.largeStep} allowNegative allowDecimal onCommit={(letterSpacing) => onStyleChange({ letterSpacing }, "letterSpacing")} showLabel showStepButtons={false} className="h-10 w-[88px] shrink-0 px-1" inputClassName={numericInput} />
-      )}
-
-      {canLineHeight && (
-        <EditableNumericStepper label="Line height" value={lineHeight} minimum={LINE_HEIGHT_RULES.minimum} maximum={LINE_HEIGHT_RULES.maximum} step={LINE_HEIGHT_RULES.step} largeStep={LINE_HEIGHT_RULES.largeStep} allowNegative={false} allowDecimal onCommit={(lineHeight) => onStyleChange({ lineHeight }, "line-height")} showLabel showStepButtons={false} className="h-10 w-[88px] shrink-0 px-1" inputClassName={numericInput} />
-      )}
-
-    </div>
+    <ToolbarShell
+      label="Text formatting"
+      selectionKey={String(layer?.id || "")}
+      sections={sections}
+      attributes={{ "data-customer-text-toolbar": true }}
+    />
   );
 }

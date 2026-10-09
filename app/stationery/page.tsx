@@ -1,13 +1,11 @@
 import { getCollectionOptions, getCollectionProducts } from "@/lib/collections";
 import { getFilterOptions } from "@/lib/products";
 import ProductListingPage from "../products/ProductListingPage";
+import { staticPageMetadata } from "@/lib/seo/pages";
 
 export const dynamic = "force-dynamic";
 
-export const metadata = {
-  title: "Stationery",
-  description: "Personalized stationery from Husnalogy: menus, place cards, notes and paper details.",
-};
+export const metadata = staticPageMetadata("/stationery");
 
 export default async function StationeryPage({ searchParams }) {
   const params = await searchParams;

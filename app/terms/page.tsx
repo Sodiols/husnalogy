@@ -1,10 +1,8 @@
 import Link from "next/link";
 import { ORDER_POLICY } from "@/lib/launch-config";
+import { staticPageMetadata } from "@/lib/seo/pages";
 
-export const metadata = {
-  title: "Terms and Conditions",
-  description: "Read Husnalogy website, order, product, and service terms.",
-};
+export const metadata = staticPageMetadata("/terms");
 
 const terms = [
   {

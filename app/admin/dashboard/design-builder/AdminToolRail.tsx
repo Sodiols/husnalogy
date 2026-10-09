@@ -72,7 +72,7 @@ export default function AdminToolRail({ activePanel, onSelect }: Props) {
     <nav
       aria-label="Design tools"
       data-admin-tool-rail
-      className="flex w-[76px] shrink-0 flex-col items-stretch gap-0.5 overflow-y-auto rounded-2xl bg-white px-1.5 py-3 shadow-[0_4px_20px_rgba(48,56,57,0.12)] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+      className="flex w-[80px] shrink-0 flex-col items-stretch gap-0.5 overflow-y-auto rounded-2xl bg-white px-1.5 py-3 shadow-[0_4px_20px_rgba(48,56,57,0.12)] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
     >
       {STUDIO_RAIL_ITEMS.map((item) => {
         const active = item.id === "edit" ? activePanel === null : activePanel === item.id;

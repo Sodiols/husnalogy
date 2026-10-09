@@ -1,13 +1,11 @@
 import { getCollectionOptions, getCollectionProducts } from "@/lib/collections";
 import { getFilterOptions } from "@/lib/products";
 import ProductListingPage from "../products/ProductListingPage";
+import { staticPageMetadata } from "@/lib/seo/pages";
 
 export const dynamic = "force-dynamic";
 
-export const metadata = {
-  title: "Cards",
-  description: "Personalized cards from Husnalogy for thank-yous, celebrations and everyday notes.",
-};
+export const metadata = staticPageMetadata("/cards");
 
 export default async function CardsPage({ searchParams }) {
   const params = await searchParams;

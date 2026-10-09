@@ -18,6 +18,7 @@ import {
 } from "../google-fonts";
 import { readFontBuffer, resolveFontsForStyles } from "./google-font-files";
 import { createOpentypeMeasure, fallbackMeasure, type MeasureFn, type MeasureStyle } from "../text-layout";
+import { withGposKerning } from "../gpos-kerning";
 
 /** Parsed-font cache keyed by the resolved variant, not the family. */
 const parsedCache = new Map<string, opentype.Font | null>();
@@ -28,8 +29,9 @@ function parseKey(dependency: FontDependency): string {
 
 function parseBuffer(bytes: Buffer): opentype.Font | null {
   try {
-    const arrayBuffer = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
-    return opentype.parse(arrayBuffer);
+    const arrayBuffer = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
+    // Kerning the way browsers apply it (opentype.js misses Extension lookups).
+    return withGposKerning(opentype.parse(arrayBuffer), arrayBuffer);
   } catch (error) {
     console.error("[fonts] Could not parse a downloaded font file:", error instanceof Error ? error.message : error);
     return null;

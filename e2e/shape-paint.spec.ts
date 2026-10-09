@@ -112,6 +112,80 @@ test.describe("Design Studio shape paint", () => {
   });
 });
 
+test.describe("Design Studio: a line's toolbar colour offers Transparent (task 08)", () => {
+  test("transparent hides the stroke but keeps the line: selectable from Layers, colour restores it, Undo/Redo, copy/paste, save", async ({ page }) => {
+    const TITLE = "Minimal Thank You Card";
+    const template = {
+      enabled: true, cardWidthIn: 5, cardHeightIn: 7, dpi: 300, canvasWidthPx: 1500, canvasHeightPx: 2100,
+      pages: [{ id: "front", label: "Front", enabled: true }], defaultPage: "front", fields: [], guides: [],
+      layers: [{ id: "ln", name: "Line", page: "front", type: "shape", shape: "line", x: 750, y: 1000, width: 700, height: 24, zIndex: 1, stroke: "#27307a", strokeWidth: 8 }],
+    };
+    await page.goto("/__e2e/admin-dashboard?section=Products");
+    await expect(page.getByRole("button", { name: "Add product" }).first()).toBeVisible({ timeout: 60_000 });
+    await page.evaluate(({ name, value }) => {
+      const products = (window as any).__adminFixture.store.products.map((entry: any) => (entry.title === name ? { ...entry, customizerTemplate: value } : entry));
+      window.sessionStorage.setItem("__adminFixtureDurable", JSON.stringify({ products, versions: {} }));
+    }, { name: TITLE, value: template });
+    await page.reload();
+    await page.getByRole("button", { name: `Edit ${TITLE}` }).first().click();
+    const enable = page.getByRole("switch", { name: /Enable product customizer/ });
+    await expect(enable.or(page.getByRole("button", { name: "Open Design Studio" })).first()).toBeVisible({ timeout: 30_000 });
+    if ((await enable.isVisible()) && (await enable.getAttribute("aria-checked")) !== "true") await enable.click();
+    await page.getByRole("button", { name: "Open Design Studio" }).click();
+    const studio = page.locator("[data-admin-customizer]");
+    const header = studio.locator("header");
+    const toolbar = page.locator("[data-admin-toolbar]");
+    const lineStroke = (id = "ln") => page.evaluate((layerId) => document.querySelector(`[data-admin-customizer] [data-canvas-surface] [data-layer-id="${layerId}"] line`)?.getAttribute("stroke"), id);
+    const saved = async () => {
+      const before = await page.evaluate(() => (window as any).__adminFixture.requests.length);
+      await header.getByRole("button", { name: /Save Draft/ }).click();
+      await expect.poll(() => page.evaluate((count) => (window as any).__adminFixture.requests.length > count, before)).toBe(true);
+      await expect(header.getByText("Unsaved", { exact: true })).toHaveCount(0, { timeout: 15_000 });
+      return page.evaluate(() => {
+        const saves = (window as any).__adminFixture.requests.filter((entry: any) => /^\/api\/admin\/products(\/[^/]+)?$/.test(entry.path));
+        return saves[saves.length - 1].body.customizerTemplate.layers as any[];
+      });
+    };
+
+    // Select the line from Layers and make its colour Transparent from the toolbar.
+    await studio.getByRole("navigation", { name: "Design tools" }).getByRole("button", { name: "Layers", exact: true }).click();
+    await studio.locator('[data-admin-side-panel="layers"]').getByText("Line", { exact: true }).first().click();
+    await toolbar.getByRole("button", { name: /^Line color/ }).click();
+    // The toolbar popover's swatch (the inspector has its own Transparent button).
+    await page.locator('[data-toolbar-menu-item][aria-label="Transparent"]').click();
+    await expect.poll(() => lineStroke()).toBe("none");
+    let layers = await saved();
+    expect(layers.find((layer) => layer.id === "ln")).toMatchObject({ stroke: "none", strokeWidth: 8, width: 700, x: 750, y: 1000 });
+
+    // Still there and selectable: Layers selects it; the weight still edits.
+    await page.locator("[data-canvas-surface]").first().click({ position: { x: 5, y: 5 } });
+    await studio.locator('[data-admin-side-panel="layers"]').getByText("Line", { exact: true }).first().click();
+    await expect(toolbar.getByRole("button", { name: /^Line color: Transparent/ })).toBeVisible();
+
+    // Undo restores the colour; Redo hides it again.
+    await page.keyboard.press("Control+z");
+    await expect.poll(() => lineStroke()).toBe("#27307a");
+    await page.keyboard.press("Control+y");
+    await expect.poll(() => lineStroke()).toBe("none");
+
+    // Copy and paste keep the transparent stroke.
+    await page.keyboard.press("Control+c");
+    await page.keyboard.press("Control+v");
+    layers = await saved();
+    const lines = layers.filter((layer) => layer.shape === "line");
+    expect(lines).toHaveLength(2);
+    expect(lines.every((layer) => layer.stroke === "none")).toBe(true);
+
+    // A colour brings it back.
+    await studio.locator('[data-admin-side-panel="layers"]').getByText("Line", { exact: true }).first().click();
+    await toolbar.getByRole("button", { name: /^Line color/ }).click();
+    const hex = page.getByRole("textbox", { name: /hex/i }).last();
+    await hex.fill("#ff0000");
+    await hex.press("Enter");
+    await expect.poll(async () => (await saved()).filter((layer) => layer.shape === "line").some((layer) => layer.stroke === "#ff0000")).toBe(true);
+  });
+});
+
 test.describe("Design Studio paint, end to end", () => {
   test("transparent fill and line, line weight, one undo per change, and the saved draft keeps \"none\"", async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 900 });

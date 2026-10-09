@@ -125,6 +125,8 @@ const immutableAssetHeaders = [
   { key: "X-Content-Type-Options", value: "nosniff" },
 ];
 
+const noIndexHeaders = [{ key: "X-Robots-Tag", value: "noindex, nofollow" }];
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   // Test infrastructure only: an isolated e2e server (stubbed Supabase, see
@@ -180,6 +182,9 @@ const nextConfig = {
         source: "/Brand Kit/:path*",
         headers: immutableAssetHeaders,
       },
+      // JSON and redirect responses cannot carry a robots meta tag.
+      { source: "/api/:path*", headers: noIndexHeaders },
+      { source: "/auth/:path*", headers: noIndexHeaders },
     ];
   },
   async redirects() {

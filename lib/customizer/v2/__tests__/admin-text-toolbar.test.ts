@@ -465,7 +465,10 @@ describe("admin text toolbar — structure and accessibility", () => {
   it("renders every menu through a portal that a scrolling bar cannot clip", () => {
     expect(popoverSource).toContain("createPortal");
     expect(popoverSource).toContain("planPopoverPlacement");
-    expect(popoverSource).toContain("z-[240]");
+    // Above the inline text editor (z-[260]), so an opened menu is never hidden behind it.
+    expect(popoverSource).toContain("z-[270]");
+    expect(dropdownSource).toContain("z-[270]");
+    expect(read("app/components/customizer/InlineCanvasTextEditor.tsx")).toContain("z-[260]");
     expect(dropdownSource).toContain("createPortal");
     expect(dropdownSource).toContain("planPopoverPlacement");
     // The font list too: the toolbar asks the shared selector to portal it.

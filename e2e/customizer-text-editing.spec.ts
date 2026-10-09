@@ -101,17 +101,23 @@ test.describe("on-canvas text editing keyboard contract", () => {
     await page.keyboard.press("Control+Enter");
     await expect.poll(async () => (await editorState(page)).open, { timeout: 5000 }).toBe(false);
 
-    // Free colour (input) or the template's allowed palette, whichever this design offers.
+    // The colour chip opens the colour popover (as in the studio): the
+    // template's allowed palette, or swatches plus a free colour picker.
     const root = page.locator("[data-customizer-root]");
-    const free = root.getByLabel("Text colour");
-    const palette = root.getByRole("button", { name: /^Set text colour / });
+    await root.getByRole("button", { name: /^Text colour/ }).click();
+    const popover = page.getByRole("dialog", { name: /^Text colour/ });
+    const free = popover.getByLabel("Custom text colour");
+    const palette = popover.getByRole("button", { name: /^Set text colour / });
     let wanted = "#b21c40";
     if (await free.count()) await free.first().fill(wanted);
     else {
       const swatch = palette.last();
       wanted = String((await swatch.getAttribute("aria-label")) || "").replace("Set text colour ", "");
       await swatch.click();
-      await expect(swatch).toHaveAttribute("aria-pressed", "true");
+      // Picking closes the popover; reopen it to see the choice marked.
+      await root.getByRole("button", { name: /^Text colour/ }).click();
+      await expect(popover.getByRole("button", { name: `Set text colour ${wanted}` })).toHaveAttribute("aria-pressed", "true");
+      await page.keyboard.press("Escape");
     }
     // The renderer writes the colour into the text element's style (fill:#rrggbb).
     await expect.poll(() => page.evaluate(() => {
@@ -170,28 +176,35 @@ test.describe("on-canvas text editing keyboard contract", () => {
   });
 
   /**
-   * KNOWN DEFECT, asserted rather than skipped.
-   *
-   * The preset buttons ("Add Heading", "Add Subheading", "Add Body Text") are
-   * only visible while the Text tool's freshly inserted, still-empty text layer
-   * is being edited. Pressing one moves focus out of that editor first; the
-   * empty layer is discarded, the panel closes, and the click lands on nothing —
-   * so no preset can ever be applied.
-   *
-   * `test.fail()` runs this and expects it to fail. When the defect is fixed the
-   * test passes, Playwright reports that as an error, and the marker must be
-   * removed — it cannot silently outlive the bug.
+   * Formerly a KNOWN DEFECT (marked test.fail): pressing a preset closed the
+   * Text tool's empty auto-inserted text, the controls above the presets
+   * disappeared, the list jumped before the release and the click was lost.
+   * The style list now captures the pointer and applies the style on release
+   * (app/components/customizer/TextStyleList.tsx).
    */
   test("choosing a text preset inserts a text object in that style", async ({ page }) => {
-    test.fail(true, "Known defect: text presets are unreachable — the preset click is lost when the auto-inserted empty text layer is discarded.");
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto(personalizeUrl());
     await expect(page.locator("[data-customizer-root]")).toBeVisible();
     await switchToAdvancedCustomize(page);
+    const layerCount = () => page.evaluate(() => document.querySelectorAll("[data-customizer-canvas=main] [data-layer-id]").length);
+    const before = await layerCount();
 
     const root = page.locator("[data-customizer-root]");
     await root.getByRole("button", { name: "Text", exact: true }).click();
     await root.getByRole("button", { name: /Add Heading/ }).click({ timeout: 5000 });
     await expect.poll(async () => (await editorState(page)).open, { timeout: 5000 }).toBe(true);
+    await page.keyboard.type("Anna");
+    await page.keyboard.press("Control+Enter");
+    await expect.poll(async () => (await editorState(page)).open, { timeout: 5000 }).toBe(false);
+
+    // Exactly one new object — the heading, in the heading style; the empty
+    // text the Text tool had inserted is gone.
+    await expect.poll(layerCount).toBe(before + 1);
+    const size = await page.evaluate(() => {
+      const text = Array.from(document.querySelectorAll("[data-customizer-canvas=main] text")).find((node) => node.textContent?.trim() === "Anna") as SVGTextElement | undefined;
+      return text ? getComputedStyle(text).fontSize : null;
+    });
+    expect(size).toBe("94px");
   });
 });

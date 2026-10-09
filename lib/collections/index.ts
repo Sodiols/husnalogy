@@ -737,3 +737,54 @@ export async function getCollectionOptions(slug) {
   const allProducts = await getActiveProducts();
   return allProducts.filter((product) => matchesDefinition(product, definition));
 }
+
+/**
+ * Built-in filters whose content IS a top-level landing page (/gifts renders
+ * exactly getCollectionProducts("gifts")). The /collections/<slug> twin
+ * canonicalizes to the landing page and stays out of the sitemap, so search
+ * engines see one URL for one listing.
+ */
+export const LANDING_PAGE_COLLECTIONS = {
+  gifts: "/gifts",
+  cards: "/cards",
+  stationery: "/stationery",
+  "save-the-dates": "/save-the-dates",
+};
+
+/** True when the slug names a real collection: an admin collection or a built-in filter. */
+export function isKnownCollectionSlug(slug, collections = []) {
+  const normalizedSlug = normalize(slug);
+  return (
+    collections.some((item) => normalize(item.slug) === normalizedSlug) ||
+    COLLECTION_DEFINITIONS.some((item) => item.slug === normalizedSlug)
+  );
+}
+
+/**
+ * Every collection URL with at least one public product, from the trusted
+ * server-side catalogue — the sitemap's collection list. Admin collections
+ * (any level) win over a built-in filter with the same slug, exactly as the
+ * collection page resolves them. `products` are active + public only.
+ */
+export async function getPublicCollectionEntries() {
+  const [collections, allProducts] = await Promise.all([getProductCollections(), getActiveProducts()]);
+  const entries = new Map();
+
+  for (const collection of collections) {
+    const slug = normalize(collection.slug);
+    if (!slug || entries.has(slug)) continue;
+    const subCollections = buildCollectionChildren(collection, collections, allProducts);
+    const products = subCollections.length
+      ? subCollections.flatMap((child) => child.products)
+      : getProductsForCollection(collection, allProducts);
+    entries.set(slug, { slug, source: "admin", title: collection.name, updatedAt: collection.updatedAt || "", products });
+  }
+
+  for (const definition of COLLECTION_DEFINITIONS) {
+    if (entries.has(definition.slug)) continue;
+    const products = allProducts.filter((product) => matchesDefinition(product, definition));
+    entries.set(definition.slug, { slug: definition.slug, source: "builtin", title: definition.title, updatedAt: "", products });
+  }
+
+  return [...entries.values()].filter((entry) => entry.products.length > 0);
+}

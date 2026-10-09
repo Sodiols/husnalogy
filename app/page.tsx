@@ -4,10 +4,9 @@ import GiftingIdeas from "./components/gifting-ideas";
 import About from "./components/about";
 import Newsletter from "./components/newsletter";
 import { getFeaturedHeroCollection } from "@/lib/hero-collections/store";
+import { staticPageMetadata } from "@/lib/seo/pages";
 
-export const metadata = {
-  alternates: { canonical: "/" },
-};
+export const metadata = staticPageMetadata("/");
 
 export const dynamic = "force-dynamic";
 

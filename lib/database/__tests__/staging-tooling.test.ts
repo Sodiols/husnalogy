@@ -57,7 +57,7 @@ describe("staging migration runner on real PostgreSQL (fresh Supabase-like datab
     const result = await applyMigrations(server.owner, plan, (entry) => log.push(entry));
     expect(result.failed).toBeNull();
     expect(result.applied).toEqual(plan.map((entry) => entry.name));
-    const doc = readFileSync(join(process.cwd(), "HOSTINGER_DEPLOYMENT.md"), "utf8").replace(/\r\n/g, "\n");
+    const doc = readFileSync(join(process.cwd(), "docs", "HOSTINGER_DEPLOYMENT.md"), "utf8").replace(/\r\n/g, "\n");
     const query = doc.match(/```sql\n(select \* from \(values[\s\S]*?\) as checks\(migration, applied\);)\n```/)![1];
     const rows = (await server.owner.query<{ migration: string; applied: boolean }>(query)).rows;
     expect(rows.filter((row) => !row.applied).map((row) => row.migration)).toEqual([]);

@@ -1,9 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { BUSINESS_INFO, LAUNCH_FEATURES } from "@/lib/launch-config";
 
 export default function ContactPage() {
+  const router = useRouter();
+  const submittingRef = useRef(false);
   const [form, setForm] = useState({ name: "", email: "", phone: "", subject: "", message: "" });
   const [status, setStatus] = useState({ loading: false, success: "", error: "" });
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
@@ -37,28 +40,41 @@ export default function ContactPage() {
       if (firstKey) document.getElementById(`contact-${firstKey}`)?.focus();
       return;
     }
+    // A ref, not state: a fast double click fires twice before React
+    // re-renders the disabled button.
+    if (submittingRef.current) return;
+    submittingRef.current = true;
     setStatus({ loading: true, success: "", error: "" });
 
+    let response: Response;
     try {
-      const response = await fetch("/api/contact", {
+      response = await fetch("/api/contact", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(form),
       });
-      const data = await response.json();
-
-      if (!response.ok) {
-        if (data?.errors && typeof data.errors === "object") setFieldErrors(data.errors);
-        const firstError = data?.errors ? Object.values(data.errors)[0] : data?.error;
-        throw new Error(String(firstError || "Your message could not be sent. Please try again."));
-      }
-
-      setForm({ name: "", email: "", phone: "", subject: "", message: "" });
-      setFieldErrors({});
-      setStatus({ loading: false, success: "Thank you. Your message has been sent and we will reply by email.", error: "" });
-    } catch (error) {
-      setStatus({ loading: false, success: "", error: error.message || "Something went wrong." });
+    } catch {
+      submittingRef.current = false;
+      setStatus({ loading: false, success: "", error: "We couldn't reach Husnalogy. Check your connection and try again; your message is still here." });
+      return;
     }
+
+    const data = await response.json().catch(() => null);
+    if (response.ok && data?.ok === true) {
+      // Saved by the server: only now leave the form. The button stays
+      // disabled until the confirmation page has replaced this one.
+      router.push("/thank-you");
+      return;
+    }
+
+    submittingRef.current = false;
+    if (data?.errors && typeof data.errors === "object") setFieldErrors(data.errors);
+    const firstError = data?.errors ? Object.values(data.errors)[0] : data?.error;
+    setStatus({
+      loading: false,
+      success: "",
+      error: String(firstError || "Your message could not be sent. Please try again; your message is still here."),
+    });
   };
 
   const handleNewsletter = async (event) => {

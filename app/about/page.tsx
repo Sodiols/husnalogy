@@ -7,12 +7,9 @@ import AboutClosing from "./components/aboutClosing";
 import AboutFAQ from "./components/aboutFAQ";
 import Newsletter from "../components/newsletter";
 import type { CSSProperties } from "react";
+import { staticPageMetadata } from "@/lib/seo/pages";
 
-export const metadata = {
-  title: "About",
-  description:
-    "Learn about Husnalogy, a refined design studio for wedding invitations, custom cards, personalized gifts, and meaningful stationery.",
-};
+export const metadata = staticPageMetadata("/about");
 
 export default function AboutPage() {
   return (

@@ -191,6 +191,10 @@ export default function AdminDashboardClient({ basePath = "/admin/dashboard" }: 
   const [subscribers, setSubscribers] = useState([]);
   const [editingProduct, setEditingProduct] = useState(null);
   const [productFormOpen, setProductFormOpen] = useState(false);
+  // Whether the open product form's Design Studio holds changes the server has
+  // not confirmed. Leaving the form asks first (the browser's own unload
+  // prompt covers closing the tab).
+  const productDesignUnsavedRef = useRef(false);
   const [collectionForm, setCollectionForm] = useState(emptyCollection);
   const [editingCollectionId, setEditingCollectionId] = useState(null);
   const [collectionFormOpen, setCollectionFormOpen] = useState(false);
@@ -435,7 +439,33 @@ export default function AdminDashboardClient({ basePath = "/admin/dashboard" }: 
     return () => document.removeEventListener("keydown", closeOnEscape);
   }, [sidebarOpen, notificationsOpen]);
 
+  /** Run `proceed` now, or after the admin agrees to leave unsaved design changes behind. */
+  const leaveUnsavedDesign = (proceed: () => void) => {
+    if (!productFormOpen || !productDesignUnsavedRef.current) {
+      proceed();
+      return;
+    }
+    setConfirmDialog({
+      title: "Leave without saving the design?",
+      message:
+        "The Design Studio has changes that are not saved to the server yet. Cancel to go back and save them, or leave — a recovery copy stays on this device and is offered when you reopen the studio.",
+      confirmLabel: "Leave without saving",
+      onConfirm: () => {
+        productDesignUnsavedRef.current = false;
+        proceed();
+      },
+    });
+  };
+
   const changeSection = (section) => {
+    if (section !== activeSection && section !== "Products") {
+      leaveUnsavedDesign(() => changeSectionNow(section));
+      return;
+    }
+    changeSectionNow(section);
+  };
+
+  const changeSectionNow = (section) => {
     if (section !== activeSection) window.scrollTo({ top: 0 });
     setActiveSection(section);
     setSidebarOpen(false);
@@ -443,7 +473,8 @@ export default function AdminDashboardClient({ basePath = "/admin/dashboard" }: 
     router.replace(`${basePath}?section=${encodeURIComponent(section)}`);
   };
 
-  const handleLogout = async () => {
+  const handleLogout = () => leaveUnsavedDesign(() => void logoutNow());
+  const logoutNow = async () => {
     await fetch("/api/admin/logout", { method: "POST" });
     router.push("/login");
     router.refresh();
@@ -495,18 +526,20 @@ export default function AdminDashboardClient({ basePath = "/admin/dashboard" }: 
     showNotice(message || "Product saved.");
   };
 
-  const closeProductForm = () => {
-    setEditingProduct(null);
-    setProductFormOpen(false);
-  };
+  const closeProductForm = () =>
+    leaveUnsavedDesign(() => {
+      setEditingProduct(null);
+      setProductFormOpen(false);
+    });
 
-  const editProduct = (product) => {
-    setEditingProduct(product);
-    setProductFormOpen(true);
-    changeSection("Products");
-  };
+  const editProduct = (product) =>
+    leaveUnsavedDesign(() => {
+      setEditingProduct(product);
+      setProductFormOpen(true);
+      changeSectionNow("Products");
+    });
 
-  const duplicateProduct = (product) => {
+  const duplicateProduct = (product) => leaveUnsavedDesign(() => {
     setEditingProduct({
       ...product,
       id: null,
@@ -515,8 +548,8 @@ export default function AdminDashboardClient({ basePath = "/admin/dashboard" }: 
       status: "draft",
     });
     setProductFormOpen(true);
-    changeSection("Products");
-  };
+    changeSectionNow("Products");
+  });
 
   const requestDeleteConfirm = ({ title, message, confirmLabel = "Delete", onConfirm }) => {
     setConfirmDialog({ title, message, confirmLabel, onConfirm });
@@ -1280,10 +1313,12 @@ export default function AdminDashboardClient({ basePath = "/admin/dashboard" }: 
                     products={filteredProducts}
                     query={productQuery}
                     setQuery={setProductQuery}
-                    onAdd={() => {
-                      setEditingProduct(null);
-                      setProductFormOpen(true);
-                    }}
+                    onAdd={() =>
+                      leaveUnsavedDesign(() => {
+                        setEditingProduct(null);
+                        setProductFormOpen(true);
+                      })
+                    }
                     statusFilter={productStatusFilter}
                     setStatusFilter={setProductStatusFilter}
                     totalProducts={products.length}
@@ -1291,6 +1326,9 @@ export default function AdminDashboardClient({ basePath = "/admin/dashboard" }: 
                     formOpen={productFormOpen}
                     onSaved={handleProductSaved}
                     onCloseForm={closeProductForm}
+                    onDesignUnsavedChange={(unsaved: boolean) => {
+                      productDesignUnsavedRef.current = unsaved;
+                    }}
                     onEdit={editProduct}
                     onDuplicate={duplicateProduct}
                     onDelete={removeProduct}
@@ -2766,7 +2804,7 @@ function StyledNativeSelect({ value, onChange, options, size = "md", ariaLabel, 
   );
 }
 
-function ProductsSection({ allProducts = [], products, query = "", setQuery, onAdd, statusFilter, setStatusFilter, totalProducts, editingProduct, formOpen, onSaved, onCloseForm, onEdit, onDuplicate, onDelete }: any) {
+function ProductsSection({ allProducts = [], products, query = "", setQuery, onAdd, statusFilter, setStatusFilter, totalProducts, editingProduct, formOpen, onSaved, onCloseForm, onDesignUnsavedChange, onEdit, onDuplicate, onDelete }: any) {
   const [categoryFilter, setCategoryFilter] = useState("");
   const [typeFilter, setTypeFilter] = useState("");
   const [personalizationFilter, setPersonalizationFilter] = useState("");
@@ -2826,6 +2864,7 @@ function ProductsSection({ allProducts = [], products, query = "", setQuery, onA
           product={editingProduct}
           onSaved={onSaved}
           onClose={onCloseForm}
+          onDesignUnsavedChange={onDesignUnsavedChange}
         />
       )}
 

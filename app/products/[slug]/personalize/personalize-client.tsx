@@ -22,7 +22,7 @@ import {
 import { getDefaultOptionCartValue } from "@/lib/products/options";
 import CustomizerWorkspace from "@/app/components/customizer/CustomizerWorkspace";
 import CustomizerPageThumbnails from "@/app/components/customizer/CustomizerPageThumbnails";
-import CustomizerZoomControls from "@/app/components/customizer/CustomizerZoomControls";
+import CustomizerZoomControls, { CANVAS_CIRCLE } from "@/app/components/customizer/CustomizerZoomControls";
 import { ZOOM_MAX, ZOOM_MIN, clampZoom } from "@/lib/customizer/v2/zoom";
 import { awaitDevSaveGate, ensureCustomizerMetrics, recordDocumentCommit, recordEditorEvent } from "@/lib/customizer/v2/dev-metrics";
 import type { CropExitMode, CropSessionApi, LayerTransformChange } from "@/app/components/customizer/CustomizerWorkspace";
@@ -90,6 +90,7 @@ import { evaluateGroupAction, getDescendantIds, groupLayers, transformGroupChild
 import { clonedIdsFor, expandCloneSelection, relinkClones } from "@/lib/customizer/v2/clipboard";
 import { DEFAULT_LINE_HEIGHT, createCanvasMeasure, getSingleLineTextBox, isAutoWidthText, isSingleLineAutoSizeText } from "@/lib/customizer/v2/text-layout";
 import { resolveLayerSelectionGeometry } from "@/lib/customizer/v2/selection-geometry";
+import { pageSafeBounds } from "@/lib/customizer/v2/safe-area";
 import { resolveSelection, sanitizeSelection } from "@/lib/customizer/v2/selection";
 import { DEFAULT_FONT_FAMILY } from "@/lib/customizer/v2/google-fonts";
 import { ensureDesignFontsLoaded, reportGoogleFontLoadFailure } from "@/app/components/customizer/useGoogleFonts";
@@ -1034,21 +1035,15 @@ export default function PersonalizeClient({ product, template }: { product: any;
     [effectiveLayers, editingGroupId],
   );
   const resolvedSelectedLayers = useMemo(() => {
-    const safeBounds = {
-      left: Number(template?.safeArea?.left) || 0,
-      top: Number(template?.safeArea?.top) || 0,
-      right: (Number(template?.canvasWidthPx) || 1500) - (Number(template?.safeArea?.right) || 0),
-      bottom: (Number(template?.canvasHeightPx) || 2100) - (Number(template?.safeArea?.bottom) || 0),
-    };
     return selectedLayers.map((layer: any) => {
       const field = layer.fieldId ? getFieldById(template, layer.fieldId) : null;
       return resolveLayerSelectionGeometry(layer, {
         text: String(resolveLayerText(layer, field, values)),
         measure: customerTextMeasure,
-        safeBounds,
+        safeBounds: pageSafeBounds(template, layer.page || activePage),
       });
     });
-  }, [selectedLayers, template, values]);
+  }, [selectedLayers, template, values, activePage]);
   const canMoveCustomerLayer = (layer: any) =>
     !((layer.isUserLayer && layer.locked) || layer.customerLocked || layer.positionLocked || layer.customerInteractionDisabled) &&
     (layer.isUserLayer || getLayerPermissions(layer).move);
@@ -4229,7 +4224,8 @@ export default function PersonalizeClient({ product, template }: { product: any;
                         const rect = event.currentTarget.getBoundingClientRect();
                         openContextMenu({ x: rect.left, y: rect.bottom + 6 });
                       }}
-                      className="pointer-events-auto grid h-11 w-11 shrink-0 place-items-center rounded-full border border-[#303839]/12 bg-white text-[#303839] shadow-[0_6px_24px_rgba(48,56,57,0.14)] hover:bg-[#F8F6F1] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839]"
+                      // Sized and drawn like the toolbar capsules beside it.
+                      className="pointer-events-auto grid h-[46px] w-[46px] shrink-0 cursor-pointer place-items-center rounded-full border border-[#303839]/10 bg-white text-[#303839] shadow-[0_4px_18px_rgba(48,56,57,0.12)] transition-colors hover:bg-[#F3F1EC] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] pointer-coarse:h-[54px] pointer-coarse:w-[54px]"
                     >
                       <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
                         <circle cx="5" cy="12" r="1.8" />
@@ -4267,12 +4263,14 @@ export default function PersonalizeClient({ product, template }: { product: any;
 
               {/* Bottom controls */}
               <div className="pointer-events-none absolute inset-x-0 bottom-3 z-30 flex items-end justify-center gap-2 px-3">
-                <div className="pointer-events-auto flex max-w-full items-center gap-2 overflow-x-auto rounded-full no-scrollbar">
+                {/* Wraps (never scrolls) on a narrow canvas, like the studio's canvas bar. */}
+                <div className="pointer-events-auto flex max-w-full flex-wrap items-center justify-center gap-2">
                   {enabledPages.length > 1 && (
-                    <div className="flex h-11 shrink-0 items-center rounded-full bg-white px-1 shadow-[0_2px_10px_rgba(31,36,37,0.12)]" role="group" aria-label="Page navigation">
-                      <button type="button" data-shape="round" aria-label="Previous page" disabled={pageIndex <= 0} onClick={() => onActivePageChange(enabledPages[Math.max(0, pageIndex - 1)].id)} className="grid h-9 w-8 cursor-pointer place-items-center rounded-full text-[#303839] transition-colors hover:bg-[#F8F6F1] sm:w-9 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white disabled:cursor-not-allowed disabled:opacity-25"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="m15 18-6-6 6-6" /></svg></button>
-                      <span className="min-w-12 text-center text-[14px] font-semibold tabular-nums text-[#1f2425] sm:min-w-14">{pageIndex + 1} / {enabledPages.length}</span>
-                      <button type="button" data-shape="round" aria-label="Next page" disabled={pageIndex >= enabledPages.length - 1} onClick={() => onActivePageChange(enabledPages[Math.min(enabledPages.length - 1, pageIndex + 1)].id)} className="grid h-9 w-8 cursor-pointer place-items-center rounded-full text-[#303839] transition-colors hover:bg-[#F8F6F1] sm:w-9 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white disabled:cursor-not-allowed disabled:opacity-25"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="m9 18 6-6-6-6" /></svg></button>
+                    // The studio canvas bar's look: round "‹" and "›" around the page count.
+                    <div className="flex shrink-0 items-center gap-2" role="group" aria-label="Page navigation">
+                      <button type="button" data-shape="round" aria-label="Previous page" disabled={pageIndex <= 0} onClick={() => onActivePageChange(enabledPages[Math.max(0, pageIndex - 1)].id)} className={CANVAS_CIRCLE}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="m15 18-6-6 6-6" /></svg></button>
+                      <span className="grid h-11 min-w-16 place-items-center rounded-lg bg-white px-3 text-[15px] font-bold tabular-nums text-[#1f2425] shadow-[0_2px_10px_rgba(31,36,37,0.12)]">{pageIndex + 1} / {enabledPages.length}</span>
+                      <button type="button" data-shape="round" aria-label="Next page" disabled={pageIndex >= enabledPages.length - 1} onClick={() => onActivePageChange(enabledPages[Math.min(enabledPages.length - 1, pageIndex + 1)].id)} className={CANVAS_CIRCLE}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="m9 18 6-6-6-6" /></svg></button>
                     </div>
                   )}
                   <CustomizerZoomControls

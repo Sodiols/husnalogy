@@ -37,6 +37,11 @@ const CHIP_TONES: Record<string, string> = {
   Published: "bg-emerald-50 text-emerald-700",
   Active: "bg-emerald-50 text-emerald-700",
   Unsaved: "bg-[#FFF6DD] text-[#6b5414]",
+  "Saving…": "bg-[#F2F3F5] text-[#303839]/75",
+  Saved: "bg-emerald-50 text-emerald-700",
+  "Local only": "bg-[#FFF6DD] text-[#6b5414]",
+  "Save failed": "bg-red-50 text-red-700",
+  Offline: "bg-red-50 text-red-700",
   Draft: "bg-[#F2F3F5] text-[#303839]/75",
   Inactive: "bg-[#F2F3F5] text-[#303839]/75",
 };
@@ -45,6 +50,8 @@ type Props = {
   templateName: string;
   productName: string;
   statusChips: string[];
+  /** Where the work is (lib/customizer/studio-save describeStudioSaveStatus). */
+  saveStatus?: { primary: string; flags: string[]; detail: string };
   saveStatusLabel: string;
   tab: string;
   onTabChange: (tab: string) => void;
@@ -63,6 +70,7 @@ export default function AdminBuilderHeader({
   templateName,
   productName,
   statusChips,
+  saveStatus,
   saveStatusLabel,
   tab,
   onTabChange,
@@ -86,15 +94,25 @@ export default function AdminBuilderHeader({
           </svg>
         </IconButton>
         <span className="hidden h-6 w-px shrink-0 bg-[#303839]/12 md:block" aria-hidden />
-        <div className="hidden min-w-0 md:block">
+        <div className="min-w-0">
           <p className="truncate text-[15px] font-bold leading-tight text-[#1f2425]" title={templateName || "Untitled template"}>
             {templateName || "Untitled template"}
           </p>
           <p className="truncate text-[12px] leading-tight text-[#303839]/60">{productName}</p>
         </div>
-        <div className="hidden items-center gap-1.5 xl:flex">
+        {/* Product status is informational: shown where there is room. The
+            save state beside it is shown at every width. */}
+        <div className="hidden items-center gap-1.5 2xl:flex">
           {statusChips.map((chip) => (
             <span key={chip} className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${CHIP_TONES[chip] || "bg-[#F2F3F5] text-[#303839]/75"}`}>
+              {chip}
+            </span>
+          ))}
+        </div>
+        {/* Save state: shown at every width — it is never safe to hide. */}
+        <div className="flex items-center gap-1.5" data-save-status={saveStatus?.primary || "none"} title={saveStatus?.detail || undefined} aria-live="polite">
+          {[saveStatus?.primary, ...(saveStatus?.flags || [])].filter(Boolean).map((chip) => (
+            <span key={chip} className={`whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] font-semibold ${CHIP_TONES[chip as string] || "bg-[#F2F3F5] text-[#303839]/75"}`}>
               {chip}
             </span>
           ))}
@@ -163,9 +181,16 @@ export default function AdminBuilderHeader({
             data-shape="round"
             onClick={onSaveDraft}
             disabled={saving}
-            className={`hidden h-9 cursor-pointer items-center whitespace-nowrap rounded-full border-[1.5px] border-[#27307A] bg-white px-4 text-[13px] font-semibold text-[#27307A] transition-colors hover:bg-[#27307A]/[0.05] disabled:cursor-wait disabled:opacity-50 sm:flex ${FOCUS}`}
+            className={`flex h-9 shrink-0 cursor-pointer items-center whitespace-nowrap rounded-full border-[1.5px] border-[#27307A] bg-white px-3 text-[13px] font-semibold text-[#27307A] transition-colors hover:bg-[#27307A]/[0.05] disabled:cursor-wait disabled:opacity-50 sm:px-4 ${FOCUS}`}
           >
-            {saving ? "Saving…" : "Save Draft"}
+            {saving ? "Saving…" : (
+              <>
+                {/* One text node: the full label (visually hidden on phones, where
+                    the short one is drawn as generated content). */}
+                <span className="max-sm:sr-only">Save Draft</span>
+                <span aria-hidden className="before:content-['Save'] sm:hidden" />
+              </>
+            )}
           </button>
         )}
         {onPublish && (
@@ -174,9 +199,14 @@ export default function AdminBuilderHeader({
             data-shape="round"
             onClick={onPublish}
             disabled={saving}
-            className={`flex h-9 shrink-0 cursor-pointer items-center whitespace-nowrap rounded-full bg-[#27307A] px-4 text-[13px] font-semibold text-white transition-colors hover:bg-[#1f2766] disabled:cursor-wait disabled:opacity-50 ${FOCUS}`}
+            className={`flex h-9 shrink-0 cursor-pointer items-center whitespace-nowrap rounded-full bg-[#27307A] px-3 text-[13px] font-semibold text-white transition-colors hover:bg-[#1f2766] disabled:cursor-wait disabled:opacity-50 sm:px-4 ${FOCUS}`}
           >
-            {saving ? "Working…" : publishLabel}
+            {saving ? "Working…" : (
+              <>
+                <span className="max-sm:sr-only">{publishLabel}</span>
+                <span aria-hidden className="before:content-['Publish'] sm:hidden" />
+              </>
+            )}
           </button>
         )}
       </div>

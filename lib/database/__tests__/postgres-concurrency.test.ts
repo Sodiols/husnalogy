@@ -259,7 +259,7 @@ describe("real PostgreSQL: concurrency, leases and isolation", () => {
   }, 60_000);
 
   it("the HOSTINGER_DEPLOYMENT.md §3 verification query returns true for every row, and RLS is on for every public table", async () => {
-    const doc = readFileSync(join(process.cwd(), "HOSTINGER_DEPLOYMENT.md"), "utf8").replace(/\r\n/g, "\n");
+    const doc = readFileSync(join(process.cwd(), "docs", "HOSTINGER_DEPLOYMENT.md"), "utf8").replace(/\r\n/g, "\n");
     const query = doc.match(/```sql\n(select \* from \(values[\s\S]*?\) as checks\(migration, applied\);)\n```/)?.[1];
     expect(query, "verification query in HOSTINGER_DEPLOYMENT.md").toBeTruthy();
     const rows = (await server.owner.query<{ migration: string; applied: boolean }>(query!)).rows;

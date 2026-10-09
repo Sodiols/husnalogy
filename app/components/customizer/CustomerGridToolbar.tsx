@@ -2,11 +2,15 @@
 
 import { useRef } from "react";
 import { getLayerPermissions } from "./customizer-utils";
-import EditableNumericStepper from "./EditableNumericStepper";
 import {
   resetImageTransformPatch,
   resolveImageCropCapabilities,
 } from "@/lib/customizer/v2/image-permissions";
+import { ToolbarButton, ToolbarShell, ToolbarStepper } from "./CustomerToolbarKit";
+
+// Contextual toolbar for a selected photo-grid slot: pick the slot, replace or
+// clear its photo, crop it, move it to another slot. Drawn like the studio's
+// selection toolbar through CustomerToolbarKit.
 
 export default function CustomerGridToolbar({
   layer,
@@ -33,71 +37,97 @@ export default function CustomerGridToolbar({
   const width = Number(slot?.metadata?.width) || 0;
   const height = Number(slot?.metadata?.height) || 0;
   const quality = Math.min(width, height) >= 1200 ? "High quality" : width && height ? "Check resolution" : "";
-  const button = "grid min-h-11 min-w-11 cursor-pointer place-items-center rounded-lg border border-[#303839]/12 bg-white px-3 text-xs font-bold text-[#303839] shadow-sm transition-colors hover:border-[#303839]/40 hover:bg-[#303839]/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white";
 
   if (!slot) return null;
+  const slots = layer.slots || [];
+
+  const sections: React.ReactNode[] = [];
+  sections.push(
+    <div key="slots" className="flex shrink-0 items-center">
+      {slots.map((item: any, index: number) => (
+        // The visible label is just a number; assistive technology needs to
+        // hear what the number refers to, and whether the slot has a photo.
+        <ToolbarButton
+          key={item.id}
+          label={`${item.src || item.assetId ? "Photo" : "Empty"} slot ${index + 1} of ${slots.length}`}
+          pressed={item.id === slot.id}
+          onClick={() => onSelectSlot(item.id)}
+        >
+          <span className="text-[13px] font-semibold tabular-nums">{index + 1}</span>
+        </ToolbarButton>
+      ))}
+    </div>,
+  );
+
+  sections.push(
+    <div key="photo" className="flex shrink-0 items-center">
+      <ToolbarButton label="Replace" disabled={!permissions.replaceImage} onClick={() => inputRef.current?.click()} />
+      {slot.src && <ToolbarButton label="Clear" disabled={!permissions.replaceImage} onClick={onClear} />}
+      {!cropping && (
+        <ToolbarButton label="Crop" disabled={!slot.src || !(permissions.cropImage || permissions.zoomImage || permissions.repositionImage)} onClick={onEnterCrop} />
+      )}
+    </div>,
+  );
+
+  if (cropping) {
+    sections.push(
+      <div key="crop-values" className="flex shrink-0 items-center">
+        <ToolbarStepper label="Grid photo zoom" value={Math.round(Number(transform.zoom || 1) * 100)} minimum={100} maximum={800} step={10} largeStep={50} disabled={!(permissions.zoomImage || permissions.cropImage)} formatValue={(value) => `${Math.round(value)}%`} widthClass="w-[112px]" onCommit={(value) => onTransform({ zoom: value / 100 })} />
+        <ToolbarStepper label="Grid image rotation" value={Number(transform.rotation) || 0} minimum={-360} maximum={360} step={1} largeStep={15} allowNegative disabled={!(permissions.cropImage || permissions.zoomImage || permissions.repositionImage)} widthClass="w-[104px]" onCommit={(rotation) => onTransform({ rotation })} />
+        <ToolbarStepper label="Grid crop X position" value={Number(transform.offsetX) || 0} minimum={-10000} maximum={10000} step={1} largeStep={10} allowNegative disabled={!(permissions.repositionImage || permissions.cropImage)} widthClass="w-[104px]" onCommit={(offsetX) => onTransform({ offsetX })} />
+        <ToolbarStepper label="Grid crop Y position" value={Number(transform.offsetY) || 0} minimum={-10000} maximum={10000} step={1} largeStep={10} allowNegative disabled={!(permissions.repositionImage || permissions.cropImage)} widthClass="w-[104px]" onCommit={(offsetY) => onTransform({ offsetY })} />
+      </div>,
+    );
+    sections.push(
+      <div key="crop-actions" className="flex shrink-0 items-center">
+        {/* Gated on the same capabilities as the steppers above, so the
+            toolbar never offers a slot edit the save validator will reject. */}
+        {capabilities.canRotateImage && (
+          <ToolbarButton label="Rotate" ariaLabel="Rotate photo 90 degrees" onClick={() => onTransform({ rotation: (Number(transform.rotation || 0) + 90) % 360 })} />
+        )}
+        {capabilities.canFlip && <ToolbarButton label="Flip" ariaLabel="Flip photo horizontally" pressed={Boolean(transform.flipX)} onClick={() => onTransform({ flipX: !transform.flipX })} />}
+        {Object.keys(resetPatch).length > 0 && <ToolbarButton label="Reset" ariaLabel="Reset photo crop" onClick={onReset} />}
+      </div>,
+    );
+    sections.push(
+      <div key="crop-finish" className="flex shrink-0 items-center gap-1">
+        <ToolbarButton label="Cancel" onClick={onCancelCrop} />
+        <ToolbarButton label="Done" primary onClick={onConfirmCrop} />
+      </div>,
+    );
+  } else if (slots.length > 1) {
+    sections.push(
+      <div key="move" className="flex shrink-0 items-center">
+        <ToolbarButton label="Move ←" ariaLabel="Move photo to previous slot" onClick={() => onMove(-1)} />
+        <ToolbarButton label="Move →" ariaLabel="Move photo to next slot" onClick={() => onMove(1)} />
+      </div>,
+    );
+  }
+
+  if (quality) {
+    sections.push(
+      <span key="quality" className={`mx-1 whitespace-nowrap rounded-full px-2.5 py-1 text-[12px] font-semibold ${quality === "High quality" ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-800"}`}>
+        {quality}
+      </span>,
+    );
+  }
 
   return (
-    <div className="pointer-events-auto flex max-w-[calc(100vw-1rem)] items-center gap-1.5 overflow-x-auto rounded-2xl bg-white p-1.5 shadow-[0_4px_20px_rgba(48,56,57,0.12)] backdrop-blur-md">
-      <div className="flex items-center gap-1 border-r border-[#303839]/10 pr-1.5">
-        {(layer.slots || []).map((item: any, index: number) => (
-          // The visible label is just a number; assistive technology needs to
-          // hear what the number refers to, and whether the slot has a photo.
-          <button
-            key={item.id}
-            type="button"
-            aria-pressed={item.id === slot.id}
-            aria-label={`${item.src || item.assetId ? "Photo" : "Empty"} slot ${index + 1} of ${(layer.slots || []).length}`}
-            onClick={() => onSelectSlot(item.id)}
-            className={`${button} ${item.id === slot.id ? "border-[#303839] bg-[#303839] text-white hover:bg-[#303839]" : ""}`}
-          >
-            {index + 1}
-          </button>
-        ))}
-      </div>
-      <button type="button" disabled={!permissions.replaceImage} onClick={() => inputRef.current?.click()} className={`${button} disabled:cursor-not-allowed disabled:opacity-35`}>Replace</button>
-      {slot.src && <button type="button" onClick={onClear} disabled={!permissions.replaceImage} className={`${button} disabled:cursor-not-allowed disabled:opacity-35`}>Clear</button>}
-      {!cropping ? (
-        <button type="button" onClick={onEnterCrop} disabled={!slot.src || !(permissions.cropImage || permissions.zoomImage || permissions.repositionImage)} className={`${button} disabled:cursor-not-allowed disabled:opacity-35`}>Crop</button>
-      ) : (
-        <>
-          <EditableNumericStepper label="Grid photo zoom" value={Math.round(Number(transform.zoom || 1) * 100)} minimum={100} maximum={800} step={10} largeStep={50} allowNegative={false} allowDecimal={false} disabled={!(permissions.zoomImage || permissions.cropImage)} formatValue={(value) => `${Math.round(value)}%`} onCommit={(value) => onTransform({ zoom: value / 100 })} className="h-11 w-36 shrink-0 rounded-lg border border-[#303839]/12 bg-white" />
-          <EditableNumericStepper label="Grid image rotation" value={Number(transform.rotation) || 0} minimum={-360} maximum={360} step={1} largeStep={15} allowNegative allowDecimal={false} disabled={!(permissions.cropImage || permissions.zoomImage || permissions.repositionImage)} onCommit={(rotation) => onTransform({ rotation })} className="h-11 w-36 shrink-0 rounded-lg border border-[#303839]/12 bg-white" />
-          <EditableNumericStepper label="Grid crop X position" value={Number(transform.offsetX) || 0} minimum={-10000} maximum={10000} step={1} largeStep={10} allowNegative allowDecimal={false} disabled={!(permissions.repositionImage || permissions.cropImage)} onCommit={(offsetX) => onTransform({ offsetX })} className="h-11 w-36 shrink-0 rounded-lg border border-[#303839]/12 bg-white" />
-          <EditableNumericStepper label="Grid crop Y position" value={Number(transform.offsetY) || 0} minimum={-10000} maximum={10000} step={1} largeStep={10} allowNegative allowDecimal={false} disabled={!(permissions.repositionImage || permissions.cropImage)} onCommit={(offsetY) => onTransform({ offsetY })} className="h-11 w-36 shrink-0 rounded-lg border border-[#303839]/12 bg-white" />
-          {/* Gated on the same capabilities as the steppers above, so the
-              toolbar never offers a slot edit the save validator will reject. */}
-          {capabilities.canRotateImage && (
-            <button type="button" aria-label="Rotate photo 90 degrees" onClick={() => onTransform({ rotation: (Number(transform.rotation || 0) + 90) % 360 })} className={button}>Rotate</button>
-          )}
-          {capabilities.canFlip && (
-            <button type="button" aria-label="Flip photo horizontally" onClick={() => onTransform({ flipX: !transform.flipX })} className={button}>Flip</button>
-          )}
-          {Object.keys(resetPatch).length > 0 && (
-            <button type="button" aria-label="Reset photo crop" onClick={onReset} className={button}>Reset</button>
-          )}
-          <button type="button" onClick={onCancelCrop} className={button}>Cancel</button>
-          <button type="button" onClick={onConfirmCrop} className={`${button} !border-[#303839] !bg-[#303839] !text-white`}>Done</button>
-        </>
-      )}
-      {!cropping && (layer.slots || []).length > 1 && (
-        <>
-          <button type="button" onClick={() => onMove(-1)} className={button} aria-label="Move photo to previous slot">Move ←</button>
-          <button type="button" onClick={() => onMove(1)} className={button} aria-label="Move photo to next slot">Move →</button>
-        </>
-      )}
-      {quality && <span className={`whitespace-nowrap rounded-full px-2 py-1 text-[10px] font-extrabold ${quality === "High quality" ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-800"}`}>{quality}</span>}
+    <>
+      <ToolbarShell label="Photo grid" selectionKey={`grid-${layer?.id || ""}-${slot.id}`} sections={sections} />
       <input
         ref={inputRef}
         type="file"
         accept="image/jpeg,image/png,image/webp"
-        className="sr-only"
+        tabIndex={-1}
+        aria-hidden
+        className="sr-only focus-visible:outline-none"
         onChange={async (event) => {
           const file = event.target.files?.[0];
           if (file) await onUpload(file);
           event.target.value = "";
         }}
       />
-    </div>
+    </>
   );
 }

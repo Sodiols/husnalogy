@@ -8,6 +8,7 @@
 // positioned <tspan>/<text>, which resvg and browsers draw identically.
 
 import { anchorGrownTextBox, normalizeTextGrowthDirection, type TextGrowthDirection } from "./text-growth";
+import { pageSafeBounds } from "./safe-area";
 
 /**
  * Product defaults for new text, shared by every surface that creates,
@@ -391,17 +392,12 @@ export function resolvedTextLayoutMode(
   };
 }
 
-/** The page's safe area in document px: the one bound auto-sized text grows to. */
-export function templateSafeBounds(template: any): SafeBounds {
-  const safe = template?.safeArea || {};
-  const width = Number(template?.canvasWidthPx) || 1500;
-  const height = Number(template?.canvasHeightPx) || 2100;
-  return {
-    left: Number(safe.left) || 0,
-    top: Number(safe.top) || 0,
-    right: width - (Number(safe.right) || 0),
-    bottom: height - (Number(safe.bottom) || 0),
-  };
+/**
+ * A page's safe area in document px: the one bound auto-sized text grows to.
+ * Page-aware (Front and Back may differ) through the canonical resolver.
+ */
+export function templateSafeBounds(template: any, pageId?: string | null): SafeBounds {
+  return pageSafeBounds(template, pageId);
 }
 
 export type ResolvedTextBox = {
@@ -939,8 +935,14 @@ export function createCanvasMeasure(): MeasureFn {
 // register parsed fonts keyed by family+weight+style; unknown fonts fall back.
 export type ParsedFontLike = {
   unitsPerEm: number;
-  charToGlyph: (char: string) => { advanceWidth?: number };
+  charToGlyph: (char: string) => { advanceWidth?: number; index?: number };
   getKerningValue?: (left: unknown, right: unknown) => number;
+  /**
+   * GPOS pair kerning read from the font bytes (lib/customizer/v2/gpos-kerning),
+   * attached by the server when it parses a font. Preferred over
+   * `getKerningValue`, which misses Extension lookups (see that module).
+   */
+  gposKerning?: (leftGlyphIndex: number, rightGlyphIndex: number) => number;
 };
 
 export function createOpentypeMeasure(
@@ -957,8 +959,9 @@ export function createOpentypeMeasure(
     for (const char of chars) {
       const glyph = font.charToGlyph(char);
       units += Number(glyph?.advanceWidth) || 0;
-      if (prevGlyph && typeof font.getKerningValue === "function") {
-        units += font.getKerningValue(prevGlyph, glyph) || 0;
+      if (prevGlyph) {
+        if (font.gposKerning) units += font.gposKerning(Number((prevGlyph as any).index), Number(glyph?.index)) || 0;
+        else if (typeof font.getKerningValue === "function") units += font.getKerningValue(prevGlyph, glyph) || 0;
       }
       prevGlyph = glyph;
     }

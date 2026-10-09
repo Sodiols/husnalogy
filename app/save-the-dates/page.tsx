@@ -1,13 +1,11 @@
 import { getCollectionOptions, getCollectionProducts } from "@/lib/collections";
 import { getFilterOptions } from "@/lib/products";
 import ProductListingPage from "../products/ProductListingPage";
+import { staticPageMetadata } from "@/lib/seo/pages";
 
 export const dynamic = "force-dynamic";
 
-export const metadata = {
-  title: "Save The Dates",
-  description: "Personalized save the date cards from Husnalogy.",
-};
+export const metadata = staticPageMetadata("/save-the-dates");
 
 export default async function SaveTheDatesPage({ searchParams }) {
   const params = await searchParams;

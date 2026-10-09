@@ -10,7 +10,7 @@ import { createTestDatabase } from "@/lib/testing/pglite-supabase";
 
 describe("the documented migration verification query", () => {
   it("returns true on every row of a fully migrated database", async () => {
-    const doc = readFileSync("HOSTINGER_DEPLOYMENT.md", "utf8");
+    const doc = readFileSync("docs/HOSTINGER_DEPLOYMENT.md", "utf8");
     const sql = doc.split("```sql")[1].split("```")[0];
     const t = await createTestDatabase();
     try {

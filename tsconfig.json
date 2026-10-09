@@ -38,7 +38,11 @@
     "**/*.tsx",
     ".next/dev/types/**/*.ts",
     ".next/e2e-stub/types/**/*.ts",
-    ".next/e2e-stub/dev/types/**/*.ts"
+    ".next/e2e-stub/dev/types/**/*.ts",
+    ".next/e2e-seo/types/**/*.ts",
+    ".next/e2e-seo/dev/types/**/*.ts",
+    ".next/e2e-claude/types/**/*.ts",
+    ".next/e2e-claude/dev/types/**/*.ts"
   ],
   "exclude": [
     "node_modules",

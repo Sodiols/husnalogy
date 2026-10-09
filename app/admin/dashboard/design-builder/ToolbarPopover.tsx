@@ -40,6 +40,12 @@ type Props = {
  * and `data-customizer-text-interaction` marks the whole portal as a safe
  * target so opening a menu never closes inline text editing (spec §22).
  */
+/** A menu is never wider than the window less a margin, so none can scroll sideways. */
+function fitWidth(width: number): number {
+  if (typeof window === "undefined") return width;
+  return Math.max(160, Math.min(width, window.innerWidth - 16));
+}
+
 export default function ToolbarPopover({
   label,
   trigger,
@@ -81,7 +87,7 @@ export default function ToolbarPopover({
     setPosition(
       planPopoverPlacement({
         anchor: { left: anchor.left, right: anchor.right, top: anchor.top, bottom: anchor.bottom },
-        menu: { width: menuWidth, height },
+        menu: { width: fitWidth(menuWidth), height },
         viewport: { width: window.innerWidth, height: window.innerHeight },
         align,
       }),
@@ -157,8 +163,8 @@ export default function ToolbarPopover({
             data-customizer-text-interaction
             data-toolbar-popover
             onKeyDown={moveFocus}
-            style={{ left: position.left, top: position.top, width: menuWidth, maxHeight: position.maxHeight }}
-            className={`fixed z-[240] overflow-y-auto overscroll-contain rounded-xl border border-[#303839]/12 bg-white p-1.5 shadow-[0_18px_44px_rgba(48,56,57,0.18)] [scrollbar-color:rgba(48,56,57,0.22)_transparent] [scrollbar-width:thin] ${menuClassName}`}
+            style={{ left: position.left, top: position.top, width: fitWidth(menuWidth), maxHeight: position.maxHeight }}
+            className={`fixed z-[270] overflow-y-auto overscroll-contain rounded-xl border border-[#303839]/12 bg-white p-1.5 shadow-[0_18px_44px_rgba(48,56,57,0.18)] [scrollbar-color:rgba(48,56,57,0.22)_transparent] [scrollbar-width:thin] ${menuClassName}`}
           >
             {children(() => close())}
           </div>,

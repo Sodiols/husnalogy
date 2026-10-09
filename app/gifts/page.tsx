@@ -1,13 +1,11 @@
 import { getCollectionOptions, getCollectionProducts } from "@/lib/collections";
 import { getFilterOptions } from "@/lib/products";
 import ProductListingPage from "../products/ProductListingPage";
+import { staticPageMetadata } from "@/lib/seo/pages";
 
 export const dynamic = "force-dynamic";
 
-export const metadata = {
-  title: "Gifts",
-  description: "Personalized gifts from Husnalogy for birthdays, weddings and every meaningful occasion.",
-};
+export const metadata = staticPageMetadata("/gifts");
 
 export default async function GiftsPage({ searchParams }) {
   const params = await searchParams;

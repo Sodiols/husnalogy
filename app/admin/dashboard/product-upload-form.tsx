@@ -1301,6 +1301,7 @@ export default function ProductUploadForm({
   product = null,
   onSaved,
   onClose,
+  onDesignUnsavedChange,
   mode = "admin",
   onSubmitForReview,
 }: any) {
@@ -1321,6 +1322,11 @@ export default function ProductUploadForm({
   const [persistedProduct, setPersistedProduct] = useState(product);
   // Synchronous guard: two clicks in the same frame must not both POST.
   const saveInFlightRef = useRef(false);
+  // The id the server confirmed, updated the moment a creation returns — not
+  // on the next render. A save queued behind the first (the studio's Save
+  // Draft waiting for its autosave) may run before React re-renders; reading
+  // state there would POST the same new product a second time.
+  const persistedIdRef = useRef<string | null>(product?.id || null);
 
   const editingId = persistedProduct?.id || null;
 
@@ -1334,6 +1340,7 @@ export default function ProductUploadForm({
   useEffect(() => {
     setForm(buildInitialForm(product));
     setPersistedProduct(product);
+    persistedIdRef.current = product?.id || null;
     setErrors({});
     setSaveError("");
     setSuccessMessage("");
@@ -1642,11 +1649,12 @@ export default function ProductUploadForm({
     setSuccessMessage("");
 
     try {
-      const endpoint = editingId ? `/api/admin/products/${editingId}` : "/api/admin/products";
+      const savedId = persistedIdRef.current;
+      const endpoint = savedId ? `/api/admin/products/${savedId}` : "/api/admin/products";
       const payload: any = buildPayload(statusToSave, source);
       if (templateOnly) delete payload.status;
       const response = await fetch(endpoint, {
-        method: editingId ? "PUT" : "POST",
+        method: savedId ? "PUT" : "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
@@ -1658,6 +1666,7 @@ export default function ProductUploadForm({
       }
       const saved = data?.product;
       if (!saved?.id) throw new Error("The server did not confirm the saved product.");
+      persistedIdRef.current = String(saved.id);
 
       const message = templateOnly
         ? "Design draft saved."
@@ -1800,6 +1809,10 @@ export default function ProductUploadForm({
                     template={form.customizerTemplate}
                     onChange={(next) => update("customizerTemplate", next)}
                     productName={form.title || "Product"}
+                    // A new product reaches the server as a draft once it has the
+                    // one thing a draft needs: a name.
+                    canCreateDraft={Boolean(form.title.trim())}
+                    onUnsavedChange={onDesignUnsavedChange}
                     product={{
                       id: editingId,
                       title: form.title || "Product",

@@ -78,8 +78,12 @@ describe("Background panel wiring", () => {
   const panel = read("app/admin/dashboard/design-builder/AdminBackgroundPanel.tsx");
   it("writes only the active page, through the studio's page command", () => {
     expect(panel).toContain("onPatchPage(pageId, { backgroundColor: hex })");
-    expect(panel).toContain('uploadBuilderImage(file, "background")');
-    expect(panel).toContain("backgroundAssetId: asset.id");
+    // The picture goes through the shared upload + page-background commands
+    // (lib/customizer/v2/page-background.ts), which write identity and paths together.
+    expect(panel).toContain("useBackgroundUpload(onSetBackgroundImage)");
+    expect(panel).toContain("upload.start(event.target.files?.[0], page.id)");
+    expect(read("app/admin/dashboard/design-builder/use-background-upload.ts")).toContain('uploadBuilderImage(file, "background"');
+    expect(read("lib/customizer/v2/page-background.ts")).toContain("backgroundAssetId: asset.id");
   });
   it("searches the library's background images", () => {
     expect(panel).toContain('type: "background", search: term');

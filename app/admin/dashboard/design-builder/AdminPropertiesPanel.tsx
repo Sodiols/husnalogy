@@ -107,16 +107,19 @@ function ColourField({ value, fallback, onChange, ariaLabel, extra }: { value: u
     </div>
   );
 }
-function Num({ value, onChange, min, max, step = 1, ariaLabel = "Numeric value" }: any) {
-  return <EditableNumericStepper label={ariaLabel} value={Number(value) || 0} minimum={min} maximum={max} step={step} largeStep={step * 10} allowNegative={min === undefined || min < 0} allowDecimal={step < 1} showStepButtons={false} onCommit={onChange} className="h-10 w-full" inputClassName={controlClass} />;
+/** Spacing, line height and corner radius: up / down buttons in the field, half a unit per click. */
+const SPINNER_STEP = 0.5;
+
+function Num({ value, onChange, min, max, step = 1, ariaLabel = "Numeric value", spinner = false }: any) {
+  return <EditableNumericStepper label={ariaLabel} value={Number(value) || 0} minimum={min} maximum={max} step={step} largeStep={step * 10} allowNegative={min === undefined || min < 0} allowDecimal={step < 1} showStepButtons={spinner} stepLayout="spinner" onCommit={onChange} className="h-10 w-full" inputClassName={controlClass} />;
 }
 /** A font size: shown and typed in points, stored in document px (type-units.ts). */
 function PointSize({ px, dpi, minPx = FONT_SIZE_RULES.minimum, maxPx = FONT_SIZE_RULES.maximum, onChange, ariaLabel }: { px: number; dpi: unknown; minPx?: number; maxPx?: number; onChange: (px: number) => void; ariaLabel: string }) {
   const bounds = fontSizeBoundsInPoints({ minimum: minPx, maximum: maxPx }, dpi);
   return <EditableNumericStepper label={ariaLabel} value={documentPxToPoints(px, dpi)} minimum={bounds.minimum} maximum={bounds.maximum} step={FONT_SIZE_POINT_RULES.step} largeStep={FONT_SIZE_POINT_RULES.largeStep} allowNegative={false} allowDecimal showStepButtons={false} onCommit={(points) => onChange(pointsToDocumentPx(points, dpi))} className="h-10 w-full" inputClassName={controlClass} />;
 }
-function CarouselStepper({ value, onChange, min = -Infinity, max = Infinity, step = 1, ariaLabel }: any) {
-  return <EditableNumericStepper label={ariaLabel} value={Number(value) || 0} minimum={Number.isFinite(min) ? min : undefined} maximum={Number.isFinite(max) ? max : undefined} step={step} largeStep={step < 1 ? step * 10 : Math.max(step * 5, 10)} allowNegative={!Number.isFinite(min) || min < 0} allowDecimal={step < 1} showStepButtons={false} onCommit={onChange} className="h-10 w-full" inputClassName={controlClass} />;
+function CarouselStepper({ value, onChange, min = -Infinity, max = Infinity, step = 1, ariaLabel, spinner = false }: any) {
+  return <EditableNumericStepper label={ariaLabel} value={Number(value) || 0} minimum={Number.isFinite(min) ? min : undefined} maximum={Number.isFinite(max) ? max : undefined} step={step} largeStep={step < 1 ? step * 10 : Math.max(step * 5, 10)} allowNegative={!Number.isFinite(min) || min < 0} allowDecimal={step < 1} showStepButtons={spinner} stepLayout="spinner" onCommit={onChange} className="h-10 w-full" inputClassName={controlClass} />;
 }
 function Txt({ value, onChange, placeholder }: any) {
   return (
@@ -186,7 +189,8 @@ function TextSpacingFields({ layer, style, onStylePatch }: { layer: any; style: 
           value={style.letterSpacing ?? TEXT_TOOLBAR_DEFAULTS.letterSpacing}
           min={LETTER_SPACING_RULES.minimum}
           max={LETTER_SPACING_RULES.maximum}
-          step={LETTER_SPACING_RULES.step}
+          step={SPINNER_STEP}
+          spinner
           onChange={(letterSpacing: number) => onStylePatch(layer.id, { letterSpacing })}
         />
       </div>
@@ -197,7 +201,8 @@ function TextSpacingFields({ layer, style, onStylePatch }: { layer: any; style: 
           value={style.lineHeight ?? TEXT_TOOLBAR_DEFAULTS.lineHeight}
           min={LINE_HEIGHT_RULES.minimum}
           max={LINE_HEIGHT_RULES.maximum}
-          step={LINE_HEIGHT_RULES.step}
+          step={SPINNER_STEP}
+          spinner
           onChange={(lineHeight: number) => onStylePatch(layer.id, { lineHeight })}
         />
       </div>
@@ -640,7 +645,7 @@ export default function AdminPropertiesPanel({
             <div><Lbl>Rows</Lbl><CarouselStepper ariaLabel="Grid rows" value={layer.rows || 2} min={1} max={12} onChange={(value: number) => onLayerPatch(layer.id, { rows: value })} /></div>
             <div><Lbl>Gap</Lbl><CarouselStepper ariaLabel="Grid gap" value={layer.gap || 0} min={0} max={200} onChange={(value: number) => onLayerPatch(layer.id, { gap: value })} /></div>
             <div><Lbl>Padding</Lbl><CarouselStepper ariaLabel="Grid padding" value={layer.padding || 0} min={0} max={300} onChange={(value: number) => onLayerPatch(layer.id, { padding: value })} /></div>
-            <div><Lbl>Corner radius</Lbl><CarouselStepper ariaLabel="Grid corner radius" value={layer.cornerRadius || 0} min={0} max={500} onChange={(value: number) => onLayerPatch(layer.id, { cornerRadius: value })} /></div>
+            <div><Lbl>Corner radius</Lbl><CarouselStepper ariaLabel="Grid corner radius" value={layer.cornerRadius || 0} min={0} max={500} step={SPINNER_STEP} spinner onChange={(value: number) => onLayerPatch(layer.id, { cornerRadius: value })} /></div>
             <div><Lbl>Border width</Lbl><CarouselStepper ariaLabel="Grid border width" value={layer.borderWidth || 0} min={0} max={100} onChange={(value: number) => onLayerPatch(layer.id, { borderWidth: value })} /></div>
           </div>
           <div className="grid grid-cols-2 gap-2">
@@ -674,7 +679,7 @@ export default function AdminPropertiesPanel({
             <PaintControl label="Line Colour" value={layer.stroke} fallbackColour="#303839" onChange={(stroke) => onLayerPatch(layer.id, { stroke })} />
             <div className="grid grid-cols-2 gap-2">
               <div><Lbl>Line Weight</Lbl><CarouselStepper ariaLabel="Shape line weight" value={layer.strokeWidth || 0} min={0} max={100} onChange={(value: number) => onLayerPatch(layer.id, { strokeWidth: value })} /></div>
-              <div><Lbl>Corner radius</Lbl><CarouselStepper ariaLabel="Shape corner radius" value={layer.borderRadius || 0} min={0} max={500} onChange={(value: number) => onLayerPatch(layer.id, { borderRadius: value })} /></div>
+              <div><Lbl>Corner radius</Lbl><CarouselStepper ariaLabel="Shape corner radius" value={layer.borderRadius || 0} min={0} max={500} step={SPINNER_STEP} spinner onChange={(value: number) => onLayerPatch(layer.id, { borderRadius: value })} /></div>
             </div>
           </div>}
           {layer.shape === "line" && <PaintControl label="Line Colour" value={layer.stroke || layer.fill} fallbackColour="#303839" onChange={(stroke) => onLayerPatch(layer.id, { stroke })} />}

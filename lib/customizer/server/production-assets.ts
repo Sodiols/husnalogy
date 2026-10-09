@@ -4,6 +4,7 @@ import { mkdir, writeFile, readFile, rename, unlink } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import * as opentype from "opentype.js";
+import { withGposKerning } from "@/lib/customizer/v2/gpos-kerning";
 import sharp from "sharp";
 import { ORDER_ASSET_BUCKET, type ProductionAsset, type ProductionInput } from "@/lib/customizer/production-input";
 import { collectPageImageUrls } from "@/lib/customizer/v2/svg";
@@ -181,7 +182,11 @@ export async function openProductionInput(input: ProductionInput, storage: Produ
     const font = input.fonts.find((entry) => entry.family === dependency.family && entry.variantKey === dependency.variantKey && entry.url === dependency.url);
     if (!font || !buffers.has(font.assetKey)) throw new RenderError("FONT_FILE_MISSING", "Exact snapshot font variant is unavailable.");
     const bytes = buffers.get(font.assetKey)!;
-    try { parsed.set(`${font.family}|${font.variantKey}|${font.url}`, opentype.parse(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength))); }
+    try {
+      const fontBytes = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
+      // Kerning the way browsers apply it (opentype.js misses Extension lookups).
+      parsed.set(`${font.family}|${font.variantKey}|${font.url}`, withGposKerning(opentype.parse(fontBytes), fontBytes));
+    }
     catch { throw new RenderError("FONT_FILE_MISSING", "Pinned production font cannot be parsed."); }
     const path = join(directory, `${font.assetKey}.ttf`);
     // Publish the complete cache file atomically so another worker cannot read

@@ -123,6 +123,24 @@ export function resolveSelectionTarget(
 }
 
 /**
+ * What a RIGHT click on `hitId` selects before the object menu opens — the
+ * same target a left click would pick (a group member resolves to its group
+ * unless that group has been entered), so the menu always acts on what an
+ * ordinary click would have selected. A target that is already part of the
+ * selection keeps the whole selection, so right-clicking inside a
+ * multi-selection never collapses it.
+ */
+export function resolveContextMenuSelection(
+  hitId: string,
+  layers: readonly HitCandidate[],
+  selection: readonly string[],
+  editingGroupId: string | null = null,
+): { targetId: string; selection: string[] } {
+  const targetId = resolveSelectionTarget(hitId, layers, editingGroupId) ?? hitId;
+  return { targetId, selection: selection.includes(targetId) ? [...selection] : [targetId] };
+}
+
+/**
  * What a press at a document point selects, by the same rules as a click on
  * the Konva stage: the top-most targetable object, resolved to its group
  * unless that group has been entered. Null means empty canvas.

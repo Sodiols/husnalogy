@@ -10,6 +10,9 @@ import { createServiceRoleClient } from "@/lib/supabase/server";
 import { getCustomizerTemplateByProductId } from "@/lib/customizer/store";
 import { resolveLayerImageTransform, validateCustomizerTemplateDetailed } from "@/lib/customizer";
 import { templateToDocument } from "@/lib/customizer/v2/document";
+
+const sameInsets = (a: any, b: any) =>
+  ["top", "right", "bottom", "left"].every((side) => Number(a?.[side] || 0) === Number(b?.[side] || 0));
 import { collectFontDependencies } from "@/lib/customizer/v2/google-fonts";
 import { getFontCatalogSafe } from "@/lib/customizer/v2/server/google-fonts-catalog";
 import { CUSTOMIZER_ENGINE_VERSION, CUSTOMIZER_SCHEMA_VERSION } from "@/lib/customizer/v2/types";
@@ -226,6 +229,9 @@ export function templateFromVersionSnapshot(snapshot: TemplateVersionRow | null)
       ...(page.originalPath ? { originalPath: page.originalPath } : {}),
       ...(page.editorPath ? { editorPath: page.editorPath } : {}),
       ...(page.thumbnailPath ? { thumbnailPath: page.thumbnailPath } : {}),
+      // The template-level safe area is the first page's; any page whose own
+      // differs keeps it, so every renderer resolves the same per-page area.
+      ...(page.safeArea && !sameInsets(page.safeArea, doc.pages?.[0]?.safeArea) ? { safeArea: page.safeArea } : {}),
     })),
     fields: doc.fields || [],
     layers: (doc.layers || []).map((layer: any) => {

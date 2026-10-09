@@ -6,12 +6,13 @@ import Link from "next/link";
 import Reveal from "./reveal";
 
 const categories = [
-  { title: "Weddings", href: "/weddings", image: "/images/weddings.png" },
-  { title: "Thank you cards", href: "/cards", image: "/images/weddings/classic.png" },
-  { title: "Gifts", href: "/gifts", image: "/images/gifts.png" },
-  { title: "Personalized gifts", href: "/collections/personalized-gifts", image: "/images/personalizedGifts.png" },
-  { title: "Stationery", href: "/stationery", image: "/images/weddings/minimalist.png" },
-  { title: "Shop all", href: "/products", image: "/images/invitations.png" },
+  // imageAlt describes what each photograph actually shows.
+  { title: "Weddings", href: "/weddings", image: "/images/weddings.png", imageAlt: "Floral wedding invitation with greenery and a gold arched border on an ivory card" },
+  { title: "Thank you cards", href: "/cards", image: "/images/weddings/classic.png", imageAlt: "Ivory envelope sealed with a black monogram sticker" },
+  { title: "Gifts", href: "/gifts", image: "/images/gifts.png", imageAlt: "Personalized mug with a cat illustration and a custom message" },
+  { title: "Personalized gifts", href: "/collections/personalized-gifts", image: "/images/personalizedGifts.png", imageAlt: "White photo mug with a personalized message, held in two hands" },
+  { title: "Stationery", href: "/stationery", image: "/images/weddings/minimalist.png", imageAlt: "Kraft gift box tied with a satin ribbon and a round name sticker" },
+  { title: "Shop all", href: "/products", image: "/images/invitations.png", imageAlt: "Illustrated lilac envelope with a “You're invited” card and a gold wax seal" },
 ];
 
 export default function Categories() {
@@ -34,7 +35,7 @@ export default function Categories() {
                 <span className="relative block aspect-square w-full max-w-[168px] overflow-hidden rounded-full bg-cream ring-1 ring-line transition-shadow duration-200 group-hover:ring-ink/40">
                   <Image
                     src={cat.image}
-                    alt=""
+                    alt={cat.imageAlt}
                     fill
                     sizes="(min-width: 1024px) 168px, (min-width: 640px) 30vw, 45vw"
                     className="object-cover"

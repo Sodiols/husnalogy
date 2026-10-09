@@ -529,7 +529,7 @@ describe("option data used by the fixtures", () => {
 describe("the documented deployment verification query", () => {
   it("reports the checkout hardening as applied", async () => {
     const { readFileSync } = await import("node:fs");
-    const doc = readFileSync("HOSTINGER_DEPLOYMENT.md", "utf8");
+    const doc = readFileSync("docs/HOSTINGER_DEPLOYMENT.md", "utf8");
     const sql = doc.split("```sql")[1].split("```")[0];
     const t = await createTestDatabase();
     try {

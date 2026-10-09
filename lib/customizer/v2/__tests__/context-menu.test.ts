@@ -150,7 +150,10 @@ describe("canvas wiring", () => {
     // the workspace the object that was hit plus the screen position.
     expect(stageSource).toContain("onContextMenu={(event) => {");
     expect(stageSource).toContain("event.evt.preventDefault();");
-    expect(stageSource).toContain("onContextMenuNode?.(node.id, { x: source.clientX, y: source.clientY });");
+    // The hit node is resolved to what a left click would select (a group's
+    // member → the group) before the workspace hears about it.
+    expect(stageSource).toContain("const { targetId } = resolveContextMenuSelection(node.id, nodes, selection, editingGroupId);");
+    expect(stageSource).toContain("onContextMenuNode?.(targetId, { x: source.clientX, y: source.clientY });");
     expect(workspaceSource).toContain("onLayerContextMenu?.(layerId, position);");
   });
 
@@ -164,7 +167,8 @@ describe("canvas wiring", () => {
     );
     // The interaction layer does the same on its side, so a right click never
     // acts on an object the customer cannot see is selected.
-    expect(stageSource).toContain("if (!selection.includes(node.id)) onSelectionChange([node.id]);");
+    expect(stageSource).toContain("const next = resolveContextMenuSelection(node.id, nodes, selection, editingGroupId);");
+    expect(stageSource).toContain("onSelectionChange(next.selection);");
   });
 
   it("closes when the page or preview changes, or the selection changes after it opened", () => {

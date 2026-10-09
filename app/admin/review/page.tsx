@@ -2,13 +2,11 @@ import { notFound } from "next/navigation";
 
 import { getCurrentAdmin } from "@/lib/auth/admin-server";
 import AdminReviewClient from "./admin-review-client";
+import { privatePageMetadata } from "@/lib/seo/metadata";
 
 export const dynamic = "force-dynamic";
 
-export const metadata = {
-  title: "Review queue",
-  robots: { index: false, follow: false },
-};
+export const metadata = privatePageMetadata("Review queue");
 
 /**
  * The admin's review queue for designer submissions.

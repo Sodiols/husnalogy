@@ -45,7 +45,7 @@ import {
   resolvePointerUpSelection,
 } from "@/lib/customizer/v2/selection";
 import { selectionBounds, type SelectionRect } from "@/lib/customizer/v2/selection-geometry";
-import { hitTestMarquee, resolveSelectionTarget } from "@/lib/customizer/v2/interaction/hit-test";
+import { hitTestMarquee, resolveContextMenuSelection, resolveSelectionTarget } from "@/lib/customizer/v2/interaction/hit-test";
 import {
   konvaAnchors,
   resolveHandleMetrics,
@@ -834,10 +834,15 @@ export default function CustomizerInteractionStage({
       pressButtonsRef.current = [pressButtonsRef.current[1], Number((event.evt as PointerEvent)?.button ?? 0)];
       if (!interactive) return;
       // A right click selects without arming a drag, so the context menu always
-      // acts on the object under the cursor (spec §32).
+      // acts on the object under the cursor (spec §32) — resolved exactly as a
+      // left click is (a group member means its group unless the group is
+      // entered), and never collapsing a selection it is already part of.
       const button = (event.evt as PointerEvent)?.button;
       if (button === 2) {
-        if (!selection.includes(node.id)) onSelectionChange([node.id]);
+        const next = resolveContextMenuSelection(node.id, nodes, selection, editingGroupId);
+        if (next.selection.length !== selection.length || next.selection.some((id, index) => id !== selection[index])) {
+          onSelectionChange(next.selection);
+        }
         return;
       }
       if (button !== 0 && button !== undefined) return;
@@ -1583,7 +1588,9 @@ export default function CustomizerInteractionStage({
               onContextMenu={(event) => {
                 event.evt.preventDefault();
                 const source = event.evt as MouseEvent;
-                onContextMenuNode?.(node.id, { x: source.clientX, y: source.clientY });
+                // The menu names the resolved target, never a group's member.
+                const { targetId } = resolveContextMenuSelection(node.id, nodes, selection, editingGroupId);
+                onContextMenuNode?.(targetId, { x: source.clientX, y: source.clientY });
               }}
               />
           );
