@@ -6,6 +6,7 @@ import {
   resolveImageCropCapabilities,
 } from "@/lib/customizer/v2/image-permissions";
 import ToolbarPopover from "@/app/admin/dashboard/design-builder/ToolbarPopover";
+import ColourInput from "./ColourInput";
 import { ComfortableDensity, TB_ICON_BUTTON, TB_ON, TB_TEXT_BUTTON, ToolbarButton, ToolbarIcon, ToolbarLabel, ToolbarShell, ToolbarStepper, useCompact } from "./CustomerToolbarKit";
 
 // Contextual photo toolbar (spec §11, §26). Rendered while an editable image
@@ -84,7 +85,7 @@ function TintChip({ value, onChange }: { value: string; onChange: (color: string
       className="relative grid h-[var(--tb-size,36px)] w-[var(--tb-size,36px)] shrink-0 cursor-pointer place-items-center rounded-full transition-colors hover:bg-[#303839]/[0.06] focus-within:ring-2 focus-within:ring-[#303839]"
     >
       <span className="block h-5 w-5 rounded-full border border-[#303839]/25" style={{ background: value }} aria-hidden />
-      <input type="color" aria-label="Tint colour" value={value} onChange={(event) => onChange(event.target.value)} className="absolute inset-0 h-full w-full cursor-pointer opacity-0" />
+      <ColourInput aria-label="Tint colour" value={value} onChange={onChange} className="absolute inset-0 h-full w-full cursor-pointer opacity-0" />
     </label>
   );
 }

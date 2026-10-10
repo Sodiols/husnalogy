@@ -219,12 +219,17 @@ test("the font selector supports keyboard navigation", async ({ page }) => {
   await search.fill("roboto");
   await expect(page.getByRole("option").first()).toBeVisible({ timeout: 15_000 });
 
-  // Arrow + Enter selects without a mouse.
+  // Arrow + Enter selects without a mouse. The Fonts side panel stays open,
+  // as Uploads and Elements do, with the chosen font marked.
   await search.press("ArrowDown");
   await search.press("Enter");
+  await expect(page.getByRole("option", { selected: true }).first()).toBeVisible();
+
+  // Escape closes the panel.
+  await search.press("Escape");
   await expect(search).not.toBeVisible();
 
-  // Escape closes without selecting.
+  // The Font pill reopens it; Escape closes it without selecting.
   await page.getByRole("button", { name: /^Font$/ }).first().click();
   const reopened = page.getByRole("textbox", { name: "Search Google Fonts" });
   await expect(reopened).toBeVisible();

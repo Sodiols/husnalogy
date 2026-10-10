@@ -8,6 +8,12 @@
 //   Borders / Lines → NATIVE LineLayers + decorative SVG assets
 //   Recently Used / Favourites
 //
+// Both editors draw this panel the same way (the Design Studio's reference
+// look, in Husnalogy ink, gold and cream). `adminMode` only changes WHAT it
+// lists and may do — the studio's asset library and its "Upload to library" —
+// never how it looks; the customer sees every section the studio has, each
+// gated by the design's own permissions.
+//
 // Iconify is a discovery source only. Selecting an online result calls the
 // Husnalogy import endpoint, which stores a permanent sanitized copy; the
 // canvas only ever receives an ordinary Husnalogy asset (spec §39).
@@ -77,20 +83,14 @@ type ShapeChoice = { id: string; label: string; render: React.ReactNode };
  * Every entry maps to a REAL supported shape kind — no decorative buttons
  * that the shape engine cannot actually create (spec §29).
  *
- * "Dynamic Shapes" is the common four; "Shapes" carries the rest, so the two
- * sections in the panel never offer the same thing twice.
+ * "Dynamic Shapes" is the common four; "Shapes" is the full Shapes library
+ * (lib/customizer/v2/shape-library.ts), in both editors.
  */
 const DYNAMIC_SHAPES: ShapeChoice[] = [
   { id: "rectangle", label: "Square", render: <rect x="3" y="3" width="18" height="18" rx="1" /> },
   { id: "rounded-rectangle", label: "Rounded square", render: <rect x="3" y="3" width="18" height="18" rx="5" /> },
   { id: "circle", label: "Circle", render: <circle cx="12" cy="12" r="9" /> },
   { id: "triangle", label: "Triangle", render: <path d="M12 3 21.5 20.5h-19Z" /> },
-];
-
-const MORE_SHAPES: ShapeChoice[] = [
-  { id: "arch", label: "Arch", render: <path d="M4 21V10a8 8 0 0 1 16 0v11Z" /> },
-  { id: "oval", label: "Oval", render: <ellipse cx="12" cy="12" rx="9.5" ry="6.5" /> },
-  { id: "polygon", label: "Polygon", render: <path d="M12 2.5 21.5 9.4 17.9 20.6H6.1L2.5 9.4Z" /> },
 ];
 
 /** Frame mask previews — a photo-shaped swatch, matching the canvas mask. */
@@ -178,8 +178,8 @@ function LibraryShapeThumb({ entry }: { entry: LibraryShape }) {
 const SHAPE_TILE =
   "grid aspect-square place-items-center rounded-lg p-1.5 text-[#D3D3D3] transition hover:bg-[#303839]/[0.05] hover:text-[#C2C2C2] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#303839]";
 
-/** The Design Studio's Elements panel follows its own reference look; the customer panel keeps its own. */
-const StudioLook = createContext(false);
+/** The panel's reference look — shared by the Design Studio and the customer customizer. */
+const StudioLook = createContext(true);
 
 function Section({ title, action, children }: { title: string; action?: React.ReactNode; children: React.ReactNode }) {
   const id = `elements-${title.toLowerCase().replace(/[^a-z]+/g, "-")}`;
@@ -457,7 +457,7 @@ export default function CustomerElementsPanel({
           onClick={() => insert(element)}
           title={`Insert ${element.title}`}
           aria-label={`Insert ${element.title}`}
-          className={adminMode ? "h-full w-full overflow-hidden rounded-lg border border-[#303839]/10 bg-white p-2 transition hover:border-[#303839]/40 hover:bg-[#303839]/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#303839]" : "h-full w-full overflow-hidden rounded-[10px] bg-[#F8F6F1] cursor-pointer p-2 transition hover:bg-[#EFEBE1] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#303839]"}
+          className="h-full w-full cursor-pointer overflow-hidden rounded-lg border border-[#303839]/10 bg-white p-2 transition hover:border-[#303839]/40 hover:bg-[#303839]/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#303839]"
         >
           <img src={element.url} alt={element.title} loading="lazy" draggable={false} className="h-full w-full object-contain transition group-hover:scale-105" />
         </button>
@@ -487,7 +487,7 @@ export default function CustomerElementsPanel({
           title={`Add ${graphic.title}`}
           aria-label={`Add ${graphic.title}${graphic.collectionName ? ` from ${graphic.collectionName}` : ""}`}
           aria-busy={busy}
-          className={adminMode ? "h-full w-full overflow-hidden rounded-lg border border-[#303839]/10 bg-white p-2 transition hover:border-[#303839]/40 hover:bg-[#303839]/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#303839] disabled:cursor-progress" : "h-full w-full overflow-hidden rounded-[10px] bg-[#F8F6F1] cursor-pointer p-2 transition hover:bg-[#EFEBE1] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#303839] disabled:cursor-progress"}
+          className="h-full w-full cursor-pointer overflow-hidden rounded-lg border border-[#303839]/10 bg-white p-2 transition hover:border-[#303839]/40 hover:bg-[#303839]/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#303839] disabled:cursor-progress"
         >
           {busy ? (
             <span className="grid h-full w-full place-items-center text-[10px] font-bold text-[#303839]/55">Adding…</span>
@@ -540,9 +540,7 @@ export default function CustomerElementsPanel({
         setView(target);
       }}
       aria-label={`See more ${target}`}
-      className={adminMode
-        ? "rounded px-1 py-0.5 text-[13px] font-medium text-[#1f2425] underline underline-offset-2 transition hover:text-[#303839]/70 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#303839]"
-        : "rounded px-1 py-0.5 text-[12.5px] font-medium text-[#1f2425] underline underline-offset-2 transition hover:text-[#303839] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#303839]"}
+      className="cursor-pointer rounded px-1 py-0.5 text-[13px] font-medium text-[#1f2425] underline underline-offset-2 transition hover:text-[#303839]/70 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#303839]"
     >
       See more
     </button>
@@ -556,7 +554,8 @@ export default function CustomerElementsPanel({
     [allowedShapes],
   );
   const visibleShapes = useMemo(() => DYNAMIC_SHAPES.filter((shape) => permitShape(shape.id)), [permitShape]);
-  const visibleMoreShapes = useMemo(() => MORE_SHAPES.filter((shape) => permitShape(shape.id)), [permitShape]);
+  // The Shapes library, limited to the shape kinds this design permits.
+  const visibleMoreShapes = useMemo(() => SHAPE_LIBRARY.filter((entry) => permitShape(entry.shape)), [permitShape]);
   const visibleFrames = useMemo(
     () => FRAME_MASKS.filter((frame) => !allowedFrameMasks.length || allowedFrameMasks.includes(frame.id)),
     [allowedFrameMasks],
@@ -583,7 +582,7 @@ export default function CustomerElementsPanel({
 
   return (
     // Header + search stay put; only the section list scrolls (spec §20).
-    <StudioLook.Provider value={adminMode}>
+    <StudioLook.Provider value>
     <div className="flex h-full min-h-0 flex-col" data-elements-view={view}>
       <div className="shrink-0 border-b border-[#303839]/8 px-4 pb-3 pt-4">
         <div className="mb-3 flex items-center gap-2">
@@ -597,7 +596,7 @@ export default function CustomerElementsPanel({
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="m15 18-6-6 6-6" /></svg>
             </button>
           )}
-          <h2 className={`min-w-0 flex-1 truncate leading-tight ${adminMode ? "text-[20px] font-semibold text-[#1f2425]" : "text-[16px] font-bold text-[#1f2425]"}`}>{VIEW_TITLES[view]}</h2>
+          <h2 className="min-w-0 flex-1 truncate text-[20px] font-semibold leading-tight text-[#1f2425]">{VIEW_TITLES[view]}</h2>
           {onClose && (
             <button
               type="button"
@@ -610,7 +609,7 @@ export default function CustomerElementsPanel({
           )}
         </div>
 
-        {adminMode && view === "shapes" ? (
+        {view === "shapes" ? (
           <label className="relative block">
             <span className="sr-only">Search in Shapes</span>
             <input
@@ -665,13 +664,13 @@ export default function CustomerElementsPanel({
                 onClick={() => onAddShape(shape.id)}
                 aria-label={`Add ${shape.label}`}
                 title={`Add ${shape.label}`}
-                className={adminMode ? SHAPE_TILE : "grid aspect-square cursor-pointer place-items-center rounded-[10px] bg-[#F8F6F1] text-[#B9B9B9] transition hover:bg-[#EFEBE1] hover:text-[#A9A9A9] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#303839]"}
+                className={SHAPE_TILE}
               >
-                <svg width={adminMode ? "100%" : "34"} height={adminMode ? "100%" : "34"} viewBox="2.5 2.5 19 19" fill="currentColor" aria-hidden>{shape.render}</svg>
+                <svg width="100%" height="100%" viewBox="2.5 2.5 19 19" fill="currentColor" aria-hidden>{shape.render}</svg>
               </button>
             ))}
           </div>
-          {adminMode && allowLines && onAddLine && (
+          {allowLines && onAddLine && (
             <button type="button" onClick={() => onAddLine("solid")} aria-label="Add line" title="Add line" className="mt-3 flex h-6 w-full items-center rounded px-1 text-[#D3D3D3] transition hover:bg-[#303839]/[0.05] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#303839]">
               <span className="block h-[5px] w-full rounded-full bg-current" aria-hidden />
             </button>
@@ -769,7 +768,7 @@ export default function CustomerElementsPanel({
                 type="button"
                 onClick={() => onAddTextPreset(preset.id, preset.text)}
                 aria-label={`Add text: ${preset.label}`}
-                className={adminMode ? "rounded-lg border border-[#303839]/10 bg-white px-3 py-2 text-left text-sm font-semibold text-[#303839] transition hover:border-[#303839]/40 hover:bg-[#303839]/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#303839]" : "rounded-[10px] bg-[#F8F6F1] cursor-pointer px-3 py-2 text-left text-[14px] font-semibold text-[#1f2425] transition hover:bg-[#EFEBE1] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#303839]"}
+                className="cursor-pointer rounded-lg border border-[#303839]/10 bg-white px-3 py-2 text-left text-sm font-semibold text-[#303839] transition hover:border-[#303839]/40 hover:bg-[#303839]/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#303839]"
               >
                 {preset.label}
               </button>
@@ -781,16 +780,14 @@ export default function CustomerElementsPanel({
       {/* ----------------------------------------------- Borders / Lines -- */}
       {onHome && allowLines && onAddLine && !searching && (
         <Section title="Borders / Lines" action={seeMore("borders")}>
-          <div className={adminMode ? "grid grid-cols-3 gap-3" : "grid gap-1.5"}>
+          <div className="grid grid-cols-3 gap-3">
             {LINES.map((line) => (
               <button
                 key={line.id}
                 type="button"
                 onClick={() => onAddLine(line.id)}
                 aria-label={`Add ${line.label}`}
-                className={adminMode
-                  ? "flex h-10 items-center rounded-lg px-1 transition hover:bg-[#303839]/[0.05] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#303839]"
-                  : "flex items-center rounded-[10px] bg-[#F8F6F1] cursor-pointer px-3 py-2.5 transition hover:bg-[#EFEBE1] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#303839]"}
+                className="flex h-10 cursor-pointer items-center rounded-lg px-1 transition hover:bg-[#303839]/[0.05] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#303839]"
               >
                 <svg viewBox="0 0 100 4" className="h-1 w-full" aria-hidden preserveAspectRatio="none">
                   <line x1="0" y1="2" x2="100" y2="2" stroke="#303839" strokeWidth="2" strokeDasharray={line.dash || undefined} strokeLinecap="round" />
@@ -802,30 +799,12 @@ export default function CustomerElementsPanel({
       )}
 
       {/* --------------------------------------------------------- Shapes -- */}
-      {onHome && adminMode && allowShapes && onAddShape && !searching && (
+      {onHome && allowShapes && onAddShape && visibleMoreShapes.length > 0 && !searching && (
         <Section title="Shapes" action={seeMore("shapes")}>
           <div className="grid grid-cols-4 gap-2">
-            {SHAPE_LIBRARY.slice(0, 4).map((entry) => (
+            {visibleMoreShapes.slice(0, 4).map((entry) => (
               <button key={entry.id} type="button" onClick={() => onAddShape(entry.id)} aria-label={`Add ${entry.label.toLowerCase()} shape`} title={entry.label} className={SHAPE_TILE}>
                 <LibraryShapeThumb entry={entry} />
-              </button>
-            ))}
-          </div>
-        </Section>
-      )}
-      {onHome && !adminMode && allowShapes && onAddShape && visibleMoreShapes.length > 0 && !searching && (
-        <Section title="Shapes" action={seeMore("shapes")}>
-          <div className="grid grid-cols-4 gap-2">
-            {visibleMoreShapes.slice(0, 4).map((shape) => (
-              <button
-                key={shape.id}
-                type="button"
-                onClick={() => onAddShape(shape.id)}
-                aria-label={`Add ${shape.label}`}
-                title={`Add ${shape.label}`}
-                className="grid aspect-square cursor-pointer place-items-center rounded-[10px] bg-[#F8F6F1] text-[#B9B9B9] transition hover:bg-[#EFEBE1] hover:text-[#A9A9A9] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#303839]"
-              >
-                <svg width="34" height="34" viewBox="0 0 24 24" fill="currentColor" aria-hidden>{shape.render}</svg>
               </button>
             ))}
           </div>
@@ -933,9 +912,9 @@ export default function CustomerElementsPanel({
       )}
 
       {/* ------------------------------- studio search: native elements -- */}
-      {searching && adminMode && (() => {
+      {searching && (() => {
         const query = debouncedSearch.toLowerCase();
-        const shapes = allowShapes && onAddShape ? searchShapeLibrary(debouncedSearch).slice(0, 9) : [];
+        const shapes = allowShapes && onAddShape ? searchShapeLibrary(debouncedSearch, visibleMoreShapes).slice(0, 9) : [];
         const frames = allowFrames && onAddFrame ? visibleFrames.filter((frame) => frame.label.toLowerCase().includes(query) || "frame photo".includes(query)) : [];
         const lines = allowLines && onAddLine ? LINES.filter((line) => `${line.label} border divider`.toLowerCase().includes(query)) : [];
         const texts = allowText && onAddTextPreset ? TEXT_PRESETS.filter((preset) => preset.label.toLowerCase().includes(query)) : [];
@@ -1027,7 +1006,7 @@ export default function CustomerElementsPanel({
               type="button"
               onClick={() => onAddTextPreset(preset.id, preset.text)}
               aria-label={`Add text: ${preset.label}`}
-              className={adminMode ? "rounded-lg border border-[#303839]/10 bg-white px-3 py-2.5 text-left text-sm font-semibold text-[#303839] transition hover:border-[#303839]/40 hover:bg-[#303839]/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#303839]" : "rounded-[10px] bg-[#F8F6F1] cursor-pointer px-3 py-2.5 text-left text-[14px] font-semibold text-[#1f2425] transition hover:bg-[#EFEBE1] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#303839]"}
+              className="cursor-pointer rounded-lg border border-[#303839]/10 bg-white px-3 py-2.5 text-left text-sm font-semibold text-[#303839] transition hover:border-[#303839]/40 hover:bg-[#303839]/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#303839]"
             >
               {preset.label}
             </button>
@@ -1043,7 +1022,7 @@ export default function CustomerElementsPanel({
               type="button"
               onClick={() => onAddLine(line.id)}
               aria-label={`Add ${line.label}`}
-              className={adminMode ? "flex items-center rounded-lg border border-[#303839]/10 bg-white px-3 py-3 transition hover:border-[#303839]/40 hover:bg-[#303839]/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#303839]" : "flex items-center rounded-[10px] bg-[#F8F6F1] cursor-pointer px-3 py-3 transition hover:bg-[#EFEBE1] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#303839]"}
+              className="flex cursor-pointer items-center rounded-lg border border-[#303839]/10 bg-white px-3 py-3 transition hover:border-[#303839]/40 hover:bg-[#303839]/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#303839]"
             >
               <svg viewBox="0 0 100 4" className="h-1 w-full" aria-hidden preserveAspectRatio="none">
                 <line x1="0" y1="2" x2="100" y2="2" stroke="#303839" strokeWidth="2" strokeDasharray={line.dash || undefined} strokeLinecap="round" />
@@ -1063,9 +1042,9 @@ export default function CustomerElementsPanel({
         </div>
       )}
 
-      {view === "shapes" && onAddShape && adminMode && (
+      {view === "shapes" && onAddShape && (
         (() => {
-          const matches = searchShapeLibrary(shapeQuery);
+          const matches = searchShapeLibrary(shapeQuery, visibleMoreShapes);
           return matches.length ? (
             <div className="grid grid-cols-3 gap-x-4 gap-y-3" data-shape-library>
               {matches.map((entry) => (
@@ -1080,22 +1059,6 @@ export default function CustomerElementsPanel({
         })()
       )}
 
-      {view === "shapes" && onAddShape && !adminMode && (
-        <div className="grid grid-cols-4 gap-2">
-          {[...visibleShapes, ...visibleMoreShapes].map((shape) => (
-            <button
-              key={shape.id}
-              type="button"
-              onClick={() => onAddShape(shape.id)}
-              aria-label={`Add ${shape.label}`}
-              title={`Add ${shape.label}`}
-              className="grid aspect-square cursor-pointer place-items-center rounded-[10px] bg-[#F8F6F1] text-[#B9B9B9] transition hover:bg-[#EFEBE1] hover:text-[#A9A9A9] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#303839]"
-            >
-              <svg width="34" height="34" viewBox="0 0 24 24" fill="currentColor" aria-hidden>{shape.render}</svg>
-            </button>
-          ))}
-        </div>
-      )}
 
       {view === "frames" && onAddFrame && (
         <div className="grid grid-cols-4 gap-2">

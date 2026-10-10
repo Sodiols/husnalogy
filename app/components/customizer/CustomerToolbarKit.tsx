@@ -16,6 +16,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import EditableNumericStepper from "./EditableNumericStepper";
+import ColourInput from "./ColourInput";
 import ToolbarPopover from "@/app/admin/dashboard/design-builder/ToolbarPopover";
 import { normaliseSwatch, orderSwatches } from "@/lib/customizer/v2/swatch-order";
 
@@ -300,11 +301,11 @@ export function ToolbarColourControl({
                   style={{ background: "conic-gradient(from 0deg, #ef4444, #f59e0b, #eab308, #22c55e, #06b6d4, #3b82f6, #8b5cf6, #ec4899, #ef4444)" }}
                 />
                 <span className="text-[13px] font-semibold uppercase tabular-nums text-[#1f2425]">{current || "—"}</span>
-                <input
-                  type="color"
+                <ColourInput
                   aria-label={pickerLabel}
                   value={current || "#303839"}
-                  onChange={(event) => onChange(event.target.value)}
+                  fallback="#303839"
+                  onChange={onChange}
                   className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
                 />
               </label>

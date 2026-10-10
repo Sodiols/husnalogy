@@ -71,7 +71,7 @@ test.describe("customer font selector", () => {
     await chooseTab(page, "Sans Serif");
     expect(await optionNames(page)).toEqual(["Inter"]);
     await chooseTab(page, "Script");
-    expect(await optionNames(page)).toEqual(["Great Vibes", "Yellowtail"]);
+    expect(await optionNames(page)).toEqual(["Great Vibes", "Yellowtail", "Lobster"]);
     await chooseTab(page, "Retro");
     // Results keep catalog order.
     expect(await optionNames(page)).toEqual(["Yellowtail", "Lobster"]);

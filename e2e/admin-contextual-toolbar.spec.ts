@@ -243,15 +243,17 @@ test.describe("text toolbar", () => {
     await expect.poll(async () => layerIn({ layers: await liveLayers(page) }, "t_text")?.textStyle?.textAlign).toBe("right");
   });
 
-  test("the font pill opens the categorised font picker", async ({ page }) => {
+  test("the font pill opens the categorised Fonts side panel", async ({ page }) => {
     await openStudio(page);
     await select(page, "t_text");
     await toolbar(page).getByRole("button", { name: "Font", exact: true }).click();
-    const list = page.getByRole("listbox", { name: "Font" });
-    await expect(list).toBeVisible();
-    for (const category of ["All Fonts", "Serif", "Script"]) await expect(list.getByText(category, { exact: true }).first()).toBeVisible();
-    await page.keyboard.press("Escape");
-    await expect(list).toHaveCount(0);
+    // The panel opens in the left slot, like Uploads and Elements.
+    const panel = page.locator("[data-admin-side-panel=fonts] [data-font-browser]");
+    await expect(panel).toBeVisible();
+    await expect(panel.getByRole("listbox", { name: "Font" })).toBeVisible();
+    for (const category of ["All Fonts", "Serif", "Script"]) await expect(panel.getByRole("tab", { name: category, exact: true })).toBeVisible();
+    await panel.getByRole("textbox", { name: "Search Google Fonts" }).press("Escape");
+    await expect(panel).toHaveCount(0);
   });
 
   test("Copy, paste, Delete and Scale use the shared commands", async ({ page }) => {

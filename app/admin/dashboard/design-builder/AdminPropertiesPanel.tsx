@@ -6,6 +6,7 @@
 import { FONT_SIZE_RULES } from "@/lib/customizer/v2/text-toolbar";
 import { FONT_SIZE_POINT_RULES, documentPxToPoints, fontSizeBoundsInPoints, pointsToDocumentPx } from "@/lib/customizer/v2/type-units";
 import PaintControl from "@/app/components/customizer/PaintControl";
+import ColourInput from "@/app/components/customizer/ColourInput";
 import { useRef, useState } from "react";
 import { getConnectedField, uploadBuilderImage, type BuilderAsset } from "./builder-utils";
 import { customerEditablePermissionBundle, isFieldCompatibleWithLayer } from "@/lib/customizer";
@@ -80,11 +81,10 @@ function ColourField({ value, fallback, onChange, ariaLabel, extra }: { value: u
   return (
     <div className="flex items-center gap-2">
       <span className="relative h-10 w-10 shrink-0 overflow-hidden rounded-full border border-[#303839]/20" style={{ backgroundColor: current }}>
-        <input
-          type="color"
+        <ColourInput
           aria-label={ariaLabel}
           value={current}
-          onChange={(event) => onChange(event.target.value)}
+          onChange={onChange}
           className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
         />
       </span>

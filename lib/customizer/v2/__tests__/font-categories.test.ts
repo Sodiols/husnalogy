@@ -42,7 +42,8 @@ describe("font categories", () => {
   });
 
   it("takes Script and Retro from Husnalogy's curated lists, and moves formal scripts out of Hand Written", () => {
-    expect(names(filterFamiliesByCategory(catalog, "script", index, new Set()))).toEqual(["Great Vibes", "Yellowtail"]);
+    // Connected display scripts (Lobster) are Script as well as Retro.
+    expect(names(filterFamiliesByCategory(catalog, "script", index, new Set()))).toEqual(["Great Vibes", "Lobster", "Yellowtail"]);
     expect(names(filterFamiliesByCategory(catalog, "retro", index, new Set()))).toEqual(["Lobster", "Yellowtail"]);
     expect(classifyFontFamily({ family: "Great Vibes", category: "handwriting" })).toEqual(["script"]);
   });

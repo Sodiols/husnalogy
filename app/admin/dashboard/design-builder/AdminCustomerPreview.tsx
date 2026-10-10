@@ -12,6 +12,7 @@ import CustomizerZoomControls from "@/app/components/customizer/CustomizerZoomCo
 import CustomizerReviewStep from "@/app/components/customizer/CustomizerReviewStep";
 import CustomerToolRail, { getCustomerTools, type CustomerTool } from "@/app/components/customizer/CustomerToolRail";
 import CustomerContextToolbar from "@/app/components/customizer/CustomerContextToolbar";
+import FontBrowser, { buildFontFamilyPatch } from "@/app/components/customizer/FontBrowser";
 import CustomerEditPanel, { mapCustomerFields } from "@/app/components/customizer/CustomerEditPanel";
 import CustomerAddTextPanel from "@/app/components/customizer/CustomerAddTextPanel";
 import CustomerUploadsPanel from "@/app/components/customizer/CustomerUploadsPanel";
@@ -65,6 +66,8 @@ export default function AdminCustomerPreview({ template, product }: { template: 
   const [approved, setApproved] = useState(false);
   const [selectedLayerId, setSelectedLayerId] = useState<string | null>(null);
   const [activeTool, setActiveTool] = useState<CustomerTool>("edit");
+  // The Fonts panel takes the left panel while open, exactly as in the live customizer.
+  const [fontsPanelOpen, setFontsPanelOpen] = useState(false);
   const [textPlacementPreset, setTextPlacementPreset] = useState<TextPlacementPreset>("text");
   /** Text objects that became multi-line from auto width in the current editing session. */
   const typedLineWidthRef = useRef(new Set<string>());
@@ -262,8 +265,42 @@ export default function AdminCustomerPreview({ template, product }: { template: 
     Boolean(selectedLayer) &&
     (selectedIsUser || (selectedLayer?.type === "text" && selectedLayer?.customerEditable));
 
-  const panelContent =
-    activeTool === "edit" ? (
+  // What a customer may choose from: the design's own font and colour allowlists.
+  const allowedCustomerFonts: string[] = Array.isArray(template?.settings?.allowedCustomerFonts) ? template.settings.allowedCustomerFonts : [];
+  const allowedCustomerColors: string[] = Array.isArray(template?.settings?.allowedCustomerColors) ? template.settings.allowedCustomerColors : [];
+  const fontTarget = selectedLayer?.type === "text" && (selectedIsUser || Boolean(selectedPermissions?.changeFont)) ? selectedLayer : null;
+  const designFonts = Array.from(new Set(
+    [...(template?.layers || []), ...(editorState.userLayers || [])]
+      .filter((layer: any) => layer?.type === "text")
+      .map((layer: any) => String(layer.textStyle?.fontFamily || ""))
+      .filter(Boolean),
+  )) as string[];
+
+  const panelContent = fontsPanelOpen ? (
+    <div className="flex min-h-0 flex-1 flex-col">
+      <div className="flex shrink-0 items-center justify-between gap-2 px-4 pb-1 pt-4">
+        <h2 className="text-[19px] font-semibold leading-tight text-[#1f2425]">Fonts</h2>
+        <button
+          type="button"
+          data-shape="round"
+          aria-label="Close panel"
+          onClick={() => setFontsPanelOpen(false)}
+          className="grid h-9 w-9 shrink-0 cursor-pointer place-items-center rounded-full text-[#1f2425] transition-colors hover:bg-[#303839]/[0.06] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839]"
+        >
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden><path d="M6 6l12 12M18 6 6 18" /></svg>
+        </button>
+      </div>
+      <FontBrowser
+        tone="brand"
+        label="Font family"
+        value={String(fontTarget?.textStyle?.fontFamily || "")}
+        allowedFonts={allowedCustomerFonts}
+        designFonts={designFonts}
+        onPick={fontTarget ? (family, entry) => onStyleChange(buildFontFamilyPatch(family, entry, fontTarget.textStyle)) : undefined}
+        onClose={() => setFontsPanelOpen(false)}
+      />
+    </div>
+  ) : activeTool === "edit" ? (
       <CustomerEditPanel
         template={template}
         values={values}
@@ -380,6 +417,7 @@ export default function AdminCustomerPreview({ template, product }: { template: 
                 insertPreviewText();
                 return;
               }
+              setFontsPanelOpen(false);
               setActiveTool(tool);
             }}
           />
@@ -397,6 +435,10 @@ export default function AdminCustomerPreview({ template, product }: { template: 
                   editingText={editingTextLayerId === selectedLayer.id}
                   onStyleChange={onStyleChange}
                   onEditText={() => setEditTextRequest((current) => ({ layerId: selectedLayer.id, requestId: (current?.requestId || 0) + 1 }))}
+                  allowedFonts={allowedCustomerFonts}
+                  allowedColors={allowedCustomerColors}
+                  onToggleFonts={() => setFontsPanelOpen((open) => !open)}
+                  fontsPanelOpen={fontsPanelOpen}
                 />
               </div>
             )}

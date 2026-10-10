@@ -1,6 +1,7 @@
 "use client";
 
 import PaintControl from "./PaintControl";
+import ColourInput from "./ColourInput";
 import { isTransparentPaint } from "@/lib/customizer/v2/paint";
 import { createGridSlotsFromPreset, GRID_PRESETS } from "@/lib/customizer/v2/grids";
 import { isValidQRValue, qrContrastRatio } from "@/lib/customizer/v2/qr";
@@ -175,12 +176,11 @@ function ColourControl({ label, value, disabled, onChange }: any) {
       <span className="text-[13px] font-semibold text-[#303839]">{label}</span>
       <span className="relative grid h-8 w-8 place-items-center rounded-full border border-[#303839]/15 bg-white shadow-sm">
         <span className="h-5 w-5 rounded-full" style={{ backgroundColor: value }} aria-hidden />
-        <input
-          type="color"
+        <ColourInput
           aria-label={label}
           value={value}
           disabled={disabled}
-          onChange={(event) => onChange(event.target.value)}
+          onChange={onChange}
           className="absolute inset-0 h-full w-full cursor-pointer opacity-0 disabled:cursor-not-allowed"
         />
       </span>

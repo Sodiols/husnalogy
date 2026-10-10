@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { GRID_PRESETS } from "@/lib/customizer/v2/grids";
+import ColourInput from "./ColourInput";
 
 // Insertion routes that are NOT part of the unified Elements library.
 // Shapes, lines, frames and QR moved into CustomerElementsPanel; only Photo
@@ -39,7 +40,7 @@ export default function CustomerInsertPanel({ tool, onAddGrid, onSetBackground, 
         ) : (
           <span className="flex h-12 items-center gap-3 rounded-[10px] bg-[#F8F6F1] px-3">
             <span className="relative h-8 w-8 shrink-0 overflow-hidden rounded-full shadow-[inset_0_0_0_1px_rgba(48,56,57,0.18)]" style={{ backgroundColor: background }}>
-              <input type="color" value={background} onChange={(event) => setBackground(event.target.value)} className="absolute inset-0 h-full w-full cursor-pointer opacity-0" />
+              <ColourInput aria-label="Background colour" value={background} onChange={setBackground} className="absolute inset-0 h-full w-full cursor-pointer opacity-0" />
             </span>
             <span className="text-[13.5px] font-semibold uppercase tabular-nums text-[#1f2425]">{background}</span>
           </span>

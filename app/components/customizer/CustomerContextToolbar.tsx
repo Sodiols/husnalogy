@@ -41,10 +41,13 @@ type Props = {
   onEditText: () => void;
   allowedFonts?: string[];
   allowedColors?: string[];
+  /** Toggle the Fonts side panel; without it the Font pill opens a floating list. */
+  onToggleFonts?: () => void;
+  fontsPanelOpen?: boolean;
 };
 
 /** The font picker, narrower in the compact density (as in the studio). */
-function FontPicker(props: { value: string; onChange: (family: string) => void; onOpen: () => void; allowedFonts: string[] }) {
+function FontPicker(props: { value: string; onChange: (family: string) => void; onOpen: () => void; allowedFonts: string[]; onToggleFonts?: () => void; fontsPanelOpen?: boolean }) {
   const compact = useCompact();
   return (
     <GoogleFontSelector
@@ -55,8 +58,10 @@ function FontPicker(props: { value: string; onChange: (family: string) => void; 
       allowedFonts={props.allowedFonts}
       className={compact ? "w-[132px]" : "w-[164px]"}
       triggerPrefix="Font:"
-      triggerClassName="h-[var(--tb-size,36px)] rounded-full px-3 text-[13px] hover:bg-[#303839]/[0.06]"
+      triggerClassName={`h-[var(--tb-size,36px)] rounded-full px-3 text-[13px] ${props.fontsPanelOpen ? "!bg-[#303839] !text-white [&_span]:!text-white" : "hover:bg-[#303839]/[0.06]"}`}
       portal
+      onOpenPanel={props.onToggleFonts}
+      panelOpen={props.fontsPanelOpen}
     />
   );
 }
@@ -71,6 +76,8 @@ export default function CustomerContextToolbar({
   onEditText,
   allowedFonts = [],
   allowedColors = [],
+  onToggleFonts,
+  fontsPanelOpen = false,
 }: Props) {
   const style = layer?.textStyle || {};
   const allow = (key: string) => isUserLayer || Boolean(permissions[key]);
@@ -144,6 +151,8 @@ export default function CustomerContextToolbar({
           if (style.fontFamily) void ensureGoogleFontLoaded(style.fontFamily, weight, italic ? "italic" : "normal").catch(reportGoogleFontLoadFailure);
         }}
         allowedFonts={allowedFonts}
+        onToggleFonts={onToggleFonts}
+        fontsPanelOpen={fontsPanelOpen}
       />,
     );
   }

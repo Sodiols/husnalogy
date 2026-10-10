@@ -5,6 +5,7 @@ import { normaliseSwatch, orderSwatches } from "@/lib/customizer/v2/swatch-order
 import { FONT_SIZE_POINT_RULES, documentPxToPoints, fontSizeBoundsInPoints, pointsToDocumentPx } from "@/lib/customizer/v2/type-units";
 import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useRef, useState } from "react";
 import GoogleFontSelector from "@/app/components/customizer/GoogleFontSelector";
+import ColourInput from "@/app/components/customizer/ColourInput";
 import { ensureGoogleFontLoaded, reportGoogleFontLoadFailure, useFamilyCapabilities, useSelectableFamilies } from "@/app/components/customizer/useGoogleFonts";
 import EditableNumericStepper from "@/app/components/customizer/EditableNumericStepper";
 import { TEXT_GROWTH_OPTIONS, TextGrowthIcon } from "@/app/components/customizer/TextGrowthControl";
@@ -68,6 +69,9 @@ type Props = {
   onErase: () => void;
   alignmentOpen: boolean;
   onToggleAlignment: () => void;
+  /** Toggle the Fonts side panel (the Font pill opens it instead of a floating list). */
+  onToggleFonts?: () => void;
+  fontsPanelOpen?: boolean;
 };
 
 const FALLBACK_SWATCHES = ["#303839", "#5B6667", "#8D6E63", "#D4AF37", "#B08D2A", "#F4ECEC", "#FFFFFF", "#7A1F2B", "#000000", "#1F4E79", "#2E7D32", "#C62828"];
@@ -475,13 +479,13 @@ function ColourControl({
                 title={`Pick ${title.toLowerCase()}`}
                 style={{ background: "conic-gradient(from 0deg, #ef4444, #f59e0b, #eab308, #22c55e, #06b6d4, #3b82f6, #8b5cf6, #ec4899, #ef4444)" }}
               >
-                <input
-                  type="color"
+                <ColourInput
                   aria-label={`Pick ${title.toLowerCase()}`}
                   value={none ? "#ffffff" : normalizeHex(value) || "#303839"}
-                  onChange={(event) => {
-                    setDraft(event.target.value);
-                    onPreview(event.target.value);
+                  fallback="#303839"
+                  onChange={(colour) => {
+                    setDraft(colour);
+                    onPreview(colour);
                   }}
                   onBlur={(event) => {
                     if (event.target.value.toLowerCase() !== String(value).toLowerCase()) onCommit(event.target.value);
@@ -667,9 +671,12 @@ function TextControls({ layer, props, swatches }: { layer: any; props: Props; sw
         onChange={applyFontFamily}
         className={useCompact() ? "w-[124px]" : "w-[164px]"}
         triggerPrefix="Font:"
-        triggerClassName="h-9 rounded-full px-3 text-[13px] hover:bg-[#303839]/[0.06]"
+        // The open panel's pill takes the toolbar's "on" state (the trigger's own base is white).
+        triggerClassName={`h-9 rounded-full px-3 text-[13px] ${props.fontsPanelOpen ? "!bg-[#DCEBFA] [&_span]:!text-[#12385C]" : "hover:bg-[#303839]/[0.06]"}`}
         portal
         manageFavourites
+        onOpenPanel={props.onToggleFonts}
+        panelOpen={props.fontsPanelOpen}
       />
       <Separator />
       {/* Shown and typed in points; stored in document px (type-units.ts). */}

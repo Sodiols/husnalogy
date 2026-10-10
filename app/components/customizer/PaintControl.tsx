@@ -17,6 +17,7 @@
 
 import { useState } from "react";
 import { TRANSPARENT_PAINT, isTransparentPaint } from "@/lib/customizer/v2/paint";
+import ColourInput from "./ColourInput";
 
 const CHECKERBOARD =
   "repeating-conic-gradient(#d9d6cf 0% 25%, #ffffff 0% 50%) 50% / 10px 10px";
@@ -58,12 +59,12 @@ export default function PaintControl({ label, value, fallbackColour, onChange, d
                 style={{ background: transparent ? CHECKERBOARD : colour }}
                 aria-hidden
               />
-              <input
-                type="color"
+              <ColourInput
                 aria-label={`${label} colour`}
-                value={/^#[0-9a-f]{6}$/i.test(colour) ? colour : fallbackColour}
+                value={colour}
+                fallback={fallbackColour}
                 disabled={disabled}
-                onChange={(event) => pick(event.target.value)}
+                onChange={pick}
                 className="absolute inset-0 h-full w-full cursor-pointer opacity-0 disabled:cursor-not-allowed"
               />
             </span>

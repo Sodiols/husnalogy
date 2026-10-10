@@ -75,7 +75,9 @@ beforeAll(async () => {
     clients[actor] = client;
   }
 }, 300_000);
-afterAll(async () => server?.stop());
+// Stopping embedded PostgreSQL on Windows retries its folder removal for up to
+// 10 s — the default hook timeout — so a busy machine failed the teardown.
+afterAll(async () => server?.stop(), 120_000);
 
 const as = (actor: Actor) => clients[actor]!;
 

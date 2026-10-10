@@ -39,7 +39,9 @@ describe("real PostgreSQL: concurrency, leases and isolation", () => {
     t = { db: server.owner, asService: (work) => work(service) };
     await seedCheckoutFixtures(t);
   }, 240_000);
-  afterAll(async () => server?.stop());
+  // Stopping embedded PostgreSQL on Windows retries its folder removal for up to
+  // 10 s — the default hook timeout — so a busy machine failed the teardown.
+  afterAll(async () => server?.stop(), 120_000);
 
   /** A service-role connection of its own (a separate backend). */
   const worker = async () => {

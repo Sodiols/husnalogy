@@ -32,6 +32,7 @@ import type { AlignmentTarget } from "@/lib/customizer/v2/admin-toolbar-state";
 import AdminToolRail, { type StudioRailItem, type StudioSidePanel } from "./AdminToolRail";
 import AdminBackgroundPanel from "./AdminBackgroundPanel";
 import AdminTextToolPanel from "./AdminTextToolPanel";
+import FontBrowser, { buildFontFamilyPatch } from "@/app/components/customizer/FontBrowser";
 import AdminCanvas from "./AdminCanvas";
 import AdminPropertiesPanel from "./AdminPropertiesPanel";
 import AdminLayersPanel from "./AdminLayersPanel";
@@ -164,6 +165,7 @@ const SIDE_PANEL_TITLES: Record<StudioSidePanel, string> = {
   moment: "Moment",
   layers: "Layers",
   pages: "Pages",
+  fonts: "Fonts",
 };
 
 // The studio may fall back to a library asset's full-quality original when its
@@ -1783,6 +1785,14 @@ export default function AdminDesignBuilder({
 
   const selectedLayer = selectedLayerId ? getLayer(t, selectedLayerId) : null;
   const selectedLayers = selectedLayerIds.map((id) => getLayer(t, id)).filter(Boolean);
+  // The Fonts panel restyles the selected text; it shows the family they share.
+  const selectedTextLayers = selectedLayers.filter((layer: any) => layer.type === "text");
+  const selectedTextFont = (() => {
+    const families = new Set(selectedTextLayers.map((layer: any) => String(layer.textStyle?.fontFamily || "")));
+    return families.size === 1 ? [...families][0] : "";
+  })();
+  // "Fonts in this design": every family a text layer uses, on any page.
+  const designFonts = Array.from(new Set((t.layers || []).filter((layer: any) => layer.type === "text").map((layer: any) => String(layer.textStyle?.fontFamily || "")).filter(Boolean))) as string[];
   // One style write applied to every selected text layer, re-measuring each
   // box so line height / letter spacing changes move the selection geometry in
   // the same pass as the glyphs (spec §23).
@@ -2056,6 +2066,17 @@ export default function AdminDesignBuilder({
                     </div>
                   )}
                   <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden [scrollbar-color:rgba(48,56,57,0.25)_transparent] [scrollbar-width:thin]">
+                    {sidePanel === "fonts" && (
+                      <FontBrowser
+                        tone="studio"
+                        label="Font"
+                        manageFavourites
+                        value={selectedTextFont}
+                        designFonts={designFonts}
+                        onPick={selectedTextLayers.length ? (family, entry) => onSelectedTextStylePatch(buildFontFamilyPatch(family, entry, selectedTextLayers[0]?.textStyle)) : undefined}
+                        onClose={() => setSidePanel(null)}
+                      />
+                    )}
                     {sidePanel === "text" && (
                       <AdminTextToolPanel
                         preset={textPlacementPreset}
@@ -2209,6 +2230,8 @@ export default function AdminDesignBuilder({
                     onErase={() => selectedLayerId && requestErase(selectedLayerId)}
                     alignmentOpen={alignmentOpen}
                     onToggleAlignment={() => setAlignmentOpen((open) => !open)}
+                    onToggleFonts={() => setSidePanel((current) => (current === "fonts" ? null : "fonts"))}
+                    fontsPanelOpen={sidePanel === "fonts"}
                   />
                 </div>
               )}

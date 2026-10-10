@@ -10,7 +10,8 @@
  * in the Settings tab.
  */
 
-export type StudioSidePanel = "text" | "uploads" | "background" | "elements" | "icons" | "options" | "moment" | "layers" | "pages";
+/** "fonts" has no rail item: the toolbar's Font pill opens it. */
+export type StudioSidePanel = "text" | "uploads" | "background" | "elements" | "icons" | "options" | "moment" | "layers" | "pages" | "fonts";
 
 export type StudioRailItem = "edit" | StudioSidePanel;
 

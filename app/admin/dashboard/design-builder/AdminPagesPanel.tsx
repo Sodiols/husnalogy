@@ -7,6 +7,7 @@
 
 import { memo, useRef, useState } from "react";
 import CustomizerPreview from "@/app/components/customizer/CustomizerPreview";
+import ColourInput from "@/app/components/customizer/ColourInput";
 import { useBackgroundUpload } from "./use-background-upload";
 import BackgroundUploadStatus from "./BackgroundUploadStatus";
 import { pageHasBackgroundImage } from "@/lib/customizer/v2/page-background";
@@ -145,10 +146,10 @@ export default function AdminPagesPanel({
                 )}
                 <label className="flex items-center justify-between rounded px-2 py-1.5 text-xs font-bold hover:bg-[#F8F6F1]">
                   Background colour
-                  <input
-                    type="color"
+                  <ColourInput
                     value={page.backgroundColor || "#ffffff"}
-                    onChange={(e) => onPatchPage(page.id, { backgroundColor: e.target.value })}
+                    fallback="#ffffff"
+                    onChange={(colour) => onPatchPage(page.id, { backgroundColor: colour })}
                     className="h-5 w-8 cursor-pointer border border-[#303839]/15"
                     aria-label={`Background colour for ${page.label}`}
                   />

@@ -4,7 +4,7 @@
  * Transparent must be the renderer's "no paint" (`fill="none"`), never white,
  * and must survive Undo, Redo and a refresh exactly like any other colour.
  */
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 import { addStudioShape } from "./admin-studio-tools";
 import { openFixture, selectLayer, waitForEditor } from "./customizer-fixture";
 
@@ -21,6 +21,35 @@ const panel = (page: Page) => page.locator('[aria-label="Selected item controls"
 const paintGroup = (page: Page, label: string) => panel(page).getByRole("group", { name: label, exact: true });
 
 test.use({ viewport: { width: 1440, height: 900 } });
+
+/**
+ * Dragging inside Chrome's colour picker delivers a BURST of `input` events in
+ * one task. Committing each one used to throw React's "Maximum update depth
+ * exceeded" (PaintControl → every colour input). The burst must update the
+ * design live, without that error. Ends on #9f9fa0.
+ */
+const BURST_FINAL = "#9f9fa0";
+async function dragColourPicker(input: Locator) {
+  await input.evaluate((element: HTMLInputElement) => {
+    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!;
+    for (let step = 0; step < 120; step += 1) {
+      const channel = (40 + step).toString(16).padStart(2, "0");
+      setter.call(element, `#${channel}${channel}a0`);
+      element.dispatchEvent(new Event("input", { bubbles: true }));
+    }
+  });
+}
+const closeColourPicker = (input: Locator) => input.evaluate((element: HTMLInputElement) => element.dispatchEvent(new Event("change", { bubbles: true })));
+function updateDepthErrors(page: Page) {
+  const errors: string[] = [];
+  page.on("console", (message) => {
+    if (message.type() === "error" && /Maximum update depth/.test(message.text())) errors.push(message.text());
+  });
+  page.on("pageerror", (error) => {
+    if (/Maximum update depth/.test(error.message)) errors.push(error.message);
+  });
+  return errors;
+}
 
 test.describe("customer shape paint", () => {
   test("Fill Colour and Line Colour go Transparent (\"none\"), and Undo, Redo and refresh keep it exact", async ({ page }) => {
@@ -56,6 +85,18 @@ test.describe("customer shape paint", () => {
     await selectLayer(page, "fx_shape");
     await paintGroup(page, "Fill Colour").getByRole("button", { name: "Transparent" }).click();
     await expect.poll(async () => (await shapePaint(page, "fx_shape")).fill?.toLowerCase()).toBe("#d4af37");
+  });
+
+  test("dragging the Fill Colour picker updates the shape live without exceeding React's update depth", async ({ page }) => {
+    const errors = updateDepthErrors(page);
+    await openFixture(page, "?snap=0");
+    await selectLayer(page, "fx_shape");
+    const input = paintGroup(page, "Fill Colour").getByLabel("Fill Colour colour");
+    await dragColourPicker(input);
+    await expect.poll(async () => (await shapePaint(page, "fx_shape")).fill?.toLowerCase()).toBe(BURST_FINAL);
+    await closeColourPicker(input);
+    await page.waitForTimeout(300);
+    expect(errors).toEqual([]);
   });
 
   test("Line Weight changes the stroke width", async ({ page }) => {
@@ -187,6 +228,35 @@ test.describe("Design Studio: a line's toolbar colour offers Transparent (task 0
 });
 
 test.describe("Design Studio paint, end to end", () => {
+  test("dragging the Fill Colour picker: live, no update-depth error, one undo step per frame", async ({ page }) => {
+    const errors = updateDepthErrors(page);
+    await page.goto("/__e2e/admin-dashboard?section=Products");
+    await expect(page.getByRole("button", { name: "Add product" }).first()).toBeVisible({ timeout: 60_000 });
+    await page.getByRole("button", { name: "Add product" }).first().click();
+    await page.getByPlaceholder("Describe the product the way a customer would search for it").fill("Picker Card");
+    const enable = page.getByRole("switch", { name: /Enable product customizer/ });
+    await expect(enable.or(page.getByRole("button", { name: "Open Design Studio" })).first()).toBeVisible({ timeout: 30_000 });
+    if ((await enable.isVisible()) && (await enable.getAttribute("aria-checked")) !== "true") await enable.click();
+    await page.getByRole("button", { name: "Open Design Studio" }).click();
+    const studio = page.locator("[data-admin-customizer]");
+    await expect(studio.locator("header")).toBeVisible();
+    await addStudioShape(page, "rectangle");
+    const fillOf = () => page.evaluate(() => document.querySelector("[data-admin-customizer] [data-canvas-surface] [data-layer-id] rect")?.getAttribute("fill"));
+    expect(await fillOf()).toBe("#F8F6F1");
+
+    const input = studio.getByRole("group", { name: "Fill Colour", exact: true }).getByLabel("Fill Colour colour");
+    await dragColourPicker(input);
+    await expect.poll(fillOf).toBe(BURST_FINAL);
+    await closeColourPicker(input);
+    await page.waitForTimeout(300);
+    expect(errors).toEqual([]);
+    // The whole burst landed within one frame: one undo step, not 120.
+    await page.keyboard.press("Control+z");
+    await expect.poll(fillOf).toBe("#F8F6F1");
+    await page.keyboard.press("Control+y");
+    await expect.poll(fillOf).toBe(BURST_FINAL);
+  });
+
   test("transparent fill and line, line weight, one undo per change, and the saved draft keeps \"none\"", async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto("/__e2e/admin-dashboard?section=Products");

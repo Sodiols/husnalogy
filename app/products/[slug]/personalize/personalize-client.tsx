@@ -33,6 +33,8 @@ import CustomizerReviewStep from "@/app/components/customizer/CustomizerReviewSt
 import CustomerCustomizerHeader from "@/app/components/customizer/CustomerCustomizerHeader";
 import CustomerToolRail, { getCustomerTools, type CustomerTool } from "@/app/components/customizer/CustomerToolRail";
 import CustomerContextToolbar from "@/app/components/customizer/CustomerContextToolbar";
+import FontBrowser, { buildFontFamilyPatch } from "@/app/components/customizer/FontBrowser";
+import { SHAPE_LIBRARY_BY_ID, libraryShapeGeometry } from "@/lib/customizer/v2/shape-library";
 import CustomerImageToolbar from "@/app/components/customizer/CustomerImageToolbar";
 import CustomerGridToolbar from "@/app/components/customizer/CustomerGridToolbar";
 import CustomerMockupPreview from "@/app/components/customizer/CustomerMockupPreview";
@@ -416,6 +418,8 @@ export default function PersonalizeClient({ product, template }: { product: any;
   const [previewMode, setPreviewMode] = useState(false);
   const [workspaceMode, setWorkspaceMode] = useState<"print" | "product" | "split">("print");
   const [mobilePanelOpen, setMobilePanelOpen] = useState(false);
+  // The Fonts panel takes the side panel while open; the text toolbar's Font pill opens it.
+  const [fontsPanelOpen, setFontsPanelOpen] = useState(false);
   const [shortcutHelpOpen, setShortcutHelpOpen] = useState(false);
   const [uploadingCount, setUploadingCount] = useState(0);
   // The settings panel is mounted exactly once (desktop aside OR mobile sheet)
@@ -912,9 +916,23 @@ export default function PersonalizeClient({ product, template }: { product: any;
     setSelectedLayerId(layer.id);
   };
 
-  const addCustomerShape = (shape: string) => {
+  /**
+   * A shape from the Elements panel: a plain shape kind (Dynamic Shapes) or an
+   * entry of the Shapes library, drawn with its real geometry exactly as the
+   * studio inserts it. The design's allowlist is checked against the shape KIND,
+   * as the save validator does.
+   */
+  const addCustomerShape = (shapeId: string) => {
+    const entry = SHAPE_LIBRARY_BY_ID.get(shapeId);
+    const shape = entry ? entry.shape : shapeId;
     if (!customerShapesEnabled || (allowedCustomerShapes.length && !allowedCustomerShapes.includes(shape))) return;
-    addCustomerObject({ type: "shape", name: "Customer shape", shape, fill: allowedCustomerColors[0] || "#F8F6F1", stroke: allowedCustomerColors[1] || allowedCustomerColors[0] || "#303839", strokeWidth: 2, borderRadius: shape === "rounded-rectangle" ? 36 : 0, points: shape === "polygon" ? [{ x: 0.5, y: 0 }, { x: 1, y: 0.38 }, { x: 0.82, y: 1 }, { x: 0.18, y: 1 }, { x: 0, y: 0.38 }] : [] });
+    const paint = { fill: allowedCustomerColors[0] || "#F8F6F1", stroke: allowedCustomerColors[1] || allowedCustomerColors[0] || "#303839", strokeWidth: 2 };
+    if (entry) {
+      const longest = Math.round(Math.min(Number(template?.canvasWidthPx) || 1500, Number(template?.canvasHeightPx) || 2100) * 0.28);
+      addCustomerObject({ type: "shape", ...paint, borderRadius: 0, points: [], ...libraryShapeGeometry(entry, longest) });
+      return;
+    }
+    addCustomerObject({ type: "shape", name: "Customer shape", shape, ...paint, borderRadius: shape === "rounded-rectangle" ? 36 : 0, points: shape === "polygon" ? [{ x: 0.5, y: 0 }, { x: 1, y: 0.38 }, { x: 0.82, y: 1 }, { x: 0.18, y: 1 }, { x: 0, y: 0.38 }] : [] });
   };
 
   const addCustomerLine = (lineStyle: string) => {
@@ -3753,8 +3771,9 @@ export default function PersonalizeClient({ product, template }: { product: any;
   const showSafeArea = template?.settings?.showSafeArea !== false && !previewMode;
   const showPanels = step !== "review" && !previewMode;
 
-  const panelTitle =
-    activeTool === "edit"
+  const panelTitle = fontsPanelOpen
+    ? "Fonts"
+    : activeTool === "edit"
       ? "Edit your details"
       : activeTool === "addText"
         ? "Add text"
@@ -3912,7 +3931,39 @@ export default function PersonalizeClient({ product, template }: { product: any;
     />
   ) : null;
 
-  const panelBody = (
+  // The Fonts panel: it restyles the selected text when this customer may change its font.
+  const fontTarget = selectedLayer?.type === "text" && (selectedIsUser || Boolean((selectedPermissions as any)?.changeFont)) ? selectedLayer : null;
+  const designFonts = Array.from(new Set(
+    [...(template?.layers || []), ...(editorState.userLayers || [])]
+      .filter((layer: any) => layer?.type === "text")
+      .map((layer: any) => String(layer.textStyle?.fontFamily || ""))
+      .filter(Boolean),
+  )) as string[];
+  const fontsPanel = (
+    <FontBrowser
+      tone="brand"
+      label="Font family"
+      value={String(fontTarget?.textStyle?.fontFamily || "")}
+      allowedFonts={allowedCustomerFonts}
+      designFonts={designFonts}
+      onPick={fontTarget ? (family, entry) => onToolbarStyleChange(buildFontFamilyPatch(family, entry, fontTarget.textStyle), "fontFamily") : undefined}
+      onClose={() => {
+        setFontsPanelOpen(false);
+        if (!isDesktop) setMobilePanelOpen(false);
+      }}
+    />
+  );
+  const toggleFontsPanel = () => {
+    const next = !fontsPanelOpen;
+    setFontsPanelOpen(next);
+    if (!isDesktop) setMobilePanelOpen(next);
+  };
+
+  // Elements draws its own header (title, back, close), as in the studio, so the
+  // panel's shared title row steps aside for it.
+  const panelOwnsHeader = activeTool === "elements" && !fontsPanelOpen;
+
+  const panelBody = fontsPanelOpen ? fontsPanel : (
     <>
       {selectionPanel}
       {panelContent}
@@ -4089,6 +4140,7 @@ export default function PersonalizeClient({ product, template }: { product: any;
                   tools={visibleTools}
                   activeTool={activeTool}
                   onSelect={(tool) => {
+                    setFontsPanelOpen(false);
                     // Text is an insertion command, not a mode.
                     if (tool === "addText") {
                       insertCustomerText();
@@ -4105,10 +4157,22 @@ export default function PersonalizeClient({ product, template }: { product: any;
             {/* Left settings panel (desktop) */}
             {showPanels && isDesktop && (
               <aside className="my-3 ml-3 hidden w-[340px] shrink-0 flex-col overflow-hidden rounded-2xl bg-white shadow-[0_4px_20px_rgba(48,56,57,0.12)] lg:flex">
+                {!panelOwnsHeader && (
                 <div className="shrink-0 px-4 pb-2 pt-4">
                   <div className="flex items-center justify-between gap-2">
                     <h2 className="min-w-0 truncate text-[19px] font-semibold leading-tight text-[#1f2425]">{panelTitle}</h2>
-                    {hasAdvancedTools && (
+                    {fontsPanelOpen && (
+                      <button
+                        type="button"
+                        data-shape="round"
+                        aria-label="Close panel"
+                        onClick={() => setFontsPanelOpen(false)}
+                        className="grid h-9 w-9 shrink-0 cursor-pointer place-items-center rounded-full text-[#1f2425] transition-colors hover:bg-[#303839]/[0.06] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839]"
+                      >
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden><path d="M6 6l12 12M18 6 6 18" /></svg>
+                      </button>
+                    )}
+                    {hasAdvancedTools && !fontsPanelOpen && (
                       <button
                         type="button"
                         data-shape="round"
@@ -4120,6 +4184,7 @@ export default function PersonalizeClient({ product, template }: { product: any;
                     )}
                   </div>
                 </div>
+                )}
                 <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden [scrollbar-color:rgba(48,56,57,0.18)_transparent] [scrollbar-width:thin]">{panelBody}</div>
               </aside>
             )}
@@ -4156,6 +4221,8 @@ export default function PersonalizeClient({ product, template }: { product: any;
                       onEditText={onEditTextAction}
                       allowedFonts={allowedCustomerFonts}
                       allowedColors={allowedCustomerColors}
+                      onToggleFonts={toggleFontsPanel}
+                      fontsPanelOpen={fontsPanelOpen}
                     />
                   )}
 
@@ -4367,6 +4434,7 @@ export default function PersonalizeClient({ product, template }: { product: any;
             activeTool={mobilePanelOpen ? activeTool : null}
             orientation="horizontal"
             onSelect={(tool) => {
+              setFontsPanelOpen(false);
               // Tapping Text always inserts exactly one object, so a second tap
               // adds a second text box instead of collapsing the panel.
               if (tool === "addText") {
@@ -4390,10 +4458,11 @@ export default function PersonalizeClient({ product, template }: { product: any;
               <div className="flex justify-center pt-2" aria-hidden>
                 <span className="h-1 w-9 rounded-full bg-[#303839]/15" />
               </div>
+              {!panelOwnsHeader && (
               <div className="flex items-center justify-between gap-2 px-5 pb-3 pt-2">
                 <h2 className="min-w-0 truncate font-display text-xl text-[#303839]">{panelTitle}</h2>
                 <div className="flex shrink-0 items-center gap-2">
-                  {hasAdvancedTools && (
+                  {hasAdvancedTools && !fontsPanelOpen && (
                     <button
                       type="button"
                       onClick={() => setCustomizeModeSafely(customizeMode === "easy" ? "advanced" : "easy")}
@@ -4405,7 +4474,10 @@ export default function PersonalizeClient({ product, template }: { product: any;
                   <button
                     type="button"
                     aria-label="Close panel"
-                    onClick={() => setMobilePanelOpen(false)}
+                    onClick={() => {
+                      setMobilePanelOpen(false);
+                      setFontsPanelOpen(false);
+                    }}
                     className="grid h-9 w-9 shrink-0 place-items-center rounded-lg text-[#303839]/50 transition-colors hover:bg-[#303839]/5 hover:text-[#303839] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white"
                   >
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden>
@@ -4414,6 +4486,7 @@ export default function PersonalizeClient({ product, template }: { product: any;
                   </button>
                 </div>
               </div>
+              )}
               <div className="max-h-[58vh] overflow-y-auto overflow-x-hidden">{panelBody}</div>
             </div>
           )}

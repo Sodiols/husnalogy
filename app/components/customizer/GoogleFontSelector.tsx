@@ -68,6 +68,13 @@ type Props = {
   triggerPrefix?: string;
   /** Replaces the trigger's size and shape classes (border, height, padding, radius). */
   triggerClassName?: string;
+  /**
+   * Open the Fonts side panel instead of the floating list (the editors' text
+   * toolbars). The trigger then only toggles that panel.
+   */
+  onOpenPanel?: () => void;
+  /** Whether that side panel is open, for the trigger's expanded state. */
+  panelOpen?: boolean;
 };
 
 const PANEL_WIDTH = 300;
@@ -190,6 +197,8 @@ export default function GoogleFontSelector({
   portal = false,
   triggerPrefix,
   triggerClassName,
+  onOpenPanel,
+  panelOpen = false,
 }: Props) {
   const [open, setOpen] = useState(false);
   const panelRef = useRef<HTMLDivElement | null>(null);
@@ -245,12 +254,17 @@ export default function GoogleFontSelector({
 
   const toggleOpen = useCallback(() => {
     if (disabled) return;
+    if (onOpenPanel) {
+      if (!panelOpen) onOpen?.();
+      onOpenPanel();
+      return;
+    }
     if (!open) {
       if (error) retry();
       onOpen?.();
     }
     setOpen((current) => !current);
-  }, [disabled, error, onOpen, open, retry]);
+  }, [disabled, error, onOpen, onOpenPanel, open, panelOpen, retry]);
 
   useEffect(() => {
     if (open) setRecent(readRecentFonts());
@@ -370,8 +384,8 @@ export default function GoogleFontSelector({
         ref={triggerRef}
         type="button"
         disabled={disabled}
-        aria-haspopup="listbox"
-        aria-expanded={open}
+        aria-haspopup={onOpenPanel ? undefined : "listbox"}
+        aria-expanded={onOpenPanel ? panelOpen : open}
         aria-label={label}
         onClick={toggleOpen}
         className={`flex w-full items-center justify-between gap-2 bg-white text-left text-[#303839] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#303839] focus-visible:ring-offset-2 focus-visible:ring-offset-white disabled:cursor-not-allowed disabled:opacity-45 ${
