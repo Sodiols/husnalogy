@@ -299,6 +299,8 @@ export default function AdminCanvas({
     const field = layer.fieldId ? getFieldById(template, layer.fieldId) : null;
     const text = resolveLayerText(layer, field, values);
     const resolved = resolveLayerBox(layer);
+    // Curved text follows its arc and is never clipped: no box to overflow.
+    if (resolved.textCurved) return false;
     // Auto width absorbs the overflow until it hits the safe-area limit.
     if (resolved.autoWidthClamped === false) return false;
     const layout = layoutText({

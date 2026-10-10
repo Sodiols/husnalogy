@@ -299,7 +299,9 @@ export default function FontBrowser({
         <div className={`flex h-11 min-w-0 items-center rounded-full border border-[#303839]/25 bg-white pl-4 pr-1 ${accent.searchFocus}`}>
           <input
             ref={searchRef}
-            type="search"
+            // A text field, like the dropdown picker's: the same role for
+            // assistive tech, and no native clear button fighting the pill.
+            type="text"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             placeholder="Try searching “Great Vibes”"

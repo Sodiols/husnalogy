@@ -404,6 +404,8 @@ export default function CustomizerWorkspace({
     const field = layer.fieldId ? getFieldById(template, layer.fieldId) : null;
     const text = resolveLayerText(layer, field, values);
     const resolved = resolveLayerBox(layer);
+    // Curved text follows its arc and is never clipped: no box to overflow.
+    if (resolved.textCurved) return false;
     if (resolved.autoWidthClamped === false) return false;
     const layout = layoutText({
       text: String(text),

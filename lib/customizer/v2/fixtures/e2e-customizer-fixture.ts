@@ -516,6 +516,8 @@ export type E2ECustomizerFixtureOptions = {
    * reliability specs' Storage stand-in (e2e/asset-reliability-stub.ts).
    */
   libraryAssetExpiresInMs?: number;
+  /** Bend the editable title (text-curve.ts), as a designer's Text curve would. */
+  titleCurve?: number;
 };
 
 export const E2E_LIBRARY_ASSET_ID = "8b3e3e70-5d4c-4b9a-9c32-2e6c4d9f1a33";
@@ -640,7 +642,10 @@ export function buildE2ECustomizerFixture(options: E2ECustomizerFixtureOptions =
     fields: FIELDS.map((field) => ({ ...field })),
     layers: [
       ...(() => {
-        const base = options.adminClip ? clipFixturePhotos(layers()) : layers();
+        const clipped = options.adminClip ? clipFixturePhotos(layers()) : layers();
+        const base = options.titleCurve
+          ? clipped.map((layer: any) => (layer.id === "fx_title" ? { ...layer, textStyle: { ...layer.textStyle, curve: options.titleCurve } } : layer))
+          : clipped;
         return options.libraryAssetExpiresInMs !== undefined ? libraryAssetPhoto(base, options.libraryAssetExpiresInMs) : base;
       })(),
       ...stressLayers(Number(options.stressLayers) || 0, 1000),

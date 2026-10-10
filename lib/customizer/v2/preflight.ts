@@ -9,8 +9,8 @@ import type {
   PreflightResult,
   TextLayer,
 } from "./types";
-import { layoutText, fallbackMeasure, type MeasureFn } from "./text-layout";
-import { textCurveApplies } from "./text-curve";
+import { DEFAULT_LINE_HEIGHT, layoutText, fallbackMeasure, resolveTextBox, type MeasureFn } from "./text-layout";
+import { layoutCurvedText, textCurveApplies } from "./text-curve";
 import { getGridSlotRect, normalizeGridSlot, validateGridGeometry } from "./grids";
 import { validateGroupRelationships } from "./groups";
 import { isValidQRValue, qrContrastRatio } from "./qr";
@@ -93,10 +93,13 @@ export function runPreflight(document: CustomizerDocument, options: PreflightOpt
     const page = pageById.get(layer.pageId);
     if (!page) continue;
 
-    const left = layer.x - layer.width / 2;
-    const top = layer.y - layer.height / 2;
-    const right = layer.x + layer.width / 2;
-    const bottom = layer.y + layer.height / 2;
+    // Curved text is checked by the arc it draws, not its straight box.
+    const frame = layer.type === "text" ? curvedTextFrame(layer as TextLayer, measure) : null;
+    const extent = frame || layer;
+    const left = extent.x - extent.width / 2;
+    const top = extent.y - extent.height / 2;
+    const right = extent.x + extent.width / 2;
+    const bottom = extent.y + extent.height / 2;
 
     // Outside bleed limits (completely off the printable sheet) is an error.
     if (right < 0 || bottom < 0 || left > page.widthPx || top > page.heightPx) {
@@ -290,6 +293,38 @@ export function runPreflight(document: CustomizerDocument, options: PreflightOpt
     issues,
     checkedAt: new Date().toISOString(),
   };
+}
+
+/** The frame a curved text draws in (text-curve.ts), or null for straight text. */
+function curvedTextFrame(layer: TextLayer, measure: MeasureFn): { x: number; y: number; width: number; height: number } | null {
+  const style: any = layer.textStyle || {};
+  const text = String(layer.text || "");
+  if (!textCurveApplies(style, text)) return null;
+  const box = resolveTextBox(
+    {
+      x: layer.x,
+      y: layer.y,
+      width: layer.width,
+      height: layer.height,
+      text,
+      fontFamily: style.fontFamily,
+      fontSize: Number(style.fontSize) || 48,
+      fontWeight: style.fontWeight || "400",
+      fontStyle: style.fontStyle === "italic" ? "italic" : "normal",
+      letterSpacing: Number(style.letterSpacing) || 0,
+      lineHeight: Number(style.lineHeight) || DEFAULT_LINE_HEIGHT,
+      uppercase: Boolean(style.uppercase),
+      multiline: Boolean(style.multiline),
+      textAlign: style.textAlign || "center",
+      verticalAlign: style.verticalAlign || "middle",
+      autoSizeMode: style.autoSizeMode,
+      fitMode: style.fitMode,
+      rotation: Number(layer.rotation) || 0,
+      growthDirection: style.growthDirection,
+    },
+    measure,
+  );
+  return layoutCurvedText({ box, text, style, measure, maxLines: layer.maxLines || undefined })?.frame ?? null;
 }
 
 function checkTextLayer(

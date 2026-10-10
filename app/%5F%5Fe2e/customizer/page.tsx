@@ -54,6 +54,8 @@ export default async function CustomizerE2EFixturePage({
     // ?templateVersion=2 serves a newer version of the template (version-pinning tests).
     templateVersion: Number(Array.isArray(params.templateVersion) ? params.templateVersion[0] : params.templateVersion) || undefined,
     // ?libraryAsset=8000 makes the croppable photo a library asset whose URL expires in 8s (negative: expired).
+    // ?curve=55 bends the editable title (Text curve).
+    titleCurve: Number(Array.isArray(params.curve) ? params.curve[0] : params.curve) || undefined,
     libraryAssetExpiresInMs: params.libraryAsset !== undefined ? Number(Array.isArray(params.libraryAsset) ? params.libraryAsset[0] : params.libraryAsset) || 0 : undefined,
     allowedFonts: String((Array.isArray(params.fonts) ? params.fonts[0] : params.fonts) || "")
       .split(",")

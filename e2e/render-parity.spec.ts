@@ -16,6 +16,8 @@
  *     match between the client SVG and the server SVG.
  *  3. Server-side wrapping (opentype measure, as production uses) produces the
  *     same lines the browser drew.
+ *  4. Curved text (lib/customizer/v2/text-curve): the same arc path, size and
+ *     wording on the client and the server.
  */
 import { readFileSync } from "node:fs";
 import path from "node:path";
@@ -62,6 +64,7 @@ function referenceTemplate(widthIn: number, heightIn: number) {
       text("t_left", "front", "Saturday the twelfth of June\nat four o'clock in the afternoon", W / 2, 700, { autoSizeMode: "height", textAlign: "left", letterSpacing: 4, lineHeight: 1.3 }, { width: W * 0.6 }),
       text("t_right", "front", "Reception to follow", W / 2, 950, { autoSizeMode: "width", textAlign: "right", fontWeight: "700" }),
       text("t_serif", "front", "Anna & Ben", W / 2, 1150, { fontFamily: "ParitySerif", fontSize: 110, autoSizeMode: "width", textAlign: "center" }),
+      text("t_arch", "front", "Together forever", W / 2, 1450, { fontFamily: "ParitySerif", fontSize: 90, autoSizeMode: "width", textAlign: "center", curve: 55, letterSpacing: 3 }),
       { id: "s_rect", page: "front", type: "shape", shape: "rectangle", x: 300, y: H - 400, width: 260, height: 160, zIndex: 2, fill: "#d4af37", stroke: "#303839", strokeWidth: 6, borderRadius: 20 },
       { id: "s_oval", page: "front", type: "shape", shape: "oval", x: 650, y: H - 400, width: 200, height: 140, zIndex: 3, fill: "none", stroke: "#27307a", strokeWidth: 8 },
       { id: "s_line", page: "front", type: "shape", shape: "line", x: W / 2, y: H - 200, width: 600, height: 20, zIndex: 4, stroke: "#27307a", strokeWidth: 5, lineEndCap: "arrow" },
@@ -69,6 +72,7 @@ function referenceTemplate(widthIn: number, heightIn: number) {
       { id: "i_crop", page: "front", type: "image", src: PNG, x: W - 350, y: H - 400, width: 300, height: 300, zIndex: 6, imageTransform: { zoom: 1.6, offsetX: 40, offsetY: -20, cropX: 0, cropY: 0, cropWidth: 1, cropHeight: 1 }, mask: { kind: "circle" } },
       { id: "i_arch", page: "back", type: "image", src: PNG, x: W / 2, y: H / 2, width: 500, height: 600, zIndex: 7, mask: { kind: "arch-top" }, fitMode: "contain" },
       text("t_back", "back", "Kindly reply by the first of May to the address on the enclosed card", W / 2, 400, { autoSizeMode: "safe-width", textAlign: "center", color: "#ffffff" }),
+      text("t_smile", "back", "With love", W / 2, H - 500, { fontSize: 80, autoSizeMode: "width", textAlign: "center", curve: -70, color: "#ffffff", uppercase: true }),
     ],
   };
 }
@@ -94,7 +98,19 @@ async function facts(page: import("@playwright/test").Page, svgSource: { pageId:
       tag: node.tagName.toLowerCase(),
       attrs: Object.fromEntries(["x", "y", "width", "height", "cx", "cy", "rx", "ry", "x1", "y1", "x2", "y2", "fill", "stroke", "stroke-width"].map((name) => [name, node.getAttribute(name)]).filter(([, value]) => value !== null).map(([name, value]) => [name, /^-?\d/.test(String(value)) ? round(String(value)) : String(value).toLowerCase()])),
     }));
-    return { lines, images, clips, shapes };
+    const curves = Array.from(svg.querySelectorAll("textPath")).map((textPath) => {
+      const href = (textPath.getAttribute("href") || "").replace(/^#/, "");
+      const path = Array.from(svg.querySelectorAll("path")).find((node) => node.getAttribute("id") === href);
+      const text = textPath.closest("text")!;
+      return {
+        text: textPath.textContent || "",
+        d: (path?.getAttribute("d") || "").replace(/-?\d+(?:\.\d+)?/g, (value) => String(Math.round(Number(value) * 2) / 2)),
+        fontSize: String(text.getAttribute("font-size") || (text as any).style?.fontSize || "").replace("px", ""),
+        anchor: text.getAttribute("text-anchor") || "",
+        offset: textPath.getAttribute("startOffset") || "",
+      };
+    });
+    return { lines, images, clips, shapes, curves };
   }, svgSource as any);
 }
 
@@ -135,11 +151,16 @@ for (const [widthIn, heightIn] of [[5, 7], [7, 5], [3.5, 5]] as const) {
       expect(server.images).toEqual(client.images);
       expect(server.clips).toEqual(client.clips);
       expect(server.shapes).toEqual(client.shapes);
+      // 4. Curved text: one arc, one size, one wording on both renderers.
+      expect(client.curves.length).toBe(1);
+      expect(server.curves).toEqual(client.curves);
 
       // 3. Production wrapping (opentype measure in Node) gives the same lines the browser drew.
       const production = buildPageSvg({ template, pageId, mode: "print", measure: serverMeasure });
       const productionLines = [...production.matchAll(/<tspan[^>]*>([^<]*)<\/tspan>/g)].map((match) => match[1].replace(/&amp;/g, "&").replace(/&apos;/g, "'").replace(/\s+$/, ""));
       expect(productionLines).toEqual(client.lines.map((line) => line.text));
+      const productionCurves = [...production.matchAll(/<textPath[^>]*>([^<]*)<\/textPath>/g)].map((match) => match[1].replace(/&amp;/g, "&"));
+      expect(productionCurves).toEqual(client.curves.map((curve) => curve.text));
     }
   });
 }
