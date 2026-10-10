@@ -134,6 +134,11 @@ export type InteractionNode = {
   capabilities: LayerCapabilities;
   /** Single-line auto-sized text has no independent height (spec §14). */
   singleLineAutoSize?: boolean;
+  /** Curved text (lib/customizer/v2/text-curve): corner handles only. */
+  curved?: boolean;
+  /** The stored (straight) box, which a curved text's corner scale carries along. */
+  documentWidth?: number;
+  documentHeight?: number;
   /** Text style values needed to normalise a font-scaling corner drag. */
   fontSize?: number;
   letterSpacing?: number;
@@ -577,6 +582,7 @@ export default function CustomizerInteractionStage({
       resizable: true,
       isText: primary?.type === "text",
       singleLineAutoSize: Boolean(primary?.singleLineAutoSize),
+      curved: Boolean(primary?.curved),
     });
   }, [selectionCapabilities, interactive, multiSelected, primary, smallText]);
 
@@ -1177,13 +1183,17 @@ export default function CustomizerInteractionStage({
           minFontSize: Number(before.minFontSize) || 4,
           maxFontSize: Number(before.maxFontSize) || 500,
         });
+        // A curved text's frame is the arc, not its stored box: the stored box
+        // scales by the factor the type actually took, so it stays in proportion
+        // for the day the text is straightened again.
+        const applied = scaled.fontSize / (Number(before.fontSize) || 48);
         changes.push({
           id,
           patch: {
             x: scaled.x,
             y: scaled.y,
-            width: scaled.width,
-            height: scaled.height,
+            width: before.curved ? Math.max(1, Math.round((Number(before.documentWidth) || before.width) * applied)) : scaled.width,
+            height: before.curved ? Math.max(1, Math.round((Number(before.documentHeight) || before.height) * applied)) : scaled.height,
             rotation: scaled.rotation,
             textStyle: { fontSize: scaled.fontSize, letterSpacing: scaled.letterSpacing },
           },

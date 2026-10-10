@@ -142,6 +142,11 @@ export function useInteractionNodes({
         capabilities,
         singleLineAutoSize:
           layer.type === "text" && isSingleLineAutoSizeText(style, resolved.resolvedText ?? layer.text),
+        // Curved text: its frame is the arc's bounds, not the stored box, so a
+        // corner scale carries the stored box along by the same factor.
+        ...(resolved.textCurved
+          ? { curved: true, documentWidth: Number(layer.width) || 0, documentHeight: Number(layer.height) || 0 }
+          : {}),
         fontSize: Number(style.fontSize) || undefined,
         letterSpacing: Number(style.letterSpacing) || 0,
         minFontSize: Number(style.minFontSize) || undefined,

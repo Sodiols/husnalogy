@@ -34,6 +34,7 @@ import {
 } from "./types";
 import { maskShapeFromLegacy, normalizeMaskShape } from "./masks";
 import { normalizeTextGrowthDirection } from "./text-growth";
+import { normalizeTextCurve } from "./text-curve";
 import { mergeGridSlotOverrides, normalizeGridSlot } from "./grids";
 import { normalizeImageFilters } from "./image-filters";
 import { normalizeQRCodeStyle } from "./qr";
@@ -117,6 +118,8 @@ export function normalizeTextStyleV2(input: unknown): TextStyle {
     textAlign: align === "left" || align === "right" ? (align as "left" | "right") : "center",
     verticalAlign: vAlign === "top" || vAlign === "bottom" ? (vAlign as "top" | "bottom") : "middle",
     ...(normalizeTextGrowthDirection(s.growthDirection) ? { growthDirection: normalizeTextGrowthDirection(s.growthDirection) } : {}),
+    // Present only when bent (text-curve.ts); absent is straight.
+    ...(normalizeTextCurve(s.curve) ? { curve: normalizeTextCurve(s.curve) } : {}),
     uppercase: bool(s.uppercase),
     multiline: bool(s.multiline),
     fitMode: str(s.fitMode) === "shrink" ? "shrink" : str(s.fitMode) === "auto-height" ? "auto-height" : "fixed",

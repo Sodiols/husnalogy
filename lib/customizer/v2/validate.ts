@@ -171,6 +171,7 @@ export const userLayerSchema = z
         textAlign: z.string().max(12).optional(),
         verticalAlign: z.enum(["top", "middle", "bottom"]).optional(),
         growthDirection: z.enum(["up", "center", "down"]).optional(),
+        curve: finite.min(-100).max(100).optional(),
         uppercase: z.boolean().optional(),
         multiline: z.boolean().optional(),
         autoSizeMode: z.enum(["fixed", "width", "height", "shrink", "safe-width"]).optional(),

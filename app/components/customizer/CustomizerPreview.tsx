@@ -20,6 +20,7 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState, useSyncExterna
 import { getLegacyMaskPath, getMaskPath } from "@/lib/customizer/v2/masks";
 import { getGridSlotRect, normalizeGridSlot } from "@/lib/customizer/v2/grids";
 import { DEFAULT_LINE_HEIGHT, layoutText, createCanvasMeasure, fallbackMeasure, resolveTextBox, resolvedTextLayoutMode, type MeasureFn } from "@/lib/customizer/v2/text-layout";
+import { layoutCurvedText } from "@/lib/customizer/v2/text-curve";
 import { resolvePageSafeArea } from "@/lib/customizer/v2/safe-area";
 import { hasImageFilters, imageFilterSvgPrimitives } from "@/lib/customizer/v2/image-filters";
 import { resolveImageDrawBoxFromTransform } from "@/lib/customizer/v2/image-crop";
@@ -177,9 +178,48 @@ function TextLayer({ layer, field, values, fontsReady, idPrefix, safeBounds }: a
     [text, box.width, box.height, box.clampedBySafeArea, JSON.stringify(style), fontsReady],
   );
 
+  // Text curve: the same geometry the server SVG and the selection frame use
+  // (lib/customizer/v2/text-curve). Null keeps the straight rendering below.
+  const curved = useMemo(
+    () => layoutCurvedText({ box, text: String(text), style, measure, maxLines: Number(layer.maxLines) > 0 ? Number(layer.maxLines) : undefined }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [text, box.x, box.y, box.width, box.height, box.clampedBySafeArea, JSON.stringify(style), layer.maxLines, fontsReady],
+  );
+
   const boxLeft = box.x - box.width / 2;
   const boxTop = box.y - box.height / 2;
   const clipId = `${idPrefix}-text-clip-${String(layer.id).replace(/[^a-z0-9_-]/gi, "-")}`;
+  const textPaint = {
+    fontFamily: `"${style.fontFamily || "Cormorant Garamond"}", serif`,
+    fontWeight: style.fontWeight || "400",
+    fontStyle: style.fontStyle === "italic" ? "italic" : "normal",
+    letterSpacing: `${Number(style.letterSpacing) || 0}px`,
+    textDecoration: style.underline ? "underline" : undefined,
+    fill: isPlaceholder ? "#9aa0a1" : style.color || "#303839",
+  };
+
+  if (curved) {
+    const pathId = `${idPrefix}-text-curve-${String(layer.id).replace(/[^a-z0-9_-]/gi, "-")}`;
+    // Not clipped: the run follows its arc, and a box clip would cut the
+    // glyphs that leave the straight line's rectangle.
+    return (
+      <g transform={layerTransform(layer, box.x, box.y) || undefined} data-text-curve={curved.geometry.curve}>
+        <defs>
+          <path id={pathId} d={curved.pathD} />
+        </defs>
+        <text
+          xmlSpace="preserve"
+          style={{ ...textPaint, fontSize: `${curved.fontSize}px` }}
+          textAnchor="middle"
+          dominantBaseline="middle"
+        >
+          <textPath href={`#${pathId}`} startOffset="50%">
+            {curved.text}
+          </textPath>
+        </text>
+      </g>
+    );
+  }
 
   return (
     <g transform={layerTransform(layer, box.x, box.y) || undefined}>

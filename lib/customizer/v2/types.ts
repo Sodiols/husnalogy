@@ -211,6 +211,11 @@ export type TextStyle = {
    * absent keeps the behaviour the document was made with.
    */
   growthDirection?: "up" | "center" | "down";
+  /**
+   * Text curve, -100 (smile) … 100 (arch); see text-curve.ts. OPTIONAL: absent
+   * or 0 is straight text, exactly as before the property existed.
+   */
+  curve?: number;
   uppercase: boolean;
   multiline: boolean;
   // "auto" shrinks to fit the box down to minFontSize; "fixed" keeps fontSize.

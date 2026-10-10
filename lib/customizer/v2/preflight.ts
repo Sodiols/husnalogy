@@ -10,6 +10,7 @@ import type {
   TextLayer,
 } from "./types";
 import { layoutText, fallbackMeasure, type MeasureFn } from "./text-layout";
+import { textCurveApplies } from "./text-curve";
 import { getGridSlotRect, normalizeGridSlot, validateGridGeometry } from "./grids";
 import { validateGroupRelationships } from "./groups";
 import { isValidQRValue, qrContrastRatio } from "./qr";
@@ -323,6 +324,9 @@ function checkTextLayer(
 
   const text = String(layer.text || "");
   if (!text.trim()) return;
+  // Curved text follows its arc and is never clipped to a box, so box overflow
+  // and wrapping do not apply to it (lib/customizer/v2/text-curve).
+  const curvedText = textCurveApplies(style, text);
 
   const layout = layoutText(
     {
@@ -346,7 +350,7 @@ function checkTextLayer(
     measure,
   );
 
-  if (layout.overflowWidth || layout.overflowHeight || layout.truncatedLines) {
+  if (!curvedText && (layout.overflowWidth || layout.overflowHeight || layout.truncatedLines)) {
     issues.push({
       code: "text-overflow",
       severity: layer.required ? "error" : "warning",
@@ -357,7 +361,7 @@ function checkTextLayer(
     });
   }
 
-  if (layout.overflowWidth) {
+  if (!curvedText && layout.overflowWidth) {
     issues.push({
       code: "text-horizontal-overflow",
       severity: layer.required ? "error" : "warning",
@@ -368,7 +372,7 @@ function checkTextLayer(
     });
   }
 
-  if (layout.overflowHeight) {
+  if (!curvedText && layout.overflowHeight) {
     issues.push({
       code: "text-vertical-overflow",
       severity: layer.required ? "error" : "warning",
@@ -379,7 +383,7 @@ function checkTextLayer(
     });
   }
 
-  if (layout.unbreakableWord) {
+  if (!curvedText && layout.unbreakableWord) {
     issues.push({
       code: "text-unbreakable-word",
       severity: "warning",

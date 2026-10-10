@@ -825,8 +825,30 @@ export default function AdminDesignBuilder({
     if (activeTextHistoryIdRef.current === id) apply(next);
     else commit(next);
   };
+  /**
+   * A live style preview from a slider (Text curve): the document follows the
+   * thumb with no history entry; the history snapshot is taken from the state
+   * BEFORE the first preview and pushed once, when the value commits — one drag,
+   * one undo step, however many frames it previewed.
+   */
+  const stylePreviewLayerRef = useRef<string | null>(null);
+  const onStylePreview = (id: string, patch: any) => {
+    if (stylePreviewLayerRef.current !== id) {
+      if (stylePreviewLayerRef.current) flushGestureHistory();
+      beginGesture();
+      stylePreviewLayerRef.current = id;
+    }
+    apply(constrainTextLayerBox(updateLayerStyle(tRef.current, id, patch), id));
+  };
   const onStylePatch = (id: string, patch: any) => {
     const next = constrainTextLayerBox(updateLayerStyle(tRef.current, id, patch), id);
+    if (stylePreviewLayerRef.current === id) {
+      // The end of a previewed change: land it, then record the pre-drag state.
+      stylePreviewLayerRef.current = null;
+      apply(next);
+      flushGestureHistory();
+      return;
+    }
     if (activeTextHistoryIdRef.current === id) apply(next);
     else commit(next);
   };
@@ -2355,6 +2377,7 @@ export default function AdminDesignBuilder({
                   layer={selectedLayer}
                   onLayerPatch={onLayerPatch}
                   onStylePatch={onStylePatch}
+                  onStylePreview={onStylePreview}
                   onFieldPatch={onFieldPatch}
                   onLinkField={onLinkField}
                   onUnlinkField={onUnlinkField}

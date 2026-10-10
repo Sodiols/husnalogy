@@ -20,6 +20,7 @@ import { getLegacyMaskPath, getMaskPath } from "./masks";
 import { layerTransform } from "./layer-flip";
 import { eraseMaskAppliesTo, eraseStrokePaths } from "./erase-mask";
 import { DEFAULT_LINE_HEIGHT, layoutText, fallbackMeasure, resolveTextBox, resolvedTextLayoutMode, type MeasureFn, type SafeBounds } from "./text-layout";
+import { layoutCurvedText } from "./text-curve";
 import { getGridSlotRect, normalizeGridSlot } from "./grids";
 import { hasImageFilters, imageFilterSvgPrimitives } from "./image-filters";
 import { resolveImageDrawBoxFromTransform } from "./image-crop";
@@ -150,6 +151,32 @@ function renderTextLayer(layer: any, field: any, values: Record<string, any>, me
   const textTransform = layerTransform(layer, box.x, box.y);
   const rotate = textTransform ? ` transform="${textTransform}"` : "";
   const clipId = `text-clip-${String(layer.id).replace(/[^a-z0-9_-]/gi, "-")}`;
+  const curvePaint =
+    ` font-family="${esc(style.fontFamily || DEFAULT_FONT_FAMILY)}"` +
+    attr("font-weight", style.fontWeight || "400") +
+    (style.fontStyle === "italic" ? ` font-style="italic"` : "") +
+    (Number(style.letterSpacing) ? ` letter-spacing="${Number(style.letterSpacing)}"` : "") +
+    (style.underline ? ` text-decoration="underline"` : "") +
+    ` fill="${esc(fill)}"`;
+
+  // Text curve: the browser renderer's exact geometry (lib/customizer/v2/text-curve).
+  // resvg shapes the whole run and places it on the path, so script and
+  // connected letterforms keep their joins; the PDF embeds this same render.
+  const curved = layoutCurvedText({
+    box,
+    text: String(text),
+    style,
+    measure,
+    maxLines: Number(layer.maxLines) > 0 ? Number(layer.maxLines) : undefined,
+  });
+  if (curved) {
+    const pathId = `text-curve-${String(layer.id).replace(/[^a-z0-9_-]/gi, "-")}`;
+    return (
+      `<g${rotate}><defs><path id="${pathId}" d="${esc(curved.pathD)}"/></defs>` +
+      `<text xml:space="preserve" text-anchor="middle" dominant-baseline="middle" font-size="${curved.fontSize}"${curvePaint}>` +
+      `<textPath href="#${pathId}" startOffset="50%">${esc(curved.text)}</textPath></text></g>`
+    );
+  }
 
   const spans = layout.lines
     .map((line) => `<tspan x="${boxLeft + line.x}" y="${boxTop + line.y}">${esc(line.text) || " "}</tspan>`)

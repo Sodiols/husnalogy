@@ -1,6 +1,7 @@
 import { DEFAULT_FONT_FAMILY } from "./google-fonts";
 import { resolveGroupBounds, rotatedAxisHalfExtents } from "./groups";
 import { DEFAULT_LINE_HEIGHT, resolveTextBox, type MeasureFn, type SafeBounds } from "./text-layout";
+import { layoutCurvedText } from "./text-curve";
 
 export type SelectionRect = {
   left: number;
@@ -212,6 +213,27 @@ export function resolveLayerSelectionGeometry(
     options.measure,
     options.safeBounds,
   );
+  // Curved text is selected by what is drawn: the arc's bounds, centred on the
+  // same point the renderer rotates around (lib/customizer/v2/text-curve).
+  const curved = layoutCurvedText({
+    box,
+    text,
+    style,
+    measure: options.measure,
+    maxLines: Number(layer.maxLines) > 0 ? Number(layer.maxLines) : undefined,
+  });
+  if (curved) {
+    return {
+      ...layer,
+      x: curved.frame.x,
+      y: curved.frame.y,
+      width: curved.frame.width,
+      height: curved.frame.height,
+      resolvedText: text,
+      textCurved: true,
+      ...(box.autoWidth ? { autoWidthClamped: box.clampedBySafeArea } : {}),
+    };
+  }
   const geometryChanged =
     box.x !== layer.x ||
     box.y !== layer.y ||

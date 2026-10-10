@@ -7,12 +7,13 @@ import { FONT_SIZE_RULES } from "@/lib/customizer/v2/text-toolbar";
 import { FONT_SIZE_POINT_RULES, documentPxToPoints, fontSizeBoundsInPoints, pointsToDocumentPx } from "@/lib/customizer/v2/type-units";
 import PaintControl from "@/app/components/customizer/PaintControl";
 import ColourInput from "@/app/components/customizer/ColourInput";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { getConnectedField, uploadBuilderImage, type BuilderAsset } from "./builder-utils";
 import { customerEditablePermissionBundle, isFieldCompatibleWithLayer } from "@/lib/customizer";
 import EditableNumericStepper from "@/app/components/customizer/EditableNumericStepper";
 import { effectiveTextGrowth, getTextAutoSizeMode } from "@/lib/customizer/v2/text-layout";
 import TextGrowthControl from "@/app/components/customizer/TextGrowthControl";
+import { TEXT_CURVE_MAX, TEXT_CURVE_MIN, TEXT_CURVE_STEP, normalizeTextCurve } from "@/lib/customizer/v2/text-curve";
 import {
   countTextLines,
   insertTextNewline,
@@ -206,6 +207,81 @@ function TextSpacingFields({ layer, style, onStylePatch }: { layer: any; style: 
           onChange={(lineHeight: number) => onStylePatch(layer.id, { lineHeight })}
         />
       </div>
+    </div>
+  );
+}
+
+/**
+ * Text curve, -100 (smile) … 0 (straight) … 100 (arch), drawn like Opacity.
+ *
+ * Smooth by construction: the thumb follows a local draft synchronously, the
+ * document receives at most one preview per animation frame (each one a real
+ * re-render of the curved text, never a CSS trick), and release commits once —
+ * so a whole drag is a single undo step. Multiline text cannot curve; the value
+ * is kept, not cleared, and applies again when the text is one line.
+ */
+function TextCurveField({ layer, style, onStylePatch, onStylePreview }: { layer: any; style: any; onStylePatch: (id: string, patch: any) => void; onStylePreview?: (id: string, patch: any) => void }) {
+  const stored = normalizeTextCurve(style.curve);
+  const [draft, setDraft] = useState<number | null>(null);
+  const frame = useRef(0);
+  const pending = useRef<number | null>(null);
+  const multiline = Boolean(style.multiline) || String(layer.text || "").includes("\n");
+  const value = draft ?? stored;
+
+  useEffect(() => () => cancelAnimationFrame(frame.current), []);
+
+  const preview = (next: number) => {
+    const curve = normalizeTextCurve(next);
+    setDraft(curve);
+    if (!onStylePreview) return;
+    pending.current = curve;
+    if (frame.current) return;
+    frame.current = requestAnimationFrame(() => {
+      frame.current = 0;
+      if (pending.current !== null) onStylePreview(layer.id, { curve: pending.current });
+    });
+  };
+  const commit = (next: number) => {
+    cancelAnimationFrame(frame.current);
+    frame.current = 0;
+    pending.current = null;
+    setDraft(null);
+    onStylePatch(layer.id, { curve: normalizeTextCurve(next) });
+  };
+
+  return (
+    <div className="grid gap-1.5" data-text-curve-control>
+      <div className="flex items-center justify-between gap-2">
+        <Lbl>Text curve</Lbl>
+        {value !== 0 && !multiline && (
+          <button
+            type="button"
+            onClick={() => commit(0)}
+            className="-mt-1 cursor-pointer rounded px-1 text-[12px] font-semibold text-[#27307A] underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#27307A]"
+          >
+            Reset
+          </button>
+        )}
+      </div>
+      <EditableNumericStepper
+        slider
+        label="Text curve"
+        value={multiline ? 0 : value}
+        minimum={TEXT_CURVE_MIN}
+        maximum={TEXT_CURVE_MAX}
+        step={TEXT_CURVE_STEP}
+        largeStep={10}
+        allowNegative
+        allowDecimal={false}
+        disabled={multiline}
+        onPreviewChange={preview}
+        onCommit={commit}
+        showStepButtons={false}
+        className="flex h-10 w-full items-center gap-3"
+        sliderClassName="h-10 min-w-0 flex-1 cursor-pointer accent-[#27307A] disabled:cursor-not-allowed disabled:opacity-35"
+        inputClassName={`${controlClass} w-[76px] shrink-0 text-center tabular-nums`}
+      />
+      {multiline && <p className={HINT}>Text curve works on single-line text. Turn off Multiline to curve it.</p>}
     </div>
   );
 }
@@ -420,6 +496,7 @@ export default function AdminPropertiesPanel({
   onUnlinkField,
   onToggleCustomerEditable,
   onReplaceImage,
+  onStylePreview,
 }: any) {
   // Declared before the early return so the hook order stays stable.
   const [inspectorTab, setInspectorTab] = useState("design");
@@ -527,6 +604,7 @@ export default function AdminPropertiesPanel({
             <PointSize ariaLabel="Font size" px={Number(style.fontSize ?? 48)} dpi={template?.dpi} onChange={(fontSize) => onStylePatch(layer.id, { fontSize })} />
           </div>
           <TextSpacingFields layer={layer} style={style} onStylePatch={onStylePatch} />
+          <TextCurveField key={layer.id} layer={layer} style={style} onStylePatch={onStylePatch} onStylePreview={onStylePreview} />
           <div>
             <Lbl>Text growth</Lbl>
             <TextGrowthControl

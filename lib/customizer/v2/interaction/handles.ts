@@ -164,8 +164,13 @@ export function resolveVisibleHandles(options: {
   resizable: boolean;
   isText: boolean;
   singleLineAutoSize: boolean;
+  /** Curved text resizes only uniformly: a corner scales the type, arc and all. */
+  curved?: boolean;
 }): HandleId[] {
   if (!options.resizable) return [];
+  if (options.isText && options.curved) {
+    return HANDLE_DEFINITIONS.filter((handle) => CORNER_HANDLES.has(handle.id)).map((handle) => handle.id);
+  }
   if (options.isText && options.singleLineAutoSize) {
     return HANDLE_DEFINITIONS.filter(
       (handle) => handle.id === "w" || handle.id === "e" || CORNER_HANDLES.has(handle.id),

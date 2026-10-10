@@ -17,6 +17,7 @@ import { normalizeGridSlot } from "@/lib/customizer/v2/grids";
 import { normalizeImageFilters } from "@/lib/customizer/v2/image-filters";
 import { normalizeMaskShape } from "@/lib/customizer/v2/masks";
 import { normalizeTextGrowthDirection } from "@/lib/customizer/v2/text-growth";
+import { normalizeTextCurve } from "@/lib/customizer/v2/text-curve";
 import { normalizeQRCodeStyle } from "@/lib/customizer/v2/qr";
 import { migrateTextAutoSizing } from "@/lib/customizer/v2/text-layout";
 import { isSafeInsets, resolvePageSafeArea } from "@/lib/customizer/v2/safe-area";
@@ -307,6 +308,9 @@ function normalizeTextStyle(input: any = {}): any {
     verticalAlign: verticalAlign === "top" || verticalAlign === "bottom" ? verticalAlign : "middle",
     // Persisted only when chosen: absent keeps the behaviour the design was made with.
     ...(normalizeTextGrowthDirection(input.growthDirection) ? { growthDirection: normalizeTextGrowthDirection(input.growthDirection) } : {}),
+    // Text curve (lib/customizer/v2/text-curve): stored only when bent, so a
+    // straight layer — every layer made before curves existed — is unchanged.
+    ...(normalizeTextCurve(input.curve) ? { curve: normalizeTextCurve(input.curve) } : {}),
     uppercase: normalizeBoolean(input.uppercase),
     multiline: normalizeBoolean(input.multiline),
     // V2 text box behaviour (spec §9): "shrink" reduces the size down to
@@ -640,6 +644,7 @@ export function normalizeUserLayer(input: any = {}): any | null {
     textAlign: CUSTOMIZER_TEXT_ALIGN.has(textAlign) ? textAlign : "center",
     verticalAlign: ["top", "middle", "bottom"].includes(cleanString(input.textStyle?.verticalAlign)) ? cleanString(input.textStyle?.verticalAlign) : "middle",
     ...(normalizeTextGrowthDirection(input.textStyle?.growthDirection) ? { growthDirection: normalizeTextGrowthDirection(input.textStyle?.growthDirection) } : {}),
+    ...(normalizeTextCurve(input.textStyle?.curve) ? { curve: normalizeTextCurve(input.textStyle?.curve) } : {}),
     uppercase: normalizeBoolean(input.textStyle?.uppercase),
     multiline: normalizeBoolean(input.textStyle?.multiline),
     autoSizeMode: CUSTOMIZER_AUTO_SIZE_MODES.has(cleanString(input.textStyle?.autoSizeMode))
